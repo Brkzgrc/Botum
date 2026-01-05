@@ -46,7 +46,7 @@ def get_all_spot_symbols(base_url):
         return [sym['symbol'] for sym in data['symbols'] if sym['status'] == 'TRADING' and sym['quoteAsset'] == 'USDT' and sym['baseAsset'] not in EXCLUDED]
     except: return []
 
-print("🚀 BULUT BOTU v2.4 - SESSİZ MOD AKTİF", flush=True)
+print("🚀 BULUT BOTU v2.5 - KESİN ÇALIŞMA MODU", flush=True)
 
 while True:
     try:
@@ -54,10 +54,13 @@ while True:
         all_coins = get_all_spot_symbols(current_base)
         
         if not all_coins:
-            print(f"⚠️ {datetime.now().strftime('%H:%M:%S')} - Liste alınamadı, bekleniyor...", flush=True)
+            print(f"⚠️ {datetime.now().strftime('%H:%M:%S')} - Veri çekilemedi!", flush=True)
             time.sleep(30)
             continue
 
+        # BURASI KRİTİK: Tarama başladığında artık log basacak
+        print(f"✅ {datetime.now().strftime('%H:%M:%S')} | {current_base} | {len(all_coins)} Coin çekildi. Tarama başlıyor...", flush=True)
+        
         scanned_count = 0
         for s in all_coins:
             try:
@@ -81,12 +84,10 @@ while True:
                 time.sleep(0.05)
             except: continue
 
-        # Sadece Render çıktısında görünür, Telegram'a gitmez
-        print(f"✅ DÖNGÜ TAMAM: {datetime.now().strftime('%H:%M:%S')} | {scanned_count} Coin tarandı.", flush=True)
+        print(f"🏁 DÖNGÜ BİTTİ: {datetime.now().strftime('%H:%M:%S')} | {scanned_count} Coin tarandı.", flush=True)
         
-        # 6 SAATLİK RAPOR (Sadece bu Telegram'a gider)
         if datetime.now() - last_report_time > timedelta(hours=6):
-            send_telegram(f"📊 *6 Saatlik Sistem Raporu*\nBot aktif, son turda {scanned_count} coin tarandı.")
+            send_telegram(f"📊 *6 Saatlik Sistem Raporu*\nBot aktif, turlara devam ediyor.")
             last_report_time = datetime.now()
 
         time.sleep(60)
