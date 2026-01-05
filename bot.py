@@ -18,6 +18,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 TELEGRAM_TOKEN = "7583261338:AAHASreSYIaX-6QAXIUflpyf5HnbQXq81Dg"
 CHAT_ID = "5124859166"
 EXCLUDED = ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD', 'DAI', 'EUR', 'TRY', 'GBP', 'PAXG']
+ENDPOINTS = ["https://api1.binance.com", "https://api2.binance.com", "https://api3.binance.com"]
 
 sent_signals = {}
 last_report_time = datetime.now()
@@ -26,66 +27,69 @@ def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         requests.post(url, data={'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown', 'disable_web_page_preview': 'True'}, verify=False, timeout=10)
-    except Exception as e: print(f"❌ Telegram Hatası: {e}")
+    except: pass
 
-def get_all_spot_symbols():
+def get_working_endpoint():
+    for base in ENDPOINTS:
+        try:
+            res = requests.get(f"{base}/api/v3/ping", timeout=5)
+            if res.status_code == 200: return base
+        except: continue
+    return "https://api1.binance.com"
+
+def get_all_spot_symbols(base_url):
     try:
-        url = "https://api.binance.com/api/v3/exchangeInfo"
+        url = f"{base_url}/api/v3/exchangeInfo"
         res = requests.get(url, verify=False, timeout=15)
-        if res.status_code != 200:
-            print(f"⚠️ Binance Bağlantı Sorunu! Kod: {res.status_code}", flush=True)
-            return []
+        if res.status_code != 200: return []
         data = res.json()
-        symbols = [sym['symbol'] for sym in data['symbols'] if sym['status'] == 'TRADING' and sym['quoteAsset'] == 'USDT' and sym['baseAsset'] not in EXCLUDED]
-        print(f"✅ Binance'ten {len(symbols)} adet coin listesi başarıyla çekildi.", flush=True)
-        return symbols
-    except Exception as e:
-        print(f"❌ Liste Çekme Hatası: {e}", flush=True)
-        return []
+        return [sym['symbol'] for sym in data['symbols'] if sym['status'] == 'TRADING' and sym['quoteAsset'] == 'USDT' and sym['baseAsset'] not in EXCLUDED]
+    except: return []
 
-print("🚀 BULUT BOTU v2.2 BAŞLATILDI - ŞEFFAF MOD", flush=True)
-send_telegram("🤖 *Bulut Botu v2.2 Yayında!* \nVeri akışı kontrol ediliyor...")
+print("🚀 BULUT BOTU v2.4 - SESSİZ MOD AKTİF", flush=True)
 
 while True:
     try:
-        all_coins = get_all_spot_symbols()
+        current_base = get_working_endpoint()
+        all_coins = get_all_spot_symbols(current_base)
         
         if not all_coins:
-            print("⏳ Coin listesi alınamadı, 30 saniye sonra tekrar denenecek...", flush=True)
+            print(f"⚠️ {datetime.now().strftime('%H:%M:%S')} - Liste alınamadı, bekleniyor...", flush=True)
             time.sleep(30)
             continue
 
-        scanned_this_turn = 0
+        scanned_count = 0
         for s in all_coins:
             try:
-                url = f"https://api.binance.com/api/v3/klines?symbol={s}&interval=15m&limit=100"
+                url = f"{current_base}/api/v3/klines?symbol={s}&interval=15m&limit=100"
                 r = requests.get(url, verify=False, timeout=5).json()
-                if isinstance(r, dict) and 'code' in r: continue # Hatalı sembolü atla
-                
                 df = pd.DataFrame(r, columns=['ts', 'o', 'h', 'l', 'c', 'v', 'ct', 'qa', 'nt', 'tb', 'tq', 'i'])
-                df[['c', 'h', 'l', 'v']] = df[['c', 'h', 'l', 'v']].astype(float)
+                df[['c', 'v']] = df[['c', 'v']].astype(float)
                 
-                # RSI Hesapla
                 delta = df['c'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
                 rsi = 100 - (100 / (1 + (gain / loss.replace(0, 0.001)))).iloc[-1]
-                
-                # Hacim Oranı
                 vol_ratio = df['v'].iloc[-1] / df['v'].iloc[-21:-1].mean()
                 
                 if rsi < 25 and vol_ratio > 3.5:
                     if s not in sent_signals or (time.time() - sent_signals[s]) > 14400:
-                        send_telegram(f"🛡️ *SİNYAL:* {s}\nRSI: {rsi:.1f} | Hacim: {vol_ratio:.1f}X")
+                        binance_link = f"https://www.binance.com/en/trade/{s.replace('USDT', '_USDT')}"
+                        send_telegram(f"🛡️ *SİNYAL:* {s}\n📊 RSI: {rsi:.1f}\n📈 Hacim: {vol_ratio:.1f}X\n🔗 [Binance]({binance_link})")
                         sent_signals[s] = time.time()
-                
-                scanned_this_turn += 1
-                time.sleep(0.05) # Binance'i yormamak için kısa bekleme
+                scanned_count += 1
+                time.sleep(0.05)
             except: continue
 
-        print(f"✅ TARAMA TAMAMLANDI: {datetime.now().strftime('%H:%M:%S')} | Toplam: {scanned_this_turn} Coin", flush=True)
-        time.sleep(60)
+        # Sadece Render çıktısında görünür, Telegram'a gitmez
+        print(f"✅ DÖNGÜ TAMAM: {datetime.now().strftime('%H:%M:%S')} | {scanned_count} Coin tarandı.", flush=True)
+        
+        # 6 SAATLİK RAPOR (Sadece bu Telegram'a gider)
+        if datetime.now() - last_report_time > timedelta(hours=6):
+            send_telegram(f"📊 *6 Saatlik Sistem Raporu*\nBot aktif, son turda {scanned_count} coin tarandı.")
+            last_report_time = datetime.now()
 
+        time.sleep(60)
     except Exception as e:
-        print(f"💥 Ana Döngü Hatası: {e}", flush=True)
+        print(f"💥 Hata: {e}", flush=True)
         time.sleep(10)
