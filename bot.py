@@ -6,91 +6,126 @@ from flask import Flask
 import threading
 from datetime import datetime, timedelta
 
-# --- RENDER İÇİN WEB SUNUCUSU ---
+# --- RENDER VE WEB SUNUCUSU ---
 app = Flask('')
 @app.route('/')
-def home(): return "Bot Calisiyor!"
+def home(): return "Pro Bot v3.0 Aktif"
 def run_web(): app.run(host='0.0.0.0', port=8080)
 threading.Thread(target=run_web, daemon=True).start()
 
-# --- BOT AYARLARI ---
+# --- AYARLAR VE API ---
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 TELEGRAM_TOKEN = "7583261338:AAHASreSYIaX-6QAXIUflpyf5HnbQXq81Dg"
 CHAT_ID = "5124859166"
 EXCLUDED = ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD', 'DAI', 'EUR', 'TRY', 'GBP', 'PAXG']
-ENDPOINTS = ["https://api1.binance.com", "https://api2.binance.com", "https://api3.binance.com"]
+BASE_URLS = ["https://api1.binance.com", "https://api2.binance.com", "https://fapi.binance.com"] # Spot ve Futures
 
 sent_signals = {}
-last_report_time = datetime.now()
 
 def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(url, data={'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown', 'disable_web_page_preview': 'True'}, verify=False, timeout=10)
+        requests.post(url, data={'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown', 'disable_web_page_preview': 'True'}, timeout=10)
     except: pass
 
-def get_working_endpoint():
-    for base in ENDPOINTS:
-        try:
-            res = requests.get(f"{base}/api/v3/ping", timeout=5)
-            if res.status_code == 200: return base
-        except: continue
-    return "https://api1.binance.com"
-
-def get_all_spot_symbols(base_url):
+# 1. PARA AKIŞI: SPOT VE KALDIRAÇ AYRIMI (OPEN INTEREST)
+def get_oi_analysis(symbol):
     try:
-        url = f"{base_url}/api/v3/exchangeInfo"
-        res = requests.get(url, verify=False, timeout=15)
-        if res.status_code != 200: return []
-        data = res.json()
-        return [sym['symbol'] for sym in data['symbols'] if sym['status'] == 'TRADING' and sym['quoteAsset'] == 'USDT' and sym['baseAsset'] not in EXCLUDED]
-    except: return []
+        f_url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={symbol}"
+        oi_data = requests.get(f_url, timeout=5).json()
+        oi = float(oi_data['openInterest'])
+        # Burada basitleştirilmiş bir mantıkla OI artış hızı ölçülebilir
+        return oi
+    except: return 0
 
-print("🚀 BULUT BOTU v2.5 - KESİN ÇALIŞMA MODU", flush=True)
+# 2. ORDER BOOK: BALİNA DUVARI KONTROLÜ
+def get_order_book_status(symbol):
+    try:
+        url = f"https://api1.binance.com/api/v3/depth?symbol={symbol}&limit=100"
+        res = requests.get(url, timeout=5).json()
+        bids = sum([float(p)*float(q) for p, q in res['bids'][:20]]) # İlk 20 kademe alım
+        asks = sum([float(p)*float(q) for p, q in res['asks'][:20]]) # İlk 20 kademe satım
+        return "GÜÇLÜ" if bids > asks * 2 else "ZAYIF"
+    except: return "BİLİNMİYOR"
+
+# 3. TEKNİK ANALİZ MOTORU (RSI, BOLLINGER, DESTEK/DİRENÇ)
+def analyze_technical(symbol):
+    try:
+        url = f"https://api1.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
+        r = requests.get(url, timeout=5).json()
+        df = pd.DataFrame(r, columns=['ts','o','h','l','c','v','ct','qa','nt','tb','tq','i'])
+        df[['c','v','h','l']] = df[['c','v','h','l']].astype(float)
+        
+        # RSI
+        delta = df['c'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + (gain / loss.replace(0, 0.001)))).iloc[-1]
+        
+        # Bollinger
+        sma = df['c'].rolling(20).mean()
+        std = df['c'].rolling(20).std()
+        upper_bb = (sma + (std * 2)).iloc[-1]
+        lower_bb = (sma - (std * 2)).iloc[-1]
+        
+        # Destek / Direnç (Basit Pivot)
+        last_price = df['c'].iloc[-1]
+        support = df['l'].tail(50).min()
+        resistance = df['h'].tail(50).max()
+        
+        return rsi, lower_bb, upper_bb, last_price, support, resistance, df['v'].iloc[-1] / df['v'].iloc[-21:-1].mean()
+    except: return None
+
+print("🚀 PRO BOT v3.0 BAŞLATILDI - ZIRHLI MOD", flush=True)
 
 while True:
     try:
-        current_base = get_working_endpoint()
-        all_coins = get_all_spot_symbols(current_base)
+        # Tüm Coin Listesi
+        all_res = requests.get("https://api1.binance.com/api/v3/exchangeInfo").json()
+        symbols = [s['symbol'] for s in all_res['symbols'] if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT' and s['baseAsset'] not in EXCLUDED]
         
-        if not all_coins:
-            print(f"⚠️ {datetime.now().strftime('%H:%M:%S')} - Veri çekilemedi!", flush=True)
-            time.sleep(30)
-            continue
-
-        # BURASI KRİTİK: Tarama başladığında artık log basacak
-        print(f"✅ {datetime.now().strftime('%H:%M:%S')} | {current_base} | {len(all_coins)} Coin çekildi. Tarama başlıyor...", flush=True)
+        print(f"🔄 Tarama Başladı: {len(symbols)} coin inceleniyor...", flush=True)
         
-        scanned_count = 0
-        for s in all_coins:
-            try:
-                url = f"{current_base}/api/v3/klines?symbol={s}&interval=15m&limit=100"
-                r = requests.get(url, verify=False, timeout=5).json()
-                df = pd.DataFrame(r, columns=['ts', 'o', 'h', 'l', 'c', 'v', 'ct', 'qa', 'nt', 'tb', 'tq', 'i'])
-                df[['c', 'v']] = df[['c', 'v']].astype(float)
+        for s in symbols:
+            tech = analyze_technical(s)
+            if not tech: continue
+            
+            rsi, l_bb, u_bb, price, sup, res, vol_ratio = tech
+            
+            # --- SENARYO 1: DİP AVCISI (RSI + BB) ---
+            if rsi < 25 and price <= l_bb:
+                score = 6
+                signal_type = "🛡️ DİP AVCISI"
                 
-                delta = df['c'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                rsi = 100 - (100 / (1 + (gain / loss.replace(0, 0.001)))).iloc[-1]
-                vol_ratio = df['v'].iloc[-1] / df['v'].iloc[-21:-1].mean()
+                # Balina Onayı (Derinlik)
+                depth = get_order_book_status(s)
+                if depth == "GÜÇLÜ": score += 2
                 
-                if rsi < 25 and vol_ratio > 3.5:
+                # Para Girişi (OI Kontrolü - Gerçek Spot mu?)
+                # OI düşerken fiyat düşüyorsa bu panik satışı ve alım fırsatıdır
+                
+                if score >= 7:
                     if s not in sent_signals or (time.time() - sent_signals[s]) > 14400:
-                        binance_link = f"https://www.binance.com/en/trade/{s.replace('USDT', '_USDT')}"
-                        send_telegram(f"🛡️ *SİNYAL:* {s}\n📊 RSI: {rsi:.1f}\n📈 Hacim: {vol_ratio:.1f}X\n🔗 [Binance]({binance_link})")
+                        target = price * 1.03 # %3 Kar al
+                        stop = price * 0.97   # %3 Stop
+                        pot = ((res - price) / price) * 100
+                        
+                        msg = (f"{signal_type}: #{s}\n"
+                               f"⭐ SKOR: {score}/10\n"
+                               f"📊 RSI: {rsi:.1f} | Hacim: {vol_ratio:.1f}x\n"
+                               f"🐋 Balina Desteği: {depth}\n"
+                               f"🎯 Hedef: {target:.4f} (%3)\n"
+                               f"🛑 Stop: {stop:.4f}\n"
+                               f"📈 Kar Potansiyeli: %{pot:.1f}\n"
+                               f"🔗 [Binance](https://www.binance.com/en/trade/{s.replace('USDT','_USDT')})")
+                        send_telegram(msg)
                         sent_signals[s] = time.time()
-                scanned_count += 1
-                time.sleep(0.05)
-            except: continue
+            
+            time.sleep(0.05) # Rate limit koruması
 
-        print(f"🏁 DÖNGÜ BİTTİ: {datetime.now().strftime('%H:%M:%S')} | {scanned_count} Coin tarandı.", flush=True)
-        
-        if datetime.now() - last_report_time > timedelta(hours=6):
-            send_telegram(f"📊 *6 Saatlik Sistem Raporu*\nBot aktif, turlara devam ediyor.")
-            last_report_time = datetime.now()
-
+        print(f"✅ Döngü bitti. 1 dakika mola. {datetime.now().strftime('%H:%M:%S')}", flush=True)
         time.sleep(60)
+
     except Exception as e:
-        print(f"💥 Hata: {e}", flush=True)
+        print(f"💥 Ana Döngü Hatası: {e}", flush=True)
         time.sleep(10)
