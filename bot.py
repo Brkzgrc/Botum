@@ -7,30 +7,31 @@ from flask import Flask
 import threading
 from datetime import datetime
 
-# --- 1. WEB SUNUCUSU (RENDER UYUMU) ---
+# --- 1. WEB SUNUCUSU (RENDER İÇİN) ---
 app = Flask('')
 @app.route('/')
-def home(): return "Pro Bot v3.9 - FULL ARCHITECTURE ACTIVE"
+def home(): return "Pro Bot v3.9.1 - FULL ARCHITECTURE & LIVE LOGS"
 def run_web(): app.run(host='0.0.0.0', port=8080)
 threading.Thread(target=run_web, daemon=True).start()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- 2. AYARLAR ---
+# --- 2. AYARLAR VE PARAMETRELER ---
 TELEGRAM_TOKEN = "7583261338:AAHASreSYIaX-6QAXIUflpyf5HnbQXq81Dg"
 CHAT_ID = "5124859166"
 EXCLUDED = ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD', 'DAI', 'EUR', 'TRY', 'GBP', 'PAXG']
 sent_signals = {}
 
-# --- 3. MODÜL: TELEGRAM ---
+# --- 3. MODÜL: TELEGRAM GÖNDERİMİ ---
 def send_telegram_msg(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown', 'disable_web_page_preview': 'True'}
         requests.post(url, data=payload, timeout=15)
-    except: pass
+    except Exception as e:
+        print(f"❌ Telegram Hatası: {e}", flush=True)
 
-# --- 4. MODÜL: BALİNA DERİNLİK ANALİZİ ---
+# --- 4. MODÜL: BALİNA DERİNLİK ANALİZİ (ORDER BOOK) ---
 def get_order_book_depth(symbol):
     try:
         url = f"https://api1.binance.com/api/v3/depth?symbol={symbol}&limit=100"
@@ -38,24 +39,31 @@ def get_order_book_depth(symbol):
         bid_vol = sum([float(p) * float(q) for p, q in res.get('bids', [])])
         ask_vol = sum([float(p) * float(q) for p, q in res.get('asks', [])])
         return bid_vol / ask_vol if ask_vol > 0 else 1.0
-    except: return 1.0
+    except:
+        return 1.0
 
-# --- 5. MODÜL: VADELİ İŞLEMLER (OPEN INTEREST) ---
+# --- 5. MODÜL: KALDIRAÇ (OPEN INTEREST) VERİSİ ---
 def get_futures_oi(symbol):
     try:
         url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={symbol}"
         res = requests.get(url, timeout=5).json()
         return float(res.get('openInterest', 0))
-    except: return 0
+    except:
+        return 0
 
-# --- 6. MODÜL: UYUMSUZLUK (DIVERGENCE) MOTORU ---
+# --- 6. MODÜL: RSI UYUMSUZLUK (DIVERGENCE) MOTORU ---
 def check_divergence(df):
     try:
-        curr_p, prev_min_p = df['c'].iloc[-1], df['c'].iloc[-15:-1].min()
-        curr_r, prev_min_r = df['rsi'].iloc[-1], df['rsi'].iloc[-15:-1].min()
-        if curr_p <= prev_min_p and curr_r > prev_min_r: return "POZİTİF 📈"
+        curr_p = df['c'].iloc[-1]
+        prev_min_p = df['c'].iloc[-15:-1].min()
+        curr_r = df['rsi'].iloc[-1]
+        prev_min_r = df['rsi'].iloc[-15:-1].min()
+        
+        if curr_p <= prev_min_p and curr_r > prev_min_r:
+            return "POZİTİF 📈"
         return "YOK"
-    except: return "YOK"
+    except:
+        return "YOK"
 
 # --- 7. MODÜL: ANA ANALİZ MOTORU ---
 def get_comprehensive_analysis(symbol):
@@ -81,24 +89,33 @@ def get_comprehensive_analysis(symbol):
         high_50 = df['h'].iloc[-50:-1].max() # Son 50 mumun zirvesi
         
         return {
-            'price': df['c'].iloc[-1], 'rsi': df['rsi'].iloc[-1], 'l_bb': df['l_bb'].iloc[-1],
-            'ema200': df['ema200'].iloc[-1], 'vol_ratio': df['v'].iloc[-1] / (vol_avg + 0.0001),
-            'div': check_divergence(df), 'high_50': high_50, 'res': df['h'].tail(60).max()
+            'price': df['c'].iloc[-1],
+            'rsi': df['rsi'].iloc[-1],
+            'l_bb': df['l_bb'].iloc[-1],
+            'ema200': df['ema200'].iloc[-1],
+            'vol_ratio': df['v'].iloc[-1] / (vol_avg + 0.0001),
+            'div': check_divergence(df),
+            'high_50': high_50,
+            'res': df['h'].tail(60).max()
         }
-    except: return None
+    except Exception as e:
+        print(f"⚠️ Analiz Hatası ({symbol}): {e}", flush=True)
+        return None
 
-# --- 8. ANA RADAR DÖNGÜSÜ ---
-print("🛡️ PRO BOT v3.9 - TAM KAPSAMLI RADAR AKTİF", flush=True)
+# --- 8. ANA DÖNGÜ (RADAR) ---
+print("🛡️ PRO BOT v3.9.1 - SIFIR TAVİZ MODU AKTİF", flush=True)
 
 while True:
     try:
         info = requests.get("https://api1.binance.com/api/v3/exchangeInfo").json()
         symbols = [s['symbol'] for s in info['symbols'] if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT' and s['baseAsset'] not in EXCLUDED]
         
-        print(f"🔄 {datetime.now().strftime('%H:%M')} | {len(symbols)} Coin taranıyor...", flush=True)
+        print(f"\n🔄 {datetime.now().strftime('%H:%M:%S')} | {len(symbols)} Coin taranıyor...", flush=True)
 
         for symbol in symbols:
-            print(f"🔍 Analiz: {symbol}", end='\r', flush=True)
+            # RENDER LOGLARI İÇİN CANLI ÇIKTI:
+            print(f"🔍 İnceleniyor: {symbol}", flush=True)
+            
             data = get_comprehensive_analysis(symbol)
             if not data: continue
             
@@ -120,8 +137,10 @@ while True:
                 score += 7
                 active_scenarios.append("⚡ ROKET (KIRILIM)")
 
-            # --- EK PUANLAMA KRİTERLERİ ---
+            # --- EK PUANLAMA VE MODÜLER VERİLER ---
             whale = get_order_book_depth(symbol)
+            oi_val = get_futures_oi(symbol)
+            
             if whale > 2.0: score += 2
             if data['vol_ratio'] > 4.5: score += 1
             if data['price'] > data['ema200']: score += 1
@@ -131,7 +150,10 @@ while True:
             if score >= 8:
                 if symbol not in sent_signals or (time.time() - sent_signals[symbol]) > 14400:
                     
-                    target, stop = data['price'] * 1.04, data['price'] * 0.96
+                    target = data['price'] * 1.04
+                    stop = data['price'] * 0.96
+                    
+                    # Fiyat Formatlama (Sıfırları Atma)
                     p_f = "{:.8f}".format(data['price']).rstrip('0').rstrip('.')
                     t_f = "{:.8f}".format(target).rstrip('0').rstrip('.')
                     s_f = "{:.8f}".format(stop).rstrip('0').rstrip('.')
@@ -148,7 +170,13 @@ while True:
                     
                     send_telegram_msg(msg)
                     sent_signals[symbol] = time.time()
+                    print(f"✅ SİNYAL GÖNDERİLDİ: {symbol} (Skor: {score})", flush=True)
             
-            time.sleep(0.04)
+            time.sleep(0.04) # API Koruması
+
+        print(f"🏁 Tur Tamamlandı. Beklemeye geçiliyor...", flush=True)
         time.sleep(60)
-    except: time.sleep(10)
+
+    except Exception as e:
+        print(f"💥 ANA DÖNGÜ HATASI: {e}", flush=True)
+        time.sleep(10)
