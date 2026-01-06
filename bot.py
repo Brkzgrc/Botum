@@ -268,13 +268,6 @@ def scan_market():
 def start_loop():
     """Botun sürekli çalışmasını sağlayan döngü"""
     print("🚀 Bot Başlatılıyor... Gunicorn Modu Aktif", flush=True)
-    
-    # Başlangıç Test Mesajı
-    if TELEGRAM_TOKEN and CHAT_ID:
-        try:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                        data={'chat_id': CHAT_ID, 'text': "🖥️ **Sistem Gunicorn ile Yeniden Başlatıldı**\nFull Strateji Devrede.", 'parse_mode': 'Markdown'})
-        except: pass
 
     while True:
         scan_market()
