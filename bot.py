@@ -6,20 +6,20 @@ import threading
 from datetime import datetime
 from flask import Flask
 
-# --- SUNUCU AYARI (RENDER KAPANMAMASI İÇİN) ---
+# --- SUNUCU AYARI (KEEP-ALIVE) ---
 app = Flask('')
 @app.route('/')
 def home(): return "Sistem Aktif"
 def run_web(): app.run(host='0.0.0.0', port=8080)
 threading.Thread(target=run_web, daemon=True).start()
 
-# --- AYARLAR VE KİMLİK (SENİN BİLGİLERİN) ---
+# --- AYARLAR VE KİMLİK ---
 TELEGRAM_TOKEN = "7583261338:AAHASreSYIaX-6QAXIUflpyf5HnbQXq81Dg"
 CHAT_ID = "5124859166"
 EXCLUDED = ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD', 'DAI', 'EUR', 'TRY', 'PAXG']
 sent_signals = {}
 
-# --- 1. VERİ VE İNDİKATÖR MOTORU (HİÇBİRİ SİLİNMEDİ) ---
+# --- VERİ VE İNDİKATÖR MOTORU (GÜNCELLENDİ) ---
 def get_data(symbol, interval):
     try:
         url = f"https://api1.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit=200"
@@ -27,25 +27,35 @@ def get_data(symbol, interval):
         df = pd.DataFrame(r, columns=['ts','o','h','l','c','v','ct','qa','nt','tb','tq','i'])
         df[['c','v','h','l','o']] = df[['c','v','h','l','o']].astype(float)
         
-        # OBV (Para Girişi)
+        # 1. OBV & Hacim Delta (Net Alım)
         df['obv'] = (np.sign(df['c'].diff()) * df['v']).fillna(0).cumsum()
         
-        # RSI ve EMA 200 (Trend Onayı)
+        # 2. RSI, EMA 200 ve ADX (Trend Gücü - Madde 2)
         delta = df['c'].diff(); gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         df['rsi'] = 100 - (100 / (1 + (gain / (loss + 1e-6))))
         df['ema200'] = df['c'].ewm(span=200, adjust=False).mean()
         
-        # Bollinger (2.2 Sapma - Senin Kriterin)
+        # ADX Hesaplama
+        plus_dm = df['h'].diff(); minus_dm = df['l'].diff()
+        tr = pd.concat([df['h']-df['l'], abs(df['h']-df['c'].shift()), abs(df['l']-df['c'].shift())], axis=1).max(axis=1)
+        atr = tr.rolling(14).mean()
+        df['adx'] = (abs((plus_dm.rolling(14).mean() - minus_dm.rolling(14).mean()) / (plus_dm.rolling(14).mean() + minus_dm.rolling(14).mean())) * 100).rolling(14).mean()
+        
+        # 3. Bollinger (2.2 Sapma)
         df['sma'] = df['c'].rolling(20).mean()
         df['std'] = df['c'].rolling(20).std()
         df['upper'] = df['sma'] + (2.2 * df['std'])
         df['lower'] = df['sma'] - (2.2 * df['std'])
         
+        # 4. Fibonacci Radar (Madde 4 - Hedef Belirleyici)
+        high_max = df['h'].max(); low_min = df['l'].min()
+        diff = high_max - low_min
+        df['fib_618'] = high_max - (0.618 * diff)
+        
         return df
     except: return None
 
-# --- 2. BALİNA ANALİZİ (ORDER BOOK DEEP) ---
 def get_whale_ratio(symbol):
     try:
         res = requests.get(f"https://api1.binance.com/api/v3/depth?symbol={symbol}&limit=100", timeout=5).json()
@@ -54,73 +64,74 @@ def get_whale_ratio(symbol):
         return bids / asks if asks > 0 else 1.0
     except: return 1.0
 
-# --- 3. BTC KONTROL VE POZİTİF AYRIŞMA ---
 def get_btc_status():
     df_btc = get_data("BTCUSDT", "15m")
     if df_btc is None: return 0, False
     change = ((df_btc['c'].iloc[-1] - df_btc['c'].iloc[-4]) / df_btc['c'].iloc[-4]) * 100
-    is_safe = change > -1.0 # BTC %1'den fazla çakılmıyorsa güvenli
-    return change, is_safe
+    return change, (change > -1.0)
 
-# --- 4. ANA KARAR MEKANİZMASI ---
+# --- ANA TARAMA ---
 def scan():
-    print(f"\n🔄 {datetime.now().strftime('%H:%M:%S')} Tarama Başladı...", flush=True)
+    print(f"🔄 {datetime.now().strftime('%H:%M:%S')} Tarama Başladı...", flush=True)
     btc_change, btc_safe = get_btc_status()
     
     try:
-        symbols = [s['symbol'] for s in requests.get("https://api1.binance.com/api/v3/exchangeInfo").json()['symbols'] 
-                   if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT' and s['baseAsset'] not in EXCLUDED]
+        info = requests.get("https://api1.binance.com/api/v3/exchangeInfo").json()
+        symbols = [s['symbol'] for s in info['symbols'] if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT' and s['baseAsset'] not in EXCLUDED]
         
         for s in symbols:
-            df15 = get_data(s, "15m")
-            df1h = get_data(s, "1h") # MTF (1 Saatlik Trend Kontrolü)
+            df15 = get_data(s, "15m"); df1h = get_data(s, "1h")
             if df15 is None or df1h is None: continue
             
-            # Değişkenler
-            price = df15['c'].iloc[-1]
-            last_vol = df15['v'].iloc[-1]
+            last = df15.iloc[-1]; prev = df15.iloc[-2]
             avg_vol = df15['v'].rolling(20).mean().iloc[-1]
             whale = get_whale_ratio(s)
             
-            # --- STRATEJİ SINIFLARI ---
-            score = 0
-            signal_type = ""
+            # --- STRATEJİ MANTIĞI ---
+            score = 0; signal_type = ""
             
-            # 1. ROKET (Sert Yükseliş)
-            if last_vol > (avg_vol * 3.5) and price > df15['upper'].iloc[-1]:
+            # ADX Filtresi (Madde 2) - Trend Zayıfsa Puan Kır
+            trend_strong = last['adx'] > 25
+            
+            # Roket & Akıntıya Karşı & Dip Avcısı (Eski Mantık Korundu)
+            if last['v'] > (avg_vol * 3.5) and last['c'] > last['upper']:
                 score += 5; signal_type = "🚀 ROKET (KIRILIM)"
             
-            # 2. DİP AVCISI (Trend İçi)
-            if df1h['c'].iloc[-1] > df1h['ema200'].iloc[-1] and df15['rsi'].iloc[-1] < 30:
-                score += 4; signal_type = "🛡️ DİP AVCISI"
-                
-            # 3. POZİTİF AYRIŞMA (BTC'ye Kafa Tutanlar)
-            coin_change = ((df15['c'].iloc[-1] - df15['c'].iloc[-4]) / df15['c'].iloc[-4]) * 100
+            coin_change = ((last['c'] - df15['c'].iloc[-4]) / df15['c'].iloc[-4]) * 100
             if btc_change < -0.5 and coin_change > 0:
-                score += 4; signal_type = "⚡ AKINTIYA KARŞI (POZİTİF AYRIŞMA)"
+                score += 4; signal_type = "⚡ AKINTIYA KARŞI"
 
-            # EK PUANLAR (Balina ve Para Girişi)
+            if df1h['c'].iloc[-1] > df1h['ema200'].iloc[-1] and last['rsi'] < 30:
+                score += 4; signal_type = "🛡️ DİP AVCISI"
+
             if whale > 2.5: score += 3
-            if df15['obv'].iloc[-1] > df15['obv'].iloc[-5]: score += 2
+            if trend_strong: score += 2
             
-            # GÖNDERİM (Skor 9+ ve BTC Kontrolü)
+            # --- TP/SL VE PRICE ACTION (Madde 1 & 5) ---
             if score >= 9:
-                # BTC çakılırken sadece "Akıntıya Karşı" olanları gönder
                 if not btc_safe and "AKINTIYA" not in signal_type: continue
                 
+                # Swing Low (Son 20 mumun dibi) - Stop Seviyesi
+                stop_loss = df15['l'].rolling(20).min().iloc[-1] * 0.995
+                risk = last['c'] - stop_loss
+                take_profit = last['c'] + (risk * 3.0) # 1:3 R/R
+                
+                # Sinyal Gönderim
                 if s not in sent_signals or (time.time() - sent_signals[s]) > 14400:
-                    msg = (f"⭐ **{signal_type}**\n\nCoin: #{s}\nFiyat: {price:.8f}\n"
-                           f"Skor: {score}/10\nBalina Gücü: x{whale:.1f}\n"
-                           f"Hacim Artışı: x{last_vol/avg_vol:.1f}\n"
-                           f"BTC Durum: %{btc_change:.2f}\n\n"
+                    fib_status = "Önü Açık" if last['c'] > last['fib_618'] else "Direnç Yakın"
+                    msg = (f"⭐ **{signal_type}**\n\nCoin: #{s}\nFiyat: {last['c']:.8f}\n"
+                           f"Skor: {score}/10 | ADX: {last['adx']:.1f}\n"
+                           f"🛡️ Stop: {stop_loss:.8f}\n🎯 Hedef: {take_profit:.8f}\n"
+                           f"📊 Fib Radar: {fib_status}\n"
+                           f"🐳 Balina: x{whale:.1f} | BTC: %{btc_change:.2f}\n\n"
                            f"[Binance'de Aç](https://www.binance.com/en/trade/{s}_USDT)")
                     
-                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                                  data={'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'})
+                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'})
                     sent_signals[s] = time.time()
-            time.sleep(0.1) # API Yasaklanmaması için hız sınırı
+            time.sleep(0.1)
             
     except Exception as e: print(f"Hata: {e}")
+    print(f"✅ Tarama Bitti. 60 saniye sonra tekrar başlayacak...", flush=True)
 
 while True:
     scan()
