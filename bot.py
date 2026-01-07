@@ -213,7 +213,7 @@ def scan_market():
         except Exception as e:
             continue
 
-    next_run = tr_now + timedelta(minutes=2)
+    next_run = tr_now + timedelta(minutes=15)
     print(f"🏁 [BİTTİ] Sonraki Tarama: {next_run.strftime('%H:%M:%S')}", flush=True)
     print("-" * 40, flush=True)
 
@@ -228,7 +228,7 @@ def start_loop():
             print(f"⚠️ Kritik Döngü Hatası: {e} - Tekrar başlatılıyor...", flush=True)
         
         # 2 Dakika bekle
-        time.sleep(120)
+        time.sleep(900)
 
 # Gunicorn Tetikleyicisi
 threading.Thread(target=start_loop, daemon=True).start()
