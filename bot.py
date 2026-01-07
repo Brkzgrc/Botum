@@ -181,17 +181,27 @@ def scan_market():
                 if s not in sent_signals or (time.time() - sent_signals[s]) > 10800:
                     msg = (
                         f"⚡ **SİNYAL TESPİT EDİLDİ** ⚡\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🪙 **{s}** (Spot / 15m)\n"
                         f"📡 **Strateji:** {strategy_name}\n"
-                        f"🏆 **Skor:** {score}/10 | **Risk:** {risk_lvl}\n"
+                        f"🏆 **Güven Skoru:** {score}/10\n"
+                        f"📊 **Risk:** {risk_lvl}\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🟢 **GİRİŞ:** {curr['c']:.5f}\n"
                         f"🎯 **HEDEF:** {target_price:.5f} (+%{target_pct:.2f})\n"
                         f"🛑 **STOP:** {stop_price:.5f} (%{stop_pct:.2f})\n"
-                        f"💡 **ÖNERİ:** Tek seferde sat!\n"
-                        f"🌊 **Delta:** %{curr['delta_pct']:.1f} | 🐋 **Balina:** x{whale_ratio:.1f}\n"
-                        f"📈 **ADX:** {curr['adx']:.1f}\n"
-                        f"🔗 [Binance](https://www.binance.com/en/trade/{s}_USDT?type=spot)"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"💡 **ÖNERİ:** Tek seferde satmak istiyorsun.\n"
+                        f"• Fiyat %2 yükselirse Stop'u girişe çek.\n"
+                        f"• Hedefe gelince acıma, sat çık.\n"
+                        f"• Bekleme Süresi: Max 60 Dakika.\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🌊 **Delta:** %{curr['delta_pct']:.1f} Alıcılı\n"
+                        f"🐋 **Balina Oranı:** Alıcılar x{whale_ratio:.1f} baskın\n"
+                        f"📈 **ADX Trend:** {curr['adx']:.1f}\n"
+                        f"🔗 [Binance Spot](https://www.binance.com/en/trade/{s}_USDT?type=spot)"
                     )
+                    
                     if TELEGRAM_TOKEN and CHAT_ID:
                         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                                       data={'chat_id': CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'})
