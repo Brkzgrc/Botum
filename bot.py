@@ -104,6 +104,26 @@ def check_order_book(symbol):
     except:
         return False # Veri yoksa risk alma
 
+def check_rebellion(df_1h):
+    """
+    BTC düşerken coinin yükselip yükselmediğini (Ayrışma) kontrol eder.
+    """
+    last_candle = df_1h.iloc[-1]
+    prev_candle = df_1h.iloc[-2]
+    
+    # 1. Fiyat Gücü: Coin son 1 saatte %3'ten fazla yükselmiş mi?
+    price_change_pct = ((last_candle['close'] - last_candle['open']) / last_candle['open']) * 100
+    is_pumping = price_change_pct > 3.0 
+    
+    # 2. Hacim Gücü: Hacim ortalamanın 3 katı mı? (Çok güçlü para girişi lazım)
+    volume_explosion = last_candle['volume'] > (last_candle['vol_ma'] * 3.0)
+    
+    # 3. RSI Gücü: RSI 60'ın üzerinde mi? (Momentum çok yüksek olmalı)
+    rsi_strong = last_candle['rsi'] > 60
+    
+    # Hepsi varsa bu coin BTC'yi dinlemiyordur.
+    return is_pumping and volume_explosion and rsi_strong
+    
 # --- 6. ANA STRATEJİ MOTORU ---
 
 def run_analysis():
@@ -144,11 +164,20 @@ def run_analysis():
     
     # --- KONTROL LİSTESİ (CHECKLIST) ---
 
-    # 1. BTC Kontrolü
-    if not check_btc_safety():
-        print("❌ BTC Tehlikeli (Düşüş veya Crash).")
-        return
+    # --- KARAR MEKANİZMASI REVİZE EDİLDİ ---
 
+    # 1. BTC Kontrolü ve "İsyan" İstisnası
+    btc_safe = check_btc_safety()
+    is_rebelling = check_rebellion(df_1h) # Yukarıdaki yeni fonksiyon
+    
+    if not btc_safe:
+        # BTC kötü ama Coin İsyan Ediyor mu?
+        if is_rebelling:
+            print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Kötü ama {SYMBOL} Ayrışıyor! (Rebellion Mode)")
+            # BTC filtresini pas geçiyoruz, devam et...
+        else:
+            print(f"❌ [{datetime.now().strftime('%H:%M')}] BTC Riski Mevcut ve Coin Ayrışmadı.")
+            return
     # 2. Ana Trend (4H)
     if last_4h['st_dir'] != 1: 
         print("❌ 4H Trend Düşüşte (SuperTrend Kırmızı).")
