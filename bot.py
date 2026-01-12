@@ -205,20 +205,18 @@ def run_analysis():
     send_telegram(msg)
     print("✅ SİNYAL GÖNDERİLDİ!")
 
-# --- 7. BOT DÖNGÜSÜ (GÜNCELLENMİŞ HALİ) ---
+# --- 7. BOT DÖNGÜSÜ (GÜNCELLENMİŞ - CANLI MOD) ---
 def bot_loop():
-    print("🤖 Bot Motoru Başlatıldı... (Log Test Modu)", flush=True)
-    send_telegram(f"🤖 Bot Başladı! {SYMBOL} izleniyor.")
+    print("🤖 Bot Motoru Başlatıldı... (CANLI MOD - 15dk)", flush=True)
+    send_telegram(f"🤖 Bot Canlı Moda Geçti! {SYMBOL} her 15 dakikada bir taranıyor.")
     
     while True:
         try:
-            # Analizi çalıştır
             run_analysis()
             
-            # Şimdilik testi görmek için 15 dakika (900sn) yerine 
-            # 60 saniye bekletiyoruz. Loglar akınca bunu tekrar 900 yaparsın.
-            print("⏳ Analiz bitti. Bir sonraki tarama için 60 saniye bekleniyor...", flush=True)
-            time.sleep(60) 
+            # Artık test bitti, gerçek süreye (15 Dakika = 900 Saniye) geçiyoruz.
+            print("⏳ Analiz tamamlandı. 15 dakika bekleniyor...", flush=True)
+            time.sleep(900) 
             
         except Exception as e:
             print(f"⚠️ Ana Döngü Hatası: {e}", flush=True)
