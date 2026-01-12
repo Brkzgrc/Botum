@@ -104,42 +104,56 @@ def check_order_book(symbol):
     except:
         return False # Veri yoksa risk alma
 
-def check_rebellion(df_1h):
+def check_rebellion(df_15m):
     """
-    BTC düşerken coinin yükselip yükselmediğini (Ayrışma) kontrol eder.
+    BTC düşerken coinin ayrışıp ayrışmadığını (15dk) kontrol eder.
+    AYRICA FOMO KORUMASI İÇERİR (Tepeden aldırmaz).
     """
-    last_candle = df_1h.iloc[-1]
-    prev_candle = df_1h.iloc[-2]
+    last_candle = df_15m.iloc[-1]
     
-    # 1. Fiyat Gücü: Coin son 1 saatte %3'ten fazla yükselmiş mi?
-    price_change_pct = ((last_candle['close'] - last_candle['open']) / last_candle['open']) * 100
-    is_pumping = price_change_pct > 3.0 
+    # 1. Fiyat Değişimi Hesapla (Anlık Mum)
+    open_p = last_candle['open']
+    close_p = last_candle['close']
+    change_pct = ((close_p - open_p) / open_p) * 100
     
-    # 2. Hacim Gücü: Hacim ortalamanın 3 katı mı? (Çok güçlü para girişi lazım)
-    volume_explosion = last_candle['volume'] > (last_candle['vol_ma'] * 3.0)
+    # KURAL A: Güçlü Yükseliş Var mı? (En az %2 yükselmeli)
+    is_strong = change_pct > 2.0
     
-    # 3. RSI Gücü: RSI 60'ın üzerinde mi? (Momentum çok yüksek olmalı)
-    rsi_strong = last_candle['rsi'] > 60
+    # KURAL B: Tepeden mi Giriyoruz? (FOMO KORUMASI)
+    # Eğer mum şimdiden %6'dan fazla yükseldiyse girme, riskli.
+    not_too_late = change_pct < 6.0
     
-    # Hepsi varsa bu coin BTC'yi dinlemiyordur.
-    return is_pumping and volume_explosion and rsi_strong
+    # KURAL C: Hacim Patlaması (Ortalamanın 2.5 katı)
+    volume_explosion = last_candle['volume'] > (last_candle['vol_ma'] * 2.5)
     
+    # KURAL D: RSI Momentum (RSI 55 üzeri olmalı)
+    rsi_strong = last_candle['rsi'] > 55
+    
+    # Tüm şartlar sağlanmalı
+    if is_strong and not_too_late and volume_explosion and rsi_strong:
+        return True, f"Ayrışma Onaylandı! (Artış: %{change_pct:.2f})"
+    else:
+        return False, "Şartlar Sağlanmadı"
+        
 # --- 6. ANA STRATEJİ MOTORU ---
 
 def run_analysis():
-    # BURAYA EKLE:
-    print(f"\n🔎 [TARAMA BAŞLADI] {SYMBOL} için piyasa kontrol ediliyor... Saat: {datetime.now().strftime('%H:%M:%S')}", flush=True)
+    print(f"\n🔎 [TARAMA BAŞLADI] {SYMBOL} kontrol ediliyor... Saat: {datetime.now().strftime('%H:%M:%S')}", flush=True)
     
-    # Eski kodlar buradan devam ediyor...
-    # Verileri Çek
+    # --- 1. VERİLERİ ÇEK ---
     df_1h = get_data(SYMBOL, TIMEFRAME_SHORT, limit=100)
     df_4h = get_data(SYMBOL, TIMEFRAME_LONG, limit=100)
+    df_15m = get_data(SYMBOL, '15m', limit=50) # İsyan ve Fomo kontrolü için
     
-    if df_1h is None or df_4h is None: return
+    if df_1h is None or df_4h is None or df_15m is None: return
 
-    # --- HESAPLAMALAR ---
+    # --- 2. İNDİKATÖR HESAPLAMALARI ---
     
-    # 1H İndikatörleri
+    # 15M (Erken Uyarı Sistemi)
+    df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
+    df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
+
+    # 1H (Giriş Sinyali)
     df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
     df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
     df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
@@ -148,72 +162,76 @@ def run_analysis():
     df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
     df_1h['vol_ma'] = ta.sma(df_1h['volume'], length=20)
     
-    # 4H İndikatörleri
+    # 4H (Trend Onayı)
     st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
-    # SuperTrend sütun ismini bul (kütüphane dinamik isimlendirir)
-    st_dir_col = st_4h.columns[1] # Genelde 2. sütun Direction'dır (1 veya -1)
+    st_dir_col = st_4h.columns[1]
     df_4h['st_dir'] = st_4h[st_dir_col]
-    
     adx_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
     df_4h['adx'] = adx_4h['ADX_14']
     df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
 
-    # Son Değerler
     last_1h = df_1h.iloc[-1]
     last_4h = df_4h.iloc[-1]
     
-    # --- KONTROL LİSTESİ (CHECKLIST) ---
+    # --- 3. KONTROL LİSTESİ (TAM DETAYLI) ---
 
-    # --- KARAR MEKANİZMASI REVİZE EDİLDİ ---
-
-    # 1. BTC Kontrolü ve "İsyan" İstisnası
+    # A. BTC ve İSYAN (REBELLION) KONTROLÜ
     btc_safe = check_btc_safety()
-    is_rebelling = check_rebellion(df_1h) # Yukarıdaki yeni fonksiyon
-    
+    is_rebelling, rebel_reason = check_rebellion(df_15m) # 15m verisi ile kontrol
+
     if not btc_safe:
-        # BTC kötü ama Coin İsyan Ediyor mu?
+        # BTC kötü ise "İsyan" var mı diye bakıyoruz
         if is_rebelling:
-            print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Kötü ama {SYMBOL} Ayrışıyor! (Rebellion Mode)")
-            # BTC filtresini pas geçiyoruz, devam et...
+            print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Düşüyor ama {SYMBOL} Ayrıştı! Sebebi: {rebel_reason}")
+            # BTC filtresini atla, devam et...
         else:
-            print(f"❌ [{datetime.now().strftime('%H:%M')}] BTC Riski Mevcut ve Coin Ayrışmadı.")
+            print(f"❌ [{datetime.now().strftime('%H:%M')}] BTC Riski Mevcut. (Ayrışma Yok)")
             return
-    # 2. Ana Trend (4H)
+    else:
+        # BTC güvenliyse İsyan kontrolüne gerek yok, yola devam.
+        pass
+
+    # B. Ana Trend (4H) - Orijinal Kontroller
     if last_4h['st_dir'] != 1: 
-        print("❌ 4H Trend Düşüşte (SuperTrend Kırmızı).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Düşüşte (SuperTrend Kırmızı).")
         return
     if last_4h['adx'] < 25:
-        print("❌ 4H Trend Zayıf (ADX < 25).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 25).")
         return
 
-    # 3. Para Akışı ve Kurumsal (1H)
+    # C. Para Akışı ve Kurumsal (1H) - BURASI GERİ GELDİ
     if last_1h['cmf'] <= 0:
-        print("❌ Para Çıkışı Var (CMF Negatif).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] Para Çıkışı Var (CMF Negatif).")
         return
+    
     if last_1h['close'] <= last_1h['vwap']:
-        print("❌ Fiyat VWAP Altında (Pahalı).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] Fiyat VWAP Altında (Pahalı).")
         return
-    if last_1h['volume'] < (last_1h['vol_ma'] * 1.5): # En az 1.5 kat hacim
-        print("❌ Hacim Yetersiz.")
+    
+    if last_1h['volume'] < (last_1h['vol_ma'] * 1.5):
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] Hacim Yetersiz (Ortalamanın Altında).")
         return 
 
-    # 4. Teknik Tetikleyiciler (1H)
+    # D. Teknik Tetikleyiciler (1H) - Orijinal Kontroller
     if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']):
-        print("❌ Momentum Dizilimi Yok (EMA).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] Momentum Dizilimi Yok (EMA).")
         return
+    
     if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']):
-        print("❌ RSI Tetiği Yok.")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] RSI Tetiği Yok.")
         return
 
-    # 5. Order Book
+    # E. Order Book
     if not check_order_book(SYMBOL):
-        print("❌ Tahta Baskısı Satıcılı.")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] Tahta Baskısı Negatif.")
         return
 
-    # --- HEPSİ OLUMLU İSE ---
-    atr_val = last_4h['atr']
-    stop_loss = last_1h['close'] - (2 * atr_val)
-    take_profit = last_1h['close'] + (3 * atr_val)
+    # --- 4. SİNYAL OLUŞTU ---
+    stop_loss = last_1h['close'] - (2 * last_4h['atr'])
+    take_profit = last_1h['close'] + (3 * last_4h['atr'])
+    
+    # Durum mesajını belirle
+    status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Standart Güvenli Kurulum'
     
     msg = f"""
     🚨 MÜKEMMEL KURULUM TESPİT EDİLDİ! 🚨
@@ -221,19 +239,18 @@ def run_analysis():
     💎 Coin: {SYMBOL}
     💰 Fiyat: {last_1h['close']}
     
-    ✅ BTC: Güvenli ve Stabil
+    ✅ BTC Durumu: { 'RİSKLİ AMA AYRIŞTI 🔥' if not btc_safe else 'GÜVENLİ 🟢' }
+    ✅ Strateji: {status_msg}
     ✅ Trend: 4H Boğa & ADX Güçlü
     ✅ Para: CMF Pozitif & VWAP Üzeri
     ✅ Onay: Hacim Patlaması & Tahta Baskısı
     
     🛑 Stop Loss: {stop_loss:.4f}
     🎯 Hedef: {take_profit:.4f}
-    
-    (Bot şu an sadece sinyal modunda. Alım yapmadı.)
     """
     send_telegram(msg)
     print("✅ SİNYAL GÖNDERİLDİ!")
-
+    
 # --- 7. BOT DÖNGÜSÜ (GÜNCELLENMİŞ - CANLI MOD) ---
 def bot_loop():
     print("🤖 Bot Motoru Başlatıldı... (CANLI MOD - 15dk)", flush=True)
