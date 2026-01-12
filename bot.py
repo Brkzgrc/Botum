@@ -103,8 +103,10 @@ def check_order_book(symbol):
 # --- 6. ANA STRATEJİ MOTORU ---
 
 def run_analysis():
-    print(f"🔍 Analiz Başlıyor: {SYMBOL} - {datetime.now()}")
+    # BURAYA EKLE:
+    print(f"\n🔎 [TARAMA BAŞLADI] {SYMBOL} için piyasa kontrol ediliyor... Saat: {datetime.now().strftime('%H:%M:%S')}", flush=True)
     
+    # Eski kodlar buradan devam ediyor...
     # Verileri Çek
     df_1h = get_data(SYMBOL, TIMEFRAME_SHORT, limit=100)
     df_4h = get_data(SYMBOL, TIMEFRAME_LONG, limit=100)
