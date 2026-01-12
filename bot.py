@@ -7,6 +7,9 @@ import requests
 import threading
 from flask import Flask
 from datetime import datetime
+import sys
+# Bu satır logların anında akmasını sağlar:
+sys.stdout.reconfigure(line_buffering=True)
 
 # --- 1. AYARLAR VE GÜVENLİK ---
 API_KEY = os.getenv('BINANCE_API_KEY')
@@ -201,20 +204,25 @@ def run_analysis():
     send_telegram(msg)
     print("✅ SİNYAL GÖNDERİLDİ!")
 
-# --- 7. BOT DÖNGÜSÜ ---
+# --- 7. BOT DÖNGÜSÜ (GÜNCELLENMİŞ HALİ) ---
 def bot_loop():
-    print("🤖 Bot Motoru Başlatıldı...")
-    send_telegram(f"🤖 Bot Başladı! {SYMBOL} izleniyor (Hybrid Mode).")
+    print("🤖 Bot Motoru Başlatıldı... (Log Test Modu)", flush=True)
+    send_telegram(f"🤖 Bot Başladı! {SYMBOL} izleniyor.")
     
     while True:
         try:
+            # Analizi çalıştır
             run_analysis()
-            # Her 15 dakikada bir kontrol (Rate limit ve mum kapanışı için ideal)
-            time.sleep(900) 
+            
+            # Şimdilik testi görmek için 15 dakika (900sn) yerine 
+            # 60 saniye bekletiyoruz. Loglar akınca bunu tekrar 900 yaparsın.
+            print("⏳ Analiz bitti. Bir sonraki tarama için 60 saniye bekleniyor...", flush=True)
+            time.sleep(60) 
+            
         except Exception as e:
-            print(f"⚠️ Ana Döngü Hatası: {e}")
+            print(f"⚠️ Ana Döngü Hatası: {e}", flush=True)
             time.sleep(60)
-
+            
 # --- 8. BAŞLATMA (THREADING) ---
 if __name__ == "__main__":
     # Web sunucusunu arka planda başlat
