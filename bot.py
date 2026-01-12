@@ -23,12 +23,13 @@ BTC_SYMBOL = 'BTC/USDT' # Piyasa barometresi
 TIMEFRAME_SHORT = '1h'  # Giriş sinyali
 TIMEFRAME_LONG = '4h'   # Trend onayı
 
-# --- 2. BORSA BAĞLANTISI ---
+# --- 2. BORSA BAĞLANTISI (GÜNCELLENMİŞ) ---
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
-    'options': {'defaultType': 'future'}, # Vadeli işlemler verisi
-    'enableRateLimit': True
+    'options': {'defaultType': 'future'},
+    'enableRateLimit': True,
+    'timeout': 30000  # 30 saniye içinde yanıt gelmezse hata verip geçsin, donmasın.
 })
 
 # --- 3. FLASK WEB SUNUCUSU (RENDER İÇİN) ---
