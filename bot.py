@@ -4,29 +4,40 @@ import pandas_ta as ta
 import time
 import os
 import requests
+import threading
+from flask import Flask
 from datetime import datetime
 
-# --- AYARLAR VE GÜVENLİK ---
-# Bu bilgileri Render'da "Environment Variables" kısmına ekleyeceksin.
+# --- AYARLAR ---
 API_KEY = os.getenv('BINANCE_API_KEY')
 API_SECRET = os.getenv('BINANCE_SECRET_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# İzlenecek Coin ve Ayarlar
-SYMBOL = 'ETH/USDT'  # Örnek olarak ETH
+SYMBOL = 'ETH/USDT'
 TIMEFRAME_SHORT = '1h'
 TIMEFRAME_LONG = '4h'
 BTC_SYMBOL = 'BTC/USDT'
 
-# Borsa Bağlantısı
+# --- SAHTE WEB SUNUCUSU (RENDER İÇİN GEREKLİ) ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot Aktif ve Calisiyor! 🚀"
+
+def run_web_server():
+    # Render'ın verdiği PORT'u dinle
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# --- NORMAL BOT KODLARI BURADAN DEVAM EDİYOR ---
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
-    'options': {'defaultType': 'future'} # Vadeli işlemler için
+    'options': {'defaultType': 'future'}
 })
 
-# --- TELEGRAM FONKSİYONU ---
 def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -35,12 +46,15 @@ def send_telegram(message):
     except Exception as e:
         print(f"Telegram hatası: {e}")
 
-# --- VERİ ÇEKME FONKSİYONU ---
 def get_data(symbol, timeframe, limit=100):
-    bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-    df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    return df
+    try:
+        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        return df
+    except Exception as e:
+        print(f"Veri çekme hatası: {e}")
+        return None
 
 # --- ORDER BOOK ANALİZİ (Modül 5) ---
 def check_order_book(symbol):
@@ -172,19 +186,28 @@ def check_strategy(symbol):
     # Buraya otomatik işlem açma kodu eklenebilir.
     # exchange.create_market_buy_order(symbol, miktar) gibi.
 
-# --- SONSUZ DÖNGÜ (RENDER İÇİN) ---
-def main():
-    print("Bot Başlatıldı... Render Modu Aktif.")
-    send_telegram("Bot Başladı! Piyasa taranıyor...")
+def bot_loop():
+    print("Bot Döngüsü Başladı...")
+    send_telegram("Bot (Web Service Modu) Başladı! Piyasa taranıyor...")
     
     while True:
         try:
-            check_strategy(SYMBOL)
-            # Her 15 dakikada bir kontrol et (Rate limit yememek için)
-            time.sleep(900) 
+            # Buraya check_strategy(SYMBOL) gelecek
+            # Örnek baskı:
+            print("Piyasa kontrol ediliyor...") 
+            
+            # check_strategy(SYMBOL) # Fonksiyonu yukarı eklediğinde bu satırı aç.
+            
+            time.sleep(900) # 15 Dakika bekle
         except Exception as e:
-            print(f"Ana döngü hatası: {e}")
+            print(f"Döngü hatası: {e}")
             time.sleep(60)
 
+# --- ANA ÇALIŞTIRMA BLOKU ---
 if __name__ == "__main__":
-    main()
+    # 1. Web Sunucusunu ayrı bir kanalda (thread) başlat
+    t = threading.Thread(target=run_web_server)
+    t.start()
+    
+    # 2. Botu ana kanalda başlat
+    bot_loop()
