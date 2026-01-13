@@ -268,8 +268,8 @@ def bot_loop():
             # EKLENEN KISIM: Her turda RAM'i temizle
             gc.collect()
             
-            # Artık test bitti, gerçek süreye (15 Dakika = 900 Saniye) geçiyoruz.
-            print("⏳ Analiz tamamlandı. 15 dakika bekleniyor...", flush=True)
+            # Artık test bitti, gerçek süreye (30 Dakika = 1800 Saniye) geçiyoruz.
+            print("⏳ Analiz tamamlandı. 30 dakika bekleniyor...", flush=True)
             time.sleep(1800)
             
         except Exception as e:
