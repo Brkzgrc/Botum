@@ -9,6 +9,8 @@ from flask import Flask
 from datetime import datetime
 import sys
 import gc # RAM temizliği için gerekli
+from apscheduler.schedulers.background import BackgroundScheduler
+
 # Bu satır logların anında akmasını sağlar:
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -256,32 +258,16 @@ def run_analysis():
     send_telegram(msg)
     print("✅ SİNYAL GÖNDERİLDİ!")
     
-# --- 7. BOT DÖNGÜSÜ (GÜNCELLENMİŞ - CANLI MOD) ---
-def bot_loop():
-    print("🤖 Bot Motoru Başlatıldı... (CANLI MOD - 30dk)", flush=True)
-    send_telegram(f"🤖 Bot Canlı Moda Geçti! {SYMBOL} her 30 dakikada bir taranıyor.")
-    
-    while True:
-        try:
-            run_analysis()
-            
-            # EKLENEN KISIM: Her turda RAM'i temizle
-            gc.collect()
-            
-            # Artık test bitti, gerçek süreye (30 Dakika = 1800 Saniye) geçiyoruz.
-            print("⏳ Analiz tamamlandı. 30 dakika bekleniyor...", flush=True)
-            time.sleep(1800)
-            
-        except Exception as e:
-            print(f"⚠️ Ana Döngü Hatası: {e}", flush=True)
-            time.sleep(60)
-            
-# --- 8. BAŞLATMA (THREADING) ---
+# --- 7. ZAMANLAYICIYI KUR (GLOBAL ALAN) ---
+# Gunicorn sunucusu dosyayı okuduğunda burası çalışır ve bot başlar
+scheduler = BackgroundScheduler()
+# 30 dakikada bir 'run_analysis' fonksiyonunu çalıştır
+scheduler.add_job(func=run_analysis, trigger="interval", minutes=30)
+scheduler.start()
+print("🚀 Gunicorn Zamanlayıcısı Aktif: Bot 30 dakikada bir çalışacak.")
+
+# --- 8. BAŞLATMA ---
 if __name__ == "__main__":
-    # Web sunucusunu arka planda başlat
-    t = threading.Thread(target=run_web_server)
-    t.daemon = True # Ana program kapanınca bu da kapansın
-    t.start()
-    
-    # Botu ana akışta başlat
-    bot_loop()
+    # Dosyayı test için manuel çalıştırırsan burası devreye girer
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
