@@ -198,7 +198,7 @@ def run_analysis():
         print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Düşüşte (SuperTrend Kırmızı).")
         return
     if last_4h['adx'] < 25:
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 25).")
+        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 20).")
         return
 
     # C. Para Akışı ve Kurumsal (1H)
