@@ -26,7 +26,7 @@ BTC_SYMBOL = 'BTC/USDT' # Piyasa barometresi
 TIMEFRAME_SHORT = '1h'  # Giriş sinyali
 TIMEFRAME_LONG = '4h'   # Trend onayı
 
-# --- 2. BORSA BAĞLANTISI (GÜNCELLENMİŞ) ---
+# --- 2. BORSA BAĞLANTISI ---
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
@@ -35,16 +35,12 @@ exchange = ccxt.binance({
     'timeout': 30000  # 30 saniye içinde yanıt gelmezse hata verip geçsin, donmasın.
 })
 
-# --- 3. FLASK WEB SUNUCUSU (RENDER İÇİN) ---
+# --- 3. FLASK WEB SUNUCUSU ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot 7/24 Aktif! Piyasa Taraniyor..."
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000)) # Render genelde 10000 portunu kullanır
-    app.run(host='0.0.0.0', port=port)
+    return "🚀 Sniper Bot (Python Modu) 7/24 Aktif!"
 
 # --- 4. YARDIMCI FONKSİYONLAR ---
 
@@ -62,7 +58,7 @@ def get_data(symbol, timeframe, limit=100):
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         
-        # EKLENEN SATIR: VWAP hatasını çözer
+        # VWAP hatasını çözer
         df.set_index('timestamp', inplace=True) 
         
         return df    
@@ -114,7 +110,7 @@ def check_order_book(symbol):
 def check_rebellion(df_15m):
     """
     BTC düşerken coinin ayrışıp ayrışmadığını (15dk) kontrol eder.
-    AYRICA FOMO KORUMASI İÇERİR (Tepeden aldırmaz).
+    AYRICA FOMO KORUMASI İÇERİR.
     """
     last_candle = df_15m.iloc[-1]
     
@@ -186,19 +182,18 @@ def run_analysis():
     btc_safe = check_btc_safety()
     is_rebelling, rebel_reason = check_rebellion(df_15m) # 15m verisi ile kontrol
 
+    # Bellek temizliği (Erken çıkış yapmadan önce)
+    del df_1h, df_4h, df_15m
+    gc.collect()
+
     if not btc_safe:
-        # BTC kötü ise "İsyan" var mı diye bakıyoruz
         if is_rebelling:
             print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Düşüyor ama {SYMBOL} Ayrıştı! Sebebi: {rebel_reason}")
-            # BTC filtresini atla, devam et...
         else:
             print(f"❌ [{datetime.now().strftime('%H:%M')}] BTC Riski Mevcut. (Ayrışma Yok)")
             return
-    else:
-        # BTC güvenliyse İsyan kontrolüne gerek yok, yola devam.
-        pass
-
-    # B. Ana Trend (4H) - Orijinal Kontroller
+    
+    # B. Ana Trend (4H)
     if last_4h['st_dir'] != 1: 
         print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Düşüşte (SuperTrend Kırmızı).")
         return
@@ -206,7 +201,7 @@ def run_analysis():
         print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 25).")
         return
 
-    # C. Para Akışı ve Kurumsal (1H) - BURASI GERİ GELDİ
+    # C. Para Akışı ve Kurumsal (1H)
     if last_1h['cmf'] <= 0:
         print(f"❌ [{datetime.now().strftime('%H:%M')}] Para Çıkışı Var (CMF Negatif).")
         return
@@ -219,7 +214,7 @@ def run_analysis():
         print(f"❌ [{datetime.now().strftime('%H:%M')}] Hacim Yetersiz (Ortalamanın Altında).")
         return 
 
-    # D. Teknik Tetikleyiciler (1H) - Orijinal Kontroller
+    # D. Teknik Tetikleyiciler (1H)
     if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']):
         print(f"❌ [{datetime.now().strftime('%H:%M')}] Momentum Dizilimi Yok (EMA).")
         return
@@ -237,7 +232,6 @@ def run_analysis():
     stop_loss = last_1h['close'] - (2 * last_4h['atr'])
     take_profit = last_1h['close'] + (3 * last_4h['atr'])
     
-    # Durum mesajını belirle
     status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Standart Güvenli Kurulum'
     
     msg = f"""
@@ -258,16 +252,21 @@ def run_analysis():
     send_telegram(msg)
     print("✅ SİNYAL GÖNDERİLDİ!")
     
-# --- 7. ZAMANLAYICIYI KUR (GLOBAL ALAN) ---
-# Gunicorn sunucusu dosyayı okuduğunda burası çalışır ve bot başlar
-scheduler = BackgroundScheduler()
-# 30 dakikada bir 'run_analysis' fonksiyonunu çalıştır
-scheduler.add_job(func=run_analysis, trigger="interval", minutes=30)
-scheduler.start()
-print("🚀 Gunicorn Zamanlayıcısı Aktif: Bot 30 dakikada bir çalışacak.")
-
-# --- 8. BAŞLATMA ---
+# --- 7. BAŞLATMA VE ZAMANLAYICI (GÜNCELLENMİŞ) ---
 if __name__ == "__main__":
-    # Dosyayı test için manuel çalıştırırsan burası devreye girer
+    # 1. Zamanlayıcıyı Başlat (Arka Planda)
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=run_analysis, trigger="interval", minutes=30)
+    scheduler.start()
+    print("🚀 Bot Başlatıldı (Python Modu) - 30dk Arayla Tarayacak.")
+
+    # 2. Açılışta hemen bir kere tarama yap (Beklememek için)
+    try:
+        run_analysis()
+    except Exception as e:
+        print(f"İlk tarama hatası: {e}")
+
+    # 3. Web Sunucusunu Başlat (UptimeRobot için)
+    # Bu satır kodun kapanmasını engeller ve sürekli çalışmasını sağlar
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, use_reloader=False)
