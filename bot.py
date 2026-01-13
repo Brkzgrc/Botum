@@ -25,7 +25,7 @@ CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 IGNORED_COINS = [
     'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
     'USDC/USDT', 'TUSD/USDT', 'FDUSD/USDT', 'DAI/USDT', 'USDP/USDT',
-    'EUR/USDT', 'TRY/USDT', 'GBP/USDT', 'BUSD/USDT', 'USTC/USDT'
+    'EUR/USDT', 'TRY/USDT', 'GBP/USDT', 'BUSD/USDT', 'USTC/USDT', # Virgül eklendi
     'PAXG/USDT', 'WBTC/USDT', 'USDE/USDT', 'BRL/USDT', 'RUB/USDT',
     'AUD/USDT', 'UST/USDT', 'USD/USDT', 'XUSD/USDT', 'USD1/USDT',
 ]
@@ -37,8 +37,9 @@ TIMEFRAME_LONG = '4h'   # Trend onayı
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
-    'options': {'defaultType': 'spot'}, # DİKKAT: Spot yapıldı    'enableRateLimit': True,
-    'timeout': 30000  # 30 saniye içinde yanıt gelmezse hata verip geçsin, donmasın.
+    'options': {'defaultType': 'spot'}, # DİKKAT: Spot yapıldı
+    'enableRateLimit': True,
+    'timeout': 30000
 })
 
 # --- 3. FLASK WEB SUNUCUSU ---
@@ -165,7 +166,7 @@ def run_analysis():
     # 1. Önce Taranacak Coin Listesini Al
     symbols = get_tradable_symbols()
     
-    # 2. BTC Durumunu En Başta Bir Kere Kontrol Et (Her coin için tekrar tekrar bakmasın)
+    # 2. BTC Durumunu En Başta Bir Kere Kontrol Et
     btc_safe = check_btc_safety()
     if not btc_safe:
         print("⚠️ BTC Güvenli Değil! Sadece 'İsyan' eden coinler aranacak.")
@@ -173,23 +174,20 @@ def run_analysis():
     # 3. DÖNGÜ BAŞLIYOR: Her coini tek tek senin mantığınla incele
     for symbol in symbols:
         try:
-            # Log kirliliği olmasın diye her coini yazdırmıyoruz, sadece sinyal varsa konuşacak.
-            
             # --- 1. VERİLERİ ÇEK ---
-            # (Global SYMBOL yerine local 'symbol' kullanıyoruz)
             df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=100)
             df_4h = get_data(symbol, TIMEFRAME_LONG, limit=100)
             df_15m = get_data(symbol, '15m', limit=50) 
             
-            if df_1h is None or df_4h is None or df_15m is None: continue # return yerine continue
+            if df_1h is None or df_4h is None or df_15m is None: continue
 
-            # --- 2. İNDİKATÖR HESAPLAMALARI (SENİN KODUNLA AYNI) ---
+            # --- 2. İNDİKATÖR HESAPLAMALARI ---
             
-            # 15M (Erken Uyarı Sistemi)
+            # 15M (Erken Uyarı)
             df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
             df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
 
-            # 1H (Giriş Sinyali)
+            # 1H (Giriş Sinyali + ADX Eklendi)
             df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
             df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
             df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
@@ -197,6 +195,8 @@ def run_analysis():
             df_1h['cmf'] = ta.cmf(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'], length=20)
             df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
             df_1h['vol_ma'] = ta.sma(df_1h['volume'], length=20)
+            # YENİ: 1H ADX Hesaplaması
+            df_1h['adx'] = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'], length=14)['ADX_14']
             
             # 4H (Trend Onayı)
             st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
@@ -211,149 +211,62 @@ def run_analysis():
             
             # --- 3. KONTROL LİSTESİ (SENİN MANTIĞIN) ---
 
-            # A. BTC ve İSYAN (REBELLION) KONTROLÜ
-            # btc_safe yukarıda hesaplanmıştı
+            # A. BTC ve İSYAN KONTROLÜ
             is_rebelling, rebel_reason = check_rebellion(df_15m)
 
-            # Bellek temizliği (Döngü içinde şişmeyi önlemek için her turda siliyoruz)
+            # Her turda minik temizlik
             del df_1h, df_4h, df_15m
-            # gc.collect() buraya koymuyoruz, döngü sonunda toplu yaparız, hız kesmesin.
 
             if not btc_safe:
-                if is_rebelling:
-                    # Loga basmıyoruz, sadece sinyale odaklanıyoruz
-                    pass 
-                else:
-                    # BTC kötü ve isyan yoksa -> Sıradaki coine geç
-                    continue 
+                if not is_rebelling: continue 
             
             # B. Ana Trend (4H)
-            if last_4h['st_dir'] != 1: 
-                # Trend düşüşte -> Sıradaki coine geç
-                continue
-            
-            # (Burada senin kodunda 20 yazıyordu, istersen 20 yapabilirsin ama orijinali 25 bıraktım)
-            if last_4h['adx'] < 20: 
-                continue
+            if last_4h['st_dir'] != 1: continue
+            if last_4h['adx'] < 20: continue # 4H Trend Gücü
 
-            # C. Para Akışı ve Kurumsal (1H)
-            if last_1h['cmf'] <= 0:
-                continue
-            
-            if last_1h['close'] <= last_1h['vwap']:
-                continue
-            
-            if last_1h['volume'] < (last_1h['vol_ma'] * 1.5):
-                continue 
+            # C. Kısa Vade Trend (1H) - YENİ FİLTRE
+            if last_1h['adx'] < 20: continue # 1H Trend Gücü
 
-            # D. Teknik Tetikleyiciler (1H)
-            if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']):
-                continue
-            
-            if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']):
-                continue
+            # D. Para Akışı ve Kurumsal (1H)
+            if last_1h['cmf'] <= 0: continue
+            if last_1h['close'] <= last_1h['vwap']: continue
+            if last_1h['volume'] < (last_1h['vol_ma'] * 1.5): continue 
 
-            # E. Order Book (En son ve en maliyetli işlem olduğu için buraya koyduk)
-            if not check_order_book(symbol):
-                continue
+            # E. Teknik Tetikleyiciler (1H)
+            if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']): continue
+            if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']): continue
 
-            # --- 4. SİNYAL OLUŞTU (BURAYA ULAŞAN COİN MÜKEMMELDİR) ---
+            # F. Order Book
+            if not check_order_book(symbol): continue
+
+            # --- 4. SİNYAL OLUŞTU ---
             stop_loss = last_1h['close'] - (2 * last_4h['atr'])
             take_profit = last_1h['close'] + (3 * last_4h['atr'])
             
-            status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Standart Güvenli Kurulum'
+            status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Güçlü Trend Başlangıcı'
             
             msg = f"""
-            🚨 MÜKEMMEL SİNYAL TESPİT EDİLDİ! 🚨
+            🚨 MÜKEMMEL SİNYAL! 🚨
             
             💎 Coin: {symbol}
             💰 Fiyat: {last_1h['close']}
             
-            ✅ BTC Durumu: { 'RİSKLİ AMA AYRIŞTI 🔥' if not btc_safe else 'GÜVENLİ 🟢' }
-            ✅ Strateji: {status_msg}
-            ✅ Trend: 4H Boğa & ADX Güçlü
+            ✅ Durum: {status_msg}
+            📊 ADX (1H/4H): {int(last_1h['adx'])} / {int(last_4h['adx'])}
             ✅ Para: CMF Pozitif & VWAP Üzeri
-            ✅ Onay: Hacim Patlaması & Tahta Baskısı
             
-            🛑 Stop Loss: {stop_loss:.4f}
+            🛑 Stop: {stop_loss:.4f}
             🎯 Hedef: {take_profit:.4f}
             """
             send_telegram(msg)
             print(f"✅ SİNYAL GÖNDERİLDİ: {symbol}")
         
         except Exception as e:
-            # Bir coinde hata olursa (örn. veri yoksa) diğerine geç
             continue
 
     # Döngü bitti, tüm piyasa tarandı. Şimdi çöpü dök.
     print("🏁 Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
-    
-    if not btc_safe:
-        if is_rebelling:
-            print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Düşüyor ama {SYMBOL} Ayrıştı! Sebebi: {rebel_reason}")
-        else:
-            print(f"❌ [{datetime.now().strftime('%H:%M')}] BTC Riski Mevcut. (Ayrışma Yok)")
-            return
-    
-    # B. Ana Trend (4H)
-    if last_4h['st_dir'] != 1: 
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Düşüşte (SuperTrend Kırmızı).")
-        return
-    if last_4h['adx'] < 20:
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 20).")
-        return
-
-    # C. Para Akışı ve Kurumsal (1H)
-    if last_1h['cmf'] <= 0:
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] Para Çıkışı Var (CMF Negatif).")
-        return
-    
-    if last_1h['close'] <= last_1h['vwap']:
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] Fiyat VWAP Altında (Pahalı).")
-        return
-    
-    if last_1h['volume'] < (last_1h['vol_ma'] * 1.5):
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] Hacim Yetersiz (Ortalamanın Altında).")
-        return 
-
-    # D. Teknik Tetikleyiciler (1H)
-    if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']):
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] Momentum Dizilimi Yok (EMA).")
-        return
-    
-    if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']):
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] RSI Tetiği Yok.")
-        return
-
-    # E. Order Book
-    if not check_order_book(SYMBOL):
-        print(f"❌ [{datetime.now().strftime('%H:%M')}] Tahta Baskısı Negatif.")
-        return
-
-    # --- 4. SİNYAL OLUŞTU ---
-    stop_loss = last_1h['close'] - (2 * last_4h['atr'])
-    take_profit = last_1h['close'] + (3 * last_4h['atr'])
-    
-    status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Standart Güvenli Kurulum'
-    
-    msg = f"""
-    🚨 MÜKEMMEL KURULUM TESPİT EDİLDİ! 🚨
-    
-    💎 Coin: {SYMBOL}
-    💰 Fiyat: {last_1h['close']}
-    
-    ✅ BTC Durumu: { 'RİSKLİ AMA AYRIŞTI 🔥' if not btc_safe else 'GÜVENLİ 🟢' }
-    ✅ Strateji: {status_msg}
-    ✅ Trend: 4H Boğa & ADX Güçlü
-    ✅ Para: CMF Pozitif & VWAP Üzeri
-    ✅ Onay: Hacim Patlaması & Tahta Baskısı
-    
-    🛑 Stop Loss: {stop_loss:.4f}
-    🎯 Hedef: {take_profit:.4f}
-    """
-    send_telegram(msg)
-    print("✅ SİNYAL GÖNDERİLDİ!")
     
 # --- 7. BAŞLATMA VE ZAMANLAYICI (GÜNCELLENMİŞ) ---
 if __name__ == "__main__":
