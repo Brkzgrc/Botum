@@ -63,7 +63,8 @@ def get_data(symbol, timeframe, limit=100):
         # EKLENEN SATIR: VWAP hatasını çözer
         df.set_index('timestamp', inplace=True) 
         
-        return df    except Exception as e:
+        return df    
+    except Exception as e:
         print(f"Veri çekme hatası ({symbol}): {e}")
         return None
 
