@@ -21,7 +21,12 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # İzlenecek Coin ve Parametreler
-SYMBOL = 'ETH/USDT'     # Hangi coini takip edeceksin?
+# Taranmayacaklar Listesi (Stablecoinler, Fiatlar ve Kaldıraçlılar)
+IGNORED_COINS = [
+    'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
+    'USDC/USDT', 'TUSD/USDT', 'FDUSD/USDT', 'DAI/USDT', 'USDP/USDT',
+    'EUR/USDT', 'TRY/USDT', 'GBP/USDT', 'BUSD/USDT', 'USTC/USDT'
+]
 BTC_SYMBOL = 'BTC/USDT' # Piyasa barometresi
 TIMEFRAME_SHORT = '1h'  # Giriş sinyali
 TIMEFRAME_LONG = '4h'   # Trend onayı
@@ -30,8 +35,7 @@ TIMEFRAME_LONG = '4h'   # Trend onayı
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
-    'options': {'defaultType': 'future'},
-    'enableRateLimit': True,
+    'options': {'defaultType': 'spot'}, # DİKKAT: Spot yapıldı    'enableRateLimit': True,
     'timeout': 30000  # 30 saniye içinde yanıt gelmezse hata verip geçsin, donmasın.
 })
 
@@ -51,6 +55,21 @@ def send_telegram(message):
         requests.post(url, json=payload)
     except Exception as e:
         print(f"Telegram Hatası: {e}")
+
+def get_tradable_symbols():
+    """Binance Spot piyasasındaki uygun USDT çiftlerini bulur."""
+    try:
+        exchange.load_markets()
+        symbols = []
+        for symbol in exchange.markets:
+            if symbol.endswith('/USDT') and exchange.markets[symbol]['active']:
+                if not any(ignored in symbol for ignored in IGNORED_COINS):
+                    symbols.append(symbol)
+        print(f"✅ Toplam {len(symbols)} adet coin tarama listesine alındı.")
+        return symbols
+    except Exception as e:
+        print(f"Sembol listesi alınamadı: {e}")
+        return []
 
 def get_data(symbol, timeframe, limit=100):
     try:
