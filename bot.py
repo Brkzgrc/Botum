@@ -268,21 +268,27 @@ def run_analysis():
     print("🏁 Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
     
-# --- 7. BAŞLATMA VE ZAMANLAYICI (GÜNCELLENMİŞ) ---
+# --- 7. BAŞLATMA VE ZAMANLAYICI (RENDER İÇİN DÜZELTİLMİŞ) ---
 if __name__ == "__main__":
-    # 1. Zamanlayıcıyı Başlat (Arka Planda)
+    # 1. Zamanlayıcıyı Başlat
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=30)
     scheduler.start()
     print("🚀 Bot Başlatıldı (Python Modu) - 30dk Arayla Tarayacak.")
 
-    # 2. Açılışta hemen bir kere tarama yap (Beklememek için)
-    try:
-        run_analysis()
-    except Exception as e:
-        print(f"İlk tarama hatası: {e}")
+    # 2. İlk Taramayı "Arka Planda" Başlat (Flask'ı bekletmemek için)
+    # Bu sayede Render 'Port scan timeout' hatası vermez.
+    def ilk_tarama_baslat():
+        print("⏳ İlk tarama 10 saniye içinde başlayacak (Sunucu açılışı bekleniyor)...")
+        time.sleep(10) # Flask tam açılsın diye minik bir bekleme
+        try:
+            run_analysis()
+        except Exception as e:
+            print(f"İlk tarama hatası: {e}")
 
-    # 3. Web Sunucusunu Başlat (UptimeRobot için)
-    # Bu satır kodun kapanmasını engeller ve sürekli çalışmasını sağlar
+    # İşlemi ayrı bir kanalda (Thread) başlatıyoruz
+    threading.Thread(target=ilk_tarama_baslat).start()
+
+    # 3. Web Sunucusunu Başlat (HEMEN AÇILMALI)
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, use_reloader=False)
