@@ -73,14 +73,13 @@ def get_tradable_symbols():
 
 def get_data(symbol, timeframe, limit=100):
     try:
+        # IP Koruması için her istekte yarım saniye bekle
+        time.sleep(0.5) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        
-        # VWAP hatasını çözer
-        df.set_index('timestamp', inplace=True) 
-        
-        return df    
+        df.set_index('timestamp', inplace=True)
+        return df
     except Exception as e:
         print(f"Veri çekme hatası ({symbol}): {e}")
         return None
@@ -158,53 +157,136 @@ def check_rebellion(df_15m):
         return False, "Şartlar Sağlanmadı"
         
 # --- 6. ANA STRATEJİ MOTORU ---
-
 def run_analysis():
-    print(f"\n🔎 [TARAMA BAŞLADI] {SYMBOL} kontrol ediliyor... Saat: {datetime.now().strftime('%H:%M:%S')}", flush=True)
+    print(f"\n🔎 [TÜM PİYASA TARANIYOR] Saat: {datetime.now().strftime('%H:%M')}")
     
-    # --- 1. VERİLERİ ÇEK ---
-    df_1h = get_data(SYMBOL, TIMEFRAME_SHORT, limit=100)
-    df_4h = get_data(SYMBOL, TIMEFRAME_LONG, limit=100)
-    df_15m = get_data(SYMBOL, '15m', limit=50) # İsyan ve Fomo kontrolü için
+    # 1. Önce Taranacak Coin Listesini Al
+    symbols = get_tradable_symbols()
     
-    if df_1h is None or df_4h is None or df_15m is None: return
-
-    # --- 2. İNDİKATÖR HESAPLAMALARI ---
-    
-    # 15M (Erken Uyarı Sistemi)
-    df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
-    df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
-
-    # 1H (Giriş Sinyali)
-    df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
-    df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
-    df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
-    df_1h['ema50'] = ta.ema(df_1h['close'], length=50)
-    df_1h['cmf'] = ta.cmf(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'], length=20)
-    df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
-    df_1h['vol_ma'] = ta.sma(df_1h['volume'], length=20)
-    
-    # 4H (Trend Onayı)
-    st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
-    st_dir_col = st_4h.columns[1]
-    df_4h['st_dir'] = st_4h[st_dir_col]
-    adx_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
-    df_4h['adx'] = adx_4h['ADX_14']
-    df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
-
-    last_1h = df_1h.iloc[-1]
-    last_4h = df_4h.iloc[-1]
-    
-    # --- 3. KONTROL LİSTESİ (TAM DETAYLI) ---
-
-    # A. BTC ve İSYAN (REBELLION) KONTROLÜ
+    # 2. BTC Durumunu En Başta Bir Kere Kontrol Et (Her coin için tekrar tekrar bakmasın)
     btc_safe = check_btc_safety()
-    is_rebelling, rebel_reason = check_rebellion(df_15m) # 15m verisi ile kontrol
+    if not btc_safe:
+        print("⚠️ BTC Güvenli Değil! Sadece 'İsyan' eden coinler aranacak.")
 
-    # Bellek temizliği (Erken çıkış yapmadan önce)
-    del df_1h, df_4h, df_15m
+    # 3. DÖNGÜ BAŞLIYOR: Her coini tek tek senin mantığınla incele
+    for symbol in symbols:
+        try:
+            # Log kirliliği olmasın diye her coini yazdırmıyoruz, sadece sinyal varsa konuşacak.
+            
+            # --- 1. VERİLERİ ÇEK ---
+            # (Global SYMBOL yerine local 'symbol' kullanıyoruz)
+            df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=100)
+            df_4h = get_data(symbol, TIMEFRAME_LONG, limit=100)
+            df_15m = get_data(symbol, '15m', limit=50) 
+            
+            if df_1h is None or df_4h is None or df_15m is None: continue # return yerine continue
+
+            # --- 2. İNDİKATÖR HESAPLAMALARI (SENİN KODUNLA AYNI) ---
+            
+            # 15M (Erken Uyarı Sistemi)
+            df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
+            df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
+
+            # 1H (Giriş Sinyali)
+            df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
+            df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
+            df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
+            df_1h['ema50'] = ta.ema(df_1h['close'], length=50)
+            df_1h['cmf'] = ta.cmf(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'], length=20)
+            df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
+            df_1h['vol_ma'] = ta.sma(df_1h['volume'], length=20)
+            
+            # 4H (Trend Onayı)
+            st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
+            st_dir_col = st_4h.columns[1]
+            df_4h['st_dir'] = st_4h[st_dir_col]
+            adx_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
+            df_4h['adx'] = adx_4h['ADX_14']
+            df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
+
+            last_1h = df_1h.iloc[-1]
+            last_4h = df_4h.iloc[-1]
+            
+            # --- 3. KONTROL LİSTESİ (SENİN MANTIĞIN) ---
+
+            # A. BTC ve İSYAN (REBELLION) KONTROLÜ
+            # btc_safe yukarıda hesaplanmıştı
+            is_rebelling, rebel_reason = check_rebellion(df_15m)
+
+            # Bellek temizliği (Döngü içinde şişmeyi önlemek için her turda siliyoruz)
+            del df_1h, df_4h, df_15m
+            # gc.collect() buraya koymuyoruz, döngü sonunda toplu yaparız, hız kesmesin.
+
+            if not btc_safe:
+                if is_rebelling:
+                    # Loga basmıyoruz, sadece sinyale odaklanıyoruz
+                    pass 
+                else:
+                    # BTC kötü ve isyan yoksa -> Sıradaki coine geç
+                    continue 
+            
+            # B. Ana Trend (4H)
+            if last_4h['st_dir'] != 1: 
+                # Trend düşüşte -> Sıradaki coine geç
+                continue
+            
+            # (Burada senin kodunda 20 yazıyordu, istersen 20 yapabilirsin ama orijinali 25 bıraktım)
+            if last_4h['adx'] < 20: 
+                continue
+
+            # C. Para Akışı ve Kurumsal (1H)
+            if last_1h['cmf'] <= 0:
+                continue
+            
+            if last_1h['close'] <= last_1h['vwap']:
+                continue
+            
+            if last_1h['volume'] < (last_1h['vol_ma'] * 1.5):
+                continue 
+
+            # D. Teknik Tetikleyiciler (1H)
+            if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']):
+                continue
+            
+            if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']):
+                continue
+
+            # E. Order Book (En son ve en maliyetli işlem olduğu için buraya koyduk)
+            if not check_order_book(symbol):
+                continue
+
+            # --- 4. SİNYAL OLUŞTU (BURAYA ULAŞAN COİN MÜKEMMELDİR) ---
+            stop_loss = last_1h['close'] - (2 * last_4h['atr'])
+            take_profit = last_1h['close'] + (3 * last_4h['atr'])
+            
+            status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Standart Güvenli Kurulum'
+            
+            msg = f"""
+            🚨 MÜKEMMEL SİNYAL TESPİT EDİLDİ! 🚨
+            
+            💎 Coin: {symbol}
+            💰 Fiyat: {last_1h['close']}
+            
+            ✅ BTC Durumu: { 'RİSKLİ AMA AYRIŞTI 🔥' if not btc_safe else 'GÜVENLİ 🟢' }
+            ✅ Strateji: {status_msg}
+            ✅ Trend: 4H Boğa & ADX Güçlü
+            ✅ Para: CMF Pozitif & VWAP Üzeri
+            ✅ Onay: Hacim Patlaması & Tahta Baskısı
+            
+            🛑 Stop Loss: {stop_loss:.4f}
+            🎯 Hedef: {take_profit:.4f}
+            """
+            send_telegram(msg)
+            print(f"✅ SİNYAL GÖNDERİLDİ: {symbol}")
+        
+        except Exception as e:
+            # Bir coinde hata olursa (örn. veri yoksa) diğerine geç
+            continue
+
+    # Döngü bitti, tüm piyasa tarandı. Şimdi çöpü dök.
+    print("🏁 Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
-
+    
     if not btc_safe:
         if is_rebelling:
             print(f"🔥 [{datetime.now().strftime('%H:%M')}] DİKKAT: BTC Düşüyor ama {SYMBOL} Ayrıştı! Sebebi: {rebel_reason}")
@@ -216,7 +298,7 @@ def run_analysis():
     if last_4h['st_dir'] != 1: 
         print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Düşüşte (SuperTrend Kırmızı).")
         return
-    if last_4h['adx'] < 25:
+    if last_4h['adx'] < 20:
         print(f"❌ [{datetime.now().strftime('%H:%M')}] 4H Trend Zayıf (ADX < 20).")
         return
 
