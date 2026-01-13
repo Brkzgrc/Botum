@@ -8,6 +8,7 @@ import threading
 from flask import Flask
 from datetime import datetime
 import sys
+import gc # RAM temizliği için gerekli
 # Bu satır logların anında akmasını sağlar:
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -58,8 +59,11 @@ def get_data(symbol, timeframe, limit=100):
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        return df
-    except Exception as e:
+        
+        # EKLENEN SATIR: VWAP hatasını çözer
+        df.set_index('timestamp', inplace=True) 
+        
+        return df    except Exception as e:
         print(f"Veri çekme hatası ({symbol}): {e}")
         return None
 
@@ -260,9 +264,12 @@ def bot_loop():
         try:
             run_analysis()
             
+            # EKLENEN KISIM: Her turda RAM'i temizle
+            gc.collect()
+            
             # Artık test bitti, gerçek süreye (15 Dakika = 900 Saniye) geçiyoruz.
             print("⏳ Analiz tamamlandı. 15 dakika bekleniyor...", flush=True)
-            time.sleep(900) 
+            time.sleep(900)
             
         except Exception as e:
             print(f"⚠️ Ana Döngü Hatası: {e}", flush=True)
