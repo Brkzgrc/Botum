@@ -20,6 +20,10 @@ API_SECRET = os.getenv('BINANCE_SECRET_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# Sinyal Soğuma Süresi (Dakika)
+# Bir coin sinyal verdikten sonra kaç dakika sessize alınsın?
+COOLDOWN_MINUTES = 60 
+
 # Taranmayacaklar
 IGNORED_COINS = [
     'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
@@ -42,11 +46,14 @@ exchange = ccxt.binance({
 
 app = Flask(__name__)
 
+# GLOBAL DEĞİŞKEN: Sinyal Geçmişini Tutan Hafıza
+signal_history = {}
+
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (3 STRATEJİLİ FULL MOD) Aktif!"
+    return "🚀 Sniper Bot (COOLDOWN AKTİF) Çalışıyor!"
 
-# --- 3. VERİ ÇEKME ---
+# --- 3. YARDIMCI FONKSİYONLAR ---
 
 def get_tradable_symbols():
     try:
@@ -56,7 +63,7 @@ def get_tradable_symbols():
             if symbol.endswith('/USDT') and exchange.markets[symbol]['active']:
                 if not any(ignored in symbol for ignored in IGNORED_COINS):
                     symbols.append(symbol)
-        print(f"✅ Tarama Listesi: {len(symbols)} coin.")
+        # print(f"✅ Tarama Listesi: {len(symbols)} coin.")
         return symbols
     except Exception as e:
         print(f"Liste hatası: {e}")
@@ -135,28 +142,25 @@ def detect_divergence(df_15m):
 # === STRATEJİ 3: WT + MFI + SUPERTREND (MOMENTUM) ===
 def detect_momentum_indicators(df_15m):
     try:
-        # 1. WaveTrend Hesaplama (Favorilerindeki WaveTrend with Crosses)
+        # WaveTrend
         ap = (df_15m['high'] + df_15m['low'] + df_15m['close']) / 3
         esa = ta.ema(ap, 10)
         d = ta.ema(abs(ap - esa), 10)
         ci = (ap - esa) / (0.015 * d)
-        wt1 = ta.ema(ci, 21) # Yeşil Çizgi
-        wt2 = ta.sma(wt1, 4) # Kırmızı Çizgi (Sinyal)
+        wt1 = ta.ema(ci, 21) 
+        wt2 = ta.sma(wt1, 4) 
         
-        # 2. MFI (Money Flow Index)
+        # MFI
         mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14)
         
-        # 3. SuperTrend
+        # SuperTrend
         st = ta.supertrend(df_15m['high'], df_15m['low'], df_15m['close'], length=10, multiplier=3)
-        st_dir = st[st.columns[1]] # 1: UP, -1: DOWN
+        st_dir = st[st.columns[1]] 
         
-        # 4. ADX (Trend Gücü)
+        # ADX
         adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14']
 
-        # --- SİNYAL KONTROLLERİ ---
         last = df_15m.iloc[-1]
-        prev = df_15m.iloc[-2]
-        
         last_wt1 = wt1.iloc[-1]
         last_wt2 = wt2.iloc[-1]
         prev_wt1 = wt1.iloc[-2]
@@ -165,21 +169,13 @@ def detect_momentum_indicators(df_15m):
         last_st = st_dir.iloc[-1]
         last_adx = adx.iloc[-1]
 
-        # ŞART 1: WaveTrend Kesişimi (Alttan Yukarı)
-        # WT1, WT2'yi yukarı kesmeli VE bu olay -60 ile 50 arasında olmalı (Çok tepede olmasın)
+        # ŞARTLAR: WaveTrend Kesişimi + MFI Para Girişi + Trend Gücü
         wt_cross_up = (prev_wt1 < prev_wt2) and (last_wt1 > last_wt2)
-        wt_valid_level = last_wt1 < 50 
-        
-        # ŞART 2: Para Girişi (MFI)
-        # MFI 40'ın üzerinde olmalı (Para giriyor)
+        wt_valid_level = last_wt1 < 55
         mfi_ok = last_mfi > 40
-        
-        # ŞART 3: Trend Gücü ve Yönü
-        # SuperTrend YEŞİL (1) olmalı VE ADX 20 üstü olmalı (Yatay değil)
         trend_ok = (last_st == 1) and (last_adx > 20)
 
         if wt_cross_up and wt_valid_level and mfi_ok and trend_ok:
-             # Stop için SuperTrend çizgisini veya ATR kullanabiliriz
             atr_val = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
             stop_price = last['close'] - (2 * atr_val)
             stop_dist = ((last['close'] - stop_price) / last['close']) * 100
@@ -195,7 +191,6 @@ def detect_momentum_indicators(df_15m):
         return False, None
 
     except Exception as e:
-        # print(f"Indikator hatasi: {e}")
         return False, None
 
 # --- 5. ANA ANALİZ DÖNGÜSÜ ---
@@ -206,7 +201,17 @@ def run_analysis():
     
     symbols = get_tradable_symbols()
     
-    # BTC Genel Durum (Sadece Bilgi Amaçlı, momentum sinyalini engellemez)
+    # Hafıza Temizliği (Eski kayıtları sil)
+    # Eğer 60 dakikadan eski kayıt varsa sözlükten çıkar
+    current_time = datetime.now()
+    to_remove = []
+    for sym, time_val in signal_history.items():
+        if (current_time - time_val) > timedelta(minutes=COOLDOWN_MINUTES):
+            to_remove.append(sym)
+    for sym in to_remove:
+        del signal_history[sym]
+
+    # BTC Durumu
     btc_df = get_data(BTC_SYMBOL, '4h', limit=200)
     btc_trend = "NÖTR"
     if btc_df is not None:
@@ -215,27 +220,32 @@ def run_analysis():
 
     for symbol in symbols:
         try:
-            # 15 Dakikalık veri tüm stratejiler için ortak
+            # 1. SOĞUMA KONTROLÜ (COOLDOWN CHECK)
+            # Eğer bu coine son 60 dakikada sinyal atıldıysa, PAS GEÇ.
+            if symbol in signal_history:
+                continue
+
+            # 15 Dakikalık Veri
             df_15m = get_data(symbol, '15m', limit=100)
             if df_15m is None: continue
 
             signal_found = False
             data = {}
 
-            # ÖNCE: Price Action (SFP)
+            # Strateji 1: SFP
             is_sfp, sfp_data = detect_sfp(df_15m)
             if is_sfp:
                 signal_found = True
                 data = sfp_data
             
-            # SONRA: Uyumsuzluk (Divergence)
+            # Strateji 2: Uyumsuzluk
             if not signal_found:
                 is_div, div_data = detect_divergence(df_15m)
                 if is_div:
                     signal_found = True
                     data = div_data
             
-            # EN SON: İndikatör Momentum (WT + MFI)
+            # Strateji 3: Momentum (WT-MFI)
             if not signal_found:
                 is_mom, mom_data = detect_momentum_indicators(df_15m)
                 if is_mom:
@@ -244,10 +254,11 @@ def run_analysis():
 
             # SİNYAL GÖNDERİMİ
             if signal_found:
-                # Risk çok yüksekse (%4 üstü) ele (Scalp için uygun değil)
                 if data['risk'] > 4.0: continue
 
-                # Hedef Hesaplama (R/R: 2 ve 4)
+                # Sinyal Hafızasına Kaydet (Bir daha bakma)
+                signal_history[symbol] = datetime.now()
+
                 risk_amt = data['price'] - data['stop']
                 tp1 = data['price'] + (risk_amt * 2)
                 tp2 = data['price'] + (risk_amt * 4)
@@ -273,8 +284,6 @@ def run_analysis():
 Potansiyel: <b>%{tp_pct:.2f}</b>
 
 🌍 <b>Piyasa:</b> BTC {btc_trend} Modunda
-
-<i>⚠️ Bu sinyal piyasa yönünden bağımsız, momentum odaklıdır.</i>
 """
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -294,10 +303,9 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
 # --- 6. BAŞLATMA ---
 if __name__ == "__main__":
     scheduler = BackgroundScheduler()
-    # 5 Dakikada bir çalışır (Hızlı yakalamak için)
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (3'LÜ HİBRİT SİSTEM).")
+    print("🚀 BOT BAŞLATILDI (TEKRAR SİNYAL KORUMALI).")
 
     def ilk_tarama():
         time.sleep(10)
