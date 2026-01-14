@@ -285,17 +285,12 @@ def run_analysis():
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 ━━━━━━━━━━━━━━━━━━━━
 🚀 <b>STRATEJİ:</b> {strategy_tag}
-━━━━━━━━━━━━━━━━━━━━
 
 🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
 ━━━━━━━━━━━━━━━━━━━━
-💵 <b>GİRİŞ:</b> <code>{entry_price:.4f}</code>
-
-🛡️ <b>ZARAR KES (STOP):</b> <code>{stop_loss:.4f}</code>
-    Risk: %{sl_pct:.2f}
-
-💰 <b>KÂR AL (TP):</b> <code>{take_profit:.4f}</code>
-    Potansiyel: %{tp_pct:.2f}
+💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
+🛡️ <b>STOP  :</b> <code>{stop_loss:.4f} / Risk: %{sl_pct:.2f}</code>
+💰 <b>TP    :</b> <code>{take_profit:.4f} / Potansiyel: %{tp_pct:.2f}</code>
 
 📊 <b>TEKNİK GÖSTERGELER</b>
 ━━━━━━━━━━━━━━━━━━━━
