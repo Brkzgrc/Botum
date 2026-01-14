@@ -76,17 +76,35 @@ def get_tradable_symbols():
 
 def get_data(symbol, timeframe, limit=100):
     try:
-        # IP Koruması için her istekte yarım saniye bekle
+        # 1. Normal Bekleme (Senin istediğin ayar)
+        # Her veri isteğinden önce 0.5 saniye bekler.
+        # Bir coin için 3 istek yapıldığı için coin başı toplam 1.5 sn sürer.
         time.sleep(0.5) 
+        
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
         return df
-    except Exception as e:
-        print(f"Veri çekme hatası ({symbol}): {e}")
-        return None
 
+    except Exception as e:
+        err_msg = str(e)
+        
+        # 2. Akıllı Fren Sistemi (Anti-Ban)
+        # Eğer hata "429" (Çok Hızlı) veya "418" (Banlı) içeriyorsa:
+        if "429" in err_msg or "Too Many Requests" in err_msg or "418" in err_msg:
+            print(f"🛑 HIZ SINIRI AŞILDI! Binance fren yaptı. ({symbol})")
+            print("⏳ Bot cezanın bitmesi için 2 dakika beklemeye geçiyor...")
+            
+            time.sleep(120) # 120 saniye (2 dakika) sistemi dondur ve bekle
+            
+            print("▶️ Bekleme bitti, tekrar deneniyor...")
+        else:
+            # Diğer basit hatalar (internet kopması vs.) için sadece log düş
+            print(f"⚠️ Veri alınamadı ({symbol}): {e}")
+        
+        return None
+        
 # --- 5. ANALİZ MODÜLLERİ ---
 
 def check_btc_safety():
@@ -246,22 +264,64 @@ def run_analysis():
             take_profit = last_1h['close'] + (3 * last_4h['atr'])
             status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Güçlü Trend Başlangıcı'
             
+            # --- 4. SİNYAL OLUŞTU ---
+            # Önce Matematiksel Hesaplamalar (Profesyonel Görünüm İçin)
+            entry_price = last_1h['close']
+            atr_val = last_4h['atr']
+            
+            stop_loss = entry_price - (2 * atr_val)
+            take_profit = entry_price + (3 * atr_val)
+            
+            # Yüzdelik Değişimleri Hesapla
+            tp_pct = ((take_profit - entry_price) / entry_price) * 100
+            sl_pct = ((entry_price - stop_loss) / entry_price) * 100
+            
+            # Strateji Etiketi
+            strategy_tag = "🔥 REBELLION (AYRIŞMA)" if (not btc_safe and is_rebelling) else "🌊 TREND FOLLOWING"
+            
+            # Tarih ve Saat
+            signal_time = datetime.now().strftime('%d %b %H:%M')
+
+            # --- PROFESYONEL MESAJ TASARIMI ---
             msg = f"""
-            🚨 MÜKEMMEL SİNYAL! 🚨
-            
-            💎 Coin: {symbol}
-            💰 Fiyat: {last_1h['close']}
-            
-            ✅ Durum: {status_msg}
-            📊 ADX (1H/4H): {int(last_1h['adx'])} / {int(last_4h['adx'])}
-            ✅ Para: CMF Pozitif & VWAP Üzeri
-            
-            🛑 Stop: {stop_loss:.4f}
-            🎯 Hedef: {take_profit:.4f}
-            """
-            send_telegram(msg)
-            print(f"✅ SİNYAL GÖNDERİLDİ: {symbol}")
-        
+🎯 <b>SNIPER SIGNAL DETECTED</b>
+━━━━━━━━━━━━━━━━━━━━
+<b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
+
+🚀 <b>STRATEGY:</b> {strategy_tag}
+💵 <b>ENTRY:</b> <code>{entry_price:.4f}</code>
+
+📊 <b>TECHNICAL INSIGHTS</b>
+━━━━━━━━━━━━━━━━━━━━
+⚡ <b>Trend Strength (ADX):</b>
+   • 1H: <code>{int(last_1h['adx'])}</code> (Short Term)
+   • 4H: <code>{int(last_4h['adx'])}</code> (Main Trend)
+   
+🐳 <b>Volume & Flow:</b>
+   • CMF: ✅ Positive (Inflow)
+   • VWAP: ✅ Price > VWAP
+   • Order Book: ✅ Buyers Dominant
+
+🎯 <b>TARGETS & RISK MANAGEMENT</b>
+━━━━━━━━━━━━━━━━━━━━
+🛡️ <b>STOP LOSS (SL):</b> <code>{stop_loss:.4f}</code>
+   🔻 Risk: %{sl_pct:.2f}
+
+💰 <b>TAKE PROFIT (TP):</b> <code>{take_profit:.4f}</code>
+   💚 Potential: %{tp_pct:.2f}
+
+<i>⚠️ This is an algorithmic signal. DYOR.</i>
+"""
+            # Mesajı gönder (HTML formatında parse etmesi için parse_mode ekliyoruz)
+            try:
+                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
+                requests.post(url, json=payload)
+            except Exception as e:
+                print(f"Telegram Gönderim Hatası: {e}")
+
+            print(f"✅ PRO SİNYAL GÖNDERİLDİ: {symbol}")
+
         except Exception as e:
             continue
 
