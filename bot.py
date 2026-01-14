@@ -175,124 +175,119 @@ def check_rebellion(df_15m):
     else:
         return False, "Şartlar Sağlanmadı"
         
-# --- 6. ANA STRATEJİ MOTORU ---
+# --- 6. ANA STRATEJİ MOTORU (GÜNCELLENMİŞ: HIZLI TEPKİ MODU) ---
 def run_analysis():
-    print(f"\n🔎 [TÜM PİYASA TARANIYOR] Saat: {(datetime.now() + timedelta(hours=3)).strftime('%H:%M')}")
+    # Saat ayarı (UTC+3)
+    tr_time = datetime.now() + timedelta(hours=3)
+    print(f"\n🔎 [HIZLI TARAMA] Saat: {tr_time.strftime('%H:%M')}")
     
-    # 1. Coin Listesini Al
     symbols = get_tradable_symbols()
-    
-    # 2. BTC Kontrolü
     btc_safe = check_btc_safety()
+    
     if not btc_safe:
         print("⚠️ BTC Güvenli Değil! Sadece 'İsyan' eden coinler aranacak.")
 
-    # 3. DÖNGÜ BAŞLIYOR (Her coin tek tek sorguya çekiliyor)
     for symbol in symbols:
         try:
             # --- VERİLERİ ÇEK ---
-            df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=100)
-            df_4h = get_data(symbol, TIMEFRAME_LONG, limit=100)
+            # 1H ve 4H trend yönü için, 15M ise tetik çekmek için kullanılacak
+            df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=50)
+            df_4h = get_data(symbol, TIMEFRAME_LONG, limit=50)
             df_15m = get_data(symbol, '15m', limit=50) 
             
             if df_1h is None or df_4h is None or df_15m is None: continue
 
             # --- İNDİKATÖRLERİ HESAPLA ---
             
-            # 15M Hesaplamaları
-            df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
+            # 15M (TETİKÇİ MUM) - Hızlı tepki için buraya odaklanıyoruz
             df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
-
-            # 1H Hesaplamaları
-            df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
-            df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
+            df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
+            df_15m['adx'] = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'], length=14)['ADX_14']
+            
+            # 1H (ARA TREND)
             df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
-            df_1h['ema50'] = ta.ema(df_1h['close'], length=50)
-            df_1h['cmf'] = ta.cmf(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'], length=20)
-            df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
-            df_1h['vol_ma'] = ta.sma(df_1h['volume'], length=20)
             df_1h['adx'] = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'], length=14)['ADX_14']
             
-            # 4H Hesaplamaları
+            # 4H (ANA YÖN)
             st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
             df_4h['st_dir'] = st_4h[st_4h.columns[1]]
-            adx_val_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
-            df_4h['adx'] = adx_val_4h['ADX_14']
             df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
 
+            # Son Mumlara Bak
+            last_15m = df_15m.iloc[-1]
             last_1h = df_1h.iloc[-1]
             last_4h = df_4h.iloc[-1]
             
-            # --- KONTROL LİSTESİ (FİLTRELER) ---
-            # A. İsyan Kontrolü
+            # Önceki 15dk mum (Kırılım kontrolü için)
+            prev_15m = df_15m.iloc[-2]
+
+            # --- FİLTRELER (GECİKMEYİ ÖNLEMEK İÇİN GEVŞETİLDİ) ---
+            
             is_rebelling, rebel_reason = check_rebellion(df_15m)
 
-            # Her turda hafıza temizliği
-            del df_1h, df_4h, df_15m
+            # Temizlik
+            del df_1h, df_4h, df_15m 
 
-            # BTC Kötüyse ve Coin İsyan Etmiyorsa -> ÇÖPE AT
-            if not btc_safe:
-                if not is_rebelling: continue 
+            # 1. ANA TREND FİLTRESİ (Sadece Yönü Belirle, Gecikme Yaratma)
+            # 4H SuperTrend Yeşil olmalı AMA ADX şartını kaldırdık (erken girmek için)
+            if last_4h['st_dir'] != 1: 
+                # Eğer BTC düşüyorsa ve coin isyan etmiyorsa -> ÇÖPE AT
+                if not (not btc_safe and is_rebelling): continue
+
+            # 2. HIZLI TETİKLEYİCİLER (15 DAKİKALIK GRAFİK)
             
-            # B. Ana Trend (4H) Kontrolü
-            if last_4h['st_dir'] != 1: continue # Trend Kırmızıysa -> ÇÖPE AT
-            if last_4h['adx'] < 20: continue    # Trend Zayıfsa -> ÇÖPE AT
+            # A. RSI DİPTEN DÖNÜŞ veya GÜÇLENME
+            # RSI 50'yi yeni kırmış olmalı VEYA 40-60 arasında kafasını kaldırmış olmalı.
+            # 70 üzeri ise "Aşırı Alım"dır, geç kalınmıştır, GİRME.
+            if last_15m['rsi'] > 70: continue # Fiyat zaten uçmuş, geç kaldık.
+            if last_15m['rsi'] < 45: continue # Henüz güçsüz.
+            
+            # B. HACİM PATLAMASI (Erken Sinyal)
+            # Hacim ortalamanın en az 1.5 katı olmalı
+            if last_15m['volume'] < (last_15m['vol_ma'] * 1.5): continue
 
-            # C. Kısa Vade Trend (1H)
-            if last_1h['adx'] < 20: continue    # 1H Trend Zayıfsa -> ÇÖPE AT
+            # C. FİYAT HAREKETİ (Momentum)
+            # Fiyatın henüz %5-10 gitmemiş olması lazım. 
+            # Son mum %0.5 ile %3 arasında olmalı. %3'ten büyükse tepeden gireriz.
+            open_p = last_15m['open']
+            close_p = last_15m['close']
+            candle_change = ((close_p - open_p) / open_p) * 100
+            
+            if candle_change < 0.5: continue # Hareket yok
+            if candle_change > 4.0: continue # Hareket bitmiş, FOMO yapma
 
-            # D. Para Akışı ve Fiyat
-            if last_1h['cmf'] <= 0: continue                  # Para girişi yoksa -> ÇÖPE AT
-            if last_1h['close'] <= last_1h['vwap']: continue  # Pahalıysa -> ÇÖPE AT
-            if last_1h['volume'] < (last_1h['vol_ma'] * 1.5): continue # Hacim azsa -> ÇÖPE AT
+            # D. 1 SAATLİK ONAY (Sadece EMA20 üstünde olsun yeter, kesişim bekleme)
+            if last_1h['close'] < last_1h['ema20']: continue
 
-            # E. Teknik Tetikleyiciler
-            if not (last_1h['close'] > last_1h['ema20'] > last_1h['ema50']): continue # EMA sırası bozuksa -> ÇÖPE AT
-            if not (last_1h['rsi'] > 50 and last_1h['rsi'] > last_1h['rsi_ma']): continue # RSI zayıfsa -> ÇÖPE AT
+            # --- SİNYAL OLUŞTU (ERKEN YAKALAMA) ---
 
-            # F. Order Book (Tahta Baskısı) - En son bakılır
-            if not check_order_book(symbol): continue # Satıcılar çoksa -> ÇÖPE AT
-
-            # --- 4. SİNYAL OLUŞTU ---
-            # (Buraya kadar gelen coin tüm testleri geçmiştir)
-            entry_price = last_1h['close']
+            entry_price = last_15m['close'] # 15dk fiyatından giriyoruz
             atr_val = last_4h['atr']
-            stop_loss = entry_price - (2 * atr_val)
-            take_profit = entry_price + (3 * atr_val)
             
-            # Yüzdelik Hesaplama
+            # Stop Loss daha yakın (Sniper modu)
+            stop_loss = entry_price - (1.5 * atr_val) 
+            take_profit = entry_price + (4 * atr_val) # Risk/Ödül oranı arttı
+            
             tp_pct = ((take_profit - entry_price) / entry_price) * 100
             sl_pct = ((entry_price - stop_loss) / entry_price) * 100
             
-            # Strateji ismini Türkçe yapıyoruz
-            strategy_tag = "🔥 İSYAN (POZİTİF AYRIŞMA)" if (not btc_safe and is_rebelling) else "🌊 GÜÇLÜ TREND TAKİBİ"
+            strategy_tag = "🚀 ERKEN KIRILIM (15m)" if btc_safe else "🔥 İSYAN (AYRIŞMA)"
             signal_time = (datetime.now() + timedelta(hours=3)).strftime('%d %b %H:%M')
-            # --- TÜRKÇE PROFESYONEL MESAJ TASARIMI ---
+
             msg = f"""
-🚀 <b>STRATEJİ:</b> {strategy_tag}
+🎯 <b>HIZLI SNIPER SİNYALİ</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 ━━━━━━━━━━━━━━━━━━━━
+🚀 <b>STRATEJİ:</b> {strategy_tag}
+⚡ <b>RSI (15m):</b> <code>{int(last_15m['rsi'])}</code> (Henüz Şişmedi)
+📊 <b>MUM DEĞİŞİMİ:</b> %{candle_change:.2f} (Henüz Başlangıçta)
 
-🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
-━━━━━━━━━━━━━━━━━━━━
 💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
 🛡️ <b>STOP  :</b> <code>{stop_loss:.4f} / Risk: %{sl_pct:.2f}</code>
 💰 <b>TP    :</b> <code>{take_profit:.4f} / Potansiyel: %{tp_pct:.2f}</code>
 
-📊 <b>TEKNİK GÖSTERGELER</b>
-━━━━━━━━━━━━━━━━━━━━
-⚡ <b>Trend Gücü (ADX):</b>
-   • 1S: <code>{int(last_1h['adx'])}</code> (Kısa Vade)
-   • 4S: <code>{int(last_4h['adx'])}</code> (Ana Trend)
-   
-🐳 <b>Hacim ve Para Akışı:</b>
-   • CMF: ✅ Pozitif (Para Girişi)
-   • VWAP: ✅ Fiyat Ort. Üstü
-   • Tahta: ✅ Alıcılar Baskın
-
-━━━━━━━━━━━━━━━━━━━━
-
+<i>⚠️ Erken sinyaldir. Stopsuz işlem yapma.</i>
 """
             try:
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -301,35 +296,34 @@ def run_analysis():
             except Exception as e:
                 print(f"Telegram Gönderim Hatası: {e}")
 
-            print(f"✅ TÜRKÇE SİNYAL GÖNDERİLDİ: {symbol}")
+            print(f"✅ HIZLI SİNYAL GÖNDERİLDİ: {symbol}")
         
         except Exception as e:
             continue
 
-    print("🏁 Tarama Bitti. Bellek Temizleniyor.")
+    print("🏁 Hızlı Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
-
-# --- 7. BAŞLATMA VE ZAMANLAYICI (RENDER İÇİN DÜZELTİLMİŞ) ---
+    
+# --- 7. BAŞLATMA (GÜNCELLENMİŞ ZAMANLAYICI) ---
 if __name__ == "__main__":
-    # 1. Zamanlayıcıyı Başlat
+    # Zamanlayıcı
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=run_analysis, trigger="interval", minutes=30)
+    # BURAYI DEĞİŞTİRDİK: 30 yerine 6 dakika
+    scheduler.add_job(func=run_analysis, trigger="interval", minutes=6) 
     scheduler.start()
-    print("🚀 Bot Başlatıldı (Python Modu) - 30dk Arayla Tarayacak.")
+    print("🚀 Bot Başlatıldı (HIZLI MOD: 6 Dakika Arayla Taranıyor).")
 
-    # 2. İlk Taramayı "Arka Planda" Başlat (Flask'ı bekletmemek için)
-    # Bu sayede Render 'Port scan timeout' hatası vermez.
+    # İlk taramayı arka planda başlat
     def ilk_tarama_baslat():
-        print("⏳ İlk tarama 10 saniye içinde başlayacak (Sunucu açılışı bekleniyor)...")
-        time.sleep(10) # Flask tam açılsın diye minik bir bekleme
+        print("⏳ İlk tarama 10 saniye içinde başlayacak...")
+        time.sleep(10)
         try:
             run_analysis()
         except Exception as e:
             print(f"İlk tarama hatası: {e}")
 
-    # İşlemi ayrı bir kanalda (Thread) başlatıyoruz
     threading.Thread(target=ilk_tarama_baslat).start()
 
-    # 3. Web Sunucusunu Başlat (HEMEN AÇILMALI)
+    # Web Sunucusu
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, use_reloader=False)
