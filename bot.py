@@ -81,32 +81,57 @@ def get_data(symbol, timeframe, limit=100):
         return None
 
 # --- 4. STRATEJİ MOTORLARI ---
-
-# === STRATEJİ 1: SFP (TUZAK AVCISI) ===
+# === STRATEJİ 1: SFP (TUZAK AVCISI - SIKIŞTIRILMIŞ VERSİYON) ===
 def detect_sfp(df_15m):
     try:
+        # İndikatör Hazırlığı
+        df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
+        df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
+        
         last = df_15m.iloc[-1]
-        past_candles = df_15m.iloc[-31:-1]
+        
+        # 1. Swing Low Belirleme (Daha geriye bakıyoruz: 50 mum)
+        # Sadece çok belirgin dipleri ciddiye al.
+        past_candles = df_15m.iloc[-51:-1]
         swing_low = past_candles['low'].min()
         
-        swept = last['low'] < swing_low
-        reclaimed = last['close'] > swing_low
+        # 2. TEMEL SFP KURALI
+        swept = last['low'] < swing_low       # Dibi deldi
+        reclaimed = last['close'] > swing_low # Üstünde kapattı
         
-        df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
-        vol_ok = last['volume'] > df_15m.iloc[-1]['vol_ma']
+        # --- YENİ FİLTRELER (GÜRÜLTÜ ENGELLEYİCİ) ---
+        
+        # FİLTRE A: RSI FİLTRESİ
+        # SFP genellikle aşırı satım bölgesinde çalışır. 
+        # RSI 50'nin üzerindeyse bu bir tuzak değil, düzeltmedir.
+        rsi_ok = last['rsi'] < 45
+        
+        # FİLTRE B: MUM ŞEKLİ (PINBAR / ÇEKİÇ)
+        # Mumun gövdesi yukarıda olmalı. Yani uzun bir alt iğne olmalı.
+        # (Kapanış - Düşük) / (Yüksek - Düşük) oranı %60'tan büyük olmalı.
+        candle_range = last['high'] - last['low']
+        if candle_range == 0: return False, None
+        
+        body_position = (last['close'] - last['low']) / candle_range
+        is_pinbar = body_position > 0.60 
+        
+        # FİLTRE C: HACİM
+        # Hacim ortalamanın üzerinde olmalı
+        vol_ok = last['volume'] > last['vol_ma']
 
-        if swept and reclaimed and vol_ok:
+        # HEPSİ BİRDEN OLACAK
+        if swept and reclaimed and rsi_ok and is_pinbar and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
             return True, {
-                'type': '🦅 SFP (TUZAK)',
+                'type': '🦅 SFP (PINBAR + RSI)',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': 'Stop patlatma ve Hacimli Dönüş (Fakeout).'
+                'desc': f'Stop patlatıldı, RSI:{int(last["rsi"])} ve Güçlü Mum Kapanışı.'
             }
         return False, None
     except: return False, None
-
+        
 # === STRATEJİ 2: BULLISH DIVERGENCE (UYUMSUZLUK) ===
 def detect_divergence(df_15m):
     try:
