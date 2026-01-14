@@ -273,11 +273,10 @@ def run_analysis():
 
             # --- TÜRKÇE PROFESYONEL MESAJ TASARIMI ---
             msg = f"""
-🎯 <b>SNIPER SİNYAL TESPİTİ</b>
+🚀 <b>STRATEJİ:</b> {strategy_tag}
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 ━━━━━━━━━━━━━━━━━━━━
-🚀 <b>STRATEJİ:</b> {strategy_tag}
 
 🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
 ━━━━━━━━━━━━━━━━━━━━
