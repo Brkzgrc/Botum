@@ -283,9 +283,17 @@ def run_analysis():
 🎯 <b>SNIPER SİNYAL TESPİTİ</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
+━━━━━━━━━━━━━━━━━━━━
 
 🚀 <b>STRATEJİ:</b> {strategy_tag}
 💵 <b>GİRİŞ:</b> <code>{entry_price:.4f}</code>
+🛡️ <b>ZARAR KES (STOP):</b> <code>{stop_loss:.4f}</code>
+   🔻 Risk: %{sl_pct:.2f}
+
+💰 <b>KÂR AL (TP):</b> <code>{take_profit:.4f}</code>
+   💚 Potansiyel: %{tp_pct:.2f}
 
 📊 <b>TEKNİK GÖSTERGELER</b>
 ━━━━━━━━━━━━━━━━━━━━
@@ -298,13 +306,7 @@ def run_analysis():
    • VWAP: ✅ Fiyat Ort. Üstü
    • Tahta: ✅ Alıcılar Baskın
 
-🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
 ━━━━━━━━━━━━━━━━━━━━
-🛡️ <b>ZARAR KES (STOP):</b> <code>{stop_loss:.4f}</code>
-   🔻 Risk: %{sl_pct:.2f}
-
-💰 <b>KÂR AL (TP):</b> <code>{take_profit:.4f}</code>
-   💚 Potansiyel: %{tp_pct:.2f}
 
 <i>⚠️ Bu algoritmik bir sinyaldir. YTD.</i>
 """
