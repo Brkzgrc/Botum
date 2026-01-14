@@ -132,14 +132,18 @@ def detect_sfp(df_15m):
         return False, None
     except: return False, None
         
-# === STRATEJİ 2: BULLISH DIVERGENCE (UYUMSUZLUK) ===
+# === STRATEJİ 2: BULLISH DIVERGENCE (SIKILAŞTIRILMIŞ) ===
 def detect_divergence(df_15m):
     try:
         df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
+        df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20) # Hacim Ortalaması eklendi
+        
         last = df_15m.iloc[-1]
         
+        # Pencere ayarı
         window = 20
         scan_range = df_15m.iloc[-(window+1):-1]
+        
         prev_low_val = scan_range['low'].min()
         prev_low_idx = scan_range['low'].idxmin()
         prev_rsi_val = df_15m.loc[prev_low_idx]['rsi']
@@ -147,27 +151,39 @@ def detect_divergence(df_15m):
         curr_low_val = last['low']
         curr_rsi_val = last['rsi']
         
+        # KURAL 1: Fiyat Dibi Aşağıda (Düşüş Trendi)
         price_lower = curr_low_val < prev_low_val
+        
+        # KURAL 2: RSI Dibi Yukarıda (Güç Topluyor)
         rsi_higher = curr_rsi_val > prev_rsi_val
-        rsi_oversold = curr_rsi_val < 45 
+        
+        # FİLTRE A: RSI DERİNLİĞİ (Daha dipte ara)
+        # Eskiden 45 idi, şimdi 35. Yani sadece "Aşırı Ucuz" malı alıyoruz.
+        rsi_oversold = curr_rsi_val < 35 
+        
+        # FİLTRE B: HACİM DESTEĞİ
+        # Dönüş mumunda hacim ortalamayı geçmeli. Kuru kuruya dönüş olmaz.
+        vol_ok = last['volume'] > last['vol_ma']
+        
+        # KURAL 3: Yeşil Mum
         green_candle = last['close'] > last['open']
 
-        if price_lower and rsi_higher and rsi_oversold and green_candle:
+        if price_lower and rsi_higher and rsi_oversold and green_candle and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
             return True, {
-                'type': '🐂 RSI UYUMSUZLUK',
+                'type': '🐂 RSI UYUMSUZLUK (HACİMLİ)',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': 'Fiyat düşerken RSI yükseliyor (Güç Topluyor).'
+                'desc': f'Fiyat düştü ama RSI yükseldi ({int(curr_rsi_val)}). Hacim destekli dönüş.'
             }
         return False, None
     except: return False, None
-
-# === STRATEJİ 3: WT + MFI + SUPERTREND (MOMENTUM) ===
+        
+# === STRATEJİ 3: WT + MFI + SUPERTREND (ELİT MOMENTUM) ===
 def detect_momentum_indicators(df_15m):
     try:
-        # WaveTrend
+        # İndikatörler
         ap = (df_15m['high'] + df_15m['low'] + df_15m['close']) / 3
         esa = ta.ema(ap, 10)
         d = ta.ema(abs(ap - esa), 10)
@@ -175,14 +191,11 @@ def detect_momentum_indicators(df_15m):
         wt1 = ta.ema(ci, 21) 
         wt2 = ta.sma(wt1, 4) 
         
-        # MFI
         mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14)
         
-        # SuperTrend
         st = ta.supertrend(df_15m['high'], df_15m['low'], df_15m['close'], length=10, multiplier=3)
         st_dir = st[st.columns[1]] 
         
-        # ADX
         adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14']
 
         last = df_15m.iloc[-1]
@@ -190,15 +203,22 @@ def detect_momentum_indicators(df_15m):
         last_wt2 = wt2.iloc[-1]
         prev_wt1 = wt1.iloc[-2]
         prev_wt2 = wt2.iloc[-2]
+        
         last_mfi = mfi.iloc[-1]
         last_st = st_dir.iloc[-1]
         last_adx = adx.iloc[-1]
 
-        # ŞARTLAR: WaveTrend Kesişimi + MFI Para Girişi + Trend Gücü
+        # ŞART 1: WaveTrend AL Sinyali (Kesişim)
         wt_cross_up = (prev_wt1 < prev_wt2) and (last_wt1 > last_wt2)
-        wt_valid_level = last_wt1 < 55
-        mfi_ok = last_mfi > 40
-        trend_ok = (last_st == 1) and (last_adx > 20)
+        wt_valid_level = last_wt1 < 55 # Tepeden alma
+        
+        # FİLTRE A: GÜÇLÜ PARA GİRİŞİ
+        # Eskiden 40 idi, şimdi 50. Para girişi net pozitif olmalı.
+        mfi_ok = last_mfi > 50
+        
+        # FİLTRE B: TREND GÜCÜ
+        # Eskiden 20 idi, şimdi 25. Zayıf trendi eliyoruz.
+        trend_ok = (last_st == 1) and (last_adx > 25)
 
         if wt_cross_up and wt_valid_level and mfi_ok and trend_ok:
             atr_val = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
@@ -206,18 +226,18 @@ def detect_momentum_indicators(df_15m):
             stop_dist = ((last['close'] - stop_price) / last['close']) * 100
 
             return True, {
-                'type': '🚀 WT-MFI MOMENTUM',
+                'type': '🚀 WT-MFI MOMENTUM (GÜÇLÜ)',
                 'price': last['close'],
                 'stop': stop_price,
                 'risk': stop_dist,
-                'desc': f'WaveTrend AL + Para Girişi (MFI:{int(last_mfi)}) + Trend Güçlü'
+                'desc': f'WaveTrend AL + Güçlü Para Girişi (MFI:{int(last_mfi)}) + ADX:{int(last_adx)}'
             }
         
         return False, None
 
     except Exception as e:
         return False, None
-
+        
 # --- 5. ANA ANALİZ DÖNGÜSÜ ---
 
 def run_analysis():
