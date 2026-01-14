@@ -205,7 +205,7 @@ def run_analysis():
             df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
             df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
 
-            # 1H Hesaplamaları (Senin ADX isteğin eklendi)
+            # 1H Hesaplamaları
             df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
             df_1h['rsi_ma'] = ta.sma(df_1h['rsi'], length=14)
             df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
@@ -218,7 +218,7 @@ def run_analysis():
             # 4H Hesaplamaları
             st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
             df_4h['st_dir'] = st_4h[st_4h.columns[1]]
-            adx_val_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14) # Geçici değişken
+            adx_val_4h = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
             df_4h['adx'] = adx_val_4h['ADX_14']
             df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
 
@@ -226,8 +226,6 @@ def run_analysis():
             last_4h = df_4h.iloc[-1]
             
             # --- KONTROL LİSTESİ (FİLTRELER) ---
-            # Burada "continue" demek "Bu coin testi geçemedi, çöpe at ve sonrakine bak" demektir.
-
             # A. İsyan Kontrolü
             is_rebelling, rebel_reason = check_rebellion(df_15m)
 
@@ -242,7 +240,7 @@ def run_analysis():
             if last_4h['st_dir'] != 1: continue # Trend Kırmızıysa -> ÇÖPE AT
             if last_4h['adx'] < 20: continue    # Trend Zayıfsa -> ÇÖPE AT
 
-            # C. Kısa Vade Trend (1H) - Senin isteğinle eklendi
+            # C. Kısa Vade Trend (1H)
             if last_1h['adx'] < 20: continue    # 1H Trend Zayıfsa -> ÇÖPE AT
 
             # D. Para Akışı ve Fiyat
@@ -257,14 +255,9 @@ def run_analysis():
             # F. Order Book (Tahta Baskısı) - En son bakılır
             if not check_order_book(symbol): continue # Satıcılar çoksa -> ÇÖPE AT
 
-            # --- SİNYAL (BURAYA GELEN COİN KRALDIR) ---
-            # Buraya ulaşan coin, yukarıdaki TÜM engelleri aşmış demektir.
-            
-            stop_loss = last_1h['close'] - (2 * last_4h['atr'])
-            take_profit = last_1h['close'] + (3 * last_4h['atr'])
-            status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Güçlü Trend Başlangıcı'
-            
             # --- 4. SİNYAL OLUŞTU ---
+            # (Buraya kadar gelen coin tüm testleri geçmiştir)
+
             entry_price = last_1h['close']
             atr_val = last_4h['atr']
             stop_loss = entry_price - (2 * atr_val)
@@ -314,13 +307,13 @@ def run_analysis():
                 print(f"Telegram Gönderim Hatası: {e}")
 
             print(f"✅ TÜRKÇE SİNYAL GÖNDERİLDİ: {symbol}")
-            
+        
         except Exception as e:
             continue
 
     print("🏁 Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
-    
+
 # --- 7. BAŞLATMA VE ZAMANLAYICI (RENDER İÇİN DÜZELTİLMİŞ) ---
 if __name__ == "__main__":
     # 1. Zamanlayıcıyı Başlat
