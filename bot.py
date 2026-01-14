@@ -265,54 +265,49 @@ def run_analysis():
             status_msg = rebel_reason if (not btc_safe and is_rebelling) else 'Güçlü Trend Başlangıcı'
             
             # --- 4. SİNYAL OLUŞTU ---
-            # Önce Matematiksel Hesaplamalar (Profesyonel Görünüm İçin)
             entry_price = last_1h['close']
             atr_val = last_4h['atr']
-            
             stop_loss = entry_price - (2 * atr_val)
             take_profit = entry_price + (3 * atr_val)
             
-            # Yüzdelik Değişimleri Hesapla
+            # Yüzdelik Hesaplama
             tp_pct = ((take_profit - entry_price) / entry_price) * 100
             sl_pct = ((entry_price - stop_loss) / entry_price) * 100
             
-            # Strateji Etiketi
-            strategy_tag = "🔥 REBELLION (AYRIŞMA)" if (not btc_safe and is_rebelling) else "🌊 TREND FOLLOWING"
-            
-            # Tarih ve Saat
+            # Strateji ismini Türkçe yapıyoruz
+            strategy_tag = "🔥 İSYAN (POZİTİF AYRIŞMA)" if (not btc_safe and is_rebelling) else "🌊 GÜÇLÜ TREND TAKİBİ"
             signal_time = datetime.now().strftime('%d %b %H:%M')
 
-            # --- PROFESYONEL MESAJ TASARIMI ---
+            # --- TÜRKÇE PROFESYONEL MESAJ TASARIMI ---
             msg = f"""
-🎯 <b>SNIPER SIGNAL DETECTED</b>
+🎯 <b>SNIPER SİNYAL TESPİTİ</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 
-🚀 <b>STRATEGY:</b> {strategy_tag}
-💵 <b>ENTRY:</b> <code>{entry_price:.4f}</code>
+🚀 <b>STRATEJİ:</b> {strategy_tag}
+💵 <b>GİRİŞ:</b> <code>{entry_price:.4f}</code>
 
-📊 <b>TECHNICAL INSIGHTS</b>
+📊 <b>TEKNİK GÖSTERGELER</b>
 ━━━━━━━━━━━━━━━━━━━━
-⚡ <b>Trend Strength (ADX):</b>
-   • 1H: <code>{int(last_1h['adx'])}</code> (Short Term)
-   • 4H: <code>{int(last_4h['adx'])}</code> (Main Trend)
+⚡ <b>Trend Gücü (ADX):</b>
+   • 1S: <code>{int(last_1h['adx'])}</code> (Kısa Vade)
+   • 4S: <code>{int(last_4h['adx'])}</code> (Ana Trend)
    
-🐳 <b>Volume & Flow:</b>
-   • CMF: ✅ Positive (Inflow)
-   • VWAP: ✅ Price > VWAP
-   • Order Book: ✅ Buyers Dominant
+🐳 <b>Hacim ve Para Akışı:</b>
+   • CMF: ✅ Pozitif (Para Girişi)
+   • VWAP: ✅ Fiyat Ort. Üstü
+   • Tahta: ✅ Alıcılar Baskın
 
-🎯 <b>TARGETS & RISK MANAGEMENT</b>
+🎯 <b>HEDEFLER VE RİSK YÖNETİMİ</b>
 ━━━━━━━━━━━━━━━━━━━━
-🛡️ <b>STOP LOSS (SL):</b> <code>{stop_loss:.4f}</code>
+🛡️ <b>ZARAR KES (STOP):</b> <code>{stop_loss:.4f}</code>
    🔻 Risk: %{sl_pct:.2f}
 
-💰 <b>TAKE PROFIT (TP):</b> <code>{take_profit:.4f}</code>
-   💚 Potential: %{tp_pct:.2f}
+💰 <b>KÂR AL (TP):</b> <code>{take_profit:.4f}</code>
+   💚 Potansiyel: %{tp_pct:.2f}
 
-<i>⚠️ This is an algorithmic signal. DYOR.</i>
+<i>⚠️ Bu algoritmik bir sinyaldir. YTD.</i>
 """
-            # Mesajı gönder (HTML formatında parse etmesi için parse_mode ekliyoruz)
             try:
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                 payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
@@ -320,8 +315,8 @@ def run_analysis():
             except Exception as e:
                 print(f"Telegram Gönderim Hatası: {e}")
 
-            print(f"✅ PRO SİNYAL GÖNDERİLDİ: {symbol}")
-
+            print(f"✅ TÜRKÇE SİNYAL GÖNDERİLDİ: {symbol}")
+            
         except Exception as e:
             continue
 
