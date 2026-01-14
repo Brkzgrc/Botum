@@ -175,11 +175,11 @@ def check_rebellion(df_15m):
     else:
         return False, "Şartlar Sağlanmadı"
         
-# --- 6. ANA STRATEJİ MOTORU (GÜNCELLENMİŞ: HIZLI TEPKİ MODU) ---
+# --- 6. ANA STRATEJİ MOTORU (HİBRİT MOD: TREND + DİP AVCISI) ---
 def run_analysis():
     # Saat ayarı (UTC+3)
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [HIZLI TARAMA] Saat: {tr_time.strftime('%H:%M')}")
+    print(f"\n🔎 [HİBRİT TARAMA] Saat: {tr_time.strftime('%H:%M')}")
     
     symbols = get_tradable_symbols()
     btc_safe = check_btc_safety()
@@ -190,118 +190,139 @@ def run_analysis():
     for symbol in symbols:
         try:
             # --- VERİLERİ ÇEK ---
-            # 1H ve 4H trend yönü için, 15M ise tetik çekmek için kullanılacak
-            df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=50)
-            df_4h = get_data(symbol, TIMEFRAME_LONG, limit=50)
-            df_15m = get_data(symbol, '15m', limit=50) 
+            df_1h = get_data(symbol, TIMEFRAME_SHORT, limit=60)
+            df_4h = get_data(symbol, TIMEFRAME_LONG, limit=60)
+            df_15m = get_data(symbol, '15m', limit=60) 
             
             if df_1h is None or df_4h is None or df_15m is None: continue
 
             # --- İNDİKATÖRLERİ HESAPLA ---
             
-            # 15M (TETİKÇİ MUM) - Hızlı tepki için buraya odaklanıyoruz
+            # 15M (Tetikçiler)
             df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
             df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
-            df_15m['adx'] = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'], length=14)['ADX_14']
+            df_15m['ema20'] = ta.ema(df_15m['close'], length=20)
             
-            # 1H (ARA TREND)
-            df_1h['ema20'] = ta.ema(df_1h['close'], length=20)
+            # 1H (Ara Trend ve Para Akışı)
+            df_1h['rsi'] = ta.rsi(df_1h['close'], length=14)
             df_1h['adx'] = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'], length=14)['ADX_14']
+            df_1h['vwap'] = ta.vwap(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'])
+            df_1h['cmf'] = ta.cmf(df_1h['high'], df_1h['low'], df_1h['close'], df_1h['volume'], length=20)
+            # MACD Ekledik (Dip dönüşü teyidi için şart)
+            macd = ta.macd(df_1h['close'])
+            df_1h['macd'] = macd['MACD_12_26_9']
+            df_1h['macd_signal'] = macd['MACDs_12_26_9']
             
-            # 4H (ANA YÖN)
+            # 4H (Ana Yön)
             st_4h = ta.supertrend(df_4h['high'], df_4h['low'], df_4h['close'], length=10, multiplier=3)
             df_4h['st_dir'] = st_4h[st_4h.columns[1]]
+            df_4h['adx'] = ta.adx(df_4h['high'], df_4h['low'], df_4h['close'], length=14)['ADX_14']
             df_4h['atr'] = ta.atr(df_4h['high'], df_4h['low'], df_4h['close'], length=14)
 
-            # Son Mumlara Bak
+            # Son Mumlar
             last_15m = df_15m.iloc[-1]
             last_1h = df_1h.iloc[-1]
             last_4h = df_4h.iloc[-1]
+            prev_1h = df_1h.iloc[-2] # MACD Kesişimi kontrolü için önceki mum
             
-            # Önceki 15dk mum (Kırılım kontrolü için)
-            prev_15m = df_15m.iloc[-2]
-
-            # --- FİLTRELER (GECİKMEYİ ÖNLEMEK İÇİN GEVŞETİLDİ) ---
+            # --- STRATEJİ KARAR MEKANİZMASI ---
             
             is_rebelling, rebel_reason = check_rebellion(df_15m)
+            signal_found = False
+            strategy_name = ""
 
-            # Temizlik
-            del df_1h, df_4h, df_15m 
+            # Hafıza Temizliği
+            del df_1h, df_4h, df_15m
 
-            # 1. ANA TREND FİLTRESİ (Sadece Yönü Belirle, Gecikme Yaratma)
-            # 4H SuperTrend Yeşil olmalı AMA ADX şartını kaldırdık (erken girmek için)
-            if last_4h['st_dir'] != 1: 
-                # Eğer BTC düşüyorsa ve coin isyan etmiyorsa -> ÇÖPE AT
-                if not (not btc_safe and is_rebelling): continue
+            # GÜVENLİK: BTC Kötü ise Sadece İsyan Edenlere Bak
+            if not btc_safe and not is_rebelling: continue
 
-            # 2. HIZLI TETİKLEYİCİLER (15 DAKİKALIK GRAFİK)
-            
-            # A. RSI DİPTEN DÖNÜŞ veya GÜÇLENME
-            # RSI 50'yi yeni kırmış olmalı VEYA 40-60 arasında kafasını kaldırmış olmalı.
-            # 70 üzeri ise "Aşırı Alım"dır, geç kalınmıştır, GİRME.
-            if last_15m['rsi'] > 70: continue # Fiyat zaten uçmuş, geç kaldık.
-            if last_15m['rsi'] < 45: continue # Henüz güçsüz.
-            
-            # B. HACİM PATLAMASI (Erken Sinyal)
-            # Hacim ortalamanın en az 1.5 katı olmalı
-            if last_15m['volume'] < (last_15m['vol_ma'] * 1.5): continue
+            # === STRATEJİ 1: GÜÇLÜ TREND TAKİBİ (Eski Sistem) ===
+            # Kurallar: ADX Güçlü + Fiyat VWAP Üstü + Hacim Var + RSI Uygun
+            if (
+                last_1h['adx'] > 25 and                   # Trend Gücü Yerinde
+                last_15m['close'] > last_1h['vwap'] and   # Fiyat Ucuz Değil, Kaliteli
+                last_15m['volume'] > (last_15m['vol_ma'] * 1.5) and # Hacim Destekli
+                50 < last_15m['rsi'] < 70 and             # RSI Aşırı Şişmemiş
+                last_4h['st_dir'] == 1                    # 4H Ana Yön Yukarı
+            ):
+                signal_found = True
+                strategy_name = "🌊 TREND FOLLOWING (GÜVENLİ)"
 
-            # C. FİYAT HAREKETİ (Momentum)
-            # Fiyatın henüz %5-10 gitmemiş olması lazım. 
-            # Son mum %0.5 ile %3 arasında olmalı. %3'ten büyükse tepeden gireriz.
-            open_p = last_15m['open']
-            close_p = last_15m['close']
-            candle_change = ((close_p - open_p) / open_p) * 100
-            
-            if candle_change < 0.5: continue # Hareket yok
-            if candle_change > 4.0: continue # Hareket bitmiş, FOMO yapma
+            # === STRATEJİ 2: DİP AVCISI (REVERSAL) (Yeni İstediğin) ===
+            # Kurallar: RSI Dipte + MACD Kesişimi + Para Girişi (CMF) + Hacim
+            elif (
+                last_1h['rsi'] < 40 and                   # 1H RSI Dipte (Ucuz)
+                last_4h['st_dir'] == 1 and                # DİKKAT: Ana Trend (4H) hala boğa olmalı (Düzeltme bitişi)
+                last_1h['macd'] > last_1h['macd_signal'] and # MACD Al vermiş
+                prev_1h['macd'] <= prev_1h['macd_signal'] and # (Yeni Kesişim)
+                last_1h['cmf'] > 0 and                    # Düşüşe rağmen Para Girişi (Pozitif Uyumsuzluk) var
+                last_15m['volume'] > last_15m['vol_ma']   # Tepki Hacmi Gelmiş
+            ):
+                signal_found = True
+                strategy_name = "🪝 DİP DÖNÜŞÜ (REVERSAL)"
 
-            # D. 1 SAATLİK ONAY (Sadece EMA20 üstünde olsun yeter, kesişim bekleme)
-            if last_1h['close'] < last_1h['ema20']: continue
+            # === STRATEJİ 3: İSYAN (BTC Düşerken Yükselen) ===
+            elif is_rebelling:
+                signal_found = True
+                strategy_name = f"🔥 {rebel_reason}"
 
-            # --- SİNYAL OLUŞTU (ERKEN YAKALAMA) ---
 
-            entry_price = last_15m['close'] # 15dk fiyatından giriyoruz
-            atr_val = last_4h['atr']
-            
-            # Stop Loss daha yakın (Sniper modu)
-            stop_loss = entry_price - (1.5 * atr_val) 
-            take_profit = entry_price + (4 * atr_val) # Risk/Ödül oranı arttı
-            
-            tp_pct = ((take_profit - entry_price) / entry_price) * 100
-            sl_pct = ((entry_price - stop_loss) / entry_price) * 100
-            
-            strategy_tag = "🚀 ERKEN KIRILIM (15m)" if btc_safe else "🔥 İSYAN (AYRIŞMA)"
-            signal_time = (datetime.now() + timedelta(hours=3)).strftime('%d %b %H:%M')
+            # --- SİNYAL OLUŞTUYSA GÖNDER ---
+            if signal_found:
+                entry_price = last_15m['close']
+                atr_val = last_4h['atr']
+                
+                # Stop Loss Ayarı (Stratejiye Göre Değişir)
+                if "DİP" in strategy_name:
+                    # Dipte stop daha dar olur (Bıçak tutuyoruz)
+                    stop_loss = entry_price - (1.5 * atr_val)
+                    take_profit = entry_price + (5 * atr_val) # Ödül daha büyük
+                else:
+                    # Trendde stop daha geniş (Dalgalanma payı)
+                    stop_loss = entry_price - (2.5 * atr_val)
+                    take_profit = entry_price + (4 * atr_val)
+                
+                tp_pct = ((take_profit - entry_price) / entry_price) * 100
+                sl_pct = ((entry_price - stop_loss) / entry_price) * 100
+                
+                signal_time = (datetime.now() + timedelta(hours=3)).strftime('%d %b %H:%M')
 
-            msg = f"""
-🎯 <b>HIZLI SNIPER SİNYALİ</b>
+                msg = f"""
+🎯 <b>SNIPER SİNYAL TESPİTİ</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 ━━━━━━━━━━━━━━━━━━━━
-🚀 <b>STRATEJİ:</b> {strategy_tag}
-⚡ <b>RSI (15m):</b> <code>{int(last_15m['rsi'])}</code> (Henüz Şişmedi)
-📊 <b>MUM DEĞİŞİMİ:</b> %{candle_change:.2f} (Henüz Başlangıçta)
+🚀 <b>STRATEJİ:</b> {strategy_name}
 
+🎯 <b>HEDEFLER</b>
+━━━━━━━━━━━━━━━━━━━━
 💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
 🛡️ <b>STOP  :</b> <code>{stop_loss:.4f} / Risk: %{sl_pct:.2f}</code>
 💰 <b>TP    :</b> <code>{take_profit:.4f} / Potansiyel: %{tp_pct:.2f}</code>
 
-<i>⚠️ Erken sinyaldir. Stopsuz işlem yapma.</i>
-"""
-            try:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-                payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
-                requests.post(url, json=payload)
-            except Exception as e:
-                print(f"Telegram Gönderim Hatası: {e}")
+📊 <b>TEKNİK ONAYLAR</b>
+━━━━━━━━━━━━━━━━━━━━
+⚡ <b>RSI (1S/15m):</b> <code>{int(last_1h['rsi'])}</code> / <code>{int(last_15m['rsi'])}</code>
+🐳 <b>Para Akışı (CMF):</b> {"✅ Pozitif" if last_1h['cmf'] > 0 else "⚠️ Nötr"}
+🌊 <b>Trend (ADX):</b> <code>{int(last_1h['adx'])}</code>
+🛠 <b>MACD:</b> {"✅ AL Sinyali" if last_1h['macd'] > last_1h['macd_signal'] else "⚠️ Nötr"}
 
-            print(f"✅ HIZLI SİNYAL GÖNDERİLDİ: {symbol}")
+<i>⚠️ Yüksek potansiyel, hesaplanmış risk içerir. YTD.</i>
+"""
+                try:
+                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}
+                    requests.post(url, json=payload)
+                except Exception as e:
+                    print(f"Telegram Gönderim Hatası: {e}")
+
+                print(f"✅ SİNYAL GÖNDERİLDİ: {symbol} - {strategy_name}")
         
         except Exception as e:
             continue
 
-    print("🏁 Hızlı Tarama Bitti. Bellek Temizleniyor.")
+    print("🏁 Tarama Bitti. Bellek Temizleniyor.")
     gc.collect()
     
 # --- 7. BAŞLATMA (GÜNCELLENMİŞ ZAMANLAYICI) ---
