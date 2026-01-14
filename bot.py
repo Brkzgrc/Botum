@@ -6,7 +6,7 @@ import os
 import requests
 import threading
 from flask import Flask
-from datetime import datetime
+from datetime import datetime, timedelta
 import sys
 import gc # RAM temizliği için gerekli
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -50,7 +50,6 @@ def home():
     return "🚀 Sniper Bot (Python Modu) 7/24 Aktif!"
 
 # --- 4. YARDIMCI FONKSİYONLAR ---
-
 def send_telegram(message):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -106,7 +105,6 @@ def get_data(symbol, timeframe, limit=100):
         return None
         
 # --- 5. ANALİZ MODÜLLERİ ---
-
 def check_btc_safety():
     """Modül 1: BTC Güvenliği ve Flash Crash Koruması"""
     try:
@@ -179,7 +177,7 @@ def check_rebellion(df_15m):
         
 # --- 6. ANA STRATEJİ MOTORU ---
 def run_analysis():
-    print(f"\n🔎 [TÜM PİYASA TARANIYOR] Saat: {datetime.now().strftime('%H:%M')}")
+    print(f"\n🔎 [TÜM PİYASA TARANIYOR] Saat: {(datetime.now() + timedelta(hours=3)).strftime('%H:%M')}")
     
     # 1. Coin Listesini Al
     symbols = get_tradable_symbols()
@@ -257,7 +255,6 @@ def run_analysis():
 
             # --- 4. SİNYAL OLUŞTU ---
             # (Buraya kadar gelen coin tüm testleri geçmiştir)
-
             entry_price = last_1h['close']
             atr_val = last_4h['atr']
             stop_loss = entry_price - (2 * atr_val)
@@ -269,8 +266,7 @@ def run_analysis():
             
             # Strateji ismini Türkçe yapıyoruz
             strategy_tag = "🔥 İSYAN (POZİTİF AYRIŞMA)" if (not btc_safe and is_rebelling) else "🌊 GÜÇLÜ TREND TAKİBİ"
-            signal_time = datetime.now().strftime('%d %b %H:%M')
-
+            signal_time = (datetime.now() + timedelta(hours=3)).strftime('%d %b %H:%M')
             # --- TÜRKÇE PROFESYONEL MESAJ TASARIMI ---
             msg = f"""
 🚀 <b>STRATEJİ:</b> {strategy_tag}
