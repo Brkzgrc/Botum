@@ -131,7 +131,7 @@ def strategy_sfp_dynamic(df_15m):
         
         # Son 3 mumdaki EMA değişimine bak
         # Şu anki EMA >= 3 mum önceki EMA ise YÖN YUKARI veya YATAYDIR.
-        ema_slope_ok = ema50.iloc[-1] >= ema50.iloc[-3]
+        ema_slope_ok = ema50.iloc[-1] >= ema50.iloc[-5]
         
         if not ema_slope_ok:
             return False, None
