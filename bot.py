@@ -81,53 +81,53 @@ def get_data(symbol, timeframe, limit=100):
         return None
 
 # --- 4. STRATEJİ MOTORLARI ---
-# === STRATEJİ 1: SFP (TUZAK AVCISI - SIKIŞTIRILMIŞ VERSİYON) ===
+# === STRATEJİ 1: SFP (HARDCORE MOD - Sadece Gerçek Tuzaklar) ===
 def detect_sfp(df_15m):
     try:
-        # İndikatör Hazırlığı
+        # İndikatörler
         df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
         df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
         
         last = df_15m.iloc[-1]
         
-        # 1. Swing Low Belirleme (Daha geriye bakıyoruz: 50 mum)
-        # Sadece çok belirgin dipleri ciddiye al.
-        past_candles = df_15m.iloc[-51:-1]
+        # 1. DEĞİŞİKLİK: Swing Low'u çok daha geride ara (60 mum = 15 Saat)
+        # Böylece her minik dip değil, ANA DİPLER baz alınır.
+        past_candles = df_15m.iloc[-61:-1]
         swing_low = past_candles['low'].min()
         
-        # 2. TEMEL SFP KURALI
+        # 2. Temel Kural
         swept = last['low'] < swing_low       # Dibi deldi
         reclaimed = last['close'] > swing_low # Üstünde kapattı
         
-        # --- YENİ FİLTRELER (GÜRÜLTÜ ENGELLEYİCİ) ---
+        # 3. YENİ FİLTRE: "İğne Gücü" (Wick Ratio)
+        # Mumun alt iğnesi, gövdesinden en az 2 kat büyük olmalı.
+        # Bu, "Fiyatı aşağı çaktılar ama boğalar çok sert tepki verdi" demektir.
+        body_size = abs(last['close'] - last['open'])
+        lower_wick = min(last['close'], last['open']) - last['low']
         
-        # FİLTRE A: RSI FİLTRESİ
-        # SFP genellikle aşırı satım bölgesinde çalışır. 
-        # RSI 50'nin üzerindeyse bu bir tuzak değil, düzeltmedir.
+        # Eğer gövde neredeyse yoksa (Doji), iğneye bakmak yeterli.
+        if body_size == 0:
+            is_strong_rejection = True
+        else:
+            is_strong_rejection = lower_wick > (body_size * 2.0)
+        
+        # 4. Diğer Filtreler (RSI ve Hacim)
+        # RSI 45 altı olmalı (Hala geçerli)
         rsi_ok = last['rsi'] < 45
-        
-        # FİLTRE B: MUM ŞEKLİ (PINBAR / ÇEKİÇ)
-        # Mumun gövdesi yukarıda olmalı. Yani uzun bir alt iğne olmalı.
-        # (Kapanış - Düşük) / (Yüksek - Düşük) oranı %60'tan büyük olmalı.
-        candle_range = last['high'] - last['low']
-        if candle_range == 0: return False, None
-        
-        body_position = (last['close'] - last['low']) / candle_range
-        is_pinbar = body_position > 0.60 
-        
-        # FİLTRE C: HACİM
-        # Hacim ortalamanın üzerinde olmalı
-        vol_ok = last['volume'] > last['vol_ma']
+        # Hacim ortalamanın %20 üzerinde olmalı (Daha sert hacim)
+        vol_ok = last['volume'] > (last['vol_ma'] * 1.2)
 
-        # HEPSİ BİRDEN OLACAK
-        if swept and reclaimed and rsi_ok and is_pinbar and vol_ok:
+        if swept and reclaimed and rsi_ok and is_strong_rejection and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
+            # Risk %5'ten fazlaysa girme (İğne çok uzunsa stop çok uzak olur)
+            if stop_dist > 5.0: return False, None
+            
             return True, {
-                'type': '🦅 SFP (PINBAR + RSI)',
+                'type': '🦅 SFP (HARDCORE)',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': f'Stop patlatıldı, RSI:{int(last["rsi"])} ve Güçlü Mum Kapanışı.'
+                'desc': f'Ana Destek ({swing_low:.4f}) Tuzağı. Güçlü İğne Reddi.'
             }
         return False, None
     except: return False, None
@@ -180,7 +180,7 @@ def detect_divergence(df_15m):
         return False, None
     except: return False, None
         
-# === STRATEJİ 3: WT + MFI + SUPERTREND (ELİT MOMENTUM) ===
+# === STRATEJİ 3: WT + MFI + SUPERTREND (HARDCORE MOMENTUM) ===
 def detect_momentum_indicators(df_15m):
     try:
         # İndikatörler
@@ -208,29 +208,32 @@ def detect_momentum_indicators(df_15m):
         last_st = st_dir.iloc[-1]
         last_adx = adx.iloc[-1]
 
-        # ŞART 1: WaveTrend AL Sinyali (Kesişim)
+        # WaveTrend Kesişimi
         wt_cross_up = (prev_wt1 < prev_wt2) and (last_wt1 > last_wt2)
-        wt_valid_level = last_wt1 < 55 # Tepeden alma
+        wt_valid_level = last_wt1 < 50 # Sadece dip/orta bölgeden kalkışları al
         
-        # FİLTRE A: GÜÇLÜ PARA GİRİŞİ
-        # Eskiden 40 idi, şimdi 50. Para girişi net pozitif olmalı.
-        mfi_ok = last_mfi > 50
+        # FİLTRE A: MFI (Para Girişi)
+        # 50 -> 55 Yaptık. Para girişi daha net olmalı.
+        mfi_ok = last_mfi > 55
         
-        # FİLTRE B: TREND GÜCÜ
-        # Eskiden 20 idi, şimdi 25. Zayıf trendi eliyoruz.
-        trend_ok = (last_st == 1) and (last_adx > 25)
+        # FİLTRE B: ADX (Trend Gücü)
+        # 25 -> 30 Yaptık. "Belki trend var" değil "Trend var" dedirtmeli.
+        trend_ok = (last_st == 1) and (last_adx > 30)
 
         if wt_cross_up and wt_valid_level and mfi_ok and trend_ok:
             atr_val = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
             stop_price = last['close'] - (2 * atr_val)
             stop_dist = ((last['close'] - stop_price) / last['close']) * 100
+            
+            # Risk %4'ten büyükse ele
+            if stop_dist > 4.0: return False, None
 
             return True, {
                 'type': '🚀 WT-MFI MOMENTUM (GÜÇLÜ)',
                 'price': last['close'],
                 'stop': stop_price,
                 'risk': stop_dist,
-                'desc': f'WaveTrend AL + Güçlü Para Girişi (MFI:{int(last_mfi)}) + ADX:{int(last_adx)}'
+                'desc': f'WaveTrend AL + Yüksek MFI({int(last_mfi)}) + Güçlü Trend(ADX:{int(last_adx)})'
             }
         
         return False, None
