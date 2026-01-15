@@ -21,8 +21,8 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # --- ÖNEMLİ AYARLAR ---
-COOLDOWN_MINUTES = 120    # Bir coin sinyal verirse 2 SAAT sussun.
-MAX_SIGNALS_PER_HOUR = 3  # Saatte en fazla 3 sinyal gönder. (Kota)
+COOLDOWN_MINUTES = 120    # Aynı coin 2 saat sussun
+MAX_SIGNALS_PER_HOUR = 3  # Saatte Max 3 Sinyal Kotası
 
 # Taranmayacaklar
 IGNORED_COINS = [
@@ -47,15 +47,15 @@ exchange = ccxt.binance({
 app = Flask(__name__)
 
 # GLOBAL DEĞİŞKENLER
-signal_history = {} # Coin bazlı soğuma
-hourly_counter = {  # Saatlik kota takibi
+signal_history = {} 
+hourly_counter = {
     'count': 0,
     'reset_time': datetime.now() + timedelta(hours=1)
 }
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (24 SAAT KURALI + KOTA) Aktif!"
+    return "🚀 Sniper Bot (Dinamik Başlık) Aktif!"
 
 # --- 3. YARDIMCI FONKSİYONLAR ---
 
@@ -72,7 +72,7 @@ def get_tradable_symbols():
         print(f"Liste hatası: {e}")
         return []
 
-def get_data(symbol, timeframe, limit=150): # Limit artırıldı (24 saat için)
+def get_data(symbol, timeframe, limit=150):
     try:
         time.sleep(0.15) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -83,56 +83,50 @@ def get_data(symbol, timeframe, limit=150): # Limit artırıldı (24 saat için)
     except:
         return None
 
-# --- 4. STRATEJİ MOTORLARI (ÇOK SIKI) ---
+# --- 4. STRATEJİ MOTORLARI ---
 
-# === STRATEJİ 1: SFP (24 SAAT DİP AVCISI) ===
+# === STRATEJİ 1: SFP (ZORLAŞTIRILMIŞ) ===
 def detect_sfp(df_15m):
     try:
-        # İndikatörler
         df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
         df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
         
         last = df_15m.iloc[-1]
         
-        # 1. DEĞİŞİKLİK: 24 SAATLİK DİP (96 Mum)
-        # 15dk x 96 = 24 Saat.
-        # Sadece son 24 saatin EN DÜŞÜĞÜ kırılırsa sinyal üret.
+        # 24 Saatlik Dip (96 Mum)
         past_candles = df_15m.iloc[-97:-1] 
         swing_low = past_candles['low'].min()
         
-        # Temel Kural
         swept = last['low'] < swing_low       
         reclaimed = last['close'] > swing_low 
         
-        # İğne Gücü (Pinbar)
         body = abs(last['close'] - last['open'])
         lower_wick = min(last['close'], last['open']) - last['low']
         
-        # İğne gövdenin en az 2 katı olmalı (Çok sert tepki)
         if body == 0: is_strong = True
         else: is_strong = lower_wick > (body * 2.0)
         
-        # RSI Şartı (35 Altı - İyice Ölü Fiyat)
         rsi_ok = last['rsi'] < 35
         
-        # Hacim Şartı (Ortalamanın 1.5 katı)
-        vol_ok = last['volume'] > (last['vol_ma'] * 1.5)
+        # GÜNCELLEME: Hacim şartı 1.5 -> 2.0'a çıkarıldı.
+        # Tepki "Çok Sert" olmalı.
+        vol_ok = last['volume'] > (last['vol_ma'] * 2.0)
 
         if swept and reclaimed and is_strong and rsi_ok and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
-            if stop_dist > 4.0: return False, None # Çok riskliyse girme
+            if stop_dist > 4.5: return False, None
             
             return True, {
-                'type': '🦅 SFP (24 SAAT DİBİ)',
+                'type': '🦅 SFP (DİP AVCISI)',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': f'Son 24 saatin dibi ({swing_low:.4f}) temizlendi ve sert döndü.'
+                'desc': f'Son 24 saatin dibi ({swing_low:.4f}) hacimli şekilde süpürüldü.'
             }
         return False, None
     except: return False, None
 
-# === STRATEJİ 2: UYUMSUZLUK (RSI 35 ALTI) ===
+# === STRATEJİ 2: UYUMSUZLUK ===
 def detect_divergence(df_15m):
     try:
         df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
@@ -150,7 +144,7 @@ def detect_divergence(df_15m):
         
         price_lower = curr_low_val < prev_low_val
         rsi_higher = curr_rsi_val > prev_rsi_val
-        rsi_oversold = curr_rsi_val < 35 # Sadece çok ucuzken
+        rsi_oversold = curr_rsi_val < 35
         green_candle = last['close'] > last['open']
         vol_ok = last['volume'] > last['vol_ma']
 
@@ -161,12 +155,12 @@ def detect_divergence(df_15m):
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': 'Fiyat yeni dip yaptı ama RSI yükseldi.'
+                'desc': 'Fiyat dip yaparken RSI yükseliyor (Güç Topluyor).'
             }
         return False, None
     except: return False, None
 
-# === STRATEJİ 3: WT-MFI (GÜÇLÜ TREND) ===
+# === STRATEJİ 3: WT-MFI ===
 def detect_momentum_indicators(df_15m):
     try:
         ap = (df_15m['high'] + df_15m['low'] + df_15m['close']) / 3
@@ -182,15 +176,9 @@ def detect_momentum_indicators(df_15m):
 
         last = df_15m.iloc[-1]
         
-        # ŞARTLAR:
-        # 1. WT AL (Alttan Kesişim)
         wt_cross = (wt1.iloc[-2] < wt2.iloc[-2]) and (wt1.iloc[-1] > wt2.iloc[-1])
-        wt_loc = wt1.iloc[-1] < 50 # Dip veya orta bölgeden kalkış
-        
-        # 2. MFI > 55 (Güçlü Para)
+        wt_loc = wt1.iloc[-1] < 50
         mfi_ok = mfi.iloc[-1] > 55
-        
-        # 3. ADX > 30 (Güçlü Trend)
         trend_ok = (st_dir.iloc[-1] == 1) and (adx.iloc[-1] > 30)
 
         if wt_cross and wt_loc and mfi_ok and trend_ok:
@@ -198,7 +186,7 @@ def detect_momentum_indicators(df_15m):
             stop_price = last['close'] - (2 * atr)
             stop_dist = ((last['close'] - stop_price) / last['close']) * 100
             
-            if stop_dist > 4.5: return False, None # Risk yüksekse ele
+            if stop_dist > 4.5: return False, None
 
             return True, {
                 'type': '🚀 WT-MFI MOMENTUM',
@@ -213,21 +201,19 @@ def detect_momentum_indicators(df_15m):
 # --- 5. ANA ANALİZ DÖNGÜSÜ ---
 
 def run_analysis():
-    # Saatlik Kota Kontrolü ve Sıfırlama
     global hourly_counter
     if datetime.now() > hourly_counter['reset_time']:
         hourly_counter['count'] = 0
         hourly_counter['reset_time'] = datetime.now() + timedelta(hours=1)
-        print("\n🔄 Saatlik kota sıfırlandı.")
+        # print("\n🔄 Saatlik kota sıfırlandı.")
 
-    # Eğer kota dolduysa tarama YAPMA!
     if hourly_counter['count'] >= MAX_SIGNALS_PER_HOUR:
-        print(f"\n⛔ BU SAATLİK KOTA DOLDU ({MAX_SIGNALS_PER_HOUR}/3). Bir sonraki saati bekle.")
+        print(f"\n⛔ KOTA DOLDU ({MAX_SIGNALS_PER_HOUR}). Beklemede...")
         gc.collect()
         return
 
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} (Bu saat: {hourly_counter['count']}/{MAX_SIGNALS_PER_HOUR})")
+    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} (Sayaç: {hourly_counter['count']})")
     
     symbols = get_tradable_symbols()
     
@@ -244,21 +230,18 @@ def run_analysis():
         btc_trend = "AYI" if btc_df['close'].iloc[-1] < sma200 else "BOĞA"
 
     for symbol in symbols:
-        # Eğer kota dolduysa döngüyü kır
-        if hourly_counter['count'] >= MAX_SIGNALS_PER_HOUR:
-            break
+        if hourly_counter['count'] >= MAX_SIGNALS_PER_HOUR: break
 
         try:
             if symbol in signal_history: continue
 
-            # 150 mum çekiyoruz (96 tanesi SFP için lazım)
             df_15m = get_data(symbol, '15m', limit=150)
             if df_15m is None: continue
 
             signal_found = False
             data = {}
 
-            # Strateji 1: SFP (24 Saatlik)
+            # Strateji 1: SFP
             is_sfp, sfp_data = detect_sfp(df_15m)
             if is_sfp:
                 signal_found = True
@@ -278,9 +261,8 @@ def run_analysis():
                     signal_found = True
                     data = mom_data
 
-            # SİNYAL GÖNDERİMİ
+            # SİNYAL GÖNDERİMİ (YENİ FORMAT)
             if signal_found:
-                # KOTA ARTTIR
                 hourly_counter['count'] += 1
                 signal_history[symbol] = datetime.now()
 
@@ -291,12 +273,12 @@ def run_analysis():
                 
                 signal_time = tr_time.strftime('%d %b %H:%M')
 
+                # GÜNCELLENMİŞ MESAJ FORMATI (SADE VE NET)
                 msg = f"""
-🎯 <b>KESKİN NİŞANCI SİNYALİ</b>
+<b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>   |   ⏱ <code>{signal_time}</code>
 ━━━━━━━━━━━━━━━━━━━━
-🛠 <b>STRATEJİ:</b> {data['type']}
 📝 <b>NEDEN:</b> {data['desc']}
 
 💵 <b>GİRİŞ :</b> <code>{data['price']:.4f}</code>
@@ -317,7 +299,7 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                 except Exception as e:
                     print(f"Telegram Hatası: {e}")
 
-                print(f"✅ SİNYAL GÖNDERİLDİ: {symbol} ({hourly_counter['count']}/3)")
+                print(f"✅ SİNYAL: {symbol} - {data['type']}")
 
         except Exception as e:
             continue
@@ -330,7 +312,7 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (KOTA: 3 SİNYAL/SAAT).")
+    print("🚀 BOT BAŞLATILDI (YENİ BAŞLIKLAR + 2x HACİM).")
 
     def ilk_tarama():
         time.sleep(10)
