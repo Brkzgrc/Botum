@@ -228,7 +228,8 @@ def strategy_breakout(df_15m):
 
 # --- 6. ANA DÖNGÜ (ESKİ KODUN STABİL YAPISIYLA) ---
 def run_analysis():
-    print(f"\n🔎 [TARAMA] Başlıyor... {datetime.now().strftime('%H:%M')}", flush=True)
+    tr_time = datetime.now() + timedelta(hours=3)
+    print(f"\n🔎 [TARAMA] Başlıyor... {tr_time.strftime('%H:%M')}", flush=True)
     
     symbols = get_tradable_symbols()
     
@@ -281,11 +282,13 @@ def run_analysis():
                 if tp_pct < risk_pct:
                     print(f"❌ {symbol} RED: Risk > Hedef", flush=True)
                     continue
-
+                
+                # --- BURAYI YAPIŞTIR (Girintiye Dikkat) ---
+                signal_time_str = tr_time.strftime('%H:%M')                
                 msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
-<b>#{symbol}</b>
+<b>#{symbol}</b> | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
 🧠 <b>BAĞLAM:</b> {regime} | <b>TİP:</b> {coin_type_info}
 📝 <b>NEDEN:</b> {data['desc']}
