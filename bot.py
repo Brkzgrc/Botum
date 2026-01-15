@@ -7,6 +7,7 @@ import os
 import requests
 import sys
 import gc 
+from datetime import datetime, timedelta, timezone
 from flask import Flask
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -102,7 +103,7 @@ def prepare_indicators(df):
 
 def get_macro_regime(symbol):
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # CACHE KONTROL
         if symbol in macro_cache:
@@ -348,9 +349,11 @@ def strategy_breakout(df_15m):
 
 # --- 6. ANA DÖNGÜ ---
 def run_analysis():
-    # ZAMAN: UTC (Render) -> UTC+3 (Türkiye)
-    utc_now = datetime.utcnow()
-    tr_time = utc_now + timedelta(hours=3)
+    # ZAMAN: UTC (timezone-aware)
+    utc_now = datetime.now(timezone.utc)
+    # Türkiye saati (gösterim amaçlı)
+    tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
+
     print(f"\n🔎 [TARAMA] Başlıyor... {tr_time.strftime('%H:%M')} TR")
     
     symbols = get_tradable_symbols()
