@@ -12,7 +12,7 @@ import sys
 import gc 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Loglar anında aksın
+# --- KRİTİK DÜZELTME 1: Loglar anında aksın (Bufferlama yapmasın) ---
 sys.stdout.reconfigure(line_buffering=True)
 
 # --- 1. AYARLAR ---
@@ -31,12 +31,13 @@ IGNORED_COINS = [
     'AUD/USDT', 'UST/USDT', 'USD/USDT', 'XUSD/USDT', 'USD1/USDT',
 ]
 
+# --- KRİTİK DÜZELTME 2: Timeout süresi ve Rate Limit ---
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
     'options': {'defaultType': 'spot'},
     'enableRateLimit': True,
-    'timeout': 30000
+    'timeout': 15000 # 30sn yerine 15sn (Daha çabuk pes etsin ki donmasın)
 })
 
 app = Flask(__name__)
@@ -44,7 +45,7 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (EMA FILTER + ATR BOOST) Aktif!"
+    return "🚀 Sniper Bot (PERFORMANS MODU) Çalışıyor..."
 
 # --- 2. VERİ ÇEKME ---
 def get_tradable_symbols():
@@ -54,11 +55,14 @@ def get_tradable_symbols():
                    and exchange.markets[s]['active'] 
                    and not any(i in s for i in IGNORED_COINS)]
         return symbols
-    except: return []
+    except Exception as e:
+        print(f"Sembol Hatası: {e}", flush=True)
+        return []
 
 def get_data(symbol, timeframe, limit=200):
     try:
-        time.sleep(0.1) 
+        # Rate Limit koruması için kısa bekleme
+        time.sleep(0.05) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
@@ -87,28 +91,23 @@ def get_macro_regime(symbol):
         return "RANGING", df_1h
     except: return "NEUTRAL", None
 
-# --- 4. HEDEF BELİRLEME (GÜNCELLENDİ: ATR BOOST EKLENDİ) ---
+# --- 4. HEDEF BELİRLEME ---
 def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
     try:
-        # 1. Klasik Hedef: Swing High
         lookback = 50
         past_highs = df_15m['high'].iloc[-lookback:-1]
         swing_high = past_highs.max()
         
-        # Eğer Swing High çok yakınsa varsayılan koy
         if swing_high <= entry_price * 1.005:
             structural_target = entry_price * 1.03
         else:
             structural_target = swing_high
 
-        # 2. Volatilite Kontrolü (ATR Boost) - YENİ EKLENEN KISIM
         final_target = structural_target
         
         if coin_type == "🔥 VOLATILE":
             atr = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
-            atr_target = entry_price + (4.0 * atr) # Geniş Hedef
-            
-            # Eğer ATR hedefi daha yüksekse onu seç (Bırak koşsun)
+            atr_target = entry_price + (4.0 * atr) 
             if atr_target > structural_target:
                 final_target = atr_target
 
@@ -119,40 +118,29 @@ def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
         
 # --- 5. STRATEJİLER ---
 
-# A. DINAMIK ATR SFP (GÜNCELLENDİ: EMA EĞİM FİLTRESİ EKLENDİ)
 def strategy_sfp_dynamic(df_15m):
     try:
+        if len(df_15m) < 60: return False, None # Veri kontrolü
         last = df_15m.iloc[-1]
 
-        # --- YENİ EKLENEN EMA50 EĞİM FİLTRESİ ---
-        # EMA aşağı akıyorsa (Negatif Eğim) işlem açma.
+        # EMA Eğim Filtresi (Hata korumalı)
         ema50 = ta.ema(df_15m['close'], length=50)
-        if ema50 is None: return False, None
+        if ema50 is None or len(ema50) < 6: return False, None
         
-        # Son 3 mumdaki EMA değişimine bak
-        # Şu anki EMA >= 3 mum önceki EMA ise YÖN YUKARI veya YATAYDIR.
         ema_slope_ok = ema50.iloc[-1] >= ema50.iloc[-5]
+        if not ema_slope_ok: return False, None
         
-        if not ema_slope_ok:
-            return False, None
-        # ----------------------------------------
-        
-        # 1. Pivot Tespiti
         scan_window = 50
         past_window = df_15m.iloc[-scan_window:-1]
         pivot_low = past_window['low'].min()
         
-        # 2. ATR Hesaplamaları
         atr_series = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14)
         atr_now = atr_series.iloc[-1]
         atr_mean = atr_series.rolling(100, min_periods=50).mean().iloc[-1]
         
-        if pd.isna(atr_mean) or atr_mean == 0: 
-            vol_ratio = 1.0 
-        else:
-            vol_ratio = atr_now / atr_mean
+        if pd.isna(atr_mean) or atr_mean == 0: vol_ratio = 1.0 
+        else: vol_ratio = atr_now / atr_mean
             
-        # 3. SINIFLANDIRMA VE ÇARPANLAR
         coin_type = "NORMAL"
         sweep_mult = 0.15; reclaim_mult = 0.25; stop_mult = 0.30; wick_mult = 1.5 
 
@@ -164,14 +152,12 @@ def strategy_sfp_dynamic(df_15m):
             coin_type = "🧊 CALM"
             sweep_mult = 0.10; reclaim_mult = 0.20; stop_mult = 0.25; wick_mult = 1.5
             
-        # 4. ŞARTLARIN HESAPLANMASI
         sweep_limit = pivot_low - (sweep_mult * atr_now) 
         dip_zone = pivot_low + (reclaim_mult * atr_now)  
         
         swept = last['low'] < sweep_limit
         reclaimed = last['close'] > dip_zone
         
-        # Wick Kalitesi
         body = abs(last['close'] - last['open'])
         lower_wick = min(last['close'], last['open']) - last['low']
         
@@ -183,7 +169,6 @@ def strategy_sfp_dynamic(df_15m):
 
         if swept and reclaimed and strong_wick and vol_ok:
             safe_stop = pivot_low - (stop_mult * atr_now)
-            
             return True, {
                 'type': f'🦅 SFP ({coin_type})',
                 'desc': f'Pivot Süpürüldü. Volatilite: {vol_ratio:.2f}',
@@ -191,10 +176,8 @@ def strategy_sfp_dynamic(df_15m):
                 'coin_type': coin_type
             }
         return False, None
-    except Exception as e: 
-        return False, None
+    except: return False, None
 
-# B. MOMENTUM PULLBACK
 def strategy_pullback(df_15m):
     try:
         ema50 = ta.ema(df_15m['close'], length=50).iloc[-1]
@@ -219,7 +202,6 @@ def strategy_pullback(df_15m):
         return False, None
     except: return False, None
 
-# C. SQUEEZE BREAKOUT
 def strategy_breakout(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -240,13 +222,14 @@ def strategy_breakout(df_15m):
         return False, None
     except: return False, None
 
-# --- 6. ANA BEYİN ---
+# --- 6. ANA BEYİN (BELLEK YÖNETİMLİ) ---
 def run_analysis():
-    tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Revize Edilmiş SFP Modu")
+    # Logların akması için flush=True kullanımı
+    print(f"\n🔎 [TARAMA] Başlıyor... {datetime.now().strftime('%H:%M')}", flush=True)
     
     symbols = get_tradable_symbols()
     
+    # Hafıza temizliği
     current_time = datetime.now()
     to_remove = [sym for sym, t in signal_history.items() if (current_time - t) > timedelta(minutes=COOLDOWN_MINUTES)]
     for sym in to_remove: del signal_history[sym]
@@ -255,48 +238,48 @@ def run_analysis():
         try:
             if symbol in signal_history: continue
 
-            regime, df_1h = get_macro_regime(symbol)
-            if regime == "DOWNTREND": continue 
-            
-            df_15m = get_data(symbol, '15m', limit=200)
-            if df_15m is None: continue
-
-            signal_found = False
-            data = {}
-
-            # STRATEJİ SEÇİMİ
-            if regime == "RANGING" or regime == "NEUTRAL":
-                is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
-                if is_sfp:
-                    signal_found = True; data = sfp_data
-
-            elif regime == "UPTREND":
-                is_pb, pb_data = strategy_pullback(df_15m)
-                if is_pb:
-                    signal_found = True; data = pb_data
-
-            elif regime == "SQUEEZE":
-                is_brk, brk_data = strategy_breakout(df_15m)
-                if is_brk:
-                    signal_found = True; data = brk_data
-            
-            if signal_found:
-                signal_history[symbol] = datetime.now()
-                entry_price = df_15m['close'].iloc[-1]
+            # Hata olduğunda döngüyü kırmadan geçmek için try-except
+            try:
+                regime, df_1h = get_macro_regime(symbol)
+                if regime == "DOWNTREND": continue 
                 
-                # --- HEDEF BELİRLEME (Coin tipini gönderiyoruz) ---
-                coin_type_info = data.get('coin_type', 'NORMAL')
-                tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
-                # --------------------------------------------------
+                df_15m = get_data(symbol, '15m', limit=200)
+                if df_15m is None: continue
 
-                stop_price = data['stop']
-                risk_pct = ((entry_price - stop_price) / entry_price) * 100
+                signal_found = False
+                data = {}
+
+                # STRATEJİ SEÇİMİ
+                if regime == "RANGING" or regime == "NEUTRAL":
+                    is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
+                    if is_sfp:
+                        signal_found = True; data = sfp_data
+
+                elif regime == "UPTREND":
+                    is_pb, pb_data = strategy_pullback(df_15m)
+                    if is_pb:
+                        signal_found = True; data = pb_data
+
+                elif regime == "SQUEEZE":
+                    is_brk, brk_data = strategy_breakout(df_15m)
+                    if is_brk:
+                        signal_found = True; data = brk_data
                 
-                if tp_pct < risk_pct:
-                    print(f"❌ {symbol} RED: Risk > Hedef")
-                    continue
+                if signal_found:
+                    signal_history[symbol] = datetime.now()
+                    entry_price = df_15m['close'].iloc[-1]
+                    
+                    coin_type_info = data.get('coin_type', 'NORMAL')
+                    tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
 
-                msg = f"""
+                    stop_price = data['stop']
+                    risk_pct = ((entry_price - stop_price) / entry_price) * 100
+                    
+                    if tp_pct < risk_pct:
+                        print(f"❌ {symbol} RED: Risk > Hedef", flush=True)
+                        continue
+
+                    msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>
@@ -312,23 +295,32 @@ def run_analysis():
 🏆 Hedef: <code>{tp_price:.4f}</code>
 Potansiyel: <b>%{tp_pct:.2f}</b>
 """
-                try:
-                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                                json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"})
-                    print(f"✅ SİNYAL: {symbol} | {data['type']}")
-                except: pass
+                    try:
+                        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                                    json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"})
+                        print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
+                    except: pass
+            
+            except Exception as inner_e:
+                # Tekil coin hatası (Devam et)
+                continue
 
         except Exception as e:
+            print(f"Genel Hata: {e}", flush=True)
             continue
 
-    print("🏁 Tarama Bitti.")
-    gc.collect()
+    print("🏁 Tarama Bitti.", flush=True)
+    
+    # --- KRİTİK DÜZELTME 3: RAM Temizliği ---
+    gc.collect() 
 
 if __name__ == "__main__":
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
+    # --- KRİTİK DÜZELTME 4: Çakışma Önleyici ---
+    # max_instances=1: Eğer bir tarama bitmeden 5dk dolarsa, yenisini başlatma (Sistemi kilitleme)
+    scheduler.add_job(func=run_analysis, trigger="interval", minutes=5, max_instances=1)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (EMA EĞİM FİLTRESİ + ATR TP BOOST).")
+    print("🚀 BOT BAŞLATILDI (STABİLİTE + PERFORMANS MODU).", flush=True)
 
     def ilk_tarama():
         time.sleep(10)
