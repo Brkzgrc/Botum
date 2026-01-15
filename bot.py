@@ -44,7 +44,7 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (ATR SFP MODU) Aktif!"
+    return "🚀 Sniper Bot (DINAMIK ATR MODU) Aktif!"
 
 # --- 2. VERİ ÇEKME ---
 def get_tradable_symbols():
@@ -56,7 +56,7 @@ def get_tradable_symbols():
         return symbols
     except: return []
 
-def get_data(symbol, timeframe, limit=150):
+def get_data(symbol, timeframe, limit=200): # Limit artırıldı (Rolling mean için)
     try:
         time.sleep(0.1) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -101,58 +101,79 @@ def find_structural_target(df_15m, entry_price):
         return swing_high, tp_pct
     except: return entry_price * 1.03, 3.0
 
-# --- 5. STRATEJİLER (GÜNCELLENMİŞ SFP) ---
+# --- 5. STRATEJİLER ---
 
-# A. ATR DESTEKLİ GELİŞMİŞ SFP (ALTIN DENGE)
-def strategy_sfp_pro(df_15m):
+# A. DINAMIK ATR SFP (YENİ GÜNCELLEME)
+def strategy_sfp_dynamic(df_15m):
     try:
         last = df_15m.iloc[-1]
         
-        # 1. Pivot Tespiti (Yine de bir referans lazım)
+        # 1. Pivot Tespiti
         scan_window = 50
         past_window = df_15m.iloc[-scan_window:-1]
         pivot_low = past_window['low'].min()
         
-        # 2. ATR Hesapla (Esneklik için)
-        atr = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
+        # 2. ATR Hesaplamaları (Dinamik Volatilite)
+        atr_series = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14)
+        atr_now = atr_series.iloc[-1]
         
-        # 3. YENİ MANTIK: Bölge Tanımları
-        # Dip Bölgesi (Güvenli Liman): Pivotun biraz üstü
-        dip_zone = pivot_low + (0.25 * atr) 
-        # Süpürme Sınırı (Tuzak): Pivotun biraz altı (Bu kadar inmesi lazım)
-        sweep_limit = pivot_low - (0.15 * atr)
+        # ATR'nin 100 periyotluk ortalaması (Normali ne?)
+        atr_mean = atr_series.rolling(100).mean().iloc[-1]
         
-        # 4. Şartlar
-        # a) Yeterince derine indi mi? (Tuzak kuruldu mu?)
+        # Volatilite Oranı
+        if pd.isna(atr_mean) or atr_mean == 0: 
+            vol_ratio = 1.0 
+        else:
+            vol_ratio = atr_now / atr_mean
+            
+        # 3. SINIFLANDIRMA VE ÇARPANLAR
+        coin_type = "NORMAL"
+        sweep_mult = 0.15
+        reclaim_mult = 0.25
+        stop_mult = 0.30
+        
+        if vol_ratio >= 1.25:
+            coin_type = "🔥 VOLATILE"
+            sweep_mult = 0.25   # Daha derin sweep bekle (Fake yememek için)
+            reclaim_mult = 0.35 # Daha yukarıdan kabul et
+            stop_mult = 0.45    # Geniş stop (Patlatılmamak için)
+            
+        elif vol_ratio <= 0.85:
+            coin_type = "🧊 CALM"
+            sweep_mult = 0.10   # Sığ sweep yeterli
+            reclaim_mult = 0.20 # Erken kabul
+            stop_mult = 0.25    # Sıkı stop
+            
+        # 4. ŞARTLARIN HESAPLANMASI
+        sweep_limit = pivot_low - (sweep_mult * atr_now) # Bu seviyenin altına inmeli
+        dip_zone = pivot_low + (reclaim_mult * atr_now)  # Buranın üstüne çıkmalı
+        
         swept = last['low'] < sweep_limit
-        
-        # b) Güvenli bölgeye geri döndü mü? (Teyit)
         reclaimed = last['close'] > dip_zone
         
-        # c) Wick (İğne) Kalitesi (1.6'ya çekildi - Daha yumuşak)
+        # Wick kalitesi (Volatile ise daha sıkı fitil ara)
         body = abs(last['close'] - last['open'])
         lower_wick = min(last['close'], last['open']) - last['low']
         
-        # Gövde 0 ise (Doji) hata vermesin
-        if body == 0: strong_wick = True 
-        else: strong_wick = lower_wick > (body * 1.6)
+        wick_mult = 2.0 if coin_type == "🔥 VOLATILE" else 1.5
+        if body == 0: strong_wick = True
+        else: strong_wick = lower_wick > (body * wick_mult)
         
-        # d) Hacim Teyidi
         vol_ma = df_15m['volume'].rolling(20).mean().iloc[-1]
         vol_ok = last['volume'] > (vol_ma * 1.5)
 
         if swept and reclaimed and strong_wick and vol_ok:
-            # STOP Mantığı: Sweep'in biraz altı (Rahat Stop)
-            safe_stop = pivot_low - (0.3 * atr)
+            # Dinamik Stop Hesabı
+            safe_stop = pivot_low - (stop_mult * atr_now)
             
             return True, {
-                'type': '🦅 SFP (ATR BÖLGESEL)',
-                'desc': f'Pivot ({pivot_low:.4f}) Bölgesi Süpürüldü ve Toplandı',
-                'stop': safe_stop
+                'type': f'🦅 SFP ({coin_type})',
+                'desc': f'Pivot Süpürüldü. Volatilite: {vol_ratio:.2f}',
+                'stop': safe_stop,
+                'coin_type': coin_type
             }
         return False, None
     except Exception as e: 
-        # print(f"SFP Hata: {e}") 
         return False, None
 
 # B. MOMENTUM PULLBACK
@@ -173,8 +194,9 @@ def strategy_pullback(df_15m):
         if touched_ema and bounced and not_overbought:
             return True, {
                 'type': '🚀 EMA PULLBACK',
-                'desc': 'Trende Geri Çekilme Girişi',
-                'stop': last['low']
+                'desc': 'Trende Geri Çekilme',
+                'stop': last['low'],
+                'coin_type': 'NORMAL'
             }
         return False, None
     except: return False, None
@@ -193,8 +215,9 @@ def strategy_breakout(df_15m):
         if breakout and vol_explosion:
             return True, {
                 'type': '💥 SQUEEZE BREAKOUT',
-                'desc': 'Sıkışma Sonrası Hacimli Patlama',
-                'stop': df_15m['low'].iloc[-3:].min()
+                'desc': 'Sıkışma Sonrası Patlama',
+                'stop': df_15m['low'].iloc[-3:].min(),
+                'coin_type': 'SQUEEZE'
             }
         return False, None
     except: return False, None
@@ -202,7 +225,7 @@ def strategy_breakout(df_15m):
 # --- 6. ANA BEYİN ---
 def run_analysis():
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | ATR Destekli SFP")
+    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Dinamik SFP Modu")
     
     symbols = get_tradable_symbols()
     
@@ -217,15 +240,17 @@ def run_analysis():
             regime, df_1h = get_macro_regime(symbol)
             if regime == "DOWNTREND": continue 
             
-            df_15m = get_data(symbol, '15m', limit=100)
+            # Veri limiti artırıldı (Rolling mean için)
+            df_15m = get_data(symbol, '15m', limit=200)
             if df_15m is None: continue
 
             signal_found = False
             data = {}
 
-            # STRATEJİ SEÇİMİ (REJİME GÖRE)
+            # STRATEJİ SEÇİMİ
             if regime == "RANGING" or regime == "NEUTRAL":
-                is_sfp, sfp_data = strategy_sfp_pro(df_15m)
+                # ARTIK DINAMIK SFP ÇAĞIRILIYOR
+                is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
                 if is_sfp:
                     signal_found = True; data = sfp_data
 
@@ -245,7 +270,7 @@ def run_analysis():
                 
                 tp_price, tp_pct = find_structural_target(df_15m, entry_price)
                 
-                # Stop Botun hesapladığı stop (ATR ile düzeltilmiş)
+                # Stop (Botun hesapladığı dinamik stop)
                 stop_price = data['stop']
                 risk_pct = ((entry_price - stop_price) / entry_price) * 100
                 
@@ -253,12 +278,14 @@ def run_analysis():
                     print(f"❌ {symbol} RED: Risk > Hedef")
                     continue
 
+                coin_type_info = data.get('coin_type', 'NORMAL')
+
                 msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>
 ━━━━━━━━━━━━━━━━━━━━
-🧠 <b>BAĞLAM:</b> {regime}
+🧠 <b>BAĞLAM:</b> {regime} | <b>TİP:</b> {coin_type_info}
 📝 <b>NEDEN:</b> {data['desc']}
 
 💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
@@ -285,7 +312,7 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (ATR SFP + REJİM FİLTRESİ).")
+    print("🚀 BOT BAŞLATILDI (DINAMIK ADAPTASYON MODU).")
 
     def ilk_tarama():
         time.sleep(10)
