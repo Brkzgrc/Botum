@@ -20,9 +20,9 @@ API_SECRET = os.getenv('BINANCE_SECRET_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# Sinyal Soğuma Süresi (Dakika)
-# Bir coin sinyal verdikten sonra kaç dakika sessize alınsın?
-COOLDOWN_MINUTES = 60 
+# --- ÖNEMLİ AYARLAR ---
+COOLDOWN_MINUTES = 120    # Bir coin sinyal verirse 2 SAAT sussun.
+MAX_SIGNALS_PER_HOUR = 3  # Saatte en fazla 3 sinyal gönder. (Kota)
 
 # Taranmayacaklar
 IGNORED_COINS = [
@@ -46,12 +46,16 @@ exchange = ccxt.binance({
 
 app = Flask(__name__)
 
-# GLOBAL DEĞİŞKEN: Sinyal Geçmişini Tutan Hafıza
-signal_history = {}
+# GLOBAL DEĞİŞKENLER
+signal_history = {} # Coin bazlı soğuma
+hourly_counter = {  # Saatlik kota takibi
+    'count': 0,
+    'reset_time': datetime.now() + timedelta(hours=1)
+}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (COOLDOWN AKTİF) Çalışıyor!"
+    return "🚀 Sniper Bot (24 SAAT KURALI + KOTA) Aktif!"
 
 # --- 3. YARDIMCI FONKSİYONLAR ---
 
@@ -63,13 +67,12 @@ def get_tradable_symbols():
             if symbol.endswith('/USDT') and exchange.markets[symbol]['active']:
                 if not any(ignored in symbol for ignored in IGNORED_COINS):
                     symbols.append(symbol)
-        # print(f"✅ Tarama Listesi: {len(symbols)} coin.")
         return symbols
     except Exception as e:
         print(f"Liste hatası: {e}")
         return []
 
-def get_data(symbol, timeframe, limit=100):
+def get_data(symbol, timeframe, limit=150): # Limit artırıldı (24 saat için)
     try:
         time.sleep(0.15) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -80,8 +83,9 @@ def get_data(symbol, timeframe, limit=100):
     except:
         return None
 
-# --- 4. STRATEJİ MOTORLARI ---
-# === STRATEJİ 1: SFP (HARDCORE MOD - Sadece Gerçek Tuzaklar) ===
+# --- 4. STRATEJİ MOTORLARI (ÇOK SIKI) ---
+
+# === STRATEJİ 1: SFP (24 SAAT DİP AVCISI) ===
 def detect_sfp(df_15m):
     try:
         # İndikatörler
@@ -90,60 +94,53 @@ def detect_sfp(df_15m):
         
         last = df_15m.iloc[-1]
         
-        # 1. DEĞİŞİKLİK: Swing Low'u çok daha geride ara (60 mum = 15 Saat)
-        # Böylece her minik dip değil, ANA DİPLER baz alınır.
-        past_candles = df_15m.iloc[-61:-1]
+        # 1. DEĞİŞİKLİK: 24 SAATLİK DİP (96 Mum)
+        # 15dk x 96 = 24 Saat.
+        # Sadece son 24 saatin EN DÜŞÜĞÜ kırılırsa sinyal üret.
+        past_candles = df_15m.iloc[-97:-1] 
         swing_low = past_candles['low'].min()
         
-        # 2. Temel Kural
-        swept = last['low'] < swing_low       # Dibi deldi
-        reclaimed = last['close'] > swing_low # Üstünde kapattı
+        # Temel Kural
+        swept = last['low'] < swing_low       
+        reclaimed = last['close'] > swing_low 
         
-        # 3. YENİ FİLTRE: "İğne Gücü" (Wick Ratio)
-        # Mumun alt iğnesi, gövdesinden en az 2 kat büyük olmalı.
-        # Bu, "Fiyatı aşağı çaktılar ama boğalar çok sert tepki verdi" demektir.
-        body_size = abs(last['close'] - last['open'])
+        # İğne Gücü (Pinbar)
+        body = abs(last['close'] - last['open'])
         lower_wick = min(last['close'], last['open']) - last['low']
         
-        # Eğer gövde neredeyse yoksa (Doji), iğneye bakmak yeterli.
-        if body_size == 0:
-            is_strong_rejection = True
-        else:
-            is_strong_rejection = lower_wick > (body_size * 2.0)
+        # İğne gövdenin en az 2 katı olmalı (Çok sert tepki)
+        if body == 0: is_strong = True
+        else: is_strong = lower_wick > (body * 2.0)
         
-        # 4. Diğer Filtreler (RSI ve Hacim)
-        # RSI 45 altı olmalı (Hala geçerli)
-        rsi_ok = last['rsi'] < 45
-        # Hacim ortalamanın %20 üzerinde olmalı (Daha sert hacim)
-        vol_ok = last['volume'] > (last['vol_ma'] * 1.2)
+        # RSI Şartı (35 Altı - İyice Ölü Fiyat)
+        rsi_ok = last['rsi'] < 35
+        
+        # Hacim Şartı (Ortalamanın 1.5 katı)
+        vol_ok = last['volume'] > (last['vol_ma'] * 1.5)
 
-        if swept and reclaimed and rsi_ok and is_strong_rejection and vol_ok:
+        if swept and reclaimed and is_strong and rsi_ok and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
-            # Risk %5'ten fazlaysa girme (İğne çok uzunsa stop çok uzak olur)
-            if stop_dist > 5.0: return False, None
+            if stop_dist > 4.0: return False, None # Çok riskliyse girme
             
             return True, {
-                'type': '🦅 SFP (HARDCORE)',
+                'type': '🦅 SFP (24 SAAT DİBİ)',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': f'Ana Destek ({swing_low:.4f}) Tuzağı. Güçlü İğne Reddi.'
+                'desc': f'Son 24 saatin dibi ({swing_low:.4f}) temizlendi ve sert döndü.'
             }
         return False, None
     except: return False, None
-        
-# === STRATEJİ 2: BULLISH DIVERGENCE (SIKILAŞTIRILMIŞ) ===
+
+# === STRATEJİ 2: UYUMSUZLUK (RSI 35 ALTI) ===
 def detect_divergence(df_15m):
     try:
         df_15m['rsi'] = ta.rsi(df_15m['close'], length=14)
-        df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20) # Hacim Ortalaması eklendi
-        
+        df_15m['vol_ma'] = ta.sma(df_15m['volume'], length=20)
         last = df_15m.iloc[-1]
         
-        # Pencere ayarı
-        window = 20
+        window = 30
         scan_range = df_15m.iloc[-(window+1):-1]
-        
         prev_low_val = scan_range['low'].min()
         prev_low_idx = scan_range['low'].idxmin()
         prev_rsi_val = df_15m.loc[prev_low_idx]['rsi']
@@ -151,113 +148,93 @@ def detect_divergence(df_15m):
         curr_low_val = last['low']
         curr_rsi_val = last['rsi']
         
-        # KURAL 1: Fiyat Dibi Aşağıda (Düşüş Trendi)
         price_lower = curr_low_val < prev_low_val
-        
-        # KURAL 2: RSI Dibi Yukarıda (Güç Topluyor)
         rsi_higher = curr_rsi_val > prev_rsi_val
-        
-        # FİLTRE A: RSI DERİNLİĞİ (Daha dipte ara)
-        # Eskiden 45 idi, şimdi 35. Yani sadece "Aşırı Ucuz" malı alıyoruz.
-        rsi_oversold = curr_rsi_val < 35 
-        
-        # FİLTRE B: HACİM DESTEĞİ
-        # Dönüş mumunda hacim ortalamayı geçmeli. Kuru kuruya dönüş olmaz.
-        vol_ok = last['volume'] > last['vol_ma']
-        
-        # KURAL 3: Yeşil Mum
+        rsi_oversold = curr_rsi_val < 35 # Sadece çok ucuzken
         green_candle = last['close'] > last['open']
+        vol_ok = last['volume'] > last['vol_ma']
 
         if price_lower and rsi_higher and rsi_oversold and green_candle and vol_ok:
             stop_dist = ((last['close'] - last['low']) / last['close']) * 100
             return True, {
-                'type': '🐂 RSI UYUMSUZLUK (HACİMLİ)',
+                'type': '🐂 RSI UYUMSUZLUK',
                 'price': last['close'],
                 'stop': last['low'],
                 'risk': stop_dist,
-                'desc': f'Fiyat düştü ama RSI yükseldi ({int(curr_rsi_val)}). Hacim destekli dönüş.'
+                'desc': 'Fiyat yeni dip yaptı ama RSI yükseldi.'
             }
         return False, None
     except: return False, None
-        
-# === STRATEJİ 3: WT + MFI + SUPERTREND (HARDCORE MOMENTUM) ===
+
+# === STRATEJİ 3: WT-MFI (GÜÇLÜ TREND) ===
 def detect_momentum_indicators(df_15m):
     try:
-        # İndikatörler
         ap = (df_15m['high'] + df_15m['low'] + df_15m['close']) / 3
         esa = ta.ema(ap, 10)
         d = ta.ema(abs(ap - esa), 10)
         ci = (ap - esa) / (0.015 * d)
         wt1 = ta.ema(ci, 21) 
         wt2 = ta.sma(wt1, 4) 
-        
         mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14)
-        
         st = ta.supertrend(df_15m['high'], df_15m['low'], df_15m['close'], length=10, multiplier=3)
         st_dir = st[st.columns[1]] 
-        
         adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14']
 
         last = df_15m.iloc[-1]
-        last_wt1 = wt1.iloc[-1]
-        last_wt2 = wt2.iloc[-1]
-        prev_wt1 = wt1.iloc[-2]
-        prev_wt2 = wt2.iloc[-2]
         
-        last_mfi = mfi.iloc[-1]
-        last_st = st_dir.iloc[-1]
-        last_adx = adx.iloc[-1]
+        # ŞARTLAR:
+        # 1. WT AL (Alttan Kesişim)
+        wt_cross = (wt1.iloc[-2] < wt2.iloc[-2]) and (wt1.iloc[-1] > wt2.iloc[-1])
+        wt_loc = wt1.iloc[-1] < 50 # Dip veya orta bölgeden kalkış
+        
+        # 2. MFI > 55 (Güçlü Para)
+        mfi_ok = mfi.iloc[-1] > 55
+        
+        # 3. ADX > 30 (Güçlü Trend)
+        trend_ok = (st_dir.iloc[-1] == 1) and (adx.iloc[-1] > 30)
 
-        # WaveTrend Kesişimi
-        wt_cross_up = (prev_wt1 < prev_wt2) and (last_wt1 > last_wt2)
-        wt_valid_level = last_wt1 < 50 # Sadece dip/orta bölgeden kalkışları al
-        
-        # FİLTRE A: MFI (Para Girişi)
-        # 50 -> 55 Yaptık. Para girişi daha net olmalı.
-        mfi_ok = last_mfi > 55
-        
-        # FİLTRE B: ADX (Trend Gücü)
-        # 25 -> 30 Yaptık. "Belki trend var" değil "Trend var" dedirtmeli.
-        trend_ok = (last_st == 1) and (last_adx > 30)
-
-        if wt_cross_up and wt_valid_level and mfi_ok and trend_ok:
-            atr_val = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
-            stop_price = last['close'] - (2 * atr_val)
+        if wt_cross and wt_loc and mfi_ok and trend_ok:
+            atr = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
+            stop_price = last['close'] - (2 * atr)
             stop_dist = ((last['close'] - stop_price) / last['close']) * 100
             
-            # Risk %4'ten büyükse ele
-            if stop_dist > 4.0: return False, None
+            if stop_dist > 4.5: return False, None # Risk yüksekse ele
 
             return True, {
-                'type': '🚀 WT-MFI MOMENTUM (GÜÇLÜ)',
+                'type': '🚀 WT-MFI MOMENTUM',
                 'price': last['close'],
                 'stop': stop_price,
                 'risk': stop_dist,
-                'desc': f'WaveTrend AL + Yüksek MFI({int(last_mfi)}) + Güçlü Trend(ADX:{int(last_adx)})'
+                'desc': f'WaveTrend AL + Para Akışı ({int(mfi.iloc[-1])})'
             }
-        
         return False, None
+    except: return False, None
 
-    except Exception as e:
-        return False, None
-        
 # --- 5. ANA ANALİZ DÖNGÜSÜ ---
 
 def run_analysis():
+    # Saatlik Kota Kontrolü ve Sıfırlama
+    global hourly_counter
+    if datetime.now() > hourly_counter['reset_time']:
+        hourly_counter['count'] = 0
+        hourly_counter['reset_time'] = datetime.now() + timedelta(hours=1)
+        print("\n🔄 Saatlik kota sıfırlandı.")
+
+    # Eğer kota dolduysa tarama YAPMA!
+    if hourly_counter['count'] >= MAX_SIGNALS_PER_HOUR:
+        print(f"\n⛔ BU SAATLİK KOTA DOLDU ({MAX_SIGNALS_PER_HOUR}/3). Bir sonraki saati bekle.")
+        gc.collect()
+        return
+
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')}")
+    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} (Bu saat: {hourly_counter['count']}/{MAX_SIGNALS_PER_HOUR})")
     
     symbols = get_tradable_symbols()
     
-    # Hafıza Temizliği (Eski kayıtları sil)
-    # Eğer 60 dakikadan eski kayıt varsa sözlükten çıkar
+    # Hafıza Temizliği
     current_time = datetime.now()
-    to_remove = []
-    for sym, time_val in signal_history.items():
-        if (current_time - time_val) > timedelta(minutes=COOLDOWN_MINUTES):
-            to_remove.append(sym)
-    for sym in to_remove:
-        del signal_history[sym]
+    to_remove = [sym for sym, t in signal_history.items() if (current_time - t) > timedelta(minutes=COOLDOWN_MINUTES)]
+    for sym in to_remove: del signal_history[sym]
 
     # BTC Durumu
     btc_df = get_data(BTC_SYMBOL, '4h', limit=200)
@@ -267,20 +244,21 @@ def run_analysis():
         btc_trend = "AYI" if btc_df['close'].iloc[-1] < sma200 else "BOĞA"
 
     for symbol in symbols:
-        try:
-            # 1. SOĞUMA KONTROLÜ (COOLDOWN CHECK)
-            # Eğer bu coine son 60 dakikada sinyal atıldıysa, PAS GEÇ.
-            if symbol in signal_history:
-                continue
+        # Eğer kota dolduysa döngüyü kır
+        if hourly_counter['count'] >= MAX_SIGNALS_PER_HOUR:
+            break
 
-            # 15 Dakikalık Veri
-            df_15m = get_data(symbol, '15m', limit=100)
+        try:
+            if symbol in signal_history: continue
+
+            # 150 mum çekiyoruz (96 tanesi SFP için lazım)
+            df_15m = get_data(symbol, '15m', limit=150)
             if df_15m is None: continue
 
             signal_found = False
             data = {}
 
-            # Strateji 1: SFP
+            # Strateji 1: SFP (24 Saatlik)
             is_sfp, sfp_data = detect_sfp(df_15m)
             if is_sfp:
                 signal_found = True
@@ -293,7 +271,7 @@ def run_analysis():
                     signal_found = True
                     data = div_data
             
-            # Strateji 3: Momentum (WT-MFI)
+            # Strateji 3: WT-MFI
             if not signal_found:
                 is_mom, mom_data = detect_momentum_indicators(df_15m)
                 if is_mom:
@@ -302,9 +280,8 @@ def run_analysis():
 
             # SİNYAL GÖNDERİMİ
             if signal_found:
-                if data['risk'] > 4.0: continue
-
-                # Sinyal Hafızasına Kaydet (Bir daha bakma)
+                # KOTA ARTTIR
+                hourly_counter['count'] += 1
                 signal_history[symbol] = datetime.now()
 
                 risk_amt = data['price'] - data['stop']
@@ -325,7 +302,7 @@ def run_analysis():
 💵 <b>GİRİŞ :</b> <code>{data['price']:.4f}</code>
 🛡️ <b>STOP  :</b> <code>{data['stop']:.4f}</code> (Risk: %{data['risk']:.2f})
 
-🎯 <b>HEDEFLER (%5-10 Hedefli)</b>
+🎯 <b>HEDEFLER</b>
 ━━━━━━━━━━━━━━━━━━━━
 1️⃣ Hedef: <code>{tp1:.4f}</code>
 2️⃣ Hedef: <code>{tp2:.4f}</code>
@@ -340,7 +317,7 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                 except Exception as e:
                     print(f"Telegram Hatası: {e}")
 
-                print(f"✅ SİNYAL: {symbol} - {data['type']}")
+                print(f"✅ SİNYAL GÖNDERİLDİ: {symbol} ({hourly_counter['count']}/3)")
 
         except Exception as e:
             continue
@@ -353,7 +330,7 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (TEKRAR SİNYAL KORUMALI).")
+    print("🚀 BOT BAŞLATILDI (KOTA: 3 SİNYAL/SAAT).")
 
     def ilk_tarama():
         time.sleep(10)
