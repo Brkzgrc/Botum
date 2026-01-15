@@ -11,7 +11,6 @@ import sys
 import gc 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Loglar anında aksın
 sys.stdout.reconfigure(line_buffering=True)
 
 # --- 1. AYARLAR ---
@@ -43,10 +42,9 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (FIRSATÇI MOD) Aktif!"
+    return "🚀 Sniper Bot (REJİM FİLTRELİ AKILLI MOD) Aktif!"
 
 # --- 2. VERİ ÇEKME ---
-
 def get_tradable_symbols():
     try:
         exchange.load_markets()
@@ -66,135 +64,150 @@ def get_data(symbol, timeframe, limit=100):
         return df
     except: return None
 
-# --- 3. BÜYÜK RESİM & İSYAN MODU (Macro Trend + Bypass) ---
-# Burası botun "Gireyim mi?" diye sorduğu kapı.
+# --- 3. PİYASA REJİMİ ANALİZİ (YENİ BEYİN) ---
+# Coin şu an hangi modda? (Trend mi? Yatay mı? Sıkışma mı?)
 
-def check_macro_context(symbol, df_15m):
+def identify_market_regime(df_15m):
     try:
-        df_4h = get_data(symbol, '4h', limit=100)
-        if df_4h is None: return False, "Veri Yok"
+        # ADX (Trend Gücü)
+        adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14'].iloc[-1]
+        
+        # Bollinger Bant Genişliği (Volatilite)
+        bb = ta.bbands(df_15m['close'], length=20, std=2)
+        bb_width = (bb['BBU_20_2.0'].iloc[-1] - bb['BBL_20_2.0'].iloc[-1]) / bb['BBM_20_2.0'].iloc[-1]
+        
+        # Sıkışma (Squeeze) Kontrolü: Bantlar çok daralmışsa patlama yakındır.
+        # Bu değer genelde 0.05 - 0.10 altıysa sıkışma vardır (Coine göre değişir ama genel kabul).
+        if bb_width < 0.08:
+            return "SQUEEZE" # Sıkışma Modu (Patlama Bekle)
 
-        # 4 Saatlik Göstergeler
-        ema200 = ta.ema(df_4h['close'], length=200).iloc[-1]
-        close_4h = df_4h['close'].iloc[-1]
-        rsi_4h = ta.rsi(df_4h['close'], length=14).iloc[-1]
-
-        # 15 Dakikalık Göstergeler (İsyan İçin)
-        last_vol = df_15m['volume'].iloc[-1]
-        avg_vol = df_15m['volume'].rolling(20).mean().iloc[-1]
-        price_change = (df_15m['close'].iloc[-1] - df_15m['open'].iloc[-1]) / df_15m['open'].iloc[-1]
-
-        # SENARYO 1: BOĞA TRENDİ (Normal Kapı)
-        if close_4h > ema200:
-            return True, "YÜKSELİŞ TRENDİ (Güvenli)"
-
-        # SENARYO 2: İSYAN MODU (Trend Düşüyor ama Fırsat Var!)
-        # Fiyat EMA200 altı AMA Hacim 3 Katına çıkmış VE Mum %2+ Yükselmiş
-        if close_4h < ema200:
-            if last_vol > (avg_vol * 3.0) and price_change > 0.02:
-                return True, "⚠️ DÜŞÜŞTE HACİM PATLAMASI (Fırsat Bypass)"
+        # Trend Kontrolü
+        if adx > 25:
+            return "TRENDING" # Trend Modu (Momentum Kullan)
+        
+        # Yatay Kontrol
+        if adx < 20:
+            return "RANGING" # Yatay Mod (SFP/Dip Kullan)
             
-            # SENARYO 3: DİP TEPKİSİ
-            # Trend Düşüyor ama RSI Aşırı Satımda (Ölü Kedi Sıçraması)
-            if rsi_4h < 30:
-                return True, "DÜŞÜŞ (Aşırı Satım Tepkisi)"
+        return "NEUTRAL" # Kararsız Bölge
+    except: return "NEUTRAL"
 
-        # SENARYO 4: DÜŞEN BIÇAK (Reddet)
-        return False, "DÜŞÜŞ TRENDİ (Hacimsiz - Uzak Dur)"
-
-    except: return False, "Hata"
-
-# --- 4. KONUM ANALİZİ (DESTEK/DİRENÇ - Order Book Mantığı) ---
-
-def check_structure(symbol, current_price):
+# --- 4. BÜYÜK RESİM (4H TREND FİLTRESİ) ---
+def check_macro_context(symbol, df_15m):
     try:
         df_4h = get_data(symbol, '4h', limit=50)
         if df_4h is None: return False, "Veri Yok"
 
+        ema200 = ta.ema(df_4h['close'], length=200).iloc[-1]
+        close_4h = df_4h['close'].iloc[-1]
+        rsi_4h = ta.rsi(df_4h['close'], length=14).iloc[-1]
+
+        # İSYAN MODU KONTROLLERİ
+        last_vol = df_15m['volume'].iloc[-1]
+        avg_vol = df_15m['volume'].rolling(20).mean().iloc[-1]
+        price_change = (df_15m['close'].iloc[-1] - df_15m['open'].iloc[-1]) / df_15m['open'].iloc[-1]
+
+        if close_4h > ema200:
+            return True, "YÜKSELİŞ TRENDİ"
+        
+        # Düşüşte Hacim Patlaması (İstisna)
+        if close_4h < ema200:
+            if last_vol > (avg_vol * 3.0) and price_change > 0.02:
+                return True, "⚠️ DÜŞÜŞTE HACİM PATLAMASI (Bypass)"
+            if rsi_4h < 30:
+                return True, "DÜŞÜŞ (Aşırı Satım Tepkisi)"
+
+        return False, "DÜŞÜŞ TRENDİ"
+    except: return False, "Hata"
+
+# --- 5. KONUM ANALİZİ (DESTEK/DİRENÇ) ---
+def check_structure(symbol, current_price):
+    try:
+        df_4h = get_data(symbol, '4h', limit=50)
+        if df_4h is None: return False, "Veri Yok"
         last = df_4h.iloc[-2]
         pivot = (last['high'] + last['low'] + last['close']) / 3
         s1 = (2 * pivot) - last['high']
         r1 = (2 * pivot) - last['low']
         
-        # Dirençte miyiz? (Satış yeme ihtimali)
         dist_r1 = abs(current_price - r1) / current_price
         if current_price >= r1 or dist_r1 < 0.01:
             return False, "DİRENÇTE (Riskli)"
-
-        # Destekte miyiz? (Alım ihtimali)
+        
         dist_s1 = abs(current_price - s1) / current_price
         if current_price <= s1 * 1.02: 
             return True, f"DESTEKTE (S1: {s1:.4f})"
-            
-        return True, "ARA BÖLGE (Nötr)" 
+        return True, "ARA BÖLGE" 
+    except: return True, "Hata"
 
-    except: return True, "Hesap Hatası"
+# --- 6. AKILLI STRATEJİ SEÇİCİ (REJİME GÖRE) ---
 
-# --- 5. SİNYAL TETİKÇİLERİ (Avcılar) ---
-
-def get_triggers(df_15m):
+def get_signals_by_regime(df_15m, regime):
     signals = []
-    try:
-        last = df_15m.iloc[-1]
-        
-        # A. SFP (Dip Tuzağı)
-        past_low = df_15m['low'].iloc[-97:-1].min() # 24h Dip
+    last = df_15m.iloc[-1]
+    
+    # Ortak İndikatörler
+    rsi = ta.rsi(df_15m['close'], length=14).iloc[-1]
+    mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14).iloc[-1]
+    
+    # --- REJİM 1: YATAY PİYASA (RANGING) ---
+    # Sadece SFP ve Uyumsuzluk çalışır. Trend sinyallerini YOK SAY.
+    if regime == "RANGING" or regime == "NEUTRAL":
+        # SFP Kontrolü
+        past_low = df_15m['low'].iloc[-97:-1].min()
         if last['low'] < past_low and last['close'] > past_low:
-            vol_ma = df_15m['volume'].rolling(20).mean().iloc[-1]
-            if last['volume'] > (vol_ma * 1.5):
-                signals.append(f"🦅 SFP (24h Dip Süpürüldü)")
-
-        # B. MOMENTUM (Trend/Pump)
-        # Hızlı momentum için RSI ve MFI kombinasyonu
-        rsi = ta.rsi(df_15m['close'], length=14).iloc[-1]
-        mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14).iloc[-1]
-        adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14'].iloc[-1]
+             vol_ma = df_15m['volume'].rolling(20).mean().iloc[-1]
+             if last['volume'] > (vol_ma * 1.5):
+                 signals.append(f"🦅 SFP (Dip Avı - Yatay Piyasa)")
         
-        # MACD
-        macd = ta.macd(df_15m['close'])
-        macd_cross = macd['MACD_12_26_9'].iloc[-1] > macd['MACDs_12_26_9'].iloc[-1]
-
-        if mfi > 50 and adx > 25 and macd_cross:
-             signals.append(f"🚀 MOMENTUM (Güçlü Akış)")
-
-        # C. RSI UYUMSUZLUK
+        # Uyumsuzluk Kontrolü
         prev_rsi = ta.rsi(df_15m['close'], length=14).iloc[-2]
         if df_15m['close'].iloc[-1] < df_15m['close'].iloc[-2] and rsi > prev_rsi and rsi < 40:
             signals.append("🐂 RSI UYUMSUZLUK")
 
-    except: pass
+    # --- REJİM 2: TREND PİYASASI (TRENDING) ---
+    # Sadece Momentum çalışır. Dip dönüşü arama (trend ezer geçer).
+    if regime == "TRENDING":
+        adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14'].iloc[-1]
+        macd = ta.macd(df_15m['close'])
+        macd_cross = macd['MACD_12_26_9'].iloc[-1] > macd['MACDs_12_26_9'].iloc[-1]
+        
+        # RSI Şişkinlik Kontrolü (Benim Eklediğim Güvenlik)
+        if mfi > 50 and macd_cross and rsi < 70:
+             signals.append(f"🚀 MOMENTUM (Trend Takibi)")
+
+    # --- REJİM 3: SIKIŞMA (SQUEEZE) ---
+    # Bantlar daraldı, patlama bekleniyor. Hacim artışı kovala.
+    if regime == "SQUEEZE":
+        vol_ma = df_15m['volume'].rolling(20).mean().iloc[-1]
+        if last['volume'] > (vol_ma * 2.5) and last['close'] > last['open']:
+             signals.append(f"💥 SQUEEZE BREAKOUT (Patlama)")
+
     return signals
 
-# --- 6. MÜKEMMEL SETUP TEYİDİ (Senin Kriterlerin) ---
-
+# --- 7. SETUP TEYİDİ ---
 def check_confirmation(df_15m):
     try:
-        # MACD Yukarı Dönüyor mu?
         macd = ta.macd(df_15m['close'])
         macd_up = macd['MACD_12_26_9'].iloc[-1] > macd['MACD_12_26_9'].iloc[-2]
-        
-        # ADX Güçleniyor mu?
         adx = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'])['ADX_14']
         adx_rising = adx.iloc[-1] > adx.iloc[-2]
-        
-        # MFI (Para)
         mfi = ta.mfi(df_15m['high'], df_15m['low'], df_15m['close'], df_15m['volume'], length=14).iloc[-1]
         
-        # İKNA EDİCİ DURUM:
+        rsi = ta.rsi(df_15m['close'], length=14).iloc[-1]
+        if rsi > 75: return False, "RSI Aşırı Şişik (>75)" # Güvenlik
+
         if macd_up and (adx_rising or mfi > 45):
             return True, "✅ MACD+ADX+MFI Onaylı"
-        return False, "Zayıf Teyit"
+        return False, "Zayıf"
     except: return False, "Hata"
 
-# --- 7. ANA ANALİZ DÖNGÜSÜ ---
-
+# --- 8. ANA ANALİZ ---
 def run_analysis():
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Bypass Modu Aktif")
+    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Akıllı Rejim Modu")
     
     symbols = get_tradable_symbols()
-    
-    # Hafıza Temizliği
     current_time = datetime.now()
     to_remove = [sym for sym, t in signal_history.items() if (current_time - t) > timedelta(minutes=COOLDOWN_MINUTES)]
     for sym in to_remove: del signal_history[sym]
@@ -208,24 +221,22 @@ def run_analysis():
             if df_15m is None: continue
             current_price = df_15m['close'].iloc[-1]
 
-            # 2. KONUM KONTROLÜ (Dirençte miyiz?)
+            # 2. PİYASA REJİMİ BELİRLE (YENİ ADIM)
+            regime = identify_market_regime(df_15m)
+
+            # 3. KONUM KONTROLÜ
             struct_safe, struct_msg = check_structure(symbol, current_price)
-            if not struct_safe:
-                # Dirençteyse Bypass bile kurtarmaz, kafasına vururlar.
-                continue
+            if not struct_safe: continue
 
-            # 3. MACRO & İSYAN KONTROLÜ (Gireyim mi?)
-            # Burası "Düşüşte hacim patlaması varsa GİR" diyen yer.
+            # 4. MACRO KONTROL
             macro_safe, macro_msg = check_macro_context(symbol, df_15m)
-            if not macro_safe:
-                continue # Hacim yoksa ve trend düşüşse GİRME.
+            if not macro_safe: continue
 
-            # 4. SİNYAL VE TEYİT
-            active_signals = get_triggers(df_15m)
+            # 5. REJİME UYGUN SİNYAL ARA
+            # Bot artık her stratejiyi değil, sadece rejime uyanı dener.
+            active_signals = get_signals_by_regime(df_15m, regime)
             conf_ok, conf_msg = check_confirmation(df_15m)
 
-            # KARAR:
-            # Sinyal varsa VE (Teyitliyse VEYA Hacim Patlaması varsa)
             final_signal = False
             signal_title = ""
 
@@ -251,9 +262,9 @@ def run_analysis():
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b>
 ━━━━━━━━━━━━━━━━━━━━
+🧠 <b>REJİM:</b> {regime} (Buna göre tarandı)
 🌍 <b>DURUM:</b> {macro_msg}
 📊 <b>KONUM:</b> {struct_msg}
-✅ <b>TEYİT:</b> {conf_msg}
 
 💵 <b>GİRİŞ :</b> <code>{current_price:.4f}</code>
 🛡️ <b>STOP  :</b> <code>{stop_price:.4f}</code> (Risk: %{risk_pct:.2f})
@@ -266,7 +277,7 @@ def run_analysis():
                 try:
                     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                                 json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"})
-                    print(f"✅ SİNYAL: {symbol} | {macro_msg}")
+                    print(f"✅ SİNYAL: {symbol} | Rejim: {regime} | {signal_title}")
                 except: pass
 
         except Exception as e:
@@ -279,7 +290,7 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (TRADER ZEKASI + İSYAN MODU).")
+    print("🚀 BOT BAŞLATILDI (REJİM ANALİZİ + AKILLI FİLTRE).")
 
     def ilk_tarama():
         time.sleep(10)
