@@ -44,7 +44,7 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (ONAYLI FİNAL MOD) Aktif!"
+    return "🚀 Sniper Bot (EMA FILTER + ATR BOOST) Aktif!"
 
 # --- 2. VERİ ÇEKME ---
 def get_tradable_symbols():
@@ -87,26 +87,55 @@ def get_macro_regime(symbol):
         return "RANGING", df_1h
     except: return "NEUTRAL", None
 
-# --- 4. HEDEF BELİRLEME ---
-def find_structural_target(df_15m, entry_price):
+# --- 4. HEDEF BELİRLEME (GÜNCELLENDİ: ATR BOOST EKLENDİ) ---
+def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
     try:
+        # 1. Klasik Hedef: Swing High
         lookback = 50
         past_highs = df_15m['high'].iloc[-lookback:-1]
         swing_high = past_highs.max()
         
+        # Eğer Swing High çok yakınsa varsayılan koy
         if swing_high <= entry_price * 1.005:
-            swing_high = entry_price * 1.03
-            
-        tp_pct = ((swing_high - entry_price) / entry_price) * 100
-        return swing_high, tp_pct
-    except: return entry_price * 1.03, 3.0
+            structural_target = entry_price * 1.03
+        else:
+            structural_target = swing_high
 
+        # 2. Volatilite Kontrolü (ATR Boost) - YENİ EKLENEN KISIM
+        final_target = structural_target
+        
+        if coin_type == "🔥 VOLATILE":
+            atr = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14).iloc[-1]
+            atr_target = entry_price + (4.0 * atr) # Geniş Hedef
+            
+            # Eğer ATR hedefi daha yüksekse onu seç (Bırak koşsun)
+            if atr_target > structural_target:
+                final_target = atr_target
+
+        tp_pct = ((final_target - entry_price) / entry_price) * 100
+        return final_target, tp_pct
+    except: 
+        return entry_price * 1.03, 3.0
+        
 # --- 5. STRATEJİLER ---
 
-# A. DINAMIK ATR SFP (DÜZELTİLMİŞ)
+# A. DINAMIK ATR SFP (GÜNCELLENDİ: EMA EĞİM FİLTRESİ EKLENDİ)
 def strategy_sfp_dynamic(df_15m):
     try:
         last = df_15m.iloc[-1]
+
+        # --- YENİ EKLENEN EMA50 EĞİM FİLTRESİ ---
+        # EMA aşağı akıyorsa (Negatif Eğim) işlem açma.
+        ema50 = ta.ema(df_15m['close'], length=50)
+        if ema50 is None: return False, None
+        
+        # Son 3 mumdaki EMA değişimine bak
+        # Şu anki EMA >= 3 mum önceki EMA ise YÖN YUKARI veya YATAYDIR.
+        ema_slope_ok = ema50.iloc[-1] >= ema50.iloc[-3]
+        
+        if not ema_slope_ok:
+            return False, None
+        # ----------------------------------------
         
         # 1. Pivot Tespiti
         scan_window = 50
@@ -116,8 +145,6 @@ def strategy_sfp_dynamic(df_15m):
         # 2. ATR Hesaplamaları
         atr_series = ta.atr(df_15m['high'], df_15m['low'], df_15m['close'], length=14)
         atr_now = atr_series.iloc[-1]
-        
-        # DÜZELTME 1: min_periods eklendi (NaN hatası önlendi)
         atr_mean = atr_series.rolling(100, min_periods=50).mean().iloc[-1]
         
         if pd.isna(atr_mean) or atr_mean == 0: 
@@ -127,26 +154,15 @@ def strategy_sfp_dynamic(df_15m):
             
         # 3. SINIFLANDIRMA VE ÇARPANLAR
         coin_type = "NORMAL"
-        sweep_mult = 0.15
-        reclaim_mult = 0.25
-        stop_mult = 0.30
-        
-        # DÜZELTME 2: Wick Multiplier ayarlandı (Volatil için 1.8)
-        wick_mult = 1.5 
+        sweep_mult = 0.15; reclaim_mult = 0.25; stop_mult = 0.30; wick_mult = 1.5 
 
         if vol_ratio >= 1.25:
             coin_type = "🔥 VOLATILE"
-            sweep_mult = 0.25   
-            reclaim_mult = 0.35 
-            stop_mult = 0.45    
-            wick_mult = 1.8 # Uzmanın önerisi: 2.0 -> 1.8
+            sweep_mult = 0.25; reclaim_mult = 0.35; stop_mult = 0.45; wick_mult = 1.8 
             
         elif vol_ratio <= 0.85:
             coin_type = "🧊 CALM"
-            sweep_mult = 0.10   
-            reclaim_mult = 0.20 
-            stop_mult = 0.25    
-            wick_mult = 1.5
+            sweep_mult = 0.10; reclaim_mult = 0.20; stop_mult = 0.25; wick_mult = 1.5
             
         # 4. ŞARTLARIN HESAPLANMASI
         sweep_limit = pivot_low - (sweep_mult * atr_now) 
@@ -227,7 +243,7 @@ def strategy_breakout(df_15m):
 # --- 6. ANA BEYİN ---
 def run_analysis():
     tr_time = datetime.now() + timedelta(hours=3)
-    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Final SFP Modu")
+    print(f"\n🔎 [TARAMA] Saat: {tr_time.strftime('%H:%M')} | Revize Edilmiş SFP Modu")
     
     symbols = get_tradable_symbols()
     
@@ -268,15 +284,17 @@ def run_analysis():
                 signal_history[symbol] = datetime.now()
                 entry_price = df_15m['close'].iloc[-1]
                 
-                tp_price, tp_pct = find_structural_target(df_15m, entry_price)
+                # --- HEDEF BELİRLEME (Coin tipini gönderiyoruz) ---
+                coin_type_info = data.get('coin_type', 'NORMAL')
+                tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
+                # --------------------------------------------------
+
                 stop_price = data['stop']
                 risk_pct = ((entry_price - stop_price) / entry_price) * 100
                 
                 if tp_pct < risk_pct:
                     print(f"❌ {symbol} RED: Risk > Hedef")
                     continue
-
-                coin_type_info = data.get('coin_type', 'NORMAL')
 
                 msg = f"""
 <b>{data['type']}</b>
@@ -289,7 +307,7 @@ def run_analysis():
 💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
 🛡️ <b>STOP  :</b> <code>{stop_price:.4f}</code> (Risk: %{risk_pct:.2f})
 
-🎯 <b>HEDEF (Swing High)</b>
+🎯 <b>HEDEF</b>
 ━━━━━━━━━━━━━━━━━━━━
 🏆 Hedef: <code>{tp_price:.4f}</code>
 Potansiyel: <b>%{tp_pct:.2f}</b>
@@ -310,7 +328,7 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5)
     scheduler.start()
-    print("🚀 BOT BAŞLATILDI (ONAYLI FİNAL SÜRÜM).")
+    print("🚀 BOT BAŞLATILDI (EMA EĞİM FİLTRESİ + ATR TP BOOST).")
 
     def ilk_tarama():
         time.sleep(10)
