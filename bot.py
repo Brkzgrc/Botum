@@ -7,9 +7,8 @@ import os
 import requests
 import sys
 import gc 
-from datetime import datetime, timedelta, timezone
 from flask import Flask
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- 1. AYARLAR ---
@@ -51,7 +50,7 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (SFP A/B + SIMPLE RE-ACCUMULATION) Çalışıyor..."
+    return "🚀 Sniper Bot (SFP A/B + SIMPLE RE-ACCUMULATION) Aktif ve Sağlıklı!"
 
 # --- 3. VERİ İŞLEMLERİ ---
 def get_tradable_symbols():
@@ -103,6 +102,7 @@ def prepare_indicators(df):
 
 def get_macro_regime(symbol):
     try:
+        # DÜZELTME: Deprecation uyarısını önleyen UTC zamanı
         now = datetime.now(timezone.utc)
 
         # CACHE KONTROL
@@ -165,9 +165,9 @@ def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
     except: 
         return entry_price * 1.03, 3.0
 
-# --- 5. STRATEJİLER (GELİŞMİŞ VE SADELEŞTİRİLMİŞ) ---
+# --- 5. STRATEJİLER ---
 
-# A. SFP: GOLD (A) ve SILVER (B) KALİTE AYRIMI (BU KALIYOR)
+# A. SFP: GOLD (A) ve SILVER (B) KALİTE AYRIMI
 def strategy_sfp_dynamic(df_15m):
     try:
         if len(df_15m) < 60: return False, None
@@ -245,7 +245,7 @@ def strategy_sfp_dynamic(df_15m):
         return False, None
     except: return False, None
 
-# B. PULLBACK (DEĞİŞMEDİ)
+# B. PULLBACK
 def strategy_pullback(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -270,8 +270,8 @@ def strategy_pullback(df_15m):
         return False, None
     except: return False, None
 
-# C. RE-ACCUMULATION (SEÇENEK A: TEK TİP & SADE)
-# Sadece ATR Daralması <= 0.8 şartı var.
+# C. RE-ACCUMULATION (SEÇENEK A: SADE & GÜÇLÜ)
+# Sadece ATR Daralması <= 0.8 şartına bakar. A/B yoktur.
 def strategy_reaccumulation(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -282,7 +282,7 @@ def strategy_reaccumulation(df_15m):
         # 1. Trend Yukarı Olmalı
         if last['close'] < ema50: return False, None
 
-        # 2. Süre Filtresi: En az 12 mumluk bir konsolidasyon (Range)
+        # 2. Süre Filtresi: En az 12 mum
         lookback = 12
         recent_window = df_15m.iloc[-lookback:-1]
         
@@ -293,12 +293,12 @@ def strategy_reaccumulation(df_15m):
         if range_height > (4.0 * atr): return False, None
 
         # 3. ATR Daralması (FIRTINA ÖNCESİ SESSİZLİK)
-        # Sadece bu basit filtreye bakıyoruz. A/B yok.
+        # Burası Seçenek A'nın kalbi: Daralma yoksa sinyal yok.
         if pd.isna(atr_mean) or atr_mean == 0: return False, None
         
         contraction_ratio = atr / atr_mean
         
-        # Eğer oran 0.8'den büyükse (yani %20 bile daralma yoksa) ÇÖP'tür.
+        # Eğer oran 0.8'den büyükse (%20 daralma yoksa) girme.
         if contraction_ratio > 0.8: return False, None
 
         # 4. Kırılım
@@ -317,7 +317,7 @@ def strategy_reaccumulation(df_15m):
             tight_stop = mid_point - (0.5 * atr)
             
             return True, {
-                'type': '🚩 RE-ACCUMULATION (PRO)', # Tek etiket
+                'type': '🚩 RE-ACCUMULATION (PRO)',
                 'desc': f'Trend İçi Bayrak Kırılımı. Sıkışma Oranı: {contraction_ratio:.2f}',
                 'stop': tight_stop,
                 'coin_type': 'TREND'
@@ -325,7 +325,7 @@ def strategy_reaccumulation(df_15m):
         return False, None
     except: return False, None
 
-# D. SQUEEZE BREAKOUT (DEĞİŞMEDİ)
+# D. SQUEEZE BREAKOUT
 def strategy_breakout(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -349,12 +349,12 @@ def strategy_breakout(df_15m):
 
 # --- 6. ANA DÖNGÜ ---
 def run_analysis():
-    # ZAMAN: UTC (timezone-aware)
+    # DÜZELTME: Loglardaki UTC uyarısını yok eden doğru zaman formatı
     utc_now = datetime.now(timezone.utc)
-    # Türkiye saati (gösterim amaçlı)
+    # Ekrana basarken Türkiye saatine çevir
     tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
 
-    print(f"\n🔎 [TARAMA] Başlıyor... {tr_time.strftime('%H:%M')} TR")
+    print(f"\n🔎 [TARAMA] Başlıyor... {tr_time.strftime('%H:%M')} TR", flush=True)
     
     symbols = get_tradable_symbols()
     
@@ -372,10 +372,8 @@ def run_analysis():
             df_15m = get_data(symbol, '15m', limit=200)
             if df_15m is None: continue
 
-            # --- OPTİMİZASYON: İndikatörleri ÖNCE hesapla ---
             df_15m = prepare_indicators(df_15m)
             
-            # --- ATR TABANLI ELEME ---
             last = df_15m.iloc[-1]
             if pd.isna(last['atr']) or last['close'] == 0: continue
             
@@ -385,25 +383,20 @@ def run_analysis():
             signal_found = False
             data = {}
 
-            # --- STRATEJİ SEÇİMİ ---
-            
-            # 1. Yatay Piyasa -> SFP Ara
+            # Strateji Sırası
             if regime == "RANGING" or regime == "NEUTRAL":
                 is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
                 if is_sfp: signal_found = True; data = sfp_data
 
-            # 2. Yükseliş Trendi -> Pullback VEYA Re-accumulation Ara
             elif regime == "UPTREND":
                 is_pb, pb_data = strategy_pullback(df_15m)
                 if is_pb: 
                     signal_found = True; data = pb_data
                 else:
-                    # Pullback yoksa, trend devam (Re-accumulation) bak
                     is_re, re_data = strategy_reaccumulation(df_15m)
                     if is_re:
                         signal_found = True; data = re_data
 
-            # 3. Sıkışma -> Patlama Ara
             elif regime == "SQUEEZE":
                 is_brk, brk_data = strategy_breakout(df_15m)
                 if is_brk: signal_found = True; data = brk_data
@@ -458,8 +451,11 @@ if __name__ == "__main__":
     scheduler.add_job(func=run_analysis, trigger="interval", minutes=5, max_instances=1, coalesce=True)
     scheduler.start()
     
-    start_time = datetime.utcnow() + timedelta(hours=3)
-    print(f"🚀 BOT BAŞLATILDI (SFP GOLD/SILVER + SIMPLE RE-ACCUMULATION). Saat: {start_time.strftime('%H:%M')}", flush=True)
+    # DÜZELTME: Açılış mesajındaki eski UTC kodunu da güncelledik.
+    utc_start = datetime.now(timezone.utc)
+    tr_start = utc_start.astimezone(timezone(timedelta(hours=3)))
+    
+    print(f"🚀 BOT BAŞLATILDI (SFP GOLD/SILVER + SIMPLE RE-ACCUMULATION). Saat: {tr_start.strftime('%H:%M')}", flush=True)
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, use_reloader=False)
