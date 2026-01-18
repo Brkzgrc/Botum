@@ -32,6 +32,13 @@ IGNORED_COINS = [
 macro_cache = {}
 MACRO_TTL = timedelta(minutes=30)
 
+# Botun durumunu takip etmek için global değişken
+bot_status = {
+    "last_run": "Henüz Başlamadı",
+    "status": "Bekleniyor...",
+    "signal_count": 0
+}
+
 # Loglar anında aksın
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -49,8 +56,17 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    # Bu sayfa UptimeRobot için var
-    return "🚀 Sniper Bot (BACKGROUND THREAD MODU) Çalışıyor..."
+    # Web sayfasında botun durumunu göster
+    now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
+    return f"""
+    <h1>🚀 Sniper Bot Kontrol Paneli</h1>
+    <p><b>Durum:</b> {bot_status['status']}</p>
+    <p><b>Son Tarama (TR):</b> {bot_status['last_run']}</p>
+    <p><b>Toplam Sinyal:</b> {bot_status['signal_count']}</p>
+    <p><b>Şu anki Saat:</b> {now}</p>
+    <hr>
+    <p><i>Bot Main Thread üzerinde çalışıyor.</i></p>
+    """
 
 # --- 3. VERİ İŞLEMLERİ ---
 def get_tradable_symbols():
@@ -184,7 +200,6 @@ def strategy_sfp_dynamic(df_15m):
             safe_stop = pivot_low - (stop_mult * atr_now)
             current_rsi = last['rsi']
             
-            # Gold Şartı: Pozitif Uyumsuzluk + Ema Yukarı (Zaten yukarıyı kontrol ettik)
             is_gold = current_rsi > pivot_rsi
             
             if is_gold:
@@ -221,7 +236,6 @@ def strategy_pullback(df_15m):
         return False, None
     except: return False, None
 
-# Re-accumulation: Sadece ATR Daralması (Sade)
 def strategy_reaccumulation(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -233,7 +247,6 @@ def strategy_reaccumulation(df_15m):
         range_height = recent_window['high'].max() - recent_window['low'].min()
         if range_height > (4.0 * atr): return False, None
 
-        # FİLTRE: Daralma yoksa ÇÖP. (A/B yok, sadece gir/girme)
         if pd.isna(atr_mean) or atr_mean == 0: return False, None
         if (atr / atr_mean) > 0.8: return False, None
 
@@ -276,19 +289,21 @@ def strategy_breakout(df_15m):
         return False, None
     except: return False, None
 
-# --- 6. ANA MOTOR (BACKGROUND THREAD) ---
+# --- 6. ANA MOTOR (MAIN THREAD) ---
 def run_bot_engine():
-    print("🚀 Sniper Bot Motoru Arka Planda Başlatılıyor...", flush=True)
+    print("🚀 Sniper Bot Motoru BAŞLATILDI (MAIN THREAD)", flush=True)
+    bot_status["status"] = "Aktif"
     
     while True: # Sonsuz Döngü
         try:
-            # ZAMAN DÜZELTMESİ (UTC)
             utc_now = datetime.now(timezone.utc)
             tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
             
-            print(f"\n🔎 [TARAMA] {tr_time.strftime('%H:%M')} TR", flush=True)
+            time_str = tr_time.strftime('%H:%M:%S')
+            print(f"\n🔎 [TARAMA] {time_str} TR", flush=True)
+            bot_status["last_run"] = time_str
             
-            gc.collect() # RAM Temizliği
+            gc.collect() 
             
             symbols = get_tradable_symbols()
             
@@ -329,6 +344,7 @@ def run_bot_engine():
                         if is_brk: signal_found = True; data = brk_data
                     
                     if signal_found:
+                        bot_status["signal_count"] += 1
                         signal_history[symbol] = utc_now
                         entry_price = df_15m['close'].iloc[-1]
                         coin_type_info = data.get('coin_type', 'NORMAL')
@@ -374,14 +390,16 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
             time.sleep(60)
 
-# --- 7. BAŞLATICI (KESİN ÇÖZÜM: THREAD FIRST) ---
-# Botu arka planda başlatıyoruz, Flask ise ana planda Render'ı tutuyor.
+# --- 7. BAŞLATICI (DEĞİŞTİRİLDİ: WEB ARKA PLAN, BOT ANA PLAN) ---
 if __name__ == "__main__":
-    # Bot thread'ini başlat (DAEMON)
-    bot_thread = threading.Thread(target=run_bot_engine)
-    bot_thread.daemon = True
-    bot_thread.start()
+    # Web sunucusunu (Flask) arka planda (Daemon Thread) başlatıyoruz
+    # Böylece UptimeRobot siteyi ayakta görür ama ana program Bot Motorudur.
+    flask_thread = threading.Thread(target=app.run, kwargs={'host':'0.0.0.0', 'port':int(os.environ.get("PORT", 10000)), 'use_reloader':False})
+    flask_thread.daemon = True # Ana program ölürse bu da ölsün
+    flask_thread.start()
     
-    # Flask sunucusunu başlat (BLOCKING - Render bunu istiyor)
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, use_reloader=False)
+    print("🌍 Web Sunucusu Arka Planda Başladı...", flush=True)
+    
+    # Botu ANA THREAD'de başlatıyoruz. 
+    # Eğer bot çökerse, program kapanır ve Render yeniden başlatır. (Fail-Fast)
+    run_bot_engine()
