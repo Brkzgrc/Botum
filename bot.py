@@ -31,24 +31,17 @@ IGNORED_COINS = [
 # --- MACRO REGIME CACHE ---
 macro_cache = {}
 MACRO_TTL = timedelta(minutes=30)
+bot_status = {"last_run": "Henüz Başlamadı", "status": "Bekleniyor...", "signal_count": 0}
 
-# Botun durumunu takip etmek için global değişken
-bot_status = {
-    "last_run": "Henüz Başlamadı",
-    "status": "Bekleniyor...",
-    "signal_count": 0
-}
-
-# Loglar anında aksın
 sys.stdout.reconfigure(line_buffering=True)
 
 # --- 2. BAĞLANTI AYARLARI ---
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
-    'options': {'defaultType': 'spot'},
+    'options': {'defaultType': 'spot', 'adjustForTimeDifference': True},
     'enableRateLimit': True,
-    'timeout': 30000 
+    'timeout': 15000 # 15 saniyeye çektik, takılmasın diye
 })
 
 app = Flask(__name__)
@@ -56,39 +49,43 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    # Web sayfasında botun durumunu göster
     now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return f"""
-    <h1>🚀 Sniper Bot Kontrol Paneli</h1>
+    <h1>🚀 Sniper Bot Kontrol Paneli (DEBUG MODU)</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Son Tarama (TR):</b> {bot_status['last_run']}</p>
-    <p><b>Toplam Sinyal:</b> {bot_status['signal_count']}</p>
     <p><b>Şu anki Saat:</b> {now}</p>
     <hr>
-    <p><i>Bot Main Thread üzerinde çalışıyor.</i></p>
+    <p><i>Logları Render panelinden takip edin.</i></p>
     """
 
 # --- 3. VERİ İŞLEMLERİ ---
 def get_tradable_symbols():
     try:
+        print("-> Piyasalar yükleniyor...", flush=True)
         exchange.load_markets()
         symbols = [s for s in exchange.markets if s.endswith('/USDT') 
                    and exchange.markets[s]['active'] 
                    and not any(i in s for i in IGNORED_COINS)]
+        print(f"-> {len(symbols)} adet sembol bulundu.", flush=True)
         return symbols
     except Exception as e:
-        print(f"⚠️ Sembol Listesi Hatası: {e}")
+        print(f"⚠️ Sembol Listesi Hatası: {e}", flush=True)
         return []
 
 def get_data(symbol, timeframe, limit=200):
     try:
-        time.sleep(0.2) 
+        # Debug için her coini yazmıyoruz (Log şişmesin)
+        # Sadece hata olursa yazarız
+        time.sleep(0.1) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
         return df
-    except: return None
+    except Exception as e: 
+        print(f"⚠️ Veri Hatası ({symbol}): {e}", flush=True)
+        return None
 
 # --- 4. HESAPLAMA & İNDİKATÖR HAZIRLIĞI ---
 def prepare_indicators(df):
@@ -199,7 +196,6 @@ def strategy_sfp_dynamic(df_15m):
         if swept and reclaimed and strong_wick and vol_ok:
             safe_stop = pivot_low - (stop_mult * atr_now)
             current_rsi = last['rsi']
-            
             is_gold = current_rsi > pivot_rsi
             
             if is_gold:
@@ -307,10 +303,20 @@ def run_bot_engine():
             
             symbols = get_tradable_symbols()
             
+            # Geçmiş temizliği
             to_remove = [sym for sym, t in signal_history.items() if (utc_now - t) > timedelta(minutes=COOLDOWN_MINUTES)]
             for sym in to_remove: del signal_history[sym]
 
+            # İlerleme Çubuğu gibi çalışacak basit bir sayaç
+            count = 0
+            total = len(symbols)
+
             for symbol in symbols:
+                count += 1
+                # Her 10 coinde bir log bas ki yaşadığını bilelim
+                if count % 10 == 0:
+                    print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
+
                 try:
                     if symbol in signal_history: continue
 
@@ -390,16 +396,12 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
             time.sleep(60)
 
-# --- 7. BAŞLATICI (DEĞİŞTİRİLDİ: WEB ARKA PLAN, BOT ANA PLAN) ---
+# --- 7. BAŞLATICI ---
 if __name__ == "__main__":
-    # Web sunucusunu (Flask) arka planda (Daemon Thread) başlatıyoruz
-    # Böylece UptimeRobot siteyi ayakta görür ama ana program Bot Motorudur.
     flask_thread = threading.Thread(target=app.run, kwargs={'host':'0.0.0.0', 'port':int(os.environ.get("PORT", 10000)), 'use_reloader':False})
-    flask_thread.daemon = True # Ana program ölürse bu da ölsün
+    flask_thread.daemon = True 
     flask_thread.start()
     
     print("🌍 Web Sunucusu Arka Planda Başladı...", flush=True)
     
-    # Botu ANA THREAD'de başlatıyoruz. 
-    # Eğer bot çökerse, program kapanır ve Render yeniden başlatır. (Fail-Fast)
     run_bot_engine()
