@@ -41,7 +41,7 @@ exchange = ccxt.binance({
     'secret': API_SECRET,
     'options': {'defaultType': 'spot'},
     'enableRateLimit': True,
-    'timeout': 30000 # Timeout artırıldı (Stabilite için)
+    'timeout': 30000 
 })
 
 app = Flask(__name__)
@@ -49,7 +49,8 @@ signal_history = {}
 
 @app.route('/')
 def home():
-    return "🚀 Sniper Bot (INFINITE LOOP MODU) Çalışıyor..."
+    # Bu sayfa UptimeRobot için var
+    return "🚀 Sniper Bot (BACKGROUND THREAD MODU) Çalışıyor..."
 
 # --- 3. VERİ İŞLEMLERİ ---
 def get_tradable_symbols():
@@ -65,7 +66,7 @@ def get_tradable_symbols():
 
 def get_data(symbol, timeframe, limit=200):
     try:
-        time.sleep(0.2) # Rate limit koruması
+        time.sleep(0.2) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
@@ -145,9 +146,7 @@ def strategy_sfp_dynamic(df_15m):
         ema_prev = df_15m['ema50'].iloc[-5]
         if pd.isna(ema_now) or pd.isna(ema_prev): return False, None
         
-        ema_slope_negative = ema_now < ema_prev
-        ema_slope_positive = ema_now >= ema_prev
-        if ema_slope_negative: return False, None 
+        if ema_now < ema_prev: return False, None 
         
         scan_window = 50
         past_window = df_15m.iloc[-scan_window:-1]
@@ -184,12 +183,13 @@ def strategy_sfp_dynamic(df_15m):
         if swept and reclaimed and strong_wick and vol_ok:
             safe_stop = pivot_low - (stop_mult * atr_now)
             current_rsi = last['rsi']
-            has_divergence = current_rsi > pivot_rsi
-            is_gold = has_divergence and ema_slope_positive
+            
+            # Gold Şartı: Pozitif Uyumsuzluk + Ema Yukarı (Zaten yukarıyı kontrol ettik)
+            is_gold = current_rsi > pivot_rsi
             
             if is_gold:
                 final_type = f"🟢 SFP-A (GOLD) | {coin_type_tag}"
-                desc = "Mükemmel Sinyal: Dip Süpürme + RSI Uyumsuzluğu + Trend Yönü"
+                desc = "Mükemmel Sinyal: Dip Süpürme + RSI Uyumsuzluğu"
             else:
                 final_type = f"🟡 SFP-B (SILVER) | {coin_type_tag}"
                 desc = "Standart SFP: Dip Süpürme (Uyumsuzluk Yok/Zayıf)"
@@ -221,6 +221,7 @@ def strategy_pullback(df_15m):
         return False, None
     except: return False, None
 
+# Re-accumulation: Sadece ATR Daralması (Sade)
 def strategy_reaccumulation(df_15m):
     try:
         last = df_15m.iloc[-1]
@@ -232,6 +233,7 @@ def strategy_reaccumulation(df_15m):
         range_height = recent_window['high'].max() - recent_window['low'].min()
         if range_height > (4.0 * atr): return False, None
 
+        # FİLTRE: Daralma yoksa ÇÖP. (A/B yok, sadece gir/girme)
         if pd.isna(atr_mean) or atr_mean == 0: return False, None
         if (atr / atr_mean) > 0.8: return False, None
 
@@ -274,22 +276,22 @@ def strategy_breakout(df_15m):
         return False, None
     except: return False, None
 
-# --- 6. ANA DÖNGÜ (RAM DOSTU - INFINITE LOOP) ---
-def start_bot_loop():
-    print("🚀 Sniper Bot Motoru Başlatıldı...", flush=True)
+# --- 6. ANA MOTOR (BACKGROUND THREAD) ---
+def run_bot_engine():
+    print("🚀 Sniper Bot Motoru Arka Planda Başlatılıyor...", flush=True)
     
     while True: # Sonsuz Döngü
         try:
+            # ZAMAN DÜZELTMESİ (UTC)
             utc_now = datetime.now(timezone.utc)
             tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
+            
             print(f"\n🔎 [TARAMA] {tr_time.strftime('%H:%M')} TR", flush=True)
             
-            # RAM TEMİZLİĞİ: Her tur başında çöpü boşalt
-            gc.collect() 
+            gc.collect() # RAM Temizliği
             
             symbols = get_tradable_symbols()
             
-            # Geçmiş temizliği
             to_remove = [sym for sym, t in signal_history.items() if (utc_now - t) > timedelta(minutes=COOLDOWN_MINUTES)]
             for sym in to_remove: del signal_history[sym]
 
@@ -366,19 +368,20 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                     continue
 
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
-            time.sleep(300) # 300 saniye (5 dakika) bekle ve başa dön (APScheduler yerine)
+            time.sleep(300) 
 
         except Exception as e:
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
-            time.sleep(60) # Hata olursa 1 dk bekle tekrar dene
+            time.sleep(60)
 
-# --- 7. BAŞLATICI ---
+# --- 7. BAŞLATICI (KESİN ÇÖZÜM: THREAD FIRST) ---
+# Botu arka planda başlatıyoruz, Flask ise ana planda Render'ı tutuyor.
 if __name__ == "__main__":
-    # Flask sunucusunu ayrı bir thread'de başlatıyoruz (Render için gerekli)
-    # Analiz döngüsünü ana thread'de tutuyoruz (Çökmemesi için)
-    t = threading.Thread(target=app.run, kwargs={'host':'0.0.0.0', 'port':int(os.environ.get("PORT", 10000)), 'use_reloader':False})
-    t.daemon = True
-    t.start()
+    # Bot thread'ini başlat (DAEMON)
+    bot_thread = threading.Thread(target=run_bot_engine)
+    bot_thread.daemon = True
+    bot_thread.start()
     
-    # Ana döngüyü başlat
-    start_bot_loop()
+    # Flask sunucusunu başlat (BLOCKING - Render bunu istiyor)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
