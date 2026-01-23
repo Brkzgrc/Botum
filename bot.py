@@ -51,6 +51,9 @@ exchange = ccxt.binance({
 
 app = Flask(__name__)
 signal_history = {} 
+# --- BOMB CANDIDATE CACHE ---
+bomb_history = {}
+BOMB_COOLDOWN = timedelta(hours=24)
 
 @app.route('/')
 def home():
@@ -71,7 +74,7 @@ def get_tradable_symbols():
         exchange.load_markets()
         symbols = [s for s in exchange.markets if s.endswith('/USDT') 
                    and exchange.markets[s]['active'] 
-                   and not any(i in s for i in IGNORED_COINS)]
+                   and s not in IGNORED_COINS]
         return symbols
     except Exception as e:
         print(f"⚠️ Sembol Listesi Hatası: {e}", flush=True)
@@ -298,6 +301,51 @@ def strategy_breakout(df_15m):
         return False, None
     except: return False, None
 
+def strategy_bomb_candidate(df_15m):
+    try:
+        if len(df_15m) < 120:
+            return False, None
+
+        last = df_15m.iloc[-1]
+
+        # Trend filtresi
+        if last['close'] < last['ema200']:
+            return False, None
+
+        # ATR sıkışma
+        atr = last['atr']
+        atr_mean = last['atr_mean']
+        if pd.isna(atr_mean) or atr_mean == 0:
+            return False, None
+
+        compression = atr / atr_mean
+        if compression > 0.75:
+            return False, None
+
+        # RSI preload zone
+        if not (55 <= last['rsi'] <= 68):
+            return False, None
+
+        # Hacim öncü artış
+        if last['volume'] < last['vol_ma'] * 1.5:
+            return False, None
+
+        # Son 20 mumda fake breakout olmaması
+        recent_high = df_15m['high'].iloc[-20:-1].max()
+        if last['close'] > recent_high * 1.03:
+            return False, None
+
+        stop = last['low'] - (1.2 * atr)
+
+        return True, {
+            'type': '💣 BOMB CANDIDATE',
+            'desc': 'ATR Sıkışma + Hacim Öncü Artış (1–4 Saatlik Patlama Adayı)',
+            'stop': stop,
+            'coin_type': 'BOMB'
+        }
+    except:
+        return False, None
+
 # --- 6. ANA MOTOR (MAIN THREAD) ---
 def run_bot_engine():
     print("🚀 Sniper Bot Motoru BAŞLATILDI (MAIN THREAD)", flush=True)
@@ -350,8 +398,21 @@ def run_bot_engine():
                     data = {}
 
                     if regime == "RANGING" or regime == "NEUTRAL":
-                        is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
-                        if is_sfp: signal_found = True; data = sfp_data
+                    
+                        # --- BOMB COOLDOWN KONTROLÜ ---
+                        if symbol in bomb_history:
+                            if utc_now - bomb_history[symbol] < BOMB_COOLDOWN:
+                                continue
+                    
+                        is_bomb, bomb_data = strategy_bomb_candidate(df_15m)
+                        if is_bomb:
+                            signal_found = True
+                            data = bomb_data
+                        else:
+                            is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
+                            if is_sfp:
+                                signal_found = True
+                                data = sfp_data
                     elif regime == "UPTREND":
                         is_pb, pb_data = strategy_pullback(df_15m)
                         if is_pb: signal_found = True; data = pb_data
@@ -365,6 +426,11 @@ def run_bot_engine():
                     if signal_found:
                         bot_status["signal_count"] += 1
                         signal_history[symbol] = utc_now
+                    
+                        # --- BOMB SINYALİ İÇİN 24s COOLDOWN KAYDI ---
+                        if data.get('coin_type') == 'BOMB':
+                            bomb_history[symbol] = utc_now
+                    
                         entry_price = df_15m['close'].iloc[-1]
                         coin_type_info = data.get('coin_type', 'NORMAL')
                         tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
@@ -396,7 +462,8 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                                         json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"})
                             print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
-                        except: pass
+                        except Exception as e:
+                            print(e)
 
                 except Exception as e:
                     continue
