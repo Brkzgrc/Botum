@@ -17,7 +17,9 @@ API_SECRET = os.getenv('BINANCE_SECRET_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-MIN_ATR_PCT = 0.003 
+# GÜNCELLEME (B): ATR Filtresi gevşetildi (%0.30 -> %0.18)
+# Büyük coinler (BTC, ETH) artık takılmayacak.
+MIN_ATR_PCT = 0.0018 
 COOLDOWN_MINUTES = 120 
 
 IGNORED_COINS = [
@@ -30,7 +32,10 @@ IGNORED_COINS = [
 
 # --- MACRO REGIME CACHE ---
 macro_cache = {}
-MACRO_TTL = timedelta(minutes=30)
+# GÜNCELLEME (C): Cache süresi 30 dk -> 10 dk indirildi.
+# Piyasa yön değiştirirse bot hemen fark edecek.
+MACRO_TTL = timedelta(minutes=10)
+
 bot_status = {"last_run": "Henüz Başlamadı", "status": "Bekleniyor...", "signal_count": 0}
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -41,7 +46,7 @@ exchange = ccxt.binance({
     'secret': API_SECRET,
     'options': {'defaultType': 'spot', 'adjustForTimeDifference': True},
     'enableRateLimit': True,
-    'timeout': 15000 # 15 saniyeye çektik, takılmasın diye
+    'timeout': 15000 
 })
 
 app = Flask(__name__)
@@ -51,23 +56,22 @@ signal_history = {}
 def home():
     now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return f"""
-    <h1>🚀 Sniper Bot Kontrol Paneli (DEBUG MODU)</h1>
+    <h1>🚀 Sniper Bot Kontrol Paneli (OPTIMIZED MOD)</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Son Tarama (TR):</b> {bot_status['last_run']}</p>
+    <p><b>Toplam Sinyal:</b> {bot_status['signal_count']}</p>
     <p><b>Şu anki Saat:</b> {now}</p>
     <hr>
-    <p><i>Logları Render panelinden takip edin.</i></p>
+    <p><i>Ayarlar: ATR %0.18 | Cache 10dk | Hacim 1.2x/2.0x</i></p>
     """
 
 # --- 3. VERİ İŞLEMLERİ ---
 def get_tradable_symbols():
     try:
-        print("-> Piyasalar yükleniyor...", flush=True)
         exchange.load_markets()
         symbols = [s for s in exchange.markets if s.endswith('/USDT') 
                    and exchange.markets[s]['active'] 
                    and not any(i in s for i in IGNORED_COINS)]
-        print(f"-> {len(symbols)} adet sembol bulundu.", flush=True)
         return symbols
     except Exception as e:
         print(f"⚠️ Sembol Listesi Hatası: {e}", flush=True)
@@ -75,8 +79,6 @@ def get_tradable_symbols():
 
 def get_data(symbol, timeframe, limit=200):
     try:
-        # Debug için her coini yazmıyoruz (Log şişmesin)
-        # Sadece hata olursa yazarız
         time.sleep(0.1) 
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -84,7 +86,6 @@ def get_data(symbol, timeframe, limit=200):
         df.set_index('timestamp', inplace=True)
         return df
     except Exception as e: 
-        print(f"⚠️ Veri Hatası ({symbol}): {e}", flush=True)
         return None
 
 # --- 4. HESAPLAMA & İNDİKATÖR HAZIRLIĞI ---
@@ -148,7 +149,7 @@ def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
         return final_target, tp_pct
     except: return entry_price * 1.03, 3.0
 
-# --- 5. STRATEJİLER ---
+# --- 5. STRATEJİLER (OPTİMİZE EDİLMİŞ) ---
 
 def strategy_sfp_dynamic(df_15m):
     try:
@@ -191,12 +192,17 @@ def strategy_sfp_dynamic(df_15m):
         body = abs(last['close'] - last['open'])
         lower_wick = min(last['close'], last['open']) - last['low']
         strong_wick = True if body == 0 else lower_wick > (body * wick_mult)
-        vol_ok = last['volume'] > (last['vol_ma'] * 1.5)
+        
+        # GÜNCELLEME (B): Hacim çarpanı 1.2'ye düşürüldü
+        vol_ok = last['volume'] > (last['vol_ma'] * 1.2)
 
         if swept and reclaimed and strong_wick and vol_ok:
             safe_stop = pivot_low - (stop_mult * atr_now)
             current_rsi = last['rsi']
-            is_gold = current_rsi > pivot_rsi
+            
+            # GÜNCELLEME (D): RSI Gold şartı esnetildi (Buffer -3)
+            # RSI tam pivot üstüne çıkmasa bile, yaklaştıysa kabul et.
+            is_gold = current_rsi >= (pivot_rsi - 3)
             
             if is_gold:
                 final_type = f"🟢 SFP-A (GOLD) | {coin_type_tag}"
@@ -244,7 +250,10 @@ def strategy_reaccumulation(df_15m):
         if range_height > (4.0 * atr): return False, None
 
         if pd.isna(atr_mean) or atr_mean == 0: return False, None
-        if (atr / atr_mean) > 0.8: return False, None
+        
+        # DARALMA ŞARTI: (Benim yorumumla biraz esnek bırakıyorum)
+        # 0.95, %5 daralma demektir. Durgun piyasada iş yapar.
+        if (atr / atr_mean) > 0.95: return False, None
 
         breakout_level = recent_window['high'].max() + (0.1 * atr)
         breakout = last['close'] > breakout_level
@@ -252,6 +261,8 @@ def strategy_reaccumulation(df_15m):
         body = abs(last['close'] - last['open'])
         upper_wick = last['high'] - last['close']
         strong_candle = (last['close'] > last['open']) and (body > upper_wick)
+        
+        # Hacim ortalamanın biraz üstünde olsun yeter
         vol_ok = last['volume'] > last['vol_ma']
 
         if breakout and strong_candle and vol_ok:
@@ -273,7 +284,9 @@ def strategy_breakout(df_15m):
         if pd.isna(upper_band): return False, None
 
         breakout = last['close'] > upper_band
-        vol_explosion = last['volume'] > (vol_ma * 3.0)
+        
+        # GÜNCELLEME (B): Hacim patlaması 3.0 -> 2.0 yapıldı
+        vol_explosion = last['volume'] > (vol_ma * 2.0)
         
         if breakout and vol_explosion:
             return True, {
@@ -303,19 +316,17 @@ def run_bot_engine():
             
             symbols = get_tradable_symbols()
             
-            # Geçmiş temizliği
             to_remove = [sym for sym, t in signal_history.items() if (utc_now - t) > timedelta(minutes=COOLDOWN_MINUTES)]
             for sym in to_remove: del signal_history[sym]
 
-            # İlerleme Çubuğu gibi çalışacak basit bir sayaç
+            # Basit ilerleme çubuğu
             count = 0
             total = len(symbols)
 
             for symbol in symbols:
                 count += 1
-                # Her 10 coinde bir log bas ki yaşadığını bilelim
-                if count % 10 == 0:
-                    print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
+                if count % 20 == 0:
+                    print(f"-> İlerleme: {count}/{total}", flush=True)
 
                 try:
                     if symbol in signal_history: continue
@@ -330,6 +341,8 @@ def run_bot_engine():
                     
                     last = df_15m.iloc[-1]
                     if pd.isna(last['atr']) or last['close'] == 0: continue
+                    
+                    # GÜNCELLENMİŞ ATR KONTROLÜ
                     atr_pct = last['atr'] / last['close']
                     if atr_pct < MIN_ATR_PCT: continue 
 
@@ -386,7 +399,6 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                         except: pass
 
                 except Exception as e:
-                    print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
 
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
