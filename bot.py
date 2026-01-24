@@ -30,6 +30,8 @@ IGNORED_COINS = [
     'AUD/USDT', 'UST/USDT', 'USD/USDT', 'XUSD/USDT', 'USD1/USDT',
 ]
 
+MACRO_SYMBOL = "BTC/USDT"   # Makro bağlam (BTC)
+
 # --- MACRO REGIME CACHE ---
 macro_cache = {}
 MACRO_TTL = timedelta(minutes=10)
@@ -264,19 +266,60 @@ def prepare_indicators(df):
         print(f"⚠️ Indicator Hatası: {e}", flush=True)
         return df
 
-def get_macro_regime(symbol):
+def get_coin_regime_15m(df_15m):
+    """
+    Coin'in kendi 15m rejimi: EMA50/200 + ADX ile basit sınıflandırma.
+    """
+    try:
+        if df_15m is None or len(df_15m) < 210:
+            return "NEUTRAL"
+
+        # ADX 15m
+        adx_df = ta.adx(df_15m['high'], df_15m['low'], df_15m['close'], length=14)
+        adx_val = None
+        if adx_df is not None and hasattr(adx_df, "columns"):
+            cands = [c for c in adx_df.columns if str(c).upper().startswith("ADX")]
+            if cands:
+                adx_val = adx_df[cands[0]].iloc[-1]
+
+        last = df_15m.iloc[-1]
+        ema50 = last.get('ema50', np.nan)
+        ema200 = last.get('ema200', np.nan)
+        close = last.get('close', np.nan)
+
+        if pd.isna(ema50) or pd.isna(ema200) or pd.isna(close):
+            return "NEUTRAL"
+
+        if adx_val is not None and not pd.isna(adx_val) and adx_val > 20:
+            if close > ema50 and close > ema200:
+                return "UPTREND"
+            if close < ema50 and close < ema200:
+                return "DOWNTREND"
+
+        # BB squeeze yaklaşımı (hazır upper_band var ama alt band yok -> basit)
+        return "RANGING"
+    except:
+        return "NEUTRAL"
+
+def get_macro_regime(_symbol_unused=None):
+    """
+    Makro bağlamı BTC üzerinden çıkarır.
+    NOT: Bu bir 'hard filter' değildir. Aşağıda sadece 'etiket/risk modu' olarak kullanacağız.
+    """
     try:
         now = datetime.now(timezone.utc)
 
-        if symbol in macro_cache:
-            regime, ts = macro_cache[symbol]
+        # Cache tek anahtar: BTC
+        key = "__BTC__"
+        if key in macro_cache:
+            regime, ts = macro_cache[key]
             if now - ts < MACRO_TTL:
                 return regime, None
 
-        # EMA200 için 100 bar yetmez. 260+ güvenli.
-        df_1h = get_data(symbol, '1h', limit=260)
+        # BTC 1h verisi (EMA200 için 260+)
+        df_1h = get_data(MACRO_SYMBOL, '1h', limit=260)
         if df_1h is None or len(df_1h) < 220:
-            macro_cache[symbol] = ("NEUTRAL", now)
+            macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
         ema50_s  = ta.ema(df_1h['close'], length=50)
@@ -284,69 +327,64 @@ def get_macro_regime(symbol):
         adx_df   = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'], length=14)
         bb_df    = ta.bbands(df_1h['close'], length=20, std=2)
 
-        # None kontrolü (pandas_ta sürüm/edge-case)
         if ema50_s is None or ema200_s is None or adx_df is None or bb_df is None:
-            macro_cache[symbol] = ("NEUTRAL", now)
+            macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
         ema50 = ema50_s.iloc[-1]
         ema200 = ema200_s.iloc[-1]
 
-        # ADX kolonunu robust seç
+        # ADX kolon seçimi
         adx_col = None
         if hasattr(adx_df, "columns"):
             cands = [c for c in adx_df.columns if str(c).upper().startswith("ADX")]
             if cands:
                 adx_col = cands[0]
         if adx_col is None:
-            macro_cache[symbol] = ("NEUTRAL", now)
+            macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
         adx = adx_df[adx_col].iloc[-1]
 
-        # BB kolonlarını robust seç
-        bbu_col = None
-        bbl_col = None
-        bbm_col = None
+        # BB kolon seçimi
+        bbu_col = bbl_col = bbm_col = None
         if hasattr(bb_df, "columns"):
-            cols = list(bb_df.columns)
-            for c in cols:
+            for c in bb_df.columns:
                 uc = str(c).upper()
                 if "BBU" in uc and bbu_col is None: bbu_col = c
                 if "BBL" in uc and bbl_col is None: bbl_col = c
                 if "BBM" in uc and bbm_col is None: bbm_col = c
 
         if bbu_col is None or bbl_col is None or bbm_col is None:
-            macro_cache[symbol] = ("NEUTRAL", now)
+            macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
         bbu = bb_df[bbu_col].iloc[-1]
         bbl = bb_df[bbl_col].iloc[-1]
         bbm = bb_df[bbm_col].iloc[-1]
-
         close = df_1h['close'].iloc[-1]
 
-        # NaN kontrolü
         if pd.isna(ema50) or pd.isna(ema200) or pd.isna(adx) or pd.isna(bbu) or pd.isna(bbl) or pd.isna(bbm) or bbm == 0:
-            macro_cache[symbol] = ("NEUTRAL", now)
+            macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
         bb_width = (bbu - bbl) / bbm
 
-        if bb_width < 0.08:
+        # Rejim
+        if close < ema50 and close < ema200 and adx > 20:
+            regime = "RISK_OFF"     # BTC zayıf -> altlarda risk artar
+        elif close > ema50 and close > ema200 and adx > 20:
+            regime = "RISK_ON"
+        elif bb_width < 0.08:
             regime = "SQUEEZE"
-        elif close > ema50 and close > ema200 and adx > 25:
-            regime = "UPTREND"
-        elif close < ema50 and close < ema200 and adx > 25:
-            regime = "DOWNTREND"
         else:
-            regime = "RANGING"
+            regime = "NEUTRAL"
 
-        macro_cache[symbol] = (regime, now)
+        macro_cache[key] = (regime, now)
         return regime, df_1h
 
     except Exception as e:
-        print(f"⚠️ Macro Regime Hatası ({symbol}): {e}", flush=True)
+        print(f"⚠️ Macro Regime Hatası (BTC): {e}", flush=True)
         return "NEUTRAL", None
 
 def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
@@ -655,17 +693,18 @@ def run_bot_engine():
                         reject["cooldown"] += 1
                         continue
 
-                    regime, _df_1h = get_macro_regime(symbol)
-                    if regime == "DOWNTREND":
-                        reject["macro_downtrend"] += 1
-                        continue
+                    macro_regime, _df_btc = get_macro_regime()
+                    
+                    # Hard filter YOK. Sadece etiket/risk modu.
+                    # İstersen burada yumuşak şart koyabiliriz: RISK_OFF iken sadece daha güçlü hacim isteyen stratejiler çalışsın.
 
-                    df_15m = get_data(symbol, '15m', limit=200)
+                    df_15m = get_data(symbol, '15m', limit=260))
                     if df_15m is None:
                         reject["no_15m"] += 1
                         continue
 
                     df_15m = prepare_indicators(df_15m)
+                    coin_regime = get_coin_regime_15m(df_15m)
 
                     last = df_15m.iloc[-1]
                     if pd.isna(last['atr']) or last['close'] == 0:
@@ -680,12 +719,13 @@ def run_bot_engine():
                     signal_found = False
                     data = {}
                     
-                    if regime == "RANGING" or regime == "NEUTRAL":
-                        # --- BOMB COOLDOWN KONTROLÜ ---
+                    # Coin rejimine göre strateji seç
+                    if coin_regime in ["RANGING", "NEUTRAL"]:
+                        # BOMB ve SFP daha çok yatayda anlamlı
                         if symbol in bomb_history and (utc_now - bomb_history[symbol] < BOMB_COOLDOWN):
                             reject["bomb_cooldown"] += 1
                             continue
-
+                    
                         is_bomb, bomb_data = strategy_bomb_candidate(df_15m)
                         if is_bomb:
                             signal_found = True
@@ -695,8 +735,8 @@ def run_bot_engine():
                             if is_sfp:
                                 signal_found = True
                                 data = sfp_data
-
-                    elif regime == "UPTREND":
+                    
+                    elif coin_regime == "UPTREND":
                         is_pb, pb_data = strategy_pullback(df_15m)
                         if is_pb:
                             signal_found = True
@@ -706,12 +746,17 @@ def run_bot_engine():
                             if is_re:
                                 signal_found = True
                                 data = re_data
-
-                    elif regime == "SQUEEZE":
-                        is_brk, brk_data = strategy_breakout(df_15m)
-                        if is_brk:
+                    
+                    else:
+                        # DOWNTREND coin: istersen sadece SFP gibi dip süpürme kovalasın, ya da tamamen geç.
+                        # Burada tamamen kapatmıyoruz; sadece "sfp" deneyebilir.
+                        is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
+                        if is_sfp:
                             signal_found = True
-                            data = brk_data
+                            data = sfp_data
+                        else:
+                            reject["coin_downtrend_no_signal"] += 1
+                            continue
 
                     if not signal_found:
                         reject["no_signal"] += 1
@@ -742,7 +787,7 @@ def run_bot_engine():
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b> | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
-🧠 <b>BAĞLAM:</b> {regime}
+🧠 <b>BAĞLAM:</b> BTC={macro_regime}
 📝 <b>NEDEN:</b> {data['desc']}
 
 💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
