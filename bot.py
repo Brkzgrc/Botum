@@ -491,6 +491,7 @@ def run_bot_engine():
 
             reject = {
                 "cooldown": 0,
+                "bomb_cooldown": 0,   # <-- BUNU EKLE
                 "macro_downtrend": 0,
                 "no_15m": 0,
                 "atr_nan_or_zero": 0,
