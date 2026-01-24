@@ -698,7 +698,7 @@ def run_bot_engine():
                     # Hard filter YOK. Sadece etiket/risk modu.
                     # İstersen burada yumuşak şart koyabiliriz: RISK_OFF iken sadece daha güçlü hacim isteyen stratejiler çalışsın.
 
-                    df_15m = get_data(symbol, '15m', limit=260))
+                    df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
                         reject["no_15m"] += 1
                         continue
