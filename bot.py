@@ -63,25 +63,94 @@ heartbeat = {
     "loop": 0,
     "status": "BOOT"
 }
-HEARTBEAT_EVERY_SEC = 60       # Render log'a en geç 60 sn'de bir "ALIVE" bas
-WATCHDOG_STALE_SEC = 300       # 5 dk heartbeat yoksa process'i öldür -> Render restart
-_last_beat_ts = 0.0
+# --- HEARTBEAT / WATCHDOG AYARLARI ---
+HEARTBEAT_UPDATE_SEC = 30      # watchdog için: 30 sn'de bir iç heartbeat güncelle
+WATCHDOG_STALE_SEC = 300       # 5 dk güncelleme yoksa restart
+
+# Log'a ALIVE basma modu:
+# 3600 = saat başı
+# 14400 = 4 saatte bir
+ALIVE_PRINT_EVERY_SEC = 14400
+
+# 4 saat hizası:
+# "TR_4H_03"  -> TR 03:00 bazlı (03/07/11/15/19/23)
+# "UTC_4H_00" -> UTC 00:00 bazlı (00/04/08/12/16/20)
+ALIVE_ALIGNMENT = "TR_4H_03"
+
+_last_update_ts = 0.0
+_last_print_ts = 0.0
 
 
-def beat(force=False):
-    global _last_beat_ts
+def _seconds_until_next_aligned_ping(now_utc: datetime) -> int:
+    """
+    TR_4H_03: TR saatine göre 03:00 bazlı 4H kapanışları
+    UTC_4H_00: UTC 00:00 bazlı 4H kapanışları
+    """
+    if ALIVE_ALIGNMENT == "UTC_4H_00":
+        base = now_utc
+        base_hour = 0
+    else:
+        tr = now_utc.astimezone(timezone(timedelta(hours=3)))
+        base = tr
+        base_hour = 3
+
+    h = base.hour
+    offset = (h - base_hour) % 4
+    next_hour = h - offset + 4
+
+    next_day = base
+    if next_hour >= 24:
+        next_hour -= 24
+        next_day = base + timedelta(days=1)
+
+    target = next_day.replace(hour=next_hour, minute=0, second=0, microsecond=0)
+    sec = int((target - base).total_seconds())
+    return max(sec, 0)
+
+
+def beat(force_print=False):
+    global _last_update_ts, _last_print_ts
+
     now_ts = time.time()
-    if force or (now_ts - _last_beat_ts) >= HEARTBEAT_EVERY_SEC:
-        utc_now = datetime.now(timezone.utc)
-        tr_now = utc_now.astimezone(timezone(timedelta(hours=3)))
+    utc_now = datetime.now(timezone.utc)
+    tr_now = utc_now.astimezone(timezone(timedelta(hours=3)))
+
+    # (A) Watchdog için iç heartbeat güncelle (sık)
+    if (now_ts - _last_update_ts) >= HEARTBEAT_UPDATE_SEC:
         heartbeat["last_beat_utc"] = utc_now.strftime("%Y-%m-%d %H:%M:%S")
         heartbeat["last_beat_tr"] = tr_now.strftime("%Y-%m-%d %H:%M:%S")
         heartbeat["status"] = bot_status.get("status", "UNKNOWN")
+        _last_update_ts = now_ts
+
+    # (B) Log'a ALIVE basma (seyrek)
+    should_print = False
+
+    if force_print:
+        should_print = True
+    else:
+        if ALIVE_PRINT_EVERY_SEC == 3600:
+            # saat başı (TR)
+            if tr_now.minute == 0 and tr_now.second < 5 and (now_ts - _last_print_ts) > 55:
+                should_print = True
+
+        elif ALIVE_PRINT_EVERY_SEC == 14400:
+            # 4 saat hizalı (TR_4H_03 veya UTC_4H_00)
+            sec_to_next = _seconds_until_next_aligned_ping(utc_now)
+            if sec_to_next <= 5 and (now_ts - _last_print_ts) > 60:
+                should_print = True
+
+        else:
+            # düz periyot
+            if (now_ts - _last_print_ts) >= ALIVE_PRINT_EVERY_SEC:
+                should_print = True
+
+    if should_print:
         print(
-            f"💓 ALIVE | loop={heartbeat['loop']} | {heartbeat['progress']} | {heartbeat['last_symbol']} | TR={heartbeat['last_beat_tr']}",
+            f"💓 ALIVE | loop={heartbeat.get('loop')} | {heartbeat.get('progress')} | "
+            f"{heartbeat.get('last_symbol')} | TR={heartbeat.get('last_beat_tr')}",
             flush=True
         )
-        _last_beat_ts = now_ts
+        _last_print_ts = now_ts
 
 
 def watchdog():
@@ -484,7 +553,7 @@ def run_bot_engine():
             heartbeat["loop"] += 1
             heartbeat["progress"] = "START"
             heartbeat["last_symbol"] = None
-            beat(force=True)
+            beat(force_print=True)
 
             gc.collect()
 
@@ -637,7 +706,7 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
 
             print(f"📊 REJECT SUMMARY: {reject}", flush=True)
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
-            beat(force=True)
+            beat(force_print=True)
             time.sleep(300)
 
         except Exception as e:
