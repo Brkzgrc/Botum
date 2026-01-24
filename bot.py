@@ -8,6 +8,7 @@ import requests
 import sys
 import gc
 import threading
+from collections import defaultdict
 from flask import Flask
 from datetime import datetime, timedelta, timezone
 
@@ -489,18 +490,7 @@ def run_bot_engine():
 
             symbols = get_tradable_symbols()
 
-            reject = {
-                "cooldown": 0,
-                "bomb_cooldown": 0,   # <-- BUNU EKLE
-                "macro_downtrend": 0,
-                "no_15m": 0,
-                "atr_nan_or_zero": 0,
-                "atr_pct_low": 0,
-                "no_signal": 0,
-                "risk_gt_target": 0,
-                "telegram_fail": 0,
-                "sent": 0,
-            }
+            reject = defaultdict(int)
 
             # Cooldown temizliği
             to_remove = [sym for sym, t in signal_history.items() if (utc_now - t) > timedelta(minutes=COOLDOWN_MINUTES)]
