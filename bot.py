@@ -206,6 +206,7 @@ def get_tradable_symbols():
             if s.endswith('/USDT')
             and exchange.markets[s].get('active', False)
             and s not in IGNORED_COINS
+            and s.isascii()
         ]
         return symbols
     except Exception as e:
@@ -229,38 +230,108 @@ def get_data(symbol, timeframe, limit=200):
 # --- 4. HESAPLAMA & İNDİKATÖR HAZIRLIĞI ---
 def prepare_indicators(df):
     try:
+        # EMA / ATR / RSI
         df['ema50'] = ta.ema(df['close'], length=50)
         df['ema200'] = ta.ema(df['close'], length=200)
         df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
         df['atr_mean'] = df['atr'].rolling(100, min_periods=50).mean()
         df['rsi'] = ta.rsi(df['close'], length=14)
+
+        # vol_ma: Bunu BB'den önce üret (BB hata verse bile vol_ma kalsın)
+        df['vol_ma'] = df['volume'].rolling(20, min_periods=1).mean()
+
+        # Bollinger Bands (robust)
         bb = ta.bbands(df['close'], length=20, std=2)
-        df['upper_band'] = bb['BBU_20_2.0']
-        df['vol_ma'] = df['volume'].rolling(20).mean()
+
+        upper = None
+        if bb is not None and hasattr(bb, "columns"):
+            # 'BBU' içeren kolonları bul (sürüm farklarına dayanıklı)
+            ucols = [c for c in bb.columns if 'BBU' in str(c).upper()]
+            if ucols:
+                upper = bb[ucols[0]]  # ilk eşleşeni al
+
+        # Eğer yine yoksa, en azından kırılmadan devam et
+        if upper is None:
+            # fallback: close üzerinden basit bir üst band yaklaşımı (çok nadir devreye girer)
+            m = df['close'].rolling(20, min_periods=1).mean()
+            s = df['close'].rolling(20, min_periods=1).std(ddof=0)
+            upper = m + 2 * s
+
+        df['upper_band'] = upper
         return df
+
     except Exception as e:
         print(f"⚠️ Indicator Hatası: {e}", flush=True)
         return df
 
-
 def get_macro_regime(symbol):
     try:
         now = datetime.now(timezone.utc)
+
         if symbol in macro_cache:
             regime, ts = macro_cache[symbol]
             if now - ts < MACRO_TTL:
                 return regime, None
 
-        df_1h = get_data(symbol, '1h', limit=100)
-        if df_1h is None:
+        # EMA200 için 100 bar yetmez. 260+ güvenli.
+        df_1h = get_data(symbol, '1h', limit=260)
+        if df_1h is None or len(df_1h) < 220:
+            macro_cache[symbol] = ("NEUTRAL", now)
             return "NEUTRAL", None
 
-        ema50 = ta.ema(df_1h['close'], length=50).iloc[-1]
-        ema200 = ta.ema(df_1h['close'], length=200).iloc[-1]
-        adx = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'])['ADX_14'].iloc[-1]
-        bb = ta.bbands(df_1h['close'], length=20, std=2)
-        bb_width = (bb['BBU_20_2.0'].iloc[-1] - bb['BBL_20_2.0'].iloc[-1]) / bb['BBM_20_2.0'].iloc[-1]
+        ema50_s  = ta.ema(df_1h['close'], length=50)
+        ema200_s = ta.ema(df_1h['close'], length=200)
+        adx_df   = ta.adx(df_1h['high'], df_1h['low'], df_1h['close'], length=14)
+        bb_df    = ta.bbands(df_1h['close'], length=20, std=2)
+
+        # None kontrolü (pandas_ta sürüm/edge-case)
+        if ema50_s is None or ema200_s is None or adx_df is None or bb_df is None:
+            macro_cache[symbol] = ("NEUTRAL", now)
+            return "NEUTRAL", None
+
+        ema50 = ema50_s.iloc[-1]
+        ema200 = ema200_s.iloc[-1]
+
+        # ADX kolonunu robust seç
+        adx_col = None
+        if hasattr(adx_df, "columns"):
+            cands = [c for c in adx_df.columns if str(c).upper().startswith("ADX")]
+            if cands:
+                adx_col = cands[0]
+        if adx_col is None:
+            macro_cache[symbol] = ("NEUTRAL", now)
+            return "NEUTRAL", None
+
+        adx = adx_df[adx_col].iloc[-1]
+
+        # BB kolonlarını robust seç
+        bbu_col = None
+        bbl_col = None
+        bbm_col = None
+        if hasattr(bb_df, "columns"):
+            cols = list(bb_df.columns)
+            for c in cols:
+                uc = str(c).upper()
+                if "BBU" in uc and bbu_col is None: bbu_col = c
+                if "BBL" in uc and bbl_col is None: bbl_col = c
+                if "BBM" in uc and bbm_col is None: bbm_col = c
+
+        if bbu_col is None or bbl_col is None or bbm_col is None:
+            macro_cache[symbol] = ("NEUTRAL", now)
+            return "NEUTRAL", None
+
+        bbu = bb_df[bbu_col].iloc[-1]
+        bbl = bb_df[bbl_col].iloc[-1]
+        bbm = bb_df[bbm_col].iloc[-1]
+
         close = df_1h['close'].iloc[-1]
+
+        # NaN kontrolü
+        if pd.isna(ema50) or pd.isna(ema200) or pd.isna(adx) or pd.isna(bbu) or pd.isna(bbl) or pd.isna(bbm) or bbm == 0:
+            macro_cache[symbol] = ("NEUTRAL", now)
+            return "NEUTRAL", None
+
+        bb_width = (bbu - bbl) / bbm
 
         if bb_width < 0.08:
             regime = "SQUEEZE"
@@ -273,10 +344,10 @@ def get_macro_regime(symbol):
 
         macro_cache[symbol] = (regime, now)
         return regime, df_1h
+
     except Exception as e:
         print(f"⚠️ Macro Regime Hatası ({symbol}): {e}", flush=True)
         return "NEUTRAL", None
-
 
 def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
     try:
