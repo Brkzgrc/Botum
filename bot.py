@@ -546,14 +546,13 @@ def run_bot_engine():
                         reject["atr_pct_low"] += 1
                         continue
 
-                    if not signal_found:
-                        reject["no_signal"] += 1
-                        continue
+                    signal_found = False
                     data = {}
-
+                    
                     if regime == "RANGING" or regime == "NEUTRAL":
                         # --- BOMB COOLDOWN KONTROLÜ ---
                         if symbol in bomb_history and (utc_now - bomb_history[symbol] < BOMB_COOLDOWN):
+                            reject["bomb_cooldown"] += 1
                             continue
 
                         is_bomb, bomb_data = strategy_bomb_candidate(df_15m)
@@ -582,6 +581,10 @@ def run_bot_engine():
                         if is_brk:
                             signal_found = True
                             data = brk_data
+
+                    if not signal_found:
+                        reject["no_signal"] += 1
+                        continue
 
                     if signal_found:
                         bot_status["signal_count"] += 1
@@ -627,13 +630,16 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                             )
                         
                             if r.status_code != 200:
+                                reject["telegram_fail"] += 1
                                 print(f"⚠️ Telegram non-200: {r.status_code} | {r.text[:300]}", flush=True)
                             else:
+                                reject["sent"] += 1
                                 print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
                         
                         except Exception as e:
+                            reject["telegram_fail"] += 1
                             print(f"⚠️ Telegram Exception: {e}", flush=True)
-
+                        
                 except Exception as e:
                     print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
