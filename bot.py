@@ -21,6 +21,7 @@ CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 # ATR filtresi (optimize)
 MIN_ATR_PCT = 0.0018
 COOLDOWN_MINUTES = 120
+PULLBACK_COOLDOWN_MIN = 360  # 6 saat
 
 IGNORED_COINS = [
     'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
@@ -50,7 +51,7 @@ exchange = ccxt.binance({
 })
 
 app = Flask(__name__)
-signal_history = {}
+signal_history = {}  # key: (symbol, strategy_type)  value: datetime(utc)
 
 # --- BOMB CANDIDATE CACHE ---
 bomb_history = {}
@@ -495,6 +496,12 @@ def strategy_pullback(df_15m):
     try:
         last = df_15m.iloc[-1]
         ema50 = last['ema50']
+        ema50_prev = df_15m['ema50'].iloc[-6]
+        if pd.isna(ema50_prev):
+            return False, None        
+        # EMA50 yukarı eğimli olmalı
+        if ema50 <= ema50_prev:
+            return False, None
         ema200 = last['ema200']
         rsi = last['rsi']
         if pd.isna(ema50) or pd.isna(ema200):
@@ -502,11 +509,22 @@ def strategy_pullback(df_15m):
         if not (ema50 > ema200):
             return False, None
 
-        touched_ema = last['low'] <= ema50 * 1.002
-        bounced = last['close'] > last['open'] and last['close'] > ema50
-        not_overbought = rsi < 65
-
-        if touched_ema and bounced and not_overbought:
+        # 1) EMA'ya gerçekten dokunma (daha sıkı)
+        touched_ema = last['low'] <= ema50 * 1.001
+        
+        # 2) Bounce onayı: sadece yeşil mum yetmez, bir önceki mum EMA altına sarkmış olmalı
+        prev = df_15m.iloc[-2]
+        prev_sweep = prev['low'] < ema50 * 0.999
+        
+        # 3) Kapanış EMA üstünde + güçlü kapanış (kapanış, mum aralığının üst kısmında)
+        rng = (last['high'] - last['low'])
+        close_strength = True if rng == 0 else ((last['close'] - last['low']) / rng) > 0.65
+        bounced = (last['close'] > ema50) and (last['close'] > last['open']) and close_strength
+        
+        # 4) RSI daha seçici
+        not_overbought = rsi < 60
+        
+        if touched_ema and prev_sweep and bounced and not_overbought:
             return True, {
                 'type': '🚀 EMA PULLBACK',
                 'desc': 'Trende Geri Çekilme (Güvenli Giriş)',
@@ -667,13 +685,19 @@ def run_bot_engine():
             gc.collect()
 
             symbols = get_tradable_symbols()
-
             reject = defaultdict(int)
 
-            # Cooldown temizliği
-            to_remove = [sym for sym, t in signal_history.items() if (utc_now - t) > timedelta(minutes=COOLDOWN_MINUTES)]
-            for sym in to_remove:
-                del signal_history[sym]
+            # --- STRATEJİ BAZLI COOLDOWN TEMİZLİĞİ (doğru olan) ---
+            # signal_history artık key=(symbol, strategy_type) tutuyor.
+            # Bu yüzden tek COOLDOWN_MINUTES ile temizlik yanlış olur.
+            # En uzun cooldown'a göre temizliyoruz (pullback 6 saat ise 6 saat üstünü sil).
+            max_cooldown_min = max(COOLDOWN_MINUTES, PULLBACK_COOLDOWN_MIN)
+            to_remove = [
+                k for k, t in signal_history.items()
+                if (utc_now - t) > timedelta(minutes=max_cooldown_min)
+            ]
+            for k in to_remove:
+                del signal_history[k]
 
             count = 0
             total = len(symbols)
@@ -689,15 +713,10 @@ def run_bot_engine():
                     print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
 
                 try:
-                    if symbol in signal_history:
-                        reject["cooldown"] += 1
-                        continue
-
+                    # --- BTC makro bağlam (hard filter değil, sadece etiket/risk modu) ---
                     macro_regime, _df_btc = get_macro_regime()
-                    
-                    # Hard filter YOK. Sadece etiket/risk modu.
-                    # İstersen burada yumuşak şart koyabiliriz: RISK_OFF iken sadece daha güçlü hacim isteyen stratejiler çalışsın.
 
+                    # --- Veri ---
                     df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
                         reject["no_15m"] += 1
@@ -716,16 +735,16 @@ def run_bot_engine():
                         reject["atr_pct_low"] += 1
                         continue
 
+                    # --- Strateji seçimi ---
                     signal_found = False
                     data = {}
-                    
-                    # Coin rejimine göre strateji seç
+
                     if coin_regime in ["RANGING", "NEUTRAL"]:
-                        # BOMB ve SFP daha çok yatayda anlamlı
+                        # BOMB cooldown
                         if symbol in bomb_history and (utc_now - bomb_history[symbol] < BOMB_COOLDOWN):
                             reject["bomb_cooldown"] += 1
                             continue
-                    
+
                         is_bomb, bomb_data = strategy_bomb_candidate(df_15m)
                         if is_bomb:
                             signal_found = True
@@ -735,7 +754,7 @@ def run_bot_engine():
                             if is_sfp:
                                 signal_found = True
                                 data = sfp_data
-                    
+
                     elif coin_regime == "UPTREND":
                         is_pb, pb_data = strategy_pullback(df_15m)
                         if is_pb:
@@ -746,10 +765,9 @@ def run_bot_engine():
                             if is_re:
                                 signal_found = True
                                 data = re_data
-                    
+
                     else:
-                        # DOWNTREND coin: istersen sadece SFP gibi dip süpürme kovalasın, ya da tamamen geç.
-                        # Burada tamamen kapatmıyoruz; sadece "sfp" deneyebilir.
+                        # DOWNTREND coin: sadece SFP dene (istersen tamamen kapatılabilir)
                         is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
                         if is_sfp:
                             signal_found = True
@@ -762,27 +780,42 @@ def run_bot_engine():
                         reject["no_signal"] += 1
                         continue
 
-                    if signal_found:
-                        bot_status["signal_count"] += 1
-                        signal_history[symbol] = utc_now
+                    # --- STRATEJİ BAZLI COOLDOWN (SÜRELİ) ---
+                    strategy_key = (symbol, data.get('type', 'UNKNOWN'))
 
-                        # --- BOMB SINYALİ İÇİN 24s COOLDOWN KAYDI ---
-                        if data.get('coin_type') == 'BOMB':
-                            bomb_history[symbol] = utc_now
+                    cooldown_min = COOLDOWN_MINUTES
+                    if "PULLBACK" in strategy_key[1].upper():
+                        cooldown_min = PULLBACK_COOLDOWN_MIN
 
-                        entry_price = df_15m['close'].iloc[-1]
-                        coin_type_info = data.get('coin_type', 'NORMAL')
-                        tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
-                        stop_price = data['stop']
-                        risk_pct = ((entry_price - stop_price) / entry_price) * 100
+                    if strategy_key in signal_history and (utc_now - signal_history[strategy_key]) < timedelta(minutes=cooldown_min):
+                        reject["cooldown"] += 1
+                        continue
 
-                        if tp_pct < risk_pct:
-                            reject["risk_gt_target"] += 1
-                            print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
-                            continue
+                    # cooldown kaydı
+                    signal_history[strategy_key] = utc_now
 
-                        signal_time_str = tr_time.strftime('%H:%M')
-                        msg = f"""
+                    # Sayaç cooldown sonrası artsın
+                    bot_status["signal_count"] += 1
+
+                    # --- BOMB için 24s cooldown kaydı ---
+                    if data.get('coin_type') == 'BOMB':
+                        bomb_history[symbol] = utc_now
+
+                    # --- Risk/Target hesabı ---
+                    entry_price = df_15m['close'].iloc[-1]
+                    coin_type_info = data.get('coin_type', 'NORMAL')
+                    tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
+                    stop_price = data['stop']
+                    risk_pct = ((entry_price - stop_price) / entry_price) * 100
+
+                    if tp_pct < risk_pct:
+                        reject["risk_gt_target"] += 1
+                        print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
+                        continue
+
+                    # --- Telegram ---
+                    signal_time_str = tr_time.strftime('%H:%M')
+                    msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b> | 🕒 {signal_time_str}
@@ -798,24 +831,24 @@ def run_bot_engine():
 🏆 Hedef: <code>{tp_price:.4f}</code>
 Potansiyel: <b>%{tp_pct:.2f}</b>
 """
-                        try:
-                            r = requests.post(
-                                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                                json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"},
-                                timeout=10
-                            )
-                        
-                            if r.status_code != 200:
-                                reject["telegram_fail"] += 1
-                                print(f"⚠️ Telegram non-200: {r.status_code} | {r.text[:300]}", flush=True)
-                            else:
-                                reject["sent"] += 1
-                                print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
-                        
-                        except Exception as e:
+                    try:
+                        r = requests.post(
+                            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                            json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"},
+                            timeout=10
+                        )
+
+                        if r.status_code != 200:
                             reject["telegram_fail"] += 1
-                            print(f"⚠️ Telegram Exception: {e}", flush=True)
-                        
+                            print(f"⚠️ Telegram non-200: {r.status_code} | {r.text[:300]}", flush=True)
+                        else:
+                            reject["sent"] += 1
+                            print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
+
+                    except Exception as e:
+                        reject["telegram_fail"] += 1
+                        print(f"⚠️ Telegram Exception: {e}", flush=True)
+
                 except Exception as e:
                     print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
@@ -828,7 +861,6 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
         except Exception as e:
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
             time.sleep(60)
-
 
 # --- 7. BAŞLATICI ---
 if __name__ == "__main__":
