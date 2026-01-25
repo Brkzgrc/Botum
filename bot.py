@@ -525,8 +525,10 @@ def strategy_pullback(df_15m):
         
         # 4) RSI daha seçici
         not_overbought = rsi < 60
-        vol_ok = last['volume'] > (last['vol_ma'] * 1.2)
-
+        
+        # Hacim filtresi (spam keser)
+        vol_ok = (not pd.isna(last['vol_ma'])) and (last['volume'] > (last['vol_ma'] * 1.2))
+        
         if touched_ema and prev_sweep and bounced and not_overbought and vol_ok:
             return True, {
                 'type': '🚀 EMA PULLBACK',
