@@ -891,7 +891,31 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                     print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
 
-            print(f"📊 REJECT SUMMARY: {reject}", flush=True)
+            print("\n📊 TARAMA SONUÇ ÖZETİ", flush=True)
+            print("━━━━━━━━━━━━━━━━━━━━", flush=True)
+            
+            if reject.get("sent", 0):
+                print(f"✅ Gönderilen Sinyal                  : {reject['sent']}", flush=True)
+            
+            if reject.get("atr_pct_low", 0):
+                print(f"⚫ Düşük Volatilite (ATR yetersiz)     : {reject['atr_pct_low']}", flush=True)
+            
+            if reject.get("coin_downtrend_no_signal", 0):
+                print(f"🔻 Düşüş Trendinde + Sinyal Yok        : {reject['coin_downtrend_no_signal']}", flush=True)
+            
+            if reject.get("no_signal", 0):
+                print(f"⚪ Kurulum Yok (Setup oluşmadı)        : {reject['no_signal']}", flush=True)
+            
+            if reject.get("cooldown", 0):
+                print(f"⏳ Cooldown Engeli (Spam koruması)     : {reject['cooldown']}", flush=True)
+            
+            if reject.get("risk_gt_target", 0):
+                print(f"⚠️ Risk > Hedef (RR uygun değil)       : {reject['risk_gt_target']}", flush=True)
+            
+            if reject.get("telegram_fail", 0):
+                print(f"📡 Telegram Gönderim Hatası            : {reject['telegram_fail']}", flush=True)
+            
+            print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
             beat(force_print=True)
             time.sleep(300)
