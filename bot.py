@@ -50,6 +50,36 @@ exchange = ccxt.binance({
     'timeout': 15000
 })
 
+def fmt_price(symbol: str, price) -> str:
+    """Borsanın fiyat hassasiyetine göre string döndürür."""
+    try:
+        if price is None:
+            return "N/A"
+        return exchange.price_to_precision(symbol, float(price))
+    except Exception:
+        try:
+            p = float(price)
+        except Exception:
+            return "N/A"
+
+        # fallback: küçük fiyatlarda daha fazla ondalık
+        if p == 0:
+            return "0"
+        if p < 0.01:
+            return f"{p:.8f}"
+        if p < 1:
+            return f"{p:.6f}"
+        return f"{p:.4f}"
+
+
+def get_last_price(symbol: str):
+    """Güncel (last) fiyatı çeker."""
+    try:
+        t = exchange.fetch_ticker(symbol)
+        return t.get("last", None)
+    except Exception:
+        return None
+
 app = Flask(__name__)
 signal_history = {}  # key: (symbol, strategy_type)  value: datetime(utc)
 
@@ -82,7 +112,6 @@ ALIVE_ALIGNMENT = "TR_4H_03"
 
 _last_update_ts = 0.0
 _last_print_ts = 0.0
-
 
 def _seconds_until_next_aligned_ping(now_utc: datetime) -> int:
     """
@@ -814,12 +843,20 @@ def run_bot_engine():
                     tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
                     stop_price = data['stop']
                     risk_pct = ((entry_price - stop_price) / entry_price) * 100
-
+                    
                     if tp_pct < risk_pct:
                         reject["risk_gt_target"] += 1
                         print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
                         continue
-
+                    
+                    # --- Güncel fiyat + Precision format ---
+                    last_price = get_last_price(symbol)
+                    
+                    entry_s = fmt_price(symbol, entry_price)
+                    stop_s  = fmt_price(symbol, stop_price)
+                    tp_s    = fmt_price(symbol, tp_price)
+                    last_s  = fmt_price(symbol, last_price)
+                    
                     # --- Telegram ---
                     signal_time_str = tr_time.strftime('%H:%M')
                     msg = f"""
@@ -830,12 +867,14 @@ def run_bot_engine():
 🧠 <b>BAĞLAM:</b> BTC={macro_regime}
 📝 <b>NEDEN:</b> {data['desc']}
 
-💵 <b>GİRİŞ :</b> <code>{entry_price:.4f}</code>
-🛡️ <b>STOP  :</b> <code>{stop_price:.4f}</code> (Risk: %{risk_pct:.2f})
+📌 <b>GÜNCEL:</b> <code>{last_s}</code>
+
+💵 <b>GİRİŞ :</b> <code>{entry_s}</code>
+🛡️ <b>STOP  :</b> <code>{stop_s}</code> (Risk: %{risk_pct:.2f})
 
 🎯 <b>HEDEF</b>
 ━━━━━━━━━━━━━━━━━━━━
-🏆 Hedef: <code>{tp_price:.4f}</code>
+🏆 Hedef: <code>{tp_s}</code>
 Potansiyel: <b>%{tp_pct:.2f}</b>
 """
                     try:
