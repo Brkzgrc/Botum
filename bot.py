@@ -721,10 +721,7 @@ def run_bot_engine():
             symbols = get_tradable_symbols()
             reject = defaultdict(int)
 
-            # --- STRATEJİ BAZLI COOLDOWN TEMİZLİĞİ (doğru olan) ---
-            # signal_history artık key=(symbol, strategy_type) tutuyor.
-            # Bu yüzden tek COOLDOWN_MINUTES ile temizlik yanlış olur.
-            # En uzun cooldown'a göre temizliyoruz (pullback 6 saat ise 6 saat üstünü sil).
+            # --- STRATEJİ BAZLI COOLDOWN TEMİZLİĞİ ---
             max_cooldown_min = max(COOLDOWN_MINUTES, PULLBACK_COOLDOWN_MIN)
             to_remove = [
                 k for k, t in signal_history.items()
@@ -735,6 +732,9 @@ def run_bot_engine():
 
             count = 0
             total = len(symbols)
+
+            # Makro rejimi tarama başına 1 kez al (cache var ama gereksizi azaltır)
+            macro_regime, _df_btc = get_macro_regime()
 
             for symbol in symbols:
                 count += 1
@@ -749,9 +749,6 @@ def run_bot_engine():
                     print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
 
                 try:
-                    # --- BTC makro bağlam (hard filter değil, sadece etiket/risk modu) ---
-                    macro_regime, _df_btc = get_macro_regime()
-
                     # --- Veri ---
                     df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
@@ -776,7 +773,6 @@ def run_bot_engine():
                     data = {}
 
                     if coin_regime in ["RANGING", "NEUTRAL"]:
-                        # BOMB cooldown
                         if symbol in bomb_history and (utc_now - bomb_history[symbol] < BOMB_COOLDOWN):
                             reject["bomb_cooldown"] += 1
                             continue
@@ -803,7 +799,6 @@ def run_bot_engine():
                                 data = re_data
 
                     else:
-                        # DOWNTREND coin: sadece SFP dene (istersen tamamen kapatılabilir)
                         is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
                         if is_sfp:
                             signal_found = True
@@ -827,13 +822,12 @@ def run_bot_engine():
                         reject["cooldown"] += 1
                         continue
 
-                    # cooldown kaydı
                     signal_history[strategy_key] = utc_now
 
                     # Sayaç cooldown sonrası artsın
                     bot_status["signal_count"] += 1
 
-                    # --- BOMB için 24s cooldown kaydı ---
+                    # --- BOMB için 24 saat cooldown kaydı ---
                     if data.get('coin_type') == 'BOMB':
                         bomb_history[symbol] = utc_now
 
@@ -843,31 +837,29 @@ def run_bot_engine():
                     tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
                     stop_price = data['stop']
                     risk_pct = ((entry_price - stop_price) / entry_price) * 100
-                    
+
                     if tp_pct < risk_pct:
                         reject["risk_gt_target"] += 1
                         print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
                         continue
-                    
+
                     # --- Güncel fiyat + Precision format ---
                     last_price = get_last_price(symbol)
-                    
+
                     entry_s = fmt_price(symbol, entry_price)
                     stop_s  = fmt_price(symbol, stop_price)
                     tp_s    = fmt_price(symbol, tp_price)
                     last_s  = fmt_price(symbol, last_price)
-                    
+
                     # --- Telegram ---
                     signal_time_str = tr_time.strftime('%H:%M')
                     msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
-<b>#{symbol}</b> | 🕒 {signal_time_str}
+<b>#{symbol}</b> | <b>Fiyat:</b> <code>{last_s}</code> | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
 🧠 <b>BAĞLAM:</b> BTC={macro_regime}
 📝 <b>NEDEN:</b> {data['desc']}
-
-📌 <b>GÜNCEL:</b> <code>{last_s}</code>
 
 💵 <b>GİRİŞ :</b> <code>{entry_s}</code>
 🛡️ <b>STOP  :</b> <code>{stop_s}</code> (Risk: %{risk_pct:.2f})
