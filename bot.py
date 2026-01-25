@@ -499,12 +499,14 @@ def strategy_pullback(df_15m):
         ema50_prev = df_15m['ema50'].iloc[-6]
         if pd.isna(ema50_prev):
             return False, None        
+        if pd.isna(ema50):
+            return False, None
         # EMA50 yukarı eğimli olmalı
         if ema50 <= ema50_prev:
             return False, None
         ema200 = last['ema200']
         rsi = last['rsi']
-        if pd.isna(ema50) or pd.isna(ema200):
+        if pd.isna(ema200):
             return False, None
         if not (ema50 > ema200):
             return False, None
@@ -704,6 +706,8 @@ def run_bot_engine():
 
             for symbol in symbols:
                 count += 1
+                utc_now = datetime.now(timezone.utc)
+                tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
 
                 heartbeat["last_symbol"] = symbol
                 heartbeat["progress"] = f"{count}/{total}"
