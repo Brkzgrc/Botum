@@ -918,7 +918,14 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
             print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
             beat(force_print=True)
-            time.sleep(300)
+
+            # 5 dakika bekleniyor ama watchdog tetiklenmesin diye heartbeat'li uyku
+            bot_status["status"] = "Beklemede (5dk)"
+            sleep_total = 300
+            step = 10  # 10 saniyede bir beat
+            for _ in range(sleep_total // step):
+                time.sleep(step)
+                beat()  # heartbeat güncelle
 
         except Exception as e:
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
