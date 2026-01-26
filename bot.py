@@ -720,6 +720,8 @@ def run_bot_engine():
 
             symbols = get_tradable_symbols()
             reject = defaultdict(int)
+            # --- DEBUG: strateji/sinyal istatistikleri (mantığı değiştirmez) ---
+            stats = defaultdict(int)
 
             # --- STRATEJİ BAZLI COOLDOWN TEMİZLİĞİ ---
             max_cooldown_min = max(COOLDOWN_MINUTES, PULLBACK_COOLDOWN_MIN)
@@ -807,6 +809,12 @@ def run_bot_engine():
                             reject["coin_downtrend_no_signal"] += 1
                             continue
 
+                    # --- DEBUG: hangi sinyal tipi ne kadar üretiliyor? ---
+                    sig_type = data.get("type", "UNKNOWN")
+                    stats[f"signal::{sig_type}"] += 1
+                    stats[f"regime::{coin_regime}"] += 1
+                    stats["signal_total"] += 1
+
                     if not signal_found:
                         reject["no_signal"] += 1
                         continue
@@ -820,6 +828,7 @@ def run_bot_engine():
 
                     if strategy_key in signal_history and (utc_now - signal_history[strategy_key]) < timedelta(minutes=cooldown_min):
                         reject["cooldown"] += 1
+                        stats[f"cooldown::{strategy_key[1]}"] += 1
                         continue
 
                     signal_history[strategy_key] = utc_now
@@ -840,6 +849,7 @@ def run_bot_engine():
 
                     if tp_pct < risk_pct:
                         reject["risk_gt_target"] += 1
+                        stats[f"reject_risk_gt_target::{data.get('type','UNKNOWN')}"] += 1
                         print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
                         continue
 
@@ -890,6 +900,26 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                 except Exception as e:
                     print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
+
+            # --- DEBUG: Strateji dağılımı (ilk 10) ---
+            if stats:
+                print("\n🧪 DEBUG ÖZET (SİNYAL DAĞILIMI)", flush=True)
+                print("━━━━━━━━━━━━━━━━━━━━", flush=True)
+                # Sinyal tipleri
+                sig_items = [(k, v) for k, v in stats.items() if k.startswith("signal::")]
+                sig_items.sort(key=lambda x: x[1], reverse=True)
+                for k, v in sig_items[:10]:
+                    print(f"• {k.replace('signal::',''):<30} : {v}", flush=True)
+            
+                # Rejim
+                reg_items = [(k, v) for k, v in stats.items() if k.startswith("regime::")]
+                reg_items.sort(key=lambda x: x[1], reverse=True)
+                if reg_items:
+                    print("—", flush=True)
+                    for k, v in reg_items:
+                        print(f"• {k.replace('regime::',''):<30} : {v}", flush=True)
+            
+                print("━━━━━━━━━━━━━━━━━━━━", flush=True)
 
             print("\n📊 TARAMA SONUÇ ÖZETİ", flush=True)
             print("━━━━━━━━━━━━━━━━━━━━", flush=True)
