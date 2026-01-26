@@ -22,6 +22,7 @@ CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MIN_ATR_PCT = 0.0018
 COOLDOWN_MINUTES = 120
 PULLBACK_COOLDOWN_MIN = 360  # 6 saat
+REACCU_COOLDOWN_MIN = 480  # 8 saat
 
 IGNORED_COINS = [
     'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
@@ -574,42 +575,71 @@ def strategy_pullback(df_15m):
 def strategy_reaccumulation(df_15m):
     try:
         last = df_15m.iloc[-1]
-        ema50 = last['ema50']
-        atr = last['atr']
-        atr_mean = last['atr_mean']
-        if last['close'] < ema50:
+        ema50 = last.get('ema50', np.nan)
+        ema200 = last.get('ema200', np.nan)
+        atr = last.get('atr', np.nan)
+        atr_mean = last.get('atr_mean', np.nan)
+        rsi = last.get('rsi', np.nan)
+
+        if pd.isna(ema50) or pd.isna(ema200) or pd.isna(atr) or pd.isna(atr_mean) or atr_mean == 0:
             return False, None
 
-        lookback = 12
+        # Trend filtresi: daha net
+        if last['close'] < ema50 or ema50 <= ema200:
+            return False, None
+
+        # RSI: re-accu için "çok şişmiş" olmasın
+        if pd.isna(rsi) or not (45 <= rsi <= 70):
+            return False, None
+
+        # Daha uzun bayrak / sıkışma penceresi
+        lookback = 16
         recent_window = df_15m.iloc[-lookback:-1]
+
+        # Gerçek sıkışma: aralık ATR'ye göre küçük olmalı
         range_height = recent_window['high'].max() - recent_window['low'].min()
-        if range_height > (4.0 * atr):
+        if range_height > (2.8 * atr):
             return False, None
 
-        if pd.isna(atr_mean) or atr_mean == 0:
+        # Volatilite gerçekten düşmüş olmalı (asıl spam kesen filtre)
+        compression = atr / atr_mean
+        if compression > 0.80:
             return False, None
 
-        if (atr / atr_mean) > 0.95:
+        # Breakout seviyesi: daha anlamlı marj
+        recent_high = recent_window['high'].max()
+        breakout_level = recent_high + (0.25 * atr)
+
+        # "Tek seferlik" kırılım: bir önceki kapanış kırmamış olsun
+        prev_close = df_15m['close'].iloc[-2]
+        if prev_close > (recent_high + 0.05 * atr):
             return False, None
 
-        breakout_level = recent_window['high'].max() + (0.1 * atr)
         breakout = last['close'] > breakout_level
 
+        # Kırılım mumu güçlü kapatsın (kapanış, mumun üst bölgesinde)
+        rng = (last['high'] - last['low'])
+        close_strength = True if rng == 0 else ((last['close'] - last['low']) / rng) > 0.72
         body = abs(last['close'] - last['open'])
-        upper_wick = last['high'] - last['close']
-        strong_candle = (last['close'] > last['open']) and (body > upper_wick)
+        body_ratio = True if rng == 0 else (body / rng) > 0.55
+        strong_candle = (last['close'] > last['open']) and close_strength and body_ratio
 
-        vol_ok = last['volume'] > last['vol_ma']
+        # Hacim: patlama arıyoruz (vol_ma üstü yetmiyor)
+        vol_ma = last.get('vol_ma', np.nan)
+        if pd.isna(vol_ma) or vol_ma == 0:
+            return False, None
+        vol_ok = last['volume'] > (vol_ma * 1.6)
 
         if breakout and strong_candle and vol_ok:
             mid_point = (recent_window['high'].max() + recent_window['low'].min()) / 2
-            tight_stop = mid_point - (0.5 * atr)
+            tight_stop = mid_point - (0.6 * atr)
             return True, {
                 'type': '🚩 RE-ACCUMULATION (PRO)',
-                'desc': f'Trend İçi Bayrak Kırılımı. Sıkışma Oranı: {(atr/atr_mean):.2f}',
+                'desc': f'Trend içi bayrak kırılımı. Sıkışma: {compression:.2f}',
                 'stop': tight_stop,
                 'coin_type': 'TREND'
             }
+
         return False, None
     except Exception as e:
         print(f"⚠️ Re-Accumulation Hatası: {e}", flush=True)
@@ -720,11 +750,10 @@ def run_bot_engine():
 
             symbols = get_tradable_symbols()
             reject = defaultdict(int)
-            # --- DEBUG: strateji/sinyal istatistikleri (mantığı değiştirmez) ---
-            stats = defaultdict(int)
+            sent_by_type = defaultdict(int)
 
             # --- STRATEJİ BAZLI COOLDOWN TEMİZLİĞİ ---
-            max_cooldown_min = max(COOLDOWN_MINUTES, PULLBACK_COOLDOWN_MIN)
+            max_cooldown_min = max(COOLDOWN_MINUTES, PULLBACK_COOLDOWN_MIN, REACCU_COOLDOWN_MIN)
             to_remove = [
                 k for k, t in signal_history.items()
                 if (utc_now - t) > timedelta(minutes=max_cooldown_min)
@@ -809,12 +838,6 @@ def run_bot_engine():
                             reject["coin_downtrend_no_signal"] += 1
                             continue
 
-                    # --- DEBUG: hangi sinyal tipi ne kadar üretiliyor? ---
-                    sig_type = data.get("type", "UNKNOWN")
-                    stats[f"signal::{sig_type}"] += 1
-                    stats[f"regime::{coin_regime}"] += 1
-                    stats["signal_total"] += 1
-
                     if not signal_found:
                         reject["no_signal"] += 1
                         continue
@@ -823,12 +846,15 @@ def run_bot_engine():
                     strategy_key = (symbol, data.get('type', 'UNKNOWN'))
 
                     cooldown_min = COOLDOWN_MINUTES
-                    if "PULLBACK" in strategy_key[1].upper():
+                    stype = strategy_key[1].upper()
+
+                    if "PULLBACK" in stype:
                         cooldown_min = PULLBACK_COOLDOWN_MIN
+                    elif "RE-ACCUMULATION" in stype:
+                        cooldown_min = REACCU_COOLDOWN_MIN
 
                     if strategy_key in signal_history and (utc_now - signal_history[strategy_key]) < timedelta(minutes=cooldown_min):
                         reject["cooldown"] += 1
-                        stats[f"cooldown::{strategy_key[1]}"] += 1
                         continue
 
                     signal_history[strategy_key] = utc_now
@@ -849,7 +875,6 @@ def run_bot_engine():
 
                     if tp_pct < risk_pct:
                         reject["risk_gt_target"] += 1
-                        stats[f"reject_risk_gt_target::{data.get('type','UNKNOWN')}"] += 1
                         print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
                         continue
 
@@ -892,6 +917,7 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                         else:
                             reject["sent"] += 1
                             print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
+                            sent_by_type[data['type']] += 1
 
                     except Exception as e:
                         reject["telegram_fail"] += 1
@@ -900,26 +926,6 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
                 except Exception as e:
                     print(f"⚠️ Hata ({symbol}): {e}", flush=True)
                     continue
-
-            # --- DEBUG: Strateji dağılımı (ilk 10) ---
-            if stats:
-                print("\n🧪 DEBUG ÖZET (SİNYAL DAĞILIMI)", flush=True)
-                print("━━━━━━━━━━━━━━━━━━━━", flush=True)
-                # Sinyal tipleri
-                sig_items = [(k, v) for k, v in stats.items() if k.startswith("signal::")]
-                sig_items.sort(key=lambda x: x[1], reverse=True)
-                for k, v in sig_items[:10]:
-                    print(f"• {k.replace('signal::',''):<30} : {v}", flush=True)
-            
-                # Rejim
-                reg_items = [(k, v) for k, v in stats.items() if k.startswith("regime::")]
-                reg_items.sort(key=lambda x: x[1], reverse=True)
-                if reg_items:
-                    print("—", flush=True)
-                    for k, v in reg_items:
-                        print(f"• {k.replace('regime::',''):<30} : {v}", flush=True)
-            
-                print("━━━━━━━━━━━━━━━━━━━━", flush=True)
 
             print("\n📊 TARAMA SONUÇ ÖZETİ", flush=True)
             print("━━━━━━━━━━━━━━━━━━━━", flush=True)
@@ -945,6 +951,11 @@ Potansiyel: <b>%{tp_pct:.2f}</b>
             if reject.get("telegram_fail", 0):
                 print(f"📡 Telegram Gönderim Hatası            : {reject['telegram_fail']}", flush=True)
             
+            if sent_by_type:
+                print("📌 Tür Bazlı Gönderim:", flush=True)
+                for k, v in sorted(sent_by_type.items(), key=lambda x: x[1], reverse=True)[:10]:
+                    print(f"   - {k}: {v}", flush=True)
+
             print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
             beat(force_print=True)
