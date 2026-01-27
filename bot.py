@@ -186,20 +186,29 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             if not pd.isna(rsi) and not pd.isna(pivot_rsi):
                 is_gold = rsi >= (pivot_rsi - 3)
 
-            req_lines.append(f"{_yn(swept)} Dip Süpürme: <code>low &lt; pivot_low - {sweep_mult:.2f}*ATR</code>")
-            req_lines.append(f"• low=<code>{fmt_price(symbol, low)}</code> | sınır=<code>{fmt_price(symbol, sweep_limit)}</code>")
+            # --- Daha anlaşılır Türkçe açıklamalar (formül değil, anlam) ---
+            sweep_txt = f"ATR'nin yaklaşık %{int(sweep_mult*100)}'i kadar aşağı sarkma"
+            reclaim_txt = f"ATR'nin yaklaşık %{int(reclaim_mult*100)}'i kadar geri alma"
+            wick_txt = f"Alt fitil, gövdenin {wick_mult:.1f} katından büyük"
+            vol_txt = f"Hacim, ortalamanın {vol_mult:.1f} katından büyük"
 
-            req_lines.append(f"{_yn(reclaimed)} Geri Alma: <code>close &gt; pivot_low + {reclaim_mult:.2f}*ATR</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | bölge=<code>{fmt_price(symbol, dip_zone)}</code>")
+            req_lines.append(f"{_yn(swept)} Dip süpürme görüldü ({sweep_txt})")
+            req_lines.append(
+                f"• En düşük=<code>{fmt_price(symbol, low)}</code> | Eşik=<code>{fmt_price(symbol, sweep_limit)}</code> | Referans dip=<code>{fmt_price(symbol, pivot_low)}</code>"
+            )
 
-            req_lines.append(f"{_yn(strong_wick)} Güçlü Fitil: <code>alt_fitil &gt; gövde*{wick_mult:.1f}</code>")
-            req_lines.append(f"• alt_fitil=<code>{fmt_price(symbol, lower_wick)}</code> | gövde=<code>{fmt_price(symbol, body)}</code>")
+            req_lines.append(f"{_yn(reclaimed)} Fiyat hızla geri topladı ({reclaim_txt})")
+            req_lines.append(
+                f"• Kapanış=<code>{fmt_price(symbol, close)}</code> | Geri alma eşiği=<code>{fmt_price(symbol, dip_zone)}</code>"
+            )
 
-            req_lines.append(f"{_yn(vol_ok)} Hacim Onayı: <code>hacim &gt; ort_hacim*{vol_mult:.1f}</code>")
-            req_lines.append(f"• Hacim Gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            req_lines.append(f"{_yn(strong_wick)} Güçlü alt fitil var ({wick_txt})")
+            req_lines.append(
+                f"• Alt fitil=<code>{fmt_price(symbol, lower_wick)}</code> | Gövde=<code>{fmt_price(symbol, body)}</code>"
+            )
 
-            note_lines.append(f"• Sinyal Sınıfı: <b>{'ALTIN (GOLD)' if is_gold else 'GÜMÜŞ (SILVER)'}</b>")
-            note_lines.append(f"• Volatilite Etiketi: <b>{coin_tag}</b>")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var ({vol_txt})")
+            req_lines.append(f"• Hacim gücü=<code>{_fmt_x(vol_strength,2)}</code>")
 
         # ---------------- PULLBACK ----------------
         elif "PULLBACK" in stype:
