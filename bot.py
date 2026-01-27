@@ -259,7 +259,7 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             is_gold = False
             if not pd.isna(rsi) and not pd.isna(pivot_rsi):
                 is_gold = rsi >= (pivot_rsi - 3)
-            note_lines.append(f"• Sinyal kalite notu: {'GOLD'e yakın' if is_gold else 'Standart'}")
+            note_lines.append(f"• Sinyal kalite notu: {('GOLD\'e yakın' if is_gold else 'Standart')}")
 
         # ---------------- PULLBACK ----------------
         elif "PULLBACK" in stype:
