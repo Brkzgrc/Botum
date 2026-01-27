@@ -777,55 +777,134 @@ def get_macro_regime(_symbol_unused=None):
         print(f"⚠️ Macro Regime Hatası (BTC): {e}", flush=True)
         return "NEUTRAL", None
 
-def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
+def _extract_pivot_prices(df: pd.DataFrame, lookback=140, left=3, right=3):
     """
-    Amaç: Hayali/korkak TP yerine 'en yakın anlamlı direnç' seçmek.
-    - Pivot tepe (local max) adaylarını çıkarır.
-    - Entry üstündeki EN YAKIN pivot tepeden TP seçer.
-    - Eğer hiç yoksa: entry + 2.2*ATR (makul)
+    Basit swing tepe/dip yakalar ve pivot fiyatları döndürür.
+    Not: Performans için sadece sinyal çıkınca çağıracağız.
     """
     try:
-        if df_15m is None or len(df_15m) < 80:
-            return entry_price * 1.02, 2.0
+        n = len(df)
+        if n < (left + right + 10):
+            return []
 
-        last_atr = float(df_15m["atr"].iloc[-1]) if "atr" in df_15m.columns else np.nan
-        lookback = min(220, len(df_15m) - 2)
+        start = max(0, n - lookback)
+        highs = df["high"].values
+        lows  = df["low"].values
 
-        highs = df_15m["high"].iloc[-lookback:-1].copy()
-
-        # Pivot tepe: sağ/sol 2 mumdan yüksek
         pivots = []
-        h = highs.values
-        idxs = highs.index.to_list()
+        end = n - right - 1  # son mumları bozmayalım
 
-        for i in range(2, len(h) - 2):
-            if h[i] > h[i-1] and h[i] > h[i-2] and h[i] > h[i+1] and h[i] > h[i+2]:
-                pivots.append(h[i])
+        for i in range(start + left, end):
+            h = highs[i]
+            l = lows[i]
+            if np.isnan(h) or np.isnan(l):
+                continue
 
-        # aday dirençler: entry üstünde olanlar
-        candidates = sorted([p for p in pivots if p > entry_price * 1.002])
+            # Pivot High
+            if h == np.max(highs[i-left:i+right+1]):
+                pivots.append(float(h))
 
-        if candidates:
-            # en yakın direnç
-            tp = candidates[0]
+            # Pivot Low
+            if l == np.min(lows[i-left:i+right+1]):
+                pivots.append(float(l))
 
-            # volatil coinlerde biraz daha yukarı pay bırak (erken dokunup dönmesin)
-            if "VOLATILE" in str(coin_type).upper() and not np.isnan(last_atr):
-                tp = max(tp, entry_price + 2.8 * last_atr)
+        return pivots
+    except Exception:
+        return []
 
+
+def _cluster_levels(prices, tol: float):
+    """
+    Birbirine yakın pivotları tek bir seviye (zone merkezi) gibi birleştirir.
+    tol: birleştirme toleransı (fiyat).
+    Dönüş: [(level_price, strength_count), ...] fiyat sıralı
+    """
+    if not prices:
+        return []
+
+    prices = sorted([p for p in prices if p is not None and not np.isnan(p)])
+    if not prices:
+        return []
+
+    clusters = [[prices[0]]]
+    for p in prices[1:]:
+        center = float(np.median(clusters[-1]))
+        if abs(p - center) <= tol:
+            clusters[-1].append(p)
         else:
-            # hiç pivot yoksa ATR tabanlı makul hedef
-            if not np.isnan(last_atr):
-                tp = entry_price + 2.2 * last_atr
-            else:
-                tp = entry_price * 1.02
+            clusters.append([p])
+
+    levels = []
+    for c in clusters:
+        level = float(np.median(c))
+        strength = len(c)
+        levels.append((level, strength))
+
+    # fiyat sıralı
+    levels.sort(key=lambda x: x[0])
+    return levels
+
+
+def get_nearest_sr_levels(df_15m: pd.DataFrame, entry: float, atr: float):
+    """
+    Entry'ye en yakın destek ve direnç seviyesini döndürür.
+    """
+    pivots = _extract_pivot_prices(df_15m, lookback=160, left=3, right=3)
+
+    # tolerans: ATR bazlı + fiyat bazlı küçük bir pay
+    tol = max(0.35 * atr, entry * 0.0018)  # ~0.18%
+
+    levels = _cluster_levels(pivots, tol=tol)
+
+    support = None
+    support_strength = 0
+    resistance = None
+    resistance_strength = 0
+
+    for lvl, st in levels:
+        if lvl < entry:
+            support = lvl
+            support_strength = st
+        elif lvl > entry and resistance is None:
+            resistance = lvl
+            resistance_strength = st
+            break
+
+    return support, support_strength, resistance, resistance_strength
+
+
+def find_structural_target(df_15m: pd.DataFrame, entry_price: float, coin_type="NORMAL"):
+    """
+    Yeni TP: En yakın direnç seviyesine göre.
+    Direnç yoksa ATR bazlı fallback.
+    Dönüş: (tp_price, tp_pct, tp_note, support_level)
+    """
+    try:
+        atr = float(df_15m["atr"].iloc[-1])
+        if np.isnan(atr) or atr <= 0:
+            tp = entry_price * 1.03
+            return tp, 3.0, "Fallback (%3)", None
+
+        sup, sup_n, res, res_n = get_nearest_sr_levels(df_15m, entry_price, atr)
+
+        if res is not None:
+            # Direncin biraz altına koy (front-run), “nokta atışı” hissi verir
+            tp = res - (0.12 * atr)
+            if tp <= entry_price * 1.002:
+                tp = res
+            note = f"Yakın direnç (güç={res_n})"
+        else:
+            # Direnç net değil -> ATR bazlı
+            tp = entry_price + max(3.0 * atr, entry_price * 0.02)  # min ~%2
+            note = "Direnç net değil (ATR bazlı)"
 
         tp_pct = ((tp - entry_price) / entry_price) * 100.0
-        return tp, tp_pct
+        return tp, tp_pct, note, sup
 
     except Exception as e:
-        print(f"⚠️ Target Hatası: {e}", flush=True)
-        return entry_price * 1.02, 2.0
+        print(f"⚠️ Target Hatası (SR): {e}", flush=True)
+        tp = entry_price * 1.03
+        return tp, 3.0, "Fallback (%3)", None
 
 # --- 5. STRATEJİLER ---
 def strategy_sfp_dynamic(df_15m):
@@ -1283,8 +1362,19 @@ def run_bot_engine():
                     # --- Risk/Target hesabı ---
                     entry_price = df_15m['close'].iloc[-1]
                     coin_type_info = data.get('coin_type', 'NORMAL')
-                    tp_price, tp_pct = find_structural_target(df_15m, entry_price, coin_type_info)
+                    
+                    tp_price, tp_pct, tp_note, sr_support = find_structural_target(df_15m, entry_price, coin_type_info)
+                    
+                    # Stop'u mümkünse "yakın destek" altına oturt (stop üstte kalıyorsa düzelt)
                     stop_price = data['stop']
+                    atr_now = float(df_15m["atr"].iloc[-1]) if "atr" in df_15m.columns else np.nan
+                    
+                    if sr_support is not None and not pd.isna(atr_now):
+                        buffer = 0.25 * atr_now
+                        # Eğer stratejinin stop'u desteğin üstünde kalıyorsa, destek altına indir
+                        if stop_price > sr_support:
+                            stop_price = sr_support - buffer
+                    
                     risk_pct = ((entry_price - stop_price) / entry_price) * 100
 
                     if tp_pct < risk_pct:
@@ -1340,15 +1430,15 @@ def run_bot_engine():
                     msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
-<b>#{symbol}</b> | <b>Fiyat:</b> <code>{last_s}</code> | 🕒 {signal_time_str}
+<b>#{symbol}</b> | <b>Fiyat:</b> {last_s} | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
-🧠 <b>BAĞLAM:</b> BTC=<code>{macro_regime}</code> | CoinRejimi=<code>{coin_regime}</code>
-📌 <b>ÖZET:</b> Volatilite (ATR%)=<code>{atr_pct_s}</code> | Hacim Gücü=<code>{vol_strength_s}</code> | Sıkışma Oranı=<code>{compression_s}</code>
-⚡ <b>BTC'ye Göre Güç:</b> Skor=<code>{_fmt_num(rs_score,2)}</code> | 1s=<code>{_fmt_num(rs_1h,2)}</code> | 4s=<code>{_fmt_num(rs_4h,2)}</code> | Coin4s=<code>{_fmt_pct(coin4h,2)}</code> | BTC4s=<code>{_fmt_pct(btc4h,2)}</code>
+🧠 <b>BAĞLAM:</b> BTC={macro_regime} | CoinRejimi={coin_regime}
+📌 <b>ÖZET:</b> Volatilite (ATR%)={atr_pct_s} | Hacim Gücü={vol_strength_s} | Sıkışma Oranı={compression_s}
+⚡ <b>BTC'ye Göre Güç:</b> Skor={_fmt_num(rs_score,2)} | 1s={_fmt_num(rs_1h,2)} | 4s={_fmt_num(rs_4h,2)} | Coin4s={_fmt_pct(coin4h,2)} | BTC4s={_fmt_pct(btc4h,2)}
 
-💵 <b>GİRİŞ :</b> <code>{entry_s}</code>
-🛡️ <b>STOP  :</b> <code>{stop_s}</code> (Risk: %{risk_pct:.2f})
-🎯 <b>HEDEF :</b> <code>{tp_s}</code> (Potansiyel: <b>%{tp_pct:.2f}</b>)
+💵 <b>GİRİŞ :</b> {entry_s}
+🛡️ <b>STOP  :</b> {stop_s} (Risk: %{risk_pct:.2f})
+🎯 <b>HEDEF :</b> {tp_s} (Potansiyel: <b>%{tp_pct:.2f}</b>) • <i>{tp_note}</i>
 
 📝 <b>NEDEN:</b> {data['desc']}
 {explain_block}
