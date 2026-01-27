@@ -169,8 +169,8 @@ def calc_relative_strength(df_coin_15m: pd.DataFrame, df_btc_15m: pd.DataFrame):
 
 def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
     """
-    Telegram HTML için: KRİTERLER (ZORUNLU) + NOTLAR (ZORUNLU DEĞİL)
-    NOT: Telegram HTML'de '<' ve '>' metin içinde sorun çıkarır; bu yüzden &lt; &gt; kullanıyoruz.
+    Telegram HTML için: KRİTERLER (ZORUNLU)
+    Amaç: formül/kod dili değil, anlaşılır Türkçe açıklama + sayısal değerler.
     """
     try:
         stype = (data.get("type", "") or "").upper()
@@ -201,7 +201,7 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             pivot_low = float(past_window.loc[pivot_idx]["low"])
             pivot_rsi = float(df_15m.loc[pivot_idx]["rsi"]) if "rsi" in df_15m.columns else np.nan
 
-            # vol_ratio -> multipliers (aynı mantık)
+            # volatiliteye göre dinamik eşikler
             if pd.isna(atr_mean) or atr_mean == 0 or pd.isna(atr):
                 vol_ratio = 1.0
             else:
@@ -212,69 +212,65 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             wick_mult = 1.5
             vol_mult = 1.2
 
-            coin_tag = "NORMAL"
             if vol_ratio >= 1.25:
-                coin_tag = "🔥 Yüksek Volatilite"
                 sweep_mult = 0.25
                 reclaim_mult = 0.35
                 wick_mult = 1.8
             elif vol_ratio <= 0.85:
-                coin_tag = "🧊 Düşük Volatilite"
                 sweep_mult = 0.10
                 reclaim_mult = 0.20
                 wick_mult = 1.5
 
-            sweep_limit = pivot_low - (sweep_mult * atr)
-            dip_zone = pivot_low + (reclaim_mult * atr)
+            sweep_limit = pivot_low - (sweep_mult * atr) if not pd.isna(atr) else np.nan
+            reclaim_level = pivot_low + (reclaim_mult * atr) if not pd.isna(atr) else np.nan
 
-            swept = low < sweep_limit
-            reclaimed = close > dip_zone
+            swept = (low < sweep_limit) if not pd.isna(sweep_limit) else False
+            reclaimed = (close > reclaim_level) if not pd.isna(reclaim_level) else False
 
             body = abs(close - open_)
             lower_wick = min(close, open_) - low
-            strong_wick = True if body == 0 else lower_wick > (body * wick_mult)
+            strong_wick = True if body == 0 else (lower_wick > (body * wick_mult))
 
-            vol_ok = False
             vol_strength = np.nan
+            vol_ok = False
             if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * vol_mult)
 
-            # GOLD/SILVER bilgisi (not)
+            req_lines.append(f"{_yn(swept)} Dip süpürme oldu (fiyat kısa süreli dip altına sarktı)")
+            req_lines.append(
+                f"• En düşük={fmt_price(symbol, low)} | Dip altı sınır={fmt_price(symbol, sweep_limit)} | Referans dip={fmt_price(symbol, pivot_low)}"
+            )
+
+            req_lines.append(f"{_yn(reclaimed)} Hızlı geri toplama var (kapanış yeniden yukarıda)")
+            req_lines.append(
+                f"• Kapanış={fmt_price(symbol, close)} | Geri toplama eşiği={fmt_price(symbol, reclaim_level)}"
+            )
+
+            req_lines.append(f"{_yn(strong_wick)} Alıcı tepkisi güçlü (alt fitil belirgin)")
+            req_lines.append(
+                f"• Alt fitil={fmt_price(symbol, lower_wick)} | Gövde={fmt_price(symbol, body)}"
+            )
+
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var (ortalamanın üstü)")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+
+            # opsiyonel not: RSI uyumsuzluk yaklaşımı
             is_gold = False
             if not pd.isna(rsi) and not pd.isna(pivot_rsi):
                 is_gold = rsi >= (pivot_rsi - 3)
-
-            # --- Daha anlaşılır Türkçe açıklamalar (formül değil, anlam) ---
-            sweep_txt = f"ATR'nin yaklaşık %{int(sweep_mult*100)}'i kadar aşağı sarkma"
-            reclaim_txt = f"ATR'nin yaklaşık %{int(reclaim_mult*100)}'i kadar geri alma"
-            wick_txt = f"Alt fitil, gövdenin {wick_mult:.1f} katından büyük"
-            vol_txt = f"Hacim, ortalamanın {vol_mult:.1f} katından büyük"
-
-            req_lines.append(f"{_yn(swept)} Dip süpürme görüldü ({sweep_txt})")
-            req_lines.append(
-                f"• En düşük=<code>{fmt_price(symbol, low)}</code> | Eşik=<code>{fmt_price(symbol, sweep_limit)}</code> | Referans dip=<code>{fmt_price(symbol, pivot_low)}</code>"
-            )
-
-            req_lines.append(f"{_yn(reclaimed)} Fiyat hızla geri topladı ({reclaim_txt})")
-            req_lines.append(
-                f"• Kapanış=<code>{fmt_price(symbol, close)}</code> | Geri alma eşiği=<code>{fmt_price(symbol, dip_zone)}</code>"
-            )
-
-            req_lines.append(f"{_yn(strong_wick)} Güçlü alt fitil var ({wick_txt})")
-            req_lines.append(
-                f"• Alt fitil=<code>{fmt_price(symbol, lower_wick)}</code> | Gövde=<code>{fmt_price(symbol, body)}</code>"
-            )
-
-            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var ({vol_txt})")
-            req_lines.append(f"• Hacim gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            note_lines.append(f"• Sinyal kalite notu: {'GOLD'e yakın' if is_gold else 'Standart'}")
 
         # ---------------- PULLBACK ----------------
         elif "PULLBACK" in stype:
             prev = df_15m.iloc[-2] if len(df_15m) >= 2 else last
             ema50_prev = float(df_15m["ema50"].iloc[-6]) if len(df_15m) >= 6 else np.nan
 
+            slope_ok = (ema50 > ema50_prev) if not pd.isna(ema50_prev) and not pd.isna(ema50) else False
+            trend_ok = (ema50 > ema200) if not pd.isna(ema50) and not pd.isna(ema200) else False
+
             touched_ema = (low <= ema50 * 1.001) if not pd.isna(low) and not pd.isna(ema50) else False
+
             prev_low = float(prev.get("low", np.nan))
             prev_sweep = (prev_low < ema50 * 0.999) if not pd.isna(prev_low) and not pd.isna(ema50) else False
 
@@ -283,39 +279,36 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             bounced = (close > ema50) and (close > open_) and close_strength
             rsi_ok = (rsi < 60) if not pd.isna(rsi) else False
 
-            vol_ok = False
             vol_strength = np.nan
+            vol_ok = False
             if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * 1.2)
 
-            slope_ok = (ema50 > ema50_prev) if not pd.isna(ema50_prev) else True
-            trend_ok = (ema50 > ema200) if not pd.isna(ema200) else False
+            req_lines.append(f"{_yn(slope_ok)} Trend güçleniyor (ortalama yukarı eğimli)")
+            req_lines.append(f"• EMA50 önce={_fmt_num(ema50_prev,4)} | şimdi={_fmt_num(ema50,4)}")
 
-            req_lines.append(f"{_yn(slope_ok)} EMA50 eğimi yukarı")
-            req_lines.append(f"• EMA50 önce=<code>{_fmt_num(ema50_prev,4)}</code> | şimdi=<code>{_fmt_num(ema50,4)}</code>")
+            req_lines.append(f"{_yn(trend_ok)} Genel trend pozitif (orta vade, uzun vadeden güçlü)")
+            req_lines.append(f"• EMA50={_fmt_num(ema50,4)} | EMA200={_fmt_num(ema200,4)}")
 
-            req_lines.append(f"{_yn(trend_ok)} Trend: <code>EMA50 &gt; EMA200</code>")
-            req_lines.append(f"• EMA50=<code>{_fmt_num(ema50,4)}</code> | EMA200=<code>{_fmt_num(ema200,4)}</code>")
+            req_lines.append(f"{_yn(touched_ema)} Geri çekilme seviyesi yakalandı (fiyat ortalamaya dokundu)")
+            req_lines.append(f"• En düşük={fmt_price(symbol, low)} | Referans={fmt_price(symbol, ema50)}")
 
-            req_lines.append(f"{_yn(touched_ema)} EMA'ya dokunma: <code>low &lt;= EMA50*1.001</code>")
-            req_lines.append(f"• low=<code>{fmt_price(symbol, low)}</code> | eşik=<code>{fmt_price(symbol, ema50*1.001)}</code>")
+            req_lines.append(f"{_yn(prev_sweep)} Önce küçük bir sarkma oldu (temiz dokunuş)")
+            req_lines.append(f"• Önceki en düşük={fmt_price(symbol, prev_low)}")
 
-            req_lines.append(f"{_yn(prev_sweep)} Ön sarkma: <code>prev_low &lt; EMA50*0.999</code>")
-            req_lines.append(f"• prev_low=<code>{fmt_price(symbol, prev_low)}</code> | eşik=<code>{fmt_price(symbol, ema50*0.999)}</code>")
+            req_lines.append(f"{_yn(bounced)} Tepki mumu güçlü (kapanış yukarıda)")
+            req_lines.append(f"{_yn(rsi_ok)} Aşırı şişme yok (RSI uygun)")
+            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
 
-            req_lines.append(f"{_yn(bounced)} Bounce: yeşil + güçlü kapanış")
-            req_lines.append(f"{_yn(rsi_ok)} RSI &lt; 60: <code>{_fmt_num(rsi,2)}</code>")
-
-            req_lines.append(f"{_yn(vol_ok)} Hacim Onayı: <code>hacim &gt; ort_hacim*1.2</code>")
-            req_lines.append(f"• Hacim Gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
 
         # ---------------- RE-ACCUMULATION ----------------
         elif "RE-ACCUMULATION" in stype:
             if len(df_15m) < 20:
                 return ""
 
-            # strategy_reaccumulation ile aynı parametreler
             lookback = 16
             recent_window = df_15m.iloc[-lookback:-1]
 
@@ -323,78 +316,78 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             recent_low  = float(recent_window["low"].min())
             range_height = recent_high - recent_low
 
-            # Trend filtresi: close > ema50 ve ema50 > ema200
-            trend_ok = (close > ema50) and (ema50 > ema200)
-
-            # RSI filtresi: 45-70
+            trend_ok = (close > ema50) and (ema50 > ema200) if (not pd.isna(close) and not pd.isna(ema50) and not pd.isna(ema200)) else False
             rsi_ok = (not pd.isna(rsi)) and (45 <= rsi <= 70)
 
-            # Range filtresi: <= 2.8*ATR
             range_ok = (not pd.isna(atr)) and (range_height <= (2.8 * atr))
 
-            # Sıkışma: ATR/Ort <= 0.80
             compression = np.nan
             if not pd.isna(atr) and not pd.isna(atr_mean) and atr_mean != 0:
                 compression = atr / atr_mean
             compression_ok = (not pd.isna(compression)) and (compression <= 0.80)
 
-            # Breakout seviyesi: recent_high + 0.25*ATR
             breakout_level = (recent_high + (0.25 * atr)) if not pd.isna(atr) else np.nan
 
-            # Önceki kapanış filtre: bir önceki kapanış "kırmamış" olsun
             prev_close = float(df_15m["close"].iloc[-2])
             prev_not_break = (not pd.isna(atr)) and (prev_close <= (recent_high + (0.05 * atr)))
 
             breakout = (close > breakout_level) if not pd.isna(breakout_level) else False
 
-            # Güçlü kırılım mumu: close_strength>0.72, body_ratio>0.55, yeşil
             rng = (high - low)
             close_strength = True if rng == 0 else ((close - low) / rng) > 0.72
             body = abs(close - open_)
             body_ratio = True if rng == 0 else (body / rng) > 0.55
             strong_candle = (close > open_) and close_strength and body_ratio
 
-            # Hacim: volume > vol_ma*1.6
             vol_strength = np.nan
             vol_ok = False
             if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * 1.6)
 
-            req_lines.append(f"{_yn(trend_ok)} Trend: <code>close &gt; EMA50</code> ve <code>EMA50 &gt; EMA200</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | EMA50=<code>{fmt_price(symbol, ema50)}</code> | EMA200=<code>{fmt_price(symbol, ema200)}</code>")
+            req_lines.append(f"{_yn(trend_ok)} Trend sağlam (fiyat ve ortalamalar yukarı tarafta)")
+            req_lines.append(
+                f"• Fiyat={fmt_price(symbol, close)} | EMA50={fmt_price(symbol, ema50)} | EMA200={fmt_price(symbol, ema200)}"
+            )
 
-            req_lines.append(f"{_yn(rsi_ok)} RSI bölgesi: <code>45–70</code>")
-            req_lines.append(f"• RSI=<code>{_fmt_num(rsi,2)}</code>")
+            req_lines.append(f"{_yn(rsi_ok)} Momentum dengeli (RSI uygun aralıkta)")
+            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
 
-            req_lines.append(f"{_yn(range_ok)} Sıkışık aralık: <code>range &lt;= 2.8*ATR</code>")
-            req_lines.append(f"• range=<code>{fmt_price(symbol, range_height)}</code> | limit=<code>{fmt_price(symbol, 2.8*atr)}</code>")
+            req_lines.append(f"{_yn(range_ok)} Fiyat dar bir aralıkta sıkıştı (bayrak/kanal)")
+            req_lines.append(
+                f"• Aralık={fmt_price(symbol, range_height)} | ATR={fmt_price(symbol, atr)}"
+            )
 
-            req_lines.append(f"{_yn(compression_ok)} Sıkışma Oranı: <code>ATR/Ort &lt;= 0.80</code>")
-            req_lines.append(f"• ATR/Ort=<code>{_fmt_num(compression,2)}</code>")
+            req_lines.append(f"{_yn(compression_ok)} Volatilite düşmüş (sıkışma net)")
+            req_lines.append(f"• Sıkışma oranı={_fmt_num(compression,2)}")
 
-            req_lines.append(f"{_yn(prev_not_break)} Ön onay: <code>prev_close &lt;= recent_high + 0.05*ATR</code>")
-            req_lines.append(f"• prev_close=<code>{fmt_price(symbol, prev_close)}</code> | eşik=<code>{fmt_price(symbol, (recent_high + 0.05*atr) if not pd.isna(atr) else np.nan)}</code>")
+            req_lines.append(f"{_yn(prev_not_break)} Kırılım yeni (bir önceki mum kırmamış)")
+            req_lines.append(
+                f"• Önceki kapanış={fmt_price(symbol, prev_close)} | Son tepe={fmt_price(symbol, recent_high)}"
+            )
 
-            req_lines.append(f"{_yn(breakout)} Kırılım: <code>close &gt; recent_high + 0.25*ATR</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | eşik=<code>{fmt_price(symbol, breakout_level)}</code>")
+            req_lines.append(f"{_yn(breakout)} Yukarı kırılım geldi (sıkışmadan çıkış)")
+            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Kırılım eşiği={fmt_price(symbol, breakout_level)}")
 
-            req_lines.append(f"{_yn(strong_candle)} Güçlü mum: <code>yeşil</code> + <code>güçlü kapanış</code> + <code>gövde oranı</code>")
-
-            req_lines.append(f"{_yn(vol_ok)} Hacim Onayı: <code>hacim &gt; ort_hacim*1.6</code>")
-            req_lines.append(f"• Hacim Gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            req_lines.append(f"{_yn(strong_candle)} Kırılım mumu güçlü (kapanış tepede)")
+            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması var")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
 
         # ---------------- SQUEEZE BREAKOUT ----------------
         elif "SQUEEZE BREAKOUT" in stype or "BREAKOUT" in stype:
             breakout = close > upper_band if not pd.isna(upper_band) else False
-            vol_strength = (vol / vol_ma) if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0 else np.nan
-            vol_ok = (vol > (vol_ma * 2.0)) if not pd.isna(vol) and not pd.isna(vol_ma) else False
 
-            req_lines.append(f"{_yn(breakout)} Kırılım: <code>close &gt; üst_band</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | üst_band=<code>{fmt_price(symbol, upper_band)}</code>")
+            vol_strength = np.nan
+            vol_ok = False
+            if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
+                vol_strength = vol / vol_ma
+                vol_ok = vol > (vol_ma * 2.0)
 
-            req_lines.append(f"{_yn(vol_ok)} Hacim Patlaması: <code>hacim &gt; ort_hacim*2.0</code>")
-            req_lines.append(f"• Hacim Gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            req_lines.append(f"{_yn(breakout)} Bant üstü hareket var (sıkışma çözülüyor)")
+            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Üst bant={fmt_price(symbol, upper_band)}")
+
+            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması var (kalabalık eşlik ediyor)")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
 
         # ---------------- BOMB ----------------
         elif "BOMB" in stype or data.get("coin_type") == "BOMB":
@@ -402,6 +395,8 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             if not pd.isna(atr) and not pd.isna(atr_mean) and atr_mean != 0:
                 compression = atr / atr_mean
 
+            trend_ok = (not pd.isna(close)) and (not pd.isna(ema200)) and (close > ema200)
+            compression_ok = (not pd.isna(compression)) and (compression <= 0.75)
             rsi_ok = (55 <= rsi <= 68) if not pd.isna(rsi) else False
 
             vol_strength = (vol / vol_ma) if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0 else np.nan
@@ -410,20 +405,22 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             recent_high = df_15m["high"].iloc[-20:-1].max() if len(df_15m) >= 20 else np.nan
             no_fake = (close <= recent_high * 1.03) if not pd.isna(recent_high) else False
 
-            req_lines.append(f"{_yn(close > ema200)} Trend: <code>close &gt; EMA200</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | EMA200=<code>{fmt_price(symbol, ema200)}</code>")
+            req_lines.append(f"{_yn(trend_ok)} Trend iyi: Fiyat uzun vadeli ortalamanın üstünde")
+            req_lines.append(f"• Fiyat={fmt_price(symbol, close)} | EMA200={fmt_price(symbol, ema200)}")
 
-            req_lines.append(f"{_yn(compression <= 0.75)} Sıkışma Oranı: <code>ATR/Ort &lt;= 0.75</code>")
-            req_lines.append(f"• ATR/Ort=<code>{_fmt_num(compression,2)}</code>")
+            req_lines.append(f"{_yn(compression_ok)} Piyasa sıkışıyor: Volatilite belirgin şekilde düşmüş")
+            req_lines.append(f"• Sıkışma oranı={_fmt_num(compression,2)}")
 
-            req_lines.append(f"{_yn(rsi_ok)} RSI bölgesi: <code>55–68</code>")
-            req_lines.append(f"• RSI=<code>{_fmt_num(rsi,2)}</code>")
+            req_lines.append(f"{_yn(rsi_ok)} RSI uygun bölgede: Ne aşırı şişmiş ne de zayıf")
+            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
 
-            req_lines.append(f"{_yn(vol_ok)} Hacim Öncü Artış: <code>hacim &gt; ort_hacim*1.5</code>")
-            req_lines.append(f"• Hacim Gücü=<code>{_fmt_x(vol_strength,2)}</code>")
+            req_lines.append(f"{_yn(vol_ok)} Hacim önde geliyor: Ortalama üstü ilgi var")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
 
-            req_lines.append(f"{_yn(no_fake)} Fake yok: <code>close &lt;= son_tepe*1.03</code>")
-            req_lines.append(f"• close=<code>{fmt_price(symbol, close)}</code> | limit=<code>{fmt_price(symbol, recent_high*1.03 if not pd.isna(recent_high) else np.nan)}</code>")
+            req_lines.append(f"{_yn(no_fake)} Aşırı şişme yok: Son tepeye göre makul seviyede")
+            req_lines.append(
+                f"• Fiyat={fmt_price(symbol, close)} | Üst sınır={fmt_price(symbol, (recent_high*1.03) if not pd.isna(recent_high) else np.nan)}"
+            )
 
         else:
             return ""
@@ -434,7 +431,7 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
             out.extend(req_lines)
         if note_lines:
             out.append("")
-            out.append("ℹ️ <b>NOTLAR (ZORUNLU DEĞİL)</b>")
+            out.append("ℹ️ <b>NOTLAR</b>")
             out.extend(note_lines)
 
         return "\n".join(out)
