@@ -38,6 +38,22 @@ MACRO_SYMBOL = "BTC/USDT"   # Makro bağlam (BTC)
 macro_cache = {}
 MACRO_TTL = timedelta(minutes=10)
 EXPLAIN_SIGNALS = True  # Telegram kartına kriter detaylarını ekle/kapat
+# --- LİDERLİK (BTC'YE GÖRE GÜÇ) FİLTRESİ ---
+USE_RS_FILTER = True
+
+# 15m mum sayısı: 4=1s, 16=4s, 48=12s, 96=24s
+RS_BARS_1H  = 4
+RS_BARS_4H  = 16
+RS_BARS_12H = 48
+RS_BARS_24H = 96
+
+# Eşikler (puan = coin% - btc%)
+RS_MIN_REL_1H  = 0.15   # 1 saatte BTC'den en az +0.15 puan güçlü
+RS_MIN_REL_4H  = 0.50   # 4 saatte BTC'den en az +0.50 puan güçlü
+RS_MIN_SCORE   = 0.60   # ağırlıklı skor min
+
+# BTC çok zayıfsa (RISK_OFF), sadece "aşırı güçlü" liderleri geçir
+RS_RISK_OFF_MIN_SCORE = 1.50
 
 bot_status = {"last_run": "Henüz Başlamadı", "status": "Bekleniyor...", "signal_count": 0}
 
@@ -106,7 +122,50 @@ def _fmt_x(x, nd=2):
         return "N/A"
 
 def _yn(ok: bool) -> str:
-    return "✅"
+    return "✅" if ok else "❌"
+
+def _pct_change_close(df: pd.DataFrame, bars: int):
+    try:
+        if df is None or len(df) <= bars:
+            return np.nan
+        now = float(df["close"].iloc[-1])
+        prev = float(df["close"].iloc[-1 - bars])
+        if prev == 0:
+            return np.nan
+        return ((now / prev) - 1.0) * 100.0
+    except Exception:
+        return np.nan
+
+def calc_relative_strength(df_coin_15m: pd.DataFrame, df_btc_15m: pd.DataFrame):
+    """
+    Çıktı: (score, rel1h, rel4h, rel12h, rel24h, coin4h, btc4h)
+    rel = coin% - btc%
+    score = ağırlıklı ortalama (daytrade için 1h/4h daha önemli)
+    """
+    coin_1h  = _pct_change_close(df_coin_15m, RS_BARS_1H)
+    coin_4h  = _pct_change_close(df_coin_15m, RS_BARS_4H)
+    coin_12h = _pct_change_close(df_coin_15m, RS_BARS_12H)
+    coin_24h = _pct_change_close(df_coin_15m, RS_BARS_24H)
+
+    btc_1h   = _pct_change_close(df_btc_15m, RS_BARS_1H)
+    btc_4h   = _pct_change_close(df_btc_15m, RS_BARS_4H)
+    btc_12h  = _pct_change_close(df_btc_15m, RS_BARS_12H)
+    btc_24h  = _pct_change_close(df_btc_15m, RS_BARS_24H)
+
+    rel_1h  = coin_1h  - btc_1h  if not np.isnan(coin_1h)  and not np.isnan(btc_1h)  else np.nan
+    rel_4h  = coin_4h  - btc_4h  if not np.isnan(coin_4h)  and not np.isnan(btc_4h)  else np.nan
+    rel_12h = coin_12h - btc_12h if not np.isnan(coin_12h) and not np.isnan(btc_12h) else np.nan
+    rel_24h = coin_24h - btc_24h if not np.isnan(coin_24h) and not np.isnan(btc_24h) else np.nan
+
+    # ağırlıklar: 1h=0.35, 4h=0.45, 12h=0.20
+    parts = []
+    if not np.isnan(rel_1h):  parts.append(0.35 * rel_1h)
+    if not np.isnan(rel_4h):  parts.append(0.45 * rel_4h)
+    if not np.isnan(rel_12h): parts.append(0.20 * rel_12h)
+
+    score = np.nan if not parts else sum(parts)
+
+    return score, rel_1h, rel_4h, rel_12h, rel_24h, coin_4h, btc_4h
 
 def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
     """
@@ -722,29 +781,54 @@ def get_macro_regime(_symbol_unused=None):
         return "NEUTRAL", None
 
 def find_structural_target(df_15m, entry_price, coin_type="NORMAL"):
+    """
+    Amaç: Hayali/korkak TP yerine 'en yakın anlamlı direnç' seçmek.
+    - Pivot tepe (local max) adaylarını çıkarır.
+    - Entry üstündeki EN YAKIN pivot tepeden TP seçer.
+    - Eğer hiç yoksa: entry + 2.2*ATR (makul)
+    """
     try:
-        lookback = 50
-        past_highs = df_15m['high'].iloc[-lookback:-1]
-        swing_high = past_highs.max()
+        if df_15m is None or len(df_15m) < 80:
+            return entry_price * 1.02, 2.0
 
-        if swing_high <= entry_price * 1.005:
-            structural_target = entry_price * 1.03
+        last_atr = float(df_15m["atr"].iloc[-1]) if "atr" in df_15m.columns else np.nan
+        lookback = min(220, len(df_15m) - 2)
+
+        highs = df_15m["high"].iloc[-lookback:-1].copy()
+
+        # Pivot tepe: sağ/sol 2 mumdan yüksek
+        pivots = []
+        h = highs.values
+        idxs = highs.index.to_list()
+
+        for i in range(2, len(h) - 2):
+            if h[i] > h[i-1] and h[i] > h[i-2] and h[i] > h[i+1] and h[i] > h[i+2]:
+                pivots.append(h[i])
+
+        # aday dirençler: entry üstünde olanlar
+        candidates = sorted([p for p in pivots if p > entry_price * 1.002])
+
+        if candidates:
+            # en yakın direnç
+            tp = candidates[0]
+
+            # volatil coinlerde biraz daha yukarı pay bırak (erken dokunup dönmesin)
+            if "VOLATILE" in str(coin_type).upper() and not np.isnan(last_atr):
+                tp = max(tp, entry_price + 2.8 * last_atr)
+
         else:
-            structural_target = swing_high
+            # hiç pivot yoksa ATR tabanlı makul hedef
+            if not np.isnan(last_atr):
+                tp = entry_price + 2.2 * last_atr
+            else:
+                tp = entry_price * 1.02
 
-        final_target = structural_target
-        if "VOLATILE" in coin_type:
-            atr = df_15m['atr'].iloc[-1]
-            atr_target = entry_price + (4.0 * atr)
-            if atr_target > structural_target:
-                final_target = atr_target
+        tp_pct = ((tp - entry_price) / entry_price) * 100.0
+        return tp, tp_pct
 
-        tp_pct = ((final_target - entry_price) / entry_price) * 100
-        return final_target, tp_pct
     except Exception as e:
         print(f"⚠️ Target Hatası: {e}", flush=True)
-        return entry_price * 1.03, 3.0
-
+        return entry_price * 1.02, 2.0
 
 # --- 5. STRATEJİLER ---
 def strategy_sfp_dynamic(df_15m):
@@ -1070,6 +1154,11 @@ def run_bot_engine():
             # Makro rejimi tarama başına 1 kez al (cache var ama gereksizi azaltır)
             macro_regime, _df_btc = get_macro_regime()
 
+            # BTC 15m (Göreli Güç için) - tarama başına 1 kere
+            df_btc_15m = get_data(MACRO_SYMBOL, '15m', limit=260)
+            if df_btc_15m is None or len(df_btc_15m) < 120:
+                df_btc_15m = None
+
             for symbol in symbols:
                 count += 1
                 utc_now = datetime.now(timezone.utc)
@@ -1091,6 +1180,31 @@ def run_bot_engine():
 
                     df_15m = prepare_indicators(df_15m)
                     coin_regime = get_coin_regime_15m(df_15m)
+
+                    # --- BTC'ye göre Göreli Güç filtresi (lider coin seçimi) ---
+                    rs_score = rs_1h = rs_4h = rs_12h = rs_24h = np.nan
+                    coin4h = btc4h = np.nan
+                    
+                    if USE_RS_FILTER and df_btc_15m is not None:
+                        rs_score, rs_1h, rs_4h, rs_12h, rs_24h, coin4h, btc4h = calc_relative_strength(df_15m, df_btc_15m)
+                    
+                        # temel eşikler
+                        rs_ok = True
+                        if not np.isnan(rs_1h) and rs_1h < RS_MIN_REL_1H:
+                            rs_ok = False
+                        if not np.isnan(rs_4h) and rs_4h < RS_MIN_REL_4H:
+                            rs_ok = False
+                        if np.isnan(rs_score) or rs_score < RS_MIN_SCORE:
+                            rs_ok = False
+                    
+                        # BTC risk-off ise sadece çok güçlü lideri geçir
+                        if macro_regime == "RISK_OFF":
+                            if np.isnan(rs_score) or rs_score < RS_RISK_OFF_MIN_SCORE:
+                                rs_ok = False
+                    
+                        if not rs_ok:
+                            reject["rs_filter"] += 1
+                            continue
 
                     last = df_15m.iloc[-1]
                     if pd.isna(last['atr']) or last['close'] == 0:
@@ -1232,7 +1346,8 @@ def run_bot_engine():
 <b>#{symbol}</b> | <b>Fiyat:</b> <code>{last_s}</code> | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
 🧠 <b>BAĞLAM:</b> BTC=<code>{macro_regime}</code> | CoinRejimi=<code>{coin_regime}</code>
-📌 <b>ÖZET:</b> Volatilite (ATR%)=<code>{atr_pct_s}</code> | Hacim Gücü=<code>{vol_strength_s}</code> | Sıkışma Oranı (ATR/Ort)=<code>{compression_s}</code>
+📌 <b>ÖZET:</b> Volatilite (ATR%)=<code>{atr_pct_s}</code> | Hacim Gücü=<code>{vol_strength_s}</code> | Sıkışma Oranı=<code>{compression_s}</code>
+⚡ <b>BTC'ye Göre Güç:</b> Skor=<code>{_fmt_num(rs_score,2)}</code> | 1s=<code>{_fmt_num(rs_1h,2)}</code> | 4s=<code>{_fmt_num(rs_4h,2)}</code> | Coin4s=<code>{_fmt_pct(coin4h,2)}</code> | BTC4s=<code>{_fmt_pct(btc4h,2)}</code>
 
 💵 <b>GİRİŞ :</b> <code>{entry_s}</code>
 🛡️ <b>STOP  :</b> <code>{stop_s}</code> (Risk: %{risk_pct:.2f})
