@@ -12,7 +12,6 @@ from collections import defaultdict
 from flask import Flask
 from datetime import datetime, timedelta, timezone
 import re
-import logging
 
 # --- GLOBAL CACHE DEĞİŞKENLERİ (YENİ) ---
 MARKETS_CACHE = None
@@ -147,7 +146,6 @@ def wait_until_next_15m_close():
             break
         time.sleep(0.5)
 
-# --- KALAN FONKSİYONLAR (değişmeden aynı) ---
 def fmt_price(symbol: str, price) -> str:
     try:
         if price is None:
@@ -287,11 +285,197 @@ def get_liquidity_warning(symbol):
         return "❓ Likidite verisi alınamadı"
 
 def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
-    # ... (mevcut kodun aynısı - uzun olduğu için kısalttım)
     try:
         stype = (data.get("type", "") or "").upper()
-        # ... (mevcut kod devam eder)
-        return ""
+        last = df_15m.iloc[-1]
+        close = float(last.get("close", np.nan))
+        open_ = float(last.get("open", np.nan))
+        high = float(last.get("high", np.nan))
+        low  = float(last.get("low", np.nan))
+        atr = float(last.get("atr", np.nan))
+        atr_mean = float(last.get("atr_mean", np.nan))
+        rsi = float(last.get("rsi", np.nan))
+        ema50 = float(last.get("ema50", np.nan))
+        ema200 = float(last.get("ema200", np.nan))
+        vol = float(last.get("volume", np.nan))
+        vol_ma = float(last.get("vol_ma", np.nan))
+        upper_band = float(last.get("upper_band", np.nan)) if "upper_band" in last else np.nan
+        req_lines = []
+        note_lines = []
+        
+        # ---------------- SFP (SADECE GOLD) ----------------
+        if "SFP" in stype and "GOLD" in stype:
+            scan_window = 50
+            past_window = df_15m.iloc[-scan_window:-1] if len(df_15m) >= scan_window else df_15m.iloc[:-1]
+            pivot_idx = past_window["low"].idxmin()
+            pivot_low = float(past_window.loc[pivot_idx]["low"])
+            pivot_rsi = float(df_15m.loc[pivot_idx]["rsi"]) if "rsi" in df_15m.columns else np.nan
+            
+            if pd.isna(atr_mean) or atr_mean == 0 or pd.isna(atr):
+                vol_ratio = 1.0
+            else:
+                vol_ratio = atr / atr_mean
+            
+            sweep_mult = 0.15
+            reclaim_mult = 0.25
+            wick_mult = 1.5
+            vol_mult = 1.2
+            
+            if vol_ratio >= 1.25:
+                sweep_mult = 0.25
+                reclaim_mult = 0.35
+                wick_mult = 1.8
+            elif vol_ratio <= 0.85:
+                sweep_mult = 0.10
+                reclaim_mult = 0.20
+                wick_mult = 1.5
+            
+            sweep_limit = pivot_low - (sweep_mult * atr) if not pd.isna(atr) else np.nan
+            reclaim_level = pivot_low + (reclaim_mult * atr) if not pd.isna(atr) else np.nan
+            swept = (low < sweep_limit) if not pd.isna(sweep_limit) else False
+            reclaimed = (close > reclaim_level) if not pd.isna(reclaim_level) else False
+            body = abs(close - open_)
+            lower_wick = min(close, open_) - low
+            strong_wick = True if body == 0 else (lower_wick > (body * wick_mult))
+            vol_strength = np.nan
+            vol_ok = False
+            if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
+                vol_strength = vol / vol_ma
+                vol_ok = vol > (vol_ma * vol_mult)
+            
+            req_lines.append(f"{_yn(swept)} Dip süpürme oldu (fiyat kısa süreli dip altına sarktı)")
+            req_lines.append(f"• En düşük={fmt_price(symbol, low)} | Dip altı sınır={fmt_price(symbol, sweep_limit)} | Referans dip={fmt_price(symbol, pivot_low)}")
+            req_lines.append(f"{_yn(reclaimed)} Hızlı geri toplama var (kapanış yeniden yukarıda)")
+            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Geri toplama eşiği={fmt_price(symbol, reclaim_level)}")
+            req_lines.append(f"{_yn(strong_wick)} Alıcı tepkisi güçlü (alt fitil belirgin)")
+            req_lines.append(f"• Alt fitil={fmt_price(symbol, lower_wick)} | Gövde={fmt_price(symbol, body)}")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var (ortalamanın üstü)")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+            req_lines.append(f"✅ RSI uyumsuzluğu var (GOLD sinyali)")
+        
+        # ---------------- PULLBACK ----------------
+        elif "PULLBACK" in stype:
+            prev = df_15m.iloc[-2] if len(df_15m) >= 2 else last
+            ema50_prev = float(df_15m["ema50"].iloc[-6]) if len(df_15m) >= 6 else np.nan
+            slope_ok = (ema50 > ema50_prev) if not pd.isna(ema50_prev) and not pd.isna(ema50) else False
+            trend_ok = (ema50 > ema200) if not pd.isna(ema50) and not pd.isna(ema200) else False
+            touched_ema = (low <= ema50 * 1.001) if not pd.isna(low) and not pd.isna(ema50) else False
+            prev_low = float(prev.get("low", np.nan))
+            prev_sweep = (prev_low < ema50 * 0.999) if not pd.isna(prev_low) and not pd.isna(ema50) else False
+            rng = (high - low)
+            close_strength = True if rng == 0 else ((close - low) / rng) > 0.65
+            bounced = (close > ema50) and (close > open_) and close_strength
+            rsi_ok = (rsi < 60) if not pd.isna(rsi) else False
+            vol_strength = np.nan
+            vol_ok = False
+            if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
+                vol_strength = vol / vol_ma
+                vol_ok = vol > (vol_ma * 1.2)
+            
+            req_lines.append(f"{_yn(slope_ok)} Trend güçleniyor (ortalama yukarı eğimli)")
+            req_lines.append(f"• EMA50 önce={_fmt_num(ema50_prev,4)} | şimdi={_fmt_num(ema50,4)}")
+            req_lines.append(f"{_yn(trend_ok)} Genel trend pozitif (orta vade, uzun vadeden güçlü)")
+            req_lines.append(f"• EMA50={_fmt_num(ema50,4)} | EMA200={_fmt_num(ema200,4)}")
+            req_lines.append(f"{_yn(touched_ema)} Geri çekilme seviyesi yakalandı (fiyat ortalamaya dokundu)")
+            req_lines.append(f"• En düşük={fmt_price(symbol, low)} | Referans={fmt_price(symbol, ema50)}")
+            req_lines.append(f"{_yn(prev_sweep)} Önce küçük bir sarkma oldu (temiz dokunuş)")
+            req_lines.append(f"• Önceki en düşük={fmt_price(symbol, prev_low)}")
+            req_lines.append(f"{_yn(bounced)} Tepki mumu güçlü (kapanış yukarıda)")
+            req_lines.append(f"{_yn(rsi_ok)} Aşırı şişme yok (RSI uygun)")
+            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+        
+        # ---------------- RE-ACCUMULATION ----------------
+        elif "RE-ACCUMULATION" in stype:
+            if len(df_15m) < 20:
+                return ""
+            lookback = 16
+            recent_window = df_15m.iloc[-lookback:-1]
+            recent_high = float(recent_window["high"].max())
+            recent_low  = float(recent_window["low"].min())
+            range_height = recent_high - recent_low
+            trend_ok = (close > ema50) and (ema50 > ema200) if (not pd.isna(close) and not pd.isna(ema50) and not pd.isna(ema200)) else False
+            rsi_ok = (not pd.isna(rsi)) and (45 <= rsi <= 70)
+            range_ok = (not pd.isna(atr)) and (range_height <= (2.8 * atr))
+            compression = np.nan
+            if not pd.isna(atr) and not pd.isna(atr_mean) and atr_mean != 0:
+                compression = atr / atr_mean
+            compression_ok = (not pd.isna(compression)) and (compression <= 0.80)
+            breakout_level = (recent_high + (0.25 * atr)) if not pd.isna(atr) else np.nan
+            prev_close = float(df_15m["close"].iloc[-2])
+            prev_not_break = (not pd.isna(atr)) and (prev_close <= (recent_high + (0.05 * atr)))
+            breakout = (close > breakout_level) if not pd.isna(breakout_level) else False
+            rng = (high - low)
+            close_strength = True if rng == 0 else ((close - low) / rng) > 0.72
+            body = abs(close - open_)
+            body_ratio = True if rng == 0 else (body / rng) > 0.55
+            strong_candle = (close > open_) and close_strength and body_ratio
+            vol_strength = np.nan
+            vol_ok = False
+            if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
+                vol_strength = vol / vol_ma
+                vol_ok = vol > (vol_ma * 1.6)
+            
+            req_lines.append(f"{_yn(trend_ok)} Trend sağlam (fiyat ve ortalamalar yukarı tarafta)")
+            req_lines.append(f"• Fiyat={fmt_price(symbol, close)} | EMA50={fmt_price(symbol, ema50)} | EMA200={fmt_price(symbol, ema200)}")
+            req_lines.append(f"{_yn(rsi_ok)} Momentum dengeli (RSI uygun aralıkta)")
+            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
+            req_lines.append(f"{_yn(range_ok)} Fiyat dar bir aralıkta sıkıştı (bayrak/kanal)")
+            req_lines.append(f"• Aralık={fmt_price(symbol, range_height)} | ATR={fmt_price(symbol, atr)}")
+            req_lines.append(f"{_yn(compression_ok)} Volatilite düşmüş (sıkışma net)")
+            req_lines.append(f"• Sıkışma oranı={_fmt_num(compression,2)}")
+            req_lines.append(f"{_yn(prev_not_break)} Kırılım yeni (bir önceki mum kırmamış)")
+            req_lines.append(f"• Önceki kapanış={fmt_price(symbol, prev_close)} | Son tepe={fmt_price(symbol, recent_high)}")
+            req_lines.append(f"{_yn(breakout)} Yukarı kırılım geldi (sıkışmadan çıkış)")
+            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Kırılım eşiği={fmt_price(symbol, breakout_level)}")
+            req_lines.append(f"{_yn(strong_candle)} Kırılım mumu güçlü (kapanış tepede)")
+            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması var")
+            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+        
+        # ---------------- BOMB CANDIDATE ----------------
+        elif "BOMB" in stype or data.get("coin_type") == "BOMB":
+            compression = np.nan
+            if not pd.isna(atr) and not pd.isna(atr_mean) and atr_mean != 0:
+                compression = atr / atr_mean
+            trend_ok = (not pd.isna(close)) and (not pd.isna(ema200)) and (close > ema200)
+            compression_ok = (not pd.isna(compression)) and (compression <= 0.75)
+            rsi_ok = (55 <= rsi <= 68) if not pd.isna(rsi) else False
+            vol_strength = (vol / vol_ma) if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0 else np.nan
+            vol_ok = (vol > (vol_ma * 1.5)) if not pd.isna(vol) and not pd.isna(vol_ma) else False
+            recent_high = df_15m["high"].iloc[-20:-1].max() if len(df_15m) >= 20 else np.nan
+            no_fake = (close <= recent_high * 1.03) if not pd.isna(recent_high) else False
+            
+            req_lines.append(f"{_yn(trend_ok)} Trend iyi (fiyat EMA200 üstünde)")
+            req_lines.append(f"{_yn(compression_ok)} Piyasa sıkışıyor (ATR sıkışması)")
+            req_lines.append(f"{_yn(rsi_ok)} RSI uygun (55-68 arası)")
+            req_lines.append(f"{_yn(vol_ok)} Hacim önde geliyor (1.5x ortalama)")
+            req_lines.append(f"{_yn(no_fake)} Aşırı şişme yok (son 20 mum tepeyi %3 geçmemiş)")
+        
+        # ---------------- SQUEEZE BREAKOUT ----------------
+        elif "SQUEEZE BREAKOUT" in stype or "BREAKOUT" in stype:
+            breakout = close > upper_band if not pd.isna(upper_band) else False
+            vol_strength = np.nan
+            vol_ok = False
+            if not pd.isna(vol) and not pd.isna(vol_ma) and vol_ma != 0:
+                vol_strength = vol / vol_ma
+                vol_ok = vol > (vol_ma * 2.0)
+            
+            req_lines.append(f"{_yn(breakout)} Bant üstü hareket (Bollinger üst bandı kırıldı)")
+            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması (2x ortalama)")
+        
+        else:
+            return ""
+        
+        out = []
+        if req_lines:
+            out.append("🧩 <b>KRİTERLER (ZORUNLU)</b>")
+            out.extend(req_lines)
+        if note_lines:
+            out.append("")
+            out.append("ℹ️ <b>NOTLAR</b>")
+            out.extend(note_lines)
+        return "\n".join(out)
     except Exception as e:
         print(f"⚠️ Explain Block Hatası: {e}", flush=True)
         return ""
@@ -318,10 +502,8 @@ def check_spread_safety(symbol):
         return True, "ℹ️ Spread kontrol edilemedi"
 
 app = Flask(__name__)
-logging.getLogger("werkzeug").setLevel(logging.ERROR)
-app.logger.setLevel(logging.ERROR)
-
 signal_history = {}
+bomb_history = {}
 BOMB_COOLDOWN = timedelta(hours=24)
 
 heartbeat = {
@@ -687,6 +869,10 @@ def strategy_sfp_dynamic(df_15m):
                 final_type = f"🟢 SFP-A (GOLD) | {coin_type_tag}"
                 desc = "Dip Süpürme + RSI Uyumsuzluğu"
                 return True, {'type': final_type, 'desc': desc, 'stop': safe_stop, 'coin_type': coin_type_tag}
+            else:
+                final_type = f"🟡 SFP-B (SILVER) | {coin_type_tag}"
+                desc = "Standart SFP: Dip Süpürme (Uyumsuzluk Yok/Zayıf)"
+                return True, {'type': final_type, 'desc': desc, 'stop': safe_stop, 'coin_type': coin_type_tag}
         return False, None
     except Exception as e:
         print(f"⚠️ SFP Hatası: {e}", flush=True)
@@ -718,7 +904,7 @@ def strategy_pullback(df_15m):
         if touched_ema and prev_sweep and bounced and not_overbought and vol_ok:
             return True, {
                 'type': '🚀 EMA PULLBACK',
-                'desc': 'Trende Geri Çekilme',
+                'desc': 'Trende Geri Çekilme (Güvenli Giriş)',
                 'stop': last['low'],
                 'coin_type': 'NORMAL'
             }
@@ -769,13 +955,66 @@ def strategy_reaccumulation(df_15m):
             tight_stop = mid_point - (0.6 * atr)
             return True, {
                 'type': '🚩 RE-ACCUMULATION (PRO)',
-                'desc': f'Bayrak kırılımı. Sıkışma: {compression:.2f}',
+                'desc': f'Trend içi bayrak kırılımı. Sıkışma: {compression:.2f}',
                 'stop': tight_stop,
                 'coin_type': 'TREND'
             }
         return False, None
     except Exception as e:
         print(f"⚠️ Re-Accumulation Hatası: {e}", flush=True)
+        return False, None
+
+def strategy_breakout(df_15m):
+    try:
+        last = df_15m.iloc[-1]
+        upper_band = last['upper_band']
+        vol_ma = last['vol_ma']
+        if pd.isna(upper_band):
+            return False, None
+        breakout = last['close'] > upper_band
+        vol_explosion = last['volume'] > (vol_ma * 2.0)
+        if breakout and vol_explosion:
+            return True, {
+                'type': '💥 SQUEEZE BREAKOUT',
+                'desc': 'Sıkışma Sonrası Patlama',
+                'stop': df_15m['low'].iloc[-3:].min(),
+                'coin_type': 'SQUEEZE'
+            }
+        return False, None
+    except Exception as e:
+        print(f"⚠️ Breakout Hatası: {e}", flush=True)
+        return False, None
+
+def strategy_bomb_candidate(df_15m):
+    try:
+        if len(df_15m) < 120:
+            return False, None
+        last = df_15m.iloc[-1]
+        if last['close'] < last['ema200']:
+            return False, None
+        atr = last['atr']
+        atr_mean = last['atr_mean']
+        if pd.isna(atr_mean) or atr_mean == 0:
+            return False, None
+        compression = atr / atr_mean
+        if compression > 0.75:
+            return False, None
+        if not (55 <= last['rsi'] <= 68):
+            return False, None
+        if last['volume'] < last['vol_ma'] * 1.5:
+            return False, None
+        recent_high = df_15m['high'].iloc[-20:-1].max()
+        if last['close'] > recent_high * 1.03:
+            return False, None
+        stop = last['low'] - (1.2 * atr)
+        return True, {
+            'type': '💣 BOMB CANDIDATE',
+            'desc': 'ATR Sıkışma + Hacim Öncü Artış (1–4 Saatlik Patlama Adayı)',
+            'stop': stop,
+            'coin_type': 'BOMB'
+        }
+    except Exception as e:
+        print(f"⚠️ Bomb Candidate Hatası: {e}", flush=True)
         return False, None
 
 # ✅ YENİ: Ana motor - 15m kapanışına kilidi
@@ -874,7 +1113,20 @@ def run_bot_engine():
                     signal_found = False
                     data = {}
                     
-                    if coin_regime == "UPTREND":
+                    if coin_regime in ["RANGING", "NEUTRAL"]:
+                        if symbol in bomb_history and (utc_now - bomb_history[symbol] < BOMB_COOLDOWN):
+                            reject["bomb_cooldown"] += 1
+                            continue
+                        is_bomb, bomb_data = strategy_bomb_candidate(df_15m)
+                        if is_bomb:
+                            signal_found = True
+                            data = bomb_data
+                        else:
+                            is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
+                            if is_sfp:
+                                signal_found = True
+                                data = sfp_data
+                    elif coin_regime == "UPTREND":
                         is_pb, pb_data = strategy_pullback(df_15m)
                         if is_pb:
                             signal_found = True
@@ -890,10 +1142,8 @@ def run_bot_engine():
                                     signal_found = True
                                     data = sfp_data
                     else:
-                        is_sfp, sfp_data = strategy_sfp_dynamic(df_15m)
-                        if is_sfp:
-                            signal_found = True
-                            data = sfp_data
+                        reject["coin_downtrend_no_signal"] += 1
+                        continue
                     
                     if not signal_found:
                         reject["no_signal"] += 1
@@ -916,6 +1166,11 @@ def run_bot_engine():
                         cooldown_min = PULLBACK_COOLDOWN_MIN
                     elif "RE-ACCUMULATION" in stype:
                         cooldown_min = REACCU_COOLDOWN_MIN
+                    elif "BOMB" in stype:
+                        if strategy_key in bomb_history and (utc_now - bomb_history[strategy_key]) < BOMB_COOLDOWN:
+                            reject["bomb_cooldown"] += 1
+                            continue
+                        bomb_history[strategy_key] = utc_now
                     
                     if strategy_key in signal_history and (utc_now - signal_history[strategy_key]) < timedelta(minutes=cooldown_min):
                         reject["cooldown"] += 1
@@ -991,11 +1246,15 @@ def run_bot_engine():
 🧠 <b>BAĞLAM:</b> BTC={macro_regime} | CoinRejimi={coin_regime} | {trend_msg}
 {'⚠️ ' + liquidity_warning if liquidity_warning else ''}
 {spread_msg}
-📌 <b>ÖZET:</b> Volatilite (ATR%)={atr_pct_s} | Hacim Gücü={vol_strength_s}
+📌 <b>ÖZET:</b> Volatilite (ATR%)={atr_pct_s} | Hacim Gücü={vol_strength_s} | Sıkışma Oranı={compression_s}
+⚡ <b>BTC'ye Göre Güç:</b> Skor={_fmt_num(rs_score,2)} | 1s={_fmt_num(rs_1h,2)} | 4s={_fmt_num(rs_4h,2)}
 💵 <b>GİRİŞ :</b> {entry_s}
 🛡️ <b>STOP  :</b> {stop_s} (Risk: %{risk_pct:.2f})
 🎯 <b>HEDEF :</b> {tp_s} (Potansiyel: <b>%{tp_pct:.2f}</b>) • <i>{tp_note}</i>
-💰 <b>POZİSYON:</b> ${position_usdt:.0f} (~{coin_amount:.2f} adet) | RR: 1:{tp_pct/risk_pct:.2f}
+💰 <b>POZİSYON ÖNERİSİ ({ACCOUNT_SIZE}$ sermaye, %{RISK_PERCENT} risk):</b>
+   • Maks Risk: ${ACCOUNT_SIZE * RISK_PERCENT / 100:.0f}
+   • Önerilen Pozisyon: ${position_usdt:.0f} (~{coin_amount:.2f} adet)
+   • Gerçek Risk: %{actual_risk_pct:.2f} | RR Oranı: 1:{tp_pct/risk_pct:.2f}
 📝 <b>NEDEN:</b> {data['desc']}
 {explain_block}
 """
@@ -1027,11 +1286,13 @@ def run_bot_engine():
                 print(f"📉 1h Trend Uyumsuzluğu                : {reject['1h_trend_mismatch']}", flush=True)
             if reject.get("spread_risk", 0):
                 print(f"⚠️  Spread Riski                       : {reject['spread_risk']}", flush=True)
+            if reject.get("atr_pct_low", 0):
+                print(f"⚫ Düşük Volatilite (ATR yetersiz)     : {reject['atr_pct_low']}", flush=True)
             if reject.get("no_signal", 0):
                 print(f"⚪ Kurulum Yok                         : {reject['no_signal']}", flush=True)
             if sent_by_type:
                 print("📌 Tür Bazlı Gönderim:", flush=True)
-                for k, v in sorted(sent_by_type.items(), key=lambda x: x[1], reverse=True)[:5]:
+                for k, v in sorted(sent_by_type.items(), key=lambda x: x[1], reverse=True)[:10]:
                     print(f"   - {k}: {v}", flush=True)
             print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
             
