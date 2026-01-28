@@ -1184,7 +1184,7 @@ if __name__ == "__main__":
     wd = threading.Thread(target=watchdog, daemon=True)
     wd.start()
     print("🌍 Web Sunucusu Başladı", flush=True)
-    print("✅ Rate Limit: 0.6s sleep + 200 coin sınırı", flush=True)
+    print("✅ Rate Limit: ccxt enableRateLimit + 0.6s sleep", flush=True)
     print("✅ 1h Confirmation: DÜZELTİLDİ (limit=260)", flush=True)
     print("✅ Güvenlik: get_tradable_symbols her durumda liste döndürür", flush=True)
     run_bot_engine()
