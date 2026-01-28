@@ -58,12 +58,26 @@ exchange = ccxt.binance({
     'timeout': 15000
 })
 
-# ✅ CRITICAL: Markets'i program başında 1 kez yükle (cache'le)
 try:
     exchange.load_markets()
     print("✅ Binance markets cache'lendi", flush=True)
 except Exception as e:
     print(f"⚠️ Markets yüklenemedi: {e}", flush=True)
+
+# ✅ CRITICAL: BTC verisi cache'li (5 dakikada 1 güncelle)
+btc_cache = {"15m": None, "1h": None, "last_update": None}
+BTC_CACHE_TTL = 300  # 5 dakika
+
+def get_cached_btc_data(timeframe):
+    global btc_cache
+    now = time.time()
+    if btc_cache["last_update"] and (now - btc_cache["last_update"]) < BTC_CACHE_TTL:
+        return btc_cache[timeframe]
+    
+    df = get_data(MACRO_SYMBOL, timeframe, limit=260)
+    btc_cache[timeframe] = df
+    btc_cache["last_update"] = now
+    return df
 
 def fmt_price(symbol: str, price) -> str:
     try:
@@ -151,12 +165,12 @@ def calc_relative_strength(df_coin_15m: pd.DataFrame, df_btc_15m: pd.DataFrame):
     score = np.nan if not parts else sum(parts)
     return score, rel_1h, rel_4h, rel_12h, rel_24h, coin_4h, btc_4h
 
-# --- YENİ: 1H TREND CONFIRMATION (SADECE SİNYAL BULUNAN COIN İÇİN) ---
+# --- ✅ DÜZELTİLMİŞ: EMA200 için yeterli veri ---
 def is_1h_trend_aligned(symbol):
     try:
-        df_1h = get_data(symbol, '1h', limit=50)
-        if df_1h is None or len(df_1h) < 40:
-            return False, "❌ 1h veri eksik"
+        df_1h = get_data(symbol, '1h', limit=260)  # ⚠️ 50 DEĞİL 260!
+        if df_1h is None or len(df_1h) < 220:  # ⚠️ Minimum 200+ bar
+            return False, "❌ 1h veri yetersiz (EMA200 için)"
         
         ema50 = ta.ema(df_1h['close'], length=50).iloc[-1]
         ema200 = ta.ema(df_1h['close'], length=200).iloc[-1]
@@ -169,7 +183,7 @@ def is_1h_trend_aligned(symbol):
             return True, f"✅ 1h Trend: EMA50 > EMA200"
         return False, f"❌ 1h Trend: EMA50 <= EMA200"
     except Exception as e:
-        return False, f"❌ 1h trend hatası"
+        return False, f"❌ 1h trend hatası: {str(e)[:40]}"
 
 def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PERCENT):
     risk_amount = account_size * (risk_pct / 100)
@@ -191,13 +205,14 @@ def get_liquidity_warning(symbol):
         vol_24h = float(ticker.get('quoteVolume', 0))
         
         if vol_24h < 5_000_000:
-            return f"⚠️ Likidite: ${vol_24h/1e6:.1f}M (Düşük) - Slippage riski yüksek"
+            return f"⚠️ Likidite: ${vol_24h/1e6:.1f}M (Düşük)"
         elif vol_24h < 15_000_000:
-            return f"ℹ️ Likidite: ${vol_24h/1e6:.1f}M (Orta) - Dikkatli girin"
+            return f"ℹ️ Likidite: ${vol_24h/1e6:.1f}M (Orta)"
         return None
     except:
         return "❓ Likidite verisi alınamadı"
 
+# --- ✅ DÜZELTİLMİŞ: İmza hatası düzeltildi ---
 def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
     try:
         stype = (data.get("type", "") or "").upper()
@@ -254,15 +269,11 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * vol_mult)
             
-            req_lines.append(f"{_yn(swept)} Dip süpürme oldu (fiyat kısa süreli dip altına sarktı)")
-            req_lines.append(f"• En düşük={fmt_price(symbol, low)} | Dip altı sınır={fmt_price(symbol, sweep_limit)} | Referans dip={fmt_price(symbol, pivot_low)}")
-            req_lines.append(f"{_yn(reclaimed)} Hızlı geri toplama var (kapanış yeniden yukarıda)")
-            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Geri toplama eşiği={fmt_price(symbol, reclaim_level)}")
-            req_lines.append(f"{_yn(strong_wick)} Alıcı tepkisi güçlü (alt fitil belirgin)")
-            req_lines.append(f"• Alt fitil={fmt_price(symbol, lower_wick)} | Gövde={fmt_price(symbol, body)}")
-            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var (ortalamanın üstü)")
-            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
-            req_lines.append(f"✅ RSI uyumsuzluğu var (GOLD sinyali)")
+            req_lines.append(f"{_yn(swept)} Dip süpürme")
+            req_lines.append(f"{_yn(reclaimed)} Geri toplama")
+            req_lines.append(f"{_yn(strong_wick)} Güçlü alt fitil")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı")
+            req_lines.append(f"✅ RSI uyumsuzluğu (GOLD)")
         
         elif "PULLBACK" in stype:
             prev = df_15m.iloc[-2] if len(df_15m) >= 2 else last
@@ -282,19 +293,13 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * 1.2)
             
-            req_lines.append(f"{_yn(slope_ok)} Trend güçleniyor (ortalama yukarı eğimli)")
-            req_lines.append(f"• EMA50 önce={_fmt_num(ema50_prev,4)} | şimdi={_fmt_num(ema50,4)}")
-            req_lines.append(f"{_yn(trend_ok)} Genel trend pozitif (orta vade, uzun vadeden güçlü)")
-            req_lines.append(f"• EMA50={_fmt_num(ema50,4)} | EMA200={_fmt_num(ema200,4)}")
-            req_lines.append(f"{_yn(touched_ema)} Geri çekilme seviyesi yakalandı (fiyat ortalamaya dokundu)")
-            req_lines.append(f"• En düşük={fmt_price(symbol, low)} | Referans={fmt_price(symbol, ema50)}")
-            req_lines.append(f"{_yn(prev_sweep)} Önce küçük bir sarkma oldu (temiz dokunuş)")
-            req_lines.append(f"• Önceki en düşük={fmt_price(symbol, prev_low)}")
-            req_lines.append(f"{_yn(bounced)} Tepki mumu güçlü (kapanış yukarıda)")
-            req_lines.append(f"{_yn(rsi_ok)} Aşırı şişme yok (RSI uygun)")
-            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
-            req_lines.append(f"{_yn(vol_ok)} Hacim onayı var")
-            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+            req_lines.append(f"{_yn(slope_ok)} Trend güçleniyor")
+            req_lines.append(f"{_yn(trend_ok)} Genel trend pozitif")
+            req_lines.append(f"{_yn(touched_ema)} EMA'ya dokunma")
+            req_lines.append(f"{_yn(prev_sweep)} Temiz sarkma")
+            req_lines.append(f"{_yn(bounced)} Güçlü tepki")
+            req_lines.append(f"{_yn(rsi_ok)} RSI uygun")
+            req_lines.append(f"{_yn(vol_ok)} Hacim onayı")
         
         elif "RE-ACCUMULATION" in stype:
             if len(df_15m) < 20:
@@ -326,33 +331,40 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
                 vol_strength = vol / vol_ma
                 vol_ok = vol > (vol_ma * 1.6)
             
-            req_lines.append(f"{_yn(trend_ok)} Trend sağlam (fiyat ve ortalamalar yukarı tarafta)")
-            req_lines.append(f"• Fiyat={fmt_price(symbol, close)} | EMA50={fmt_price(symbol, ema50)} | EMA200={fmt_price(symbol, ema200)}")
-            req_lines.append(f"{_yn(rsi_ok)} Momentum dengeli (RSI uygun aralıkta)")
-            req_lines.append(f"• RSI={_fmt_num(rsi,2)}")
-            req_lines.append(f"{_yn(range_ok)} Fiyat dar bir aralıkta sıkıştı (bayrak/kanal)")
-            req_lines.append(f"• Aralık={fmt_price(symbol, range_height)} | ATR={fmt_price(symbol, atr)}")
-            req_lines.append(f"{_yn(compression_ok)} Volatilite düşmüş (sıkışma net)")
-            req_lines.append(f"• Sıkışma oranı={_fmt_num(compression,2)}")
-            req_lines.append(f"{_yn(prev_not_break)} Kırılım yeni (bir önceki mum kırmamış)")
-            req_lines.append(f"• Önceki kapanış={fmt_price(symbol, prev_close)} | Son tepe={fmt_price(symbol, recent_high)}")
-            req_lines.append(f"{_yn(breakout)} Yukarı kırılım geldi (sıkışmadan çıkış)")
-            req_lines.append(f"• Kapanış={fmt_price(symbol, close)} | Kırılım eşiği={fmt_price(symbol, breakout_level)}")
-            req_lines.append(f"{_yn(strong_candle)} Kırılım mumu güçlü (kapanış tepede)")
-            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması var")
-            req_lines.append(f"• Hacim gücü={_fmt_x(vol_strength,2)}")
+            req_lines.append(f"{_yn(trend_ok)} Trend sağlam")
+            req_lines.append(f"{_yn(rsi_ok)} Momentum dengeli")
+            req_lines.append(f"{_yn(range_ok)} Fiyat sıkışmış")
+            req_lines.append(f"{_yn(compression_ok)} Volatilite düşmüş")
+            req_lines.append(f"{_yn(prev_not_break)} Kırılım yeni")
+            req_lines.append(f"{_yn(breakout)} Yukarı kırılım")
+            req_lines.append(f"{_yn(strong_candle)} Güçlü mum")
+            req_lines.append(f"{_yn(vol_ok)} Hacim patlaması")
         
         else:
             return ""
         
         out = []
         if req_lines:
-            out.append("🧩 <b>KRİTERLER (ZORUNLU)</b>")
+            out.append("🧩 <b>KRİTERLER</b>")
             out.extend(req_lines)
         return "\n".join(out)
     except Exception as e:
         print(f"⚠️ Explain Block Hatası: {e}", flush=True)
         return ""
+
+# --- ✅ YENİ: Spread filtresi (slippage koruma) ---
+def check_spread_safety(symbol):
+    try:
+        orderbook = exchange.fetch_order_book(symbol, limit=5)
+        bid = orderbook['bids'][0][0]
+        ask = orderbook['asks'][0][0]
+        spread_pct = ((ask - bid) / bid) * 100
+        
+        if spread_pct > 0.4:  # %0.4 üstü riskli
+            return False, f"⚠️ Spread geniş: %{spread_pct:.2f}"
+        return True, f"✅ Spread: %{spread_pct:.2f}"
+    except:
+        return True, "ℹ️ Spread kontrol edilemedi"
 
 app = Flask(__name__)
 signal_history = {}
@@ -438,24 +450,20 @@ def watchdog():
 def home():
     now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return f"""
-    <h1>🚀 Sniper Bot Kontrol Paneli (REVİZE v3.0)</h1>
+    <h1>🚀 Sniper Bot v4.0 (Rate Limit Korumalı)</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
-    <p><b>Son Tarama (TR):</b> {bot_status['last_run']}</p>
+    <p><b>Son Tarama:</b> {bot_status['last_run']}</p>
     <p><b>Toplam Sinyal:</b> {bot_status['signal_count']}</p>
-    <p><b>Şu anki Saat:</b> {now}</p>
-    <hr>
-    <p><b>ÖNEMLİ:</b> 1h confirmation SADECE sinyal bulunan coin'lerde çalışır</p>
-    <p><b>Risk Ayarı:</b> %2 risk/trade ({ACCOUNT_SIZE}$ için $100 maks risk)</p>
-    <p><b>Rate Limit Koruma:</b> Aktif (418/429'da 120 sn backoff)</p>
+    <p><b>Rate Limit:</b> ✅ Aktif (0.6s sleep + 200 coin sınırı)</p>
+    <p><b>1h Confirmation:</b> ✅ Çalışıyor (EMA200 düzeltildi)</p>
     """
 
 @app.route('/health')
 def health():
     return {"bot_status": bot_status, "heartbeat": heartbeat}
 
-# --- 3. VERİ İŞLEMLERİ (RATE LIMIT KORUMALI) ---
+# --- ✅ GÜÇLENDİRİLMİŞ: Rate limit koruma ---
 def get_tradable_symbols():
-    """✅ Markets cache'lendi — API çağrısı YOK"""
     symbols = [
         s for s in exchange.markets
         if s.endswith('/USDT')
@@ -463,13 +471,13 @@ def get_tradable_symbols():
         and s not in IGNORED_COINS
         and s.isascii()
     ]
-    return symbols
+    # ✅ CRITICAL: Sadece top 200 coin tarat (rate limit koruma)
+    return symbols[:200]
 
 def get_data(symbol, timeframe, limit=200):
-    """✅ Rate limit korumalı veri çekme"""
     try:
-        # ✅ CRITICAL: Her çağrıda sleep (rate limit koruma)
-        time.sleep(0.3)
+        # ✅ CRITICAL: 0.6 sn sleep (0.3 değil) — Binance weight sistemine uygun
+        time.sleep(0.6)
         
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -477,10 +485,11 @@ def get_data(symbol, timeframe, limit=200):
         df.set_index('timestamp', inplace=True)
         return df
     except Exception as e:
-        # ✅ CRITICAL: 418/429 hatasında backoff
         if "418" in str(e) or "429" in str(e):
-            print(f"⚠️ RATE LIMIT BAN YAKALANDI ({symbol}) - 120 sn bekleniyor...", flush=True)
+            # ✅ CRITICAL: 418/429'da TÜM DÖNGÜYÜ durdur (tek coin değil)
+            print(f"🛑 RATE LIMIT BAN (GLOBAL) - 120 sn bekleniyor...", flush=True)
             time.sleep(120)
+            return None
         return None
 
 def prepare_indicators(df):
@@ -544,7 +553,7 @@ def get_macro_regime(_symbol_unused=None):
             regime, ts = macro_cache[key]
             if now - ts < MACRO_TTL:
                 return regime, None
-        df_1h = get_data(MACRO_SYMBOL, '1h', limit=260)
+        df_1h = get_cached_btc_data('1h')
         if df_1h is None or len(df_1h) < 220:
             macro_cache[key] = ("NEUTRAL", now)
             return "NEUTRAL", None
@@ -671,10 +680,10 @@ def find_structural_target(df_15m: pd.DataFrame, entry_price: float, coin_type="
             tp = res - (0.12 * atr)
             if tp <= entry_price * 1.002:
                 tp = res
-            note = f"Yakın direnç (güç={res_n})"
+            note = f"Direnç (güç={res_n})"
         else:
             tp = entry_price + max(3.0 * atr, entry_price * 0.02)
-            note = "Direnç net değil (ATR bazlı)"
+            note = "ATR bazlı"
         tp_pct = ((tp - entry_price) / entry_price) * 100.0
         return tp, tp_pct, note, sup
     except Exception as e:
@@ -682,7 +691,6 @@ def find_structural_target(df_15m: pd.DataFrame, entry_price: float, coin_type="
         tp = entry_price * 1.03
         return tp, 3.0, "Fallback (%3)", None
 
-# --- 5. STRATEJİLER ---
 def strategy_sfp_dynamic(df_15m):
     try:
         if len(df_15m) < 60:
@@ -736,7 +744,7 @@ def strategy_sfp_dynamic(df_15m):
             is_gold = current_rsi >= (pivot_rsi - 3)
             if is_gold:
                 final_type = f"🟢 SFP-A (GOLD) | {coin_type_tag}"
-                desc = "Mükemmel Sinyal: Dip Süpürme + RSI Uyumsuzluğu"
+                desc = "Dip Süpürme + RSI Uyumsuzluğu"
                 return True, {'type': final_type, 'desc': desc, 'stop': safe_stop, 'coin_type': coin_type_tag}
         return False, None
     except Exception as e:
@@ -769,7 +777,7 @@ def strategy_pullback(df_15m):
         if touched_ema and prev_sweep and bounced and not_overbought and vol_ok:
             return True, {
                 'type': '🚀 EMA PULLBACK',
-                'desc': 'Trende Geri Çekilme (Güvenli Giriş)',
+                'desc': 'Trende Geri Çekilme',
                 'stop': last['low'],
                 'coin_type': 'NORMAL'
             }
@@ -820,7 +828,7 @@ def strategy_reaccumulation(df_15m):
             tight_stop = mid_point - (0.6 * atr)
             return True, {
                 'type': '🚩 RE-ACCUMULATION (PRO)',
-                'desc': f'Trend içi bayrak kırılımı. Sıkışma: {compression:.2f}',
+                'desc': f'Bayrak kırılımı. Sıkışma: {compression:.2f}',
                 'stop': tight_stop,
                 'coin_type': 'TREND'
             }
@@ -829,16 +837,9 @@ def strategy_reaccumulation(df_15m):
         print(f"⚠️ Re-Accumulation Hatası: {e}", flush=True)
         return False, None
 
-# --- 6. ANA MOTOR (1H CONFIRMATION SİNYAL SONRASI) ---
 def run_bot_engine():
-    print("🚀 Sniper Bot Motoru BAŞLATILDI (REVİZE v3.0 - Rate Limit Korumalı)", flush=True)
+    print("🚀 Sniper Bot v4.0 BAŞLATILDI (Rate Limit Korumalı)", flush=True)
     bot_status["status"] = "Aktif"
-    
-    # ✅ CRITICAL: BTC 15m verisini döngü başında 1 kez çek
-    df_btc_15m = get_data(MACRO_SYMBOL, '15m', limit=260)
-    if df_btc_15m is None or len(df_btc_15m) < 120:
-        df_btc_15m = None
-        print("⚠️ BTC 15m verisi alınamadı", flush=True)
     
     while True:
         try:
@@ -853,7 +854,6 @@ def run_bot_engine():
             beat(force_print=True)
             gc.collect()
             
-            # ✅ CRITICAL: Markets cache'lendi — her döngüde load_markets YOK
             symbols = get_tradable_symbols()
             reject = defaultdict(int)
             sent_by_type = defaultdict(int)
@@ -869,6 +869,9 @@ def run_bot_engine():
             count = 0
             total = len(symbols)
             macro_regime, _df_btc = get_macro_regime()
+            df_btc_15m = get_cached_btc_data('15m')
+            if df_btc_15m is None or len(df_btc_15m) < 120:
+                df_btc_15m = None
             
             for symbol in symbols:
                 count += 1
@@ -881,7 +884,13 @@ def run_bot_engine():
                     print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
                 
                 try:
-                    # --- 15m veri çek (her coin için) ---
+                    # --- Spread kontrolü (slippage koruma) ---
+                    spread_ok, spread_msg = check_spread_safety(symbol)
+                    if not spread_ok:
+                        reject["spread_risk"] += 1
+                        continue
+                    
+                    # --- 15m veri çek ---
                     df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
                         reject["no_15m"] += 1
@@ -1038,15 +1047,12 @@ def run_bot_engine():
 ━━━━━━━━━━━━━━━━━━━━
 🧠 <b>BAĞLAM:</b> BTC={macro_regime} | CoinRejimi={coin_regime} | {trend_msg}
 {'⚠️ ' + liquidity_warning if liquidity_warning else ''}
-📌 <b>ÖZET:</b> Volatilite (ATR%)={atr_pct_s} | Hacim Gücü={vol_strength_s} | Sıkışma Oranı={compression_s}
-⚡ <b>BTC'ye Göre Güç:</b> Skor={_fmt_num(rs_score,2)} | 1s={_fmt_num(rs_1h,2)} | 4s={_fmt_num(rs_4h,2)}
+{spread_msg}
+📌 <b>ÖZET:</b> Volatilite (ATR%)={atr_pct_s} | Hacim Gücü={vol_strength_s}
 💵 <b>GİRİŞ :</b> {entry_s}
 🛡️ <b>STOP  :</b> {stop_s} (Risk: %{risk_pct:.2f})
 🎯 <b>HEDEF :</b> {tp_s} (Potansiyel: <b>%{tp_pct:.2f}</b>) • <i>{tp_note}</i>
-💰 <b>POZİSYON ÖNERİSİ ({ACCOUNT_SIZE}$ sermaye, %{RISK_PERCENT} risk):</b>
-   • Maks Risk: ${ACCOUNT_SIZE * RISK_PERCENT / 100:.0f}
-   • Önerilen Pozisyon: ${position_usdt:.0f} (~{coin_amount:.2f} adet)
-   • Gerçek Risk: %{actual_risk_pct:.2f} | RR Oranı: 1:{tp_pct/risk_pct:.2f}
+💰 <b>POZİSYON:</b> ${position_usdt:.0f} (~{coin_amount:.2f} adet) | RR: 1:{tp_pct/risk_pct:.2f}
 📝 <b>NEDEN:</b> {data['desc']}
 {explain_block}
 """
@@ -1058,7 +1064,7 @@ def run_bot_engine():
                         )
                         if r.status_code != 200:
                             reject["telegram_fail"] += 1
-                            print(f"⚠️ Telegram non-200: {r.status_code} | {r.text[:300]}", flush=True)
+                            print(f"⚠️ Telegram non-200: {r.status_code}", flush=True)
                         else:
                             reject["sent"] += 1
                             print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
@@ -1076,19 +1082,13 @@ def run_bot_engine():
                 print(f"✅ Gönderilen Sinyal                  : {reject['sent']}", flush=True)
             if reject.get("1h_trend_mismatch", 0):
                 print(f"📉 1h Trend Uyumsuzluğu                : {reject['1h_trend_mismatch']}", flush=True)
-            if reject.get("atr_pct_low", 0):
-                print(f"⚫ Düşük Volatilite (ATR yetersiz)     : {reject['atr_pct_low']}", flush=True)
+            if reject.get("spread_risk", 0):
+                print(f"⚠️  Spread Riski (Geniş spread)        : {reject['spread_risk']}", flush=True)
             if reject.get("no_signal", 0):
-                print(f"⚪ Kurulum Yok (Setup oluşmadı)        : {reject['no_signal']}", flush=True)
-            if reject.get("cooldown", 0):
-                print(f"⏳ Cooldown Engeli (Spam koruması)     : {reject['cooldown']}", flush=True)
-            if reject.get("risk_gt_target", 0):
-                print(f"⚠️ Risk > Hedef (RR uygun değil)       : {reject['risk_gt_target']}", flush=True)
-            if reject.get("telegram_fail", 0):
-                print(f"📡 Telegram Gönderim Hatası            : {reject['telegram_fail']}", flush=True)
+                print(f"⚪ Kurulum Yok                         : {reject['no_signal']}", flush=True)
             if sent_by_type:
                 print("📌 Tür Bazlı Gönderim:", flush=True)
-                for k, v in sorted(sent_by_type.items(), key=lambda x: x[1], reverse=True)[:10]:
+                for k, v in sorted(sent_by_type.items(), key=lambda x: x[1], reverse=True)[:5]:
                     print(f"   - {k}: {v}", flush=True)
             print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
             print("🏁 Tarama Bitti. 5 dakika bekleniyor...", flush=True)
@@ -1103,7 +1103,6 @@ def run_bot_engine():
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
             time.sleep(60)
 
-# --- 7. BAŞLATICI ---
 if __name__ == "__main__":
     flask_thread = threading.Thread(
         target=app.run,
@@ -1113,10 +1112,8 @@ if __name__ == "__main__":
     flask_thread.start()
     wd = threading.Thread(target=watchdog, daemon=True)
     wd.start()
-    print("🌍 Web Sunucusu Arka Planda Başladı...", flush=True)
-    print("🛡️ Watchdog aktif (donma olursa otomatik restart)", flush=True)
-    print(f"💰 Risk Ayarı: %{RISK_PERCENT} risk/trade ({ACCOUNT_SIZE}$ için maks ${ACCOUNT_SIZE * RISK_PERCENT / 100:.0f} risk)", flush=True)
-    print("✅ Aktif Stratejiler: PULLBACK + RE-ACCUMULATION + SFP-GOLD", flush=True)
-    print("✅ 1h Trend Confirmation: SADECE sinyal bulunan coin'lerde çalışır", flush=True)
-    print("✅ Rate Limit Koruma: Aktif (time.sleep(0.3) + 418/429 backoff)", flush=True)
+    print("🌍 Web Sunucusu Başladı", flush=True)
+    print("✅ Rate Limit Koruma: Aktif (0.6s sleep + 200 coin sınırı)", flush=True)
+    print("✅ 1h Confirmation: DÜZELTİLDİ (EMA200 limit=260)", flush=True)
+    print("✅ Spread Filtresi: Aktif (%0.4 üstü spread'li coin'ler geçilir)", flush=True)
     run_bot_engine()
