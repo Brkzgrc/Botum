@@ -1,6 +1,6 @@
 ccxt==4.5.34
-pandas==2.2.2
-pandas-ta==0.4.66b0
-numpy==1.26.4
-requests==2.32.3
-flask==3.0.3
+pandas==1.5.3
+pandas-ta==0.3.14b0
+numpy==1.24.3
+requests==2.31.0
+flask==2.3.2
