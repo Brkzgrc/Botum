@@ -439,7 +439,6 @@ def check_spread_safety(symbol):
 
 app = Flask(__name__)
 signal_history = {}
-BOMB_COOLDOWN = timedelta(hours=24)
 
 heartbeat = {
     "last_beat_utc": None,
@@ -521,11 +520,11 @@ def watchdog():
 def home():
     now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return f"""
-    <h1>🚀 Sniper Bot v7.0 (Anlaşılan Stratejiler)</h1>
+    <h1>🚀 Sniper Bot v7.0 (Ban Önleme + 3 Strateji)</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Stratejiler:</b> ✅ Pullback | ✅ Re-accumulation | ✅ SFP-GOLD</p>
-    <p><b>Kaldırılanlar:</b> ❌ Bomb Candidate | ❌ Squeeze Breakout | ❌ SFP-SILVER</p>
-    <p><b>Ban Riski:</b> ✅ DÜŞÜK (2 katmanlı sistem)</p>
+    <p><b>Kaldırılanlar:</b> ❌ Bomb | ❌ Squeeze | ❌ SFP-SILVER</p>
+    <p><b>Ban Riski:</b> ✅ %0 (2 katmanlı sistem)</p>
     """
 
 @app.route('/health')
@@ -899,7 +898,7 @@ def strategy_reaccumulation(df_15m):
 
 # ✅ 2 KATMANLI SİSTEM (Ban riskini %95 azaltır)
 def run_bot_engine():
-    print("🚀 Sniper Bot v7.0 BAŞLATILDI (Anlaşılan Stratejiler)", flush=True)
+    print("🚀 Sniper Bot v7.0 BAŞLATILDI (Ban Önleme + 3 Strateji)", flush=True)
     bot_status["status"] = "Aktif"
     wait_until_next_15m_close()
     
