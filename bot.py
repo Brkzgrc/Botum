@@ -85,11 +85,9 @@ exchange = ccxt.binance({
 })
 
 try:
-    sleep_if_banned()
     exchange.load_markets()
 except Exception as e:
-    if handle_binance_ban(e):
-        sleep_if_banned()
+    handle_binance_ban(e)  # banned until yakalarsa BAN_UNTIL_TS set eder
     print(f"⚠️ Markets yüklenemedi: {e}", flush=True)
 
 # ✅ CRITICAL: BTC verisi cache'li (5 dakikada 1 güncelle)
