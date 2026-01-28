@@ -507,7 +507,7 @@ def get_tradable_symbols():
 
 def get_data(symbol, timeframe, limit=200):
     try:
-        time.sleep(0.1)
+        time.sleep(0.3)  # 3x daha yavaş → rate limiti aşmaz
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
