@@ -127,9 +127,12 @@ def fmt_price(symbol: str, price) -> str:
 
 def get_last_price(symbol: str):
     try:
+        sleep_if_banned()
         t = exchange.fetch_ticker(symbol)
         return t.get("last", None)
-    except Exception:
+    except Exception as e:
+        if handle_binance_ban(e):
+            sleep_if_banned()
         return None
 
 def _fmt_num(x, nd=4):
