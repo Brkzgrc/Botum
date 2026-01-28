@@ -428,7 +428,7 @@ def get_tradable_symbols():
             and s not in IGNORED_COINS
             and s.isascii()
         ]
-        return symbols[:200]
+        return symbols
     except Exception as e:
         print(f"⚠️ get_tradable_symbols hatası: {e} - boş liste döndürülüyor", flush=True)
         return []
