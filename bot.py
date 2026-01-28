@@ -231,6 +231,7 @@ def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PER
 
 def get_liquidity_warning(symbol):
     try:
+        sleep_if_banned()
         ticker = exchange.fetch_ticker(symbol)
         vol_24h = float(ticker.get('quoteVolume', 0))
         
@@ -239,7 +240,9 @@ def get_liquidity_warning(symbol):
         elif vol_24h < 15_000_000:
             return f"ℹ️ Likidite: ${vol_24h/1e6:.1f}M (Orta)"
         return None
-    except:
+    except Exception as e:
+        if handle_binance_ban(e):
+            sleep_if_banned()
         return "❓ Likidite verisi alınamadı"
 
 def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
@@ -389,8 +392,12 @@ def check_spread_safety(symbol):
         sleep_if_banned()
         time.sleep(0.6)
         orderbook = exchange.fetch_order_book(symbol, limit=5)
+        if not orderbook.get('bids') or not orderbook.get('asks'):
+            return False, "⚠️ Spread kontrol edilemedi (orderbook boş)"
         bid = orderbook['bids'][0][0]
         ask = orderbook['asks'][0][0]
+        if bid <= 0:
+            return False, "⚠️ Spread kontrol edilemedi (bid=0)"
         spread_pct = ((ask - bid) / bid) * 100
         
         if spread_pct > 0.4:
@@ -406,9 +413,12 @@ def get_tradable_symbols():
     if not hasattr(exchange, 'markets') or exchange.markets is None:
         print("⚠️ Markets yüklenmemiş - yeniden deneniyor...", flush=True)
         try:
+            sleep_if_banned()
             exchange.load_markets()
             print("✅ Markets yeniden yüklendi", flush=True)
         except Exception as e:
+            if handle_binance_ban(e):
+                sleep_if_banned()
             print(f"❌ Markets yeniden yüklenemedi: {e}", flush=True)
             return []
     
@@ -420,7 +430,7 @@ def get_tradable_symbols():
             and s not in IGNORED_COINS
             and s.isascii()
         ]
-        return symbols[:200]  # Her zaman liste döner
+        return symbols[:200]
     except Exception as e:
         print(f"⚠️ get_tradable_symbols hatası: {e} - boş liste döndürülüyor", flush=True)
         return []
