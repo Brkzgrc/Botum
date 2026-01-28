@@ -947,12 +947,13 @@ def run_bot_engine():
                 
                 try:
                     df_15m = get_data(symbol, '15m', limit=260)
-                    if df_15m is None:
+                    if df_15m is None or len(df_15m) < 220:
                         reject["no_15m"] += 1
                         continue
+                
                     df_15m = prepare_indicators(df_15m)
                     coin_regime = get_coin_regime_15m(df_15m)
-                    
+                
                     rs_score = rs_1h = rs_4h = rs_12h = rs_24h = np.nan
                     coin4h = btc4h = np.nan
                     if USE_RS_FILTER and df_btc_15m is not None:
