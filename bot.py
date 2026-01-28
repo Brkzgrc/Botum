@@ -62,7 +62,7 @@ try:
     exchange.load_markets()
     print("✅ Binance markets cache'lendi", flush=True)
 except Exception as e:
-    print(f"⚠️ Markets yüklenemedi: {e}", flush=True)
+    print(f"⚠️ Markets yüklenemedi (devam ediliyor): {e}", flush=True)
 
 # ✅ CRITICAL: BTC verisi cache'li (5 dakikada 1 güncelle)
 btc_cache = {"15m": None, "1h": None, "last_update": None}
@@ -165,11 +165,10 @@ def calc_relative_strength(df_coin_15m: pd.DataFrame, df_btc_15m: pd.DataFrame):
     score = np.nan if not parts else sum(parts)
     return score, rel_1h, rel_4h, rel_12h, rel_24h, coin_4h, btc_4h
 
-# --- ✅ DÜZELTİLMİŞ: EMA200 için yeterli veri ---
 def is_1h_trend_aligned(symbol):
     try:
-        df_1h = get_data(symbol, '1h', limit=260)  # ⚠️ 50 DEĞİL 260!
-        if df_1h is None or len(df_1h) < 220:  # ⚠️ Minimum 200+ bar
+        df_1h = get_data(symbol, '1h', limit=260)
+        if df_1h is None or len(df_1h) < 220:
             return False, "❌ 1h veri yetersiz (EMA200 için)"
         
         ema50 = ta.ema(df_1h['close'], length=50).iloc[-1]
@@ -212,7 +211,6 @@ def get_liquidity_warning(symbol):
     except:
         return "❓ Likidite verisi alınamadı"
 
-# --- ✅ DÜZELTİLMİŞ: İmza hatası düzeltildi ---
 def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
     try:
         stype = (data.get("type", "") or "").upper()
@@ -352,7 +350,6 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
         print(f"⚠️ Explain Block Hatası: {e}", flush=True)
         return ""
 
-# --- ✅ YENİ: Spread filtresi (slippage koruma) ---
 def check_spread_safety(symbol):
     try:
         orderbook = exchange.fetch_order_book(symbol, limit=5)
@@ -360,11 +357,35 @@ def check_spread_safety(symbol):
         ask = orderbook['asks'][0][0]
         spread_pct = ((ask - bid) / bid) * 100
         
-        if spread_pct > 0.4:  # %0.4 üstü riskli
+        if spread_pct > 0.4:
             return False, f"⚠️ Spread geniş: %{spread_pct:.2f}"
         return True, f"✅ Spread: %{spread_pct:.2f}"
     except:
         return True, "ℹ️ Spread kontrol edilemedi"
+
+# ✅ KRİTİK DÜZELTME: Her durumda liste döndür
+def get_tradable_symbols():
+    if not hasattr(exchange, 'markets') or exchange.markets is None:
+        print("⚠️ Markets yüklenmemiş - yeniden deneniyor...", flush=True)
+        try:
+            exchange.load_markets()
+            print("✅ Markets yeniden yüklendi", flush=True)
+        except Exception as e:
+            print(f"❌ Markets yeniden yüklenemedi: {e}", flush=True)
+            return []
+    
+    try:
+        symbols = [
+            s for s in exchange.markets
+            if s.endswith('/USDT')
+            and exchange.markets[s].get('active', False)
+            and s not in IGNORED_COINS
+            and s.isascii()
+        ]
+        return symbols[:200]  # Her zaman liste döner
+    except Exception as e:
+        print(f"⚠️ get_tradable_symbols hatası: {e} - boş liste döndürülüyor", flush=True)
+        return []
 
 app = Flask(__name__)
 signal_history = {}
@@ -450,33 +471,20 @@ def watchdog():
 def home():
     now = datetime.now(timezone(timedelta(hours=3))).strftime('%H:%M:%S')
     return f"""
-    <h1>🚀 Sniper Bot v4.0 (Rate Limit Korumalı)</h1>
+    <h1>🚀 Sniper Bot v4.1 (Acil Düzeltme)</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Son Tarama:</b> {bot_status['last_run']}</p>
-    <p><b>Toplam Sinyal:</b> {bot_status['signal_count']}</p>
-    <p><b>Rate Limit:</b> ✅ Aktif (0.6s sleep + 200 coin sınırı)</p>
-    <p><b>1h Confirmation:</b> ✅ Çalışıyor (EMA200 düzeltildi)</p>
+    <p><b>Rate Limit:</b> ✅ Aktif (0.6s sleep + 200 coin)</p>
+    <p><b>1h Confirmation:</b> ✅ Çalışıyor</p>
+    <p><b>Markets Durumu:</b> {'Yüklü' if hasattr(exchange, 'markets') and exchange.markets else 'Yüklenemedi'}</p>
     """
 
 @app.route('/health')
 def health():
     return {"bot_status": bot_status, "heartbeat": heartbeat}
 
-# --- ✅ GÜÇLENDİRİLMİŞ: Rate limit koruma ---
-def get_tradable_symbols():
-    symbols = [
-        s for s in exchange.markets
-        if s.endswith('/USDT')
-        and exchange.markets[s].get('active', False)
-        and s not in IGNORED_COINS
-        and s.isascii()
-    ]
-    # ✅ CRITICAL: Sadece top 200 coin tarat (rate limit koruma)
-    return symbols[:200]
-
 def get_data(symbol, timeframe, limit=200):
     try:
-        # ✅ CRITICAL: 0.6 sn sleep (0.3 değil) — Binance weight sistemine uygun
         time.sleep(0.6)
         
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -486,7 +494,6 @@ def get_data(symbol, timeframe, limit=200):
         return df
     except Exception as e:
         if "418" in str(e) or "429" in str(e):
-            # ✅ CRITICAL: 418/429'da TÜM DÖNGÜYÜ durdur (tek coin değil)
             print(f"🛑 RATE LIMIT BAN (GLOBAL) - 120 sn bekleniyor...", flush=True)
             time.sleep(120)
             return None
@@ -838,7 +845,7 @@ def strategy_reaccumulation(df_15m):
         return False, None
 
 def run_bot_engine():
-    print("🚀 Sniper Bot v4.0 BAŞLATILDI (Rate Limit Korumalı)", flush=True)
+    print("🚀 Sniper Bot v4.1 BAŞLATILDI (Acil Düzeltme)", flush=True)
     bot_status["status"] = "Aktif"
     
     while True:
@@ -854,7 +861,13 @@ def run_bot_engine():
             beat(force_print=True)
             gc.collect()
             
+            # ✅ KRİTİK: symbols her durumda liste olacak
             symbols = get_tradable_symbols()
+            if not symbols:
+                print("⚠️ Tradable coin bulunamadı - 60 sn bekleniyor...", flush=True)
+                time.sleep(60)
+                continue
+            
             reject = defaultdict(int)
             sent_by_type = defaultdict(int)
             
@@ -884,13 +897,11 @@ def run_bot_engine():
                     print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
                 
                 try:
-                    # --- Spread kontrolü (slippage koruma) ---
                     spread_ok, spread_msg = check_spread_safety(symbol)
                     if not spread_ok:
                         reject["spread_risk"] += 1
                         continue
                     
-                    # --- 15m veri çek ---
                     df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
                         reject["no_15m"] += 1
@@ -898,7 +909,6 @@ def run_bot_engine():
                     df_15m = prepare_indicators(df_15m)
                     coin_regime = get_coin_regime_15m(df_15m)
                     
-                    # --- BTC'ye göre Göreli Güç filtresi ---
                     rs_score = rs_1h = rs_4h = rs_12h = rs_24h = np.nan
                     coin4h = btc4h = np.nan
                     if USE_RS_FILTER and df_btc_15m is not None:
@@ -927,7 +937,6 @@ def run_bot_engine():
                         reject["atr_pct_low"] += 1
                         continue
                     
-                    # --- Strateji seçimi (1H YOK BURADA) ---
                     signal_found = False
                     data = {}
                     
@@ -956,13 +965,11 @@ def run_bot_engine():
                         reject["no_signal"] += 1
                         continue
                     
-                    # ✅ CRITICAL: 1H CONFIRMATION SADECE SİNYAL BULUNAN COIN İÇİN ---
                     is_aligned, trend_msg = is_1h_trend_aligned(symbol)
                     if not is_aligned:
                         reject["1h_trend_mismatch"] += 1
                         continue
                     
-                    # --- STRATEJİ BAZLI COOLDOWN ---
                     strategy_key = (symbol, data.get('type', 'UNKNOWN'))
                     cooldown_min = COOLDOWN_MINUTES
                     stype = strategy_key[1].upper()
@@ -978,7 +985,6 @@ def run_bot_engine():
                     signal_history[strategy_key] = utc_now
                     bot_status["signal_count"] += 1
                     
-                    # --- Risk/Target hesabı ---
                     entry_price = df_15m['close'].iloc[-1]
                     coin_type_info = data.get('coin_type', 'NORMAL')
                     tp_price, tp_pct, tp_note, sr_support = find_structural_target(df_15m, entry_price, coin_type_info)
@@ -995,12 +1001,10 @@ def run_bot_engine():
                         print(f"❌ {symbol} RED: Risk({risk_pct:.2f}) > Target({tp_pct:.2f})", flush=True)
                         continue
                     
-                    # --- POZİSYON HESAPLAMA ---
                     position_usdt, coin_amount, actual_risk_pct = calc_position_size(
                         entry_price, stop_price, ACCOUNT_SIZE, RISK_PERCENT
                     )
                     
-                    # --- Telegram Mesajı ---
                     last_price = get_last_price(symbol)
                     entry_s = fmt_price(symbol, entry_price)
                     stop_s  = fmt_price(symbol, stop_price)
@@ -1083,7 +1087,7 @@ def run_bot_engine():
             if reject.get("1h_trend_mismatch", 0):
                 print(f"📉 1h Trend Uyumsuzluğu                : {reject['1h_trend_mismatch']}", flush=True)
             if reject.get("spread_risk", 0):
-                print(f"⚠️  Spread Riski (Geniş spread)        : {reject['spread_risk']}", flush=True)
+                print(f"⚠️  Spread Riski                       : {reject['spread_risk']}", flush=True)
             if reject.get("no_signal", 0):
                 print(f"⚪ Kurulum Yok                         : {reject['no_signal']}", flush=True)
             if sent_by_type:
@@ -1101,6 +1105,8 @@ def run_bot_engine():
                 beat()
         except Exception as e:
             print(f"🔥 Kritik Döngü Hatası: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             time.sleep(60)
 
 if __name__ == "__main__":
@@ -1113,7 +1119,7 @@ if __name__ == "__main__":
     wd = threading.Thread(target=watchdog, daemon=True)
     wd.start()
     print("🌍 Web Sunucusu Başladı", flush=True)
-    print("✅ Rate Limit Koruma: Aktif (0.6s sleep + 200 coin sınırı)", flush=True)
-    print("✅ 1h Confirmation: DÜZELTİLDİ (EMA200 limit=260)", flush=True)
-    print("✅ Spread Filtresi: Aktif (%0.4 üstü spread'li coin'ler geçilir)", flush=True)
+    print("✅ Rate Limit: 0.6s sleep + 200 coin sınırı", flush=True)
+    print("✅ 1h Confirmation: DÜZELTİLDİ (limit=260)", flush=True)
+    print("✅ Güvenlik: get_tradable_symbols her durumda liste döndürür", flush=True)
     run_bot_engine()
