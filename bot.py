@@ -12,6 +12,7 @@ from collections import defaultdict
 from flask import Flask
 from datetime import datetime, timedelta, timezone
 import re
+import logging
 
 BAN_UNTIL_TS = 0  # epoch seconds
 
@@ -434,6 +435,10 @@ def get_tradable_symbols():
         return []
 
 app = Flask(__name__)
+# Render loglarını boğan Flask access loglarını sustur (HEAD/GET spamını keser)
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+app.logger.setLevel(logging.ERROR)
+
 signal_history = {}
 BOMB_COOLDOWN = timedelta(hours=24)
 
@@ -895,12 +900,24 @@ def run_bot_engine():
     print("🚀 Sniper Bot v4.1 BAŞLATILDI (Acil Düzeltme)", flush=True)
     bot_status["status"] = "Aktif"
     
+    # ... run_bot_engine() içinde ...
     while True:
         try:
             utc_now = datetime.now(timezone.utc)
             tr_time = utc_now.astimezone(timezone(timedelta(hours=3)))
             time_str = tr_time.strftime('%H:%M:%S')
             print(f"\n🔎 [TARAMA] {time_str} TR", flush=True)
+            bot_status["status"] = "Tarama"
+    
+            # ✅ KRİTİK: symbols her durumda liste olacak
+            symbols = get_tradable_symbols()
+            if not symbols:
+                print("⚠️ Tradable coin bulunamadı - 60 sn bekleniyor...", flush=True)
+                time.sleep(60)
+                continue
+    
+            print(f"✅ TARAMA BAŞLADI | toplam={len(symbols)}", flush=True)
+    
             bot_status["last_run"] = time_str
             heartbeat["loop"] += 1
             heartbeat["progress"] = "START"
