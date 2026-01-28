@@ -11,6 +11,32 @@ import threading
 from collections import defaultdict
 from flask import Flask
 from datetime import datetime, timedelta, timezone
+import re
+
+BAN_UNTIL_TS = 0  # epoch seconds
+
+def handle_binance_ban(e: Exception) -> bool:
+    """
+    418 ban mesajından 'banned until <ms>' yakalar.
+    Yakalandıysa global BAN_UNTIL_TS set eder ve True döner.
+    """
+    global BAN_UNTIL_TS
+    s = str(e)
+    m = re.search(r"banned until (\d+)", s)
+    if not m:
+        return False
+    until_ms = int(m.group(1))
+    BAN_UNTIL_TS = max(BAN_UNTIL_TS, until_ms / 1000)
+    return True
+
+def sleep_if_banned():
+    global BAN_UNTIL_TS
+    now = time.time()
+    if BAN_UNTIL_TS > now:
+        wait_s = int(BAN_UNTIL_TS - now) + 2
+        tr = datetime.fromtimestamp(BAN_UNTIL_TS, tz=timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"🛑 IP BAN aktif. Ban bitiş (TR): {tr} | {wait_s}s uyku", flush=True)
+        time.sleep(wait_s)
 
 # --- 1. AYARLAR ---
 API_KEY = os.getenv('BINANCE_API_KEY')
@@ -59,10 +85,12 @@ exchange = ccxt.binance({
 })
 
 try:
+    sleep_if_banned()
     exchange.load_markets()
-    print("✅ Binance markets cache'lendi", flush=True)
 except Exception as e:
-    print(f"⚠️ Markets yüklenemedi (devam ediliyor): {e}", flush=True)
+    if handle_binance_ban(e):
+        sleep_if_banned()
+    print(f"⚠️ Markets yüklenemedi: {e}", flush=True)
 
 # ✅ CRITICAL: BTC verisi cache'li (5 dakikada 1 güncelle)
 btc_cache = {"15m": None, "1h": None, "last_update": None}
@@ -211,14 +239,16 @@ def get_liquidity_warning(symbol):
     except:
         return "❓ Likidite verisi alınamadı"
 
-def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
+def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
     try:
         stype = (data.get("type", "") or "").upper()
         last = df_15m.iloc[-1]
+
         close = float(last.get("close", np.nan))
         open_ = float(last.get("open", np.nan))
         high = float(last.get("high", np.nan))
         low  = float(last.get("low", np.nan))
+
         atr = float(last.get("atr", np.nan))
         atr_mean = float(last.get("atr_mean", np.nan))
         rsi = float(last.get("rsi", np.nan))
@@ -226,6 +256,7 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
         ema200 = float(last.get("ema200", np.nan))
         vol = float(last.get("volume", np.nan))
         vol_ma = float(last.get("vol_ma", np.nan))
+
         req_lines = []
         
         if "SFP" in stype and "GOLD" in stype:
@@ -352,6 +383,8 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame,  dict) -> str:
 
 def check_spread_safety(symbol):
     try:
+        sleep_if_banned()
+        time.sleep(0.6)
         orderbook = exchange.fetch_order_book(symbol, limit=5)
         bid = orderbook['bids'][0][0]
         ask = orderbook['asks'][0][0]
@@ -360,9 +393,11 @@ def check_spread_safety(symbol):
         if spread_pct > 0.4:
             return False, f"⚠️ Spread geniş: %{spread_pct:.2f}"
         return True, f"✅ Spread: %{spread_pct:.2f}"
-    except:
+    except Exception as e:
+        if handle_binance_ban(e):
+            sleep_if_banned()
         return True, "ℹ️ Spread kontrol edilemedi"
-
+        
 # ✅ KRİTİK DÜZELTME: Her durumda liste döndür
 def get_tradable_symbols():
     if not hasattr(exchange, 'markets') or exchange.markets is None:
@@ -485,6 +520,7 @@ def health():
 
 def get_data(symbol, timeframe, limit=200):
     try:
+        sleep_if_banned()
         time.sleep(0.6)
         
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -493,12 +529,12 @@ def get_data(symbol, timeframe, limit=200):
         df.set_index('timestamp', inplace=True)
         return df
     except Exception as e:
-        if "418" in str(e) or "429" in str(e):
-            print(f"🛑 RATE LIMIT BAN (GLOBAL) - 120 sn bekleniyor...", flush=True)
-            time.sleep(120)
-            return None
+        if handle_binance_ban(e):
+            sleep_if_banned()
+        if "429" in str(e):
+            time.sleep(30)
         return None
-
+        
 def prepare_indicators(df):
     try:
         df['ema50'] = ta.ema(df['close'], length=50)
@@ -897,11 +933,6 @@ def run_bot_engine():
                     print(f"-> İlerleme: {count}/{total} ({symbol})", flush=True)
                 
                 try:
-                    spread_ok, spread_msg = check_spread_safety(symbol)
-                    if not spread_ok:
-                        reject["spread_risk"] += 1
-                        continue
-                    
                     df_15m = get_data(symbol, '15m', limit=260)
                     if df_15m is None:
                         reject["no_15m"] += 1
@@ -963,6 +994,11 @@ def run_bot_engine():
                     
                     if not signal_found:
                         reject["no_signal"] += 1
+                        continue
+                    
+                    spread_ok, spread_msg = check_spread_safety(symbol)
+                    if not spread_ok:
+                        reject["spread_risk"] += 1
                         continue
                     
                     is_aligned, trend_msg = is_1h_trend_aligned(symbol)
