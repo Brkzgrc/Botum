@@ -20,7 +20,7 @@ CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # RISK AYARLARI (5.000$ için %2 risk = $100 maksimum risk/trade)
 ACCOUNT_SIZE = 5000.0
-RISK_PERCENT = 2.0  # %2 risk/trade
+RISK_PERCENT = 2.0
 
 # ZAMAN AYARLARI
 MIN_ATR_PCT = 0.0018
@@ -28,7 +28,7 @@ COOLDOWN_MINUTES = 120
 PULLBACK_COOLDOWN_MIN = 360  # 6 saat
 REACCU_COOLDOWN_MIN = 480    # 8 saat
 
-# STABLECOIN/FIAT ÇIKARILACAK
+# STABLECOIN/FIAT ÇIKARILACAK (Binance spot USDT çiftleri)
 IGNORED_COINS = [
     'UP/USDT', 'DOWN/USDT', 'BEAR/USDT', 'BULL/USDT',
     'USDC/USDT', 'TUSD/USDT', 'FDUSD/USDT', 'DAI/USDT', 'USDP/USDT',
@@ -171,10 +171,10 @@ def is_1h_trend_aligned(symbol):
         
         # Güçlü yükseliş trendi: Fiyat > EMA50 > EMA200
         if close > ema50 > ema200:
-            return True, f"✅ 1h Trend: EMA50({ema50:.2f}) > EMA200({ema200:.2f})"
-        return False, f"❌ 1h Trend: EMA50({ema50:.2f}) <= EMA200({ema200:.2f})"
+            return True, f"✅ 1h Trend: EMA50 > EMA200"
+        return False, f"❌ 1h Trend: EMA50 <= EMA200"
     except Exception as e:
-        return False, f"❌ 1h trend hatası: {str(e)[:50]}"
+        return False, f"❌ 1h trend hatası"
 
 # --- YENİ: POZİSYON HESAPLAMA (%2 RİSK BAZLI) ---
 def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PERCENT):
@@ -387,7 +387,6 @@ def build_explain_block(symbol: str, df_15m: pd.DataFrame, data: dict) -> str:
 
 app = Flask(__name__)
 signal_history = {}
-bomb_history = {}
 BOMB_COOLDOWN = timedelta(hours=24)
 
 # --- HEARTBEAT / WATCHDOG ---
@@ -407,13 +406,9 @@ _last_update_ts = 0.0
 _last_print_ts = 0.0
 
 def _seconds_until_next_aligned_ping(now_utc: datetime) -> int:
-    if ALIVE_ALIGNMENT == "UTC_4H_00":
-        base = now_utc
-        base_hour = 0
-    else:
-        tr = now_utc.astimezone(timezone(timedelta(hours=3)))
-        base = tr
-        base_hour = 3
+    tr = now_utc.astimezone(timezone(timedelta(hours=3)))
+    base = tr
+    base_hour = 3
     h = base.hour
     offset = (h - base_hour) % 4
     next_hour = h - offset + 4
@@ -573,6 +568,9 @@ def get_coin_regime_15m(df_15m):
     except:
         return "NEUTRAL"
 
+macro_cache = {}
+MACRO_TTL = timedelta(minutes=10)
+
 def get_macro_regime(_symbol_unused=None):
     try:
         now = datetime.now(timezone.utc)
@@ -634,9 +632,6 @@ def get_macro_regime(_symbol_unused=None):
     except Exception as e:
         print(f"⚠️ Macro Regime Hatası (BTC): {e}", flush=True)
         return "NEUTRAL", None
-
-macro_cache = {}
-MACRO_TTL = timedelta(minutes=10)
 
 def _extract_pivot_prices(df: pd.DataFrame, lookback=140, left=3, right=3):
     try:
@@ -1172,7 +1167,7 @@ if __name__ == "__main__":
     wd.start()
     print("🌍 Web Sunucusu Arka Planda Başladı...", flush=True)
     print("🛡️ Watchdog aktif (donma olursa otomatik restart)", flush=True)
-    print(f"💰 Risk Ayarı: %{RISK_PERCENT} risk/trade ({ACCOUNT_SIZE}$ için maks $100 risk)", flush=True)
+    print(f"💰 Risk Ayarı: %{RISK_PERCENT} risk/trade ({ACCOUNT_SIZE}$ için maks ${ACCOUNT_SIZE * RISK_PERCENT / 100:.0f} risk)", flush=True)
     print("✅ Aktif Stratejiler: PULLBACK + RE-ACCUMULATION + SFP-GOLD", flush=True)
     print("✅ Zorunlu Filtre: 1h trend confirmation (EMA50 > EMA200)", flush=True)
     print("✅ Tüm coin'ler taranıyor (sadece stablecoin/fiat hariç)", flush=True)
