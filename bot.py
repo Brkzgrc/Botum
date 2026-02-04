@@ -1,25 +1,23 @@
 # -*- coding: utf-8 -*-
 """
 Sniper Bot (WS 15m + REST sadece aday doğrulama) - Tek dosya
-- 15m mum kapanışları Binance WebSocket'ten alınır (REST taraması YOK)
+
+MANTIK:
+- 15m mum kapanışları Binance WebSocket'ten alınır (REST ile 433 coin taraması YOK)
 - REST sadece:
-  (A) başlangıçta her sembol için 15m geçmişini bootstrap etmek (tek sefer, rate-limitli)
-  (B) aday çıkınca 1h trend + spread + hedef/TP + ticker gibi doğrulamalar için
+  (A) başlangıçta her sembol için 15m geçmişini bootstrap etmek (tek sefer)
+  (B) aday çıkınca 1h trend + spread + TP/SL/ RR + ticker doğrulaması için
 
 Gerekenler:
   pip install ccxt pandas pandas_ta numpy flask websockets requests
-
-Çalıştır:
-  python bot_ws.py
 """
 
 import asyncio
 import json
-import math
 import time
-import gc
 import threading
-from collections import defaultdict, deque
+import os
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -32,10 +30,10 @@ import websockets
 from flask import Flask
 
 # ============================================================
-# 0) KULLANICI AYARLARI (ENV YOK, DİREKT BURADAN)
+# 0) KULLANICI AYARLARI
 # ============================================================
-BINANCE_API_KEY = ""        # İstersen boş bırak (public veri için şart değil)
-BINANCE_API_SECRET = ""     # İstersen boş bırak
+BINANCE_API_KEY = ""        # Boş bırak (public veri için şart değil)
+BINANCE_API_SECRET = ""     # Boş bırak
 
 TELEGRAM_TOKEN = ""         # Bot token
 TELEGRAM_CHAT_ID = ""       # Chat id
@@ -50,9 +48,7 @@ COOLDOWN_MINUTES = 120
 PULLBACK_COOLDOWN_MIN = 360
 REACCU_COOLDOWN_MIN = 480
 
-# WebSocket'ten kaç sembol dinlenecek?
-# 433 sembol dinlemek mümkün olabilir ama bağlantı/limit sorunları yaşatabilir.
-# Burayı 120-200 arası öneririm. İstersen yükselt.
+# Kaç sembol dinlenecek? None => hepsi
 MAX_SYMBOLS = None
 
 # Eğer MAX_SYMBOLS kısıtlıysa: en yüksek quoteVolume'a göre seç
@@ -73,22 +69,77 @@ RS_RISK_OFF_MIN_SCORE = 1.50
 MACRO_SYMBOL = "BTC/USDT"
 MACRO_TTL_MIN = 10
 
-# --- Explain ---
+# --- Explain (telegram mesajında “neden” bloğu) ---
 EXPLAIN_SIGNALS = True
 
 # --- WS / DATA ---
 BOOTSTRAP_LIMIT_15M = 260
-KEEP_BARS_15M = 300  # hafif buffer
+KEEP_BARS_15M = 300
 WS_KLINE_INTERVAL = "15m"
 
 # --- TR timezone ---
 TR_TZ = timezone(timedelta(hours=3))
 
 # ============================================================
-# 1) RATE LIMIT KAPISI (REST için) - Aday doğrulamada lazım
+# 0.1) ANLAŞILIR LOG / ÖZET
+# ============================================================
+SUMMARY_EVERY_SEC = 60         # Her 60 saniyede 1 özet
+BOOT_PROGRESS_EVERY = 20       # Bootstrapte her 20 coinde 1 yaz
+PRINT_ADAY_LOG = True          # Aday yakalayınca tek satır yaz
+PRINT_SIGNAL_LOG = True        # Sinyal gönderince tek satır yaz
+
+stats = defaultdict(int)       # eleme/olay sayacı
+ws_close_count = 0
+tracked_symbols = []
+
+def tr_now_str():
+    return datetime.now(timezone.utc).astimezone(TR_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+def print_summary():
+    total = len(tracked_symbols) if tracked_symbols else 0
+    print("\n📊 TARAMA SONUÇ ÖZETİ (ANLAŞILIR)", flush=True)
+    print("━━━━━━━━━━━━━━━━━━━━", flush=True)
+    print(f"🧭 Takip edilen coin         : {total}", flush=True)
+    print(f"🕯️ 15dk kapanış sayısı       : {ws_close_count}", flush=True)
+    print(f"🔍 Aday sayısı               : {stats.get('aday',0)}", flush=True)
+    print(f"✅ Gönderilen sinyal         : {stats.get('sinyal_gonderildi',0)}", flush=True)
+    print("— Eleme sebepleri —", flush=True)
+
+    keys = [
+        ("kurulum_yok",      "Kurulum yok"),
+        ("atr_dusuk",        "ATR düşük"),
+        ("rs_red",           "RS (BTC) red"),
+        ("cooldown",         "Cooldown"),
+        ("1h_trend_red",     "1s trend red"),
+        ("spread_red",       "Spread red"),
+        ("rr_red",           "RR red"),
+        ("veri_yetersiz",    "Veri yetersiz"),
+        ("atr_yok",          "ATR yok/0"),
+    ]
+    any_printed = False
+    for k, label in keys:
+        v = stats.get(k, 0)
+        if v:
+            any_printed = True
+            print(f"• {label:18s}: {v}", flush=True)
+    if not any_printed:
+        print("• (Henüz eleme/olay yok)", flush=True)
+
+    print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
+
+def summary_pinger():
+    while True:
+        try:
+            time.sleep(SUMMARY_EVERY_SEC)
+            print_summary()
+        except Exception:
+            time.sleep(5)
+
+# ============================================================
+# 1) RATE LIMIT KAPISI (REST için)
 # ============================================================
 class ApiGate:
-    def __init__(self, min_interval_sec=0.20, max_concurrent=1, max_retries=6):
+    def __init__(self, min_interval_sec=0.22, max_concurrent=1, max_retries=6):
         self.min_interval_sec = float(min_interval_sec)
         self.sem = asyncio.Semaphore(int(max_concurrent))
         self.max_retries = int(max_retries)
@@ -109,24 +160,28 @@ class ApiGate:
                 try:
                     await self._sleep_for_spacing()
                     loop = asyncio.get_running_loop()
-                    # ccxt sync -> thread pool
                     return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
                 except (ccxt.RateLimitExceeded, ccxt.DDoSProtection) as e:
                     backoff = min(30.0, (1.0 * (2 ** attempt)))
                     print(f"⏳ RateLimit/DDOS: {type(e).__name__} | backoff={backoff:.1f}s", flush=True)
                     await asyncio.sleep(backoff)
+
                 except (ccxt.NetworkError, ccxt.RequestTimeout, ccxt.ExchangeNotAvailable) as e:
                     backoff = min(20.0, (0.8 * (2 ** attempt)))
                     print(f"🌐 Network: {type(e).__name__} | backoff={backoff:.1f}s", flush=True)
                     await asyncio.sleep(backoff)
+
                 except ccxt.ExchangeError as e:
                     backoff = min(12.0, (0.6 * (2 ** attempt)))
-                    print(f"🏦 ExchangeError: {str(e)[:120]} | backoff={backoff:.1f}s", flush=True)
+                    print(f"🏦 ExchangeError: {str(e)[:140]} | backoff={backoff:.1f}s", flush=True)
                     await asyncio.sleep(backoff)
+
                 except Exception as e:
                     backoff = min(8.0, (0.5 * (2 ** attempt)))
-                    print(f"⚠️ API ERR: {type(e).__name__}: {str(e)[:120]} | backoff={backoff:.1f}s", flush=True)
+                    print(f"⚠️ API ERR: {type(e).__name__}: {str(e)[:140]} | backoff={backoff:.1f}s", flush=True)
                     await asyncio.sleep(backoff)
+
             raise RuntimeError("API call failed after retries")
 
 api_gate = ApiGate(min_interval_sec=0.22, max_concurrent=1, max_retries=6)
@@ -171,14 +226,6 @@ def _fmt_num(x, nd=2):
     except Exception:
         return "N/A"
 
-def _fmt_pct(x, nd=2):
-    try:
-        if x is None or (isinstance(x, float) and np.isnan(x)):
-            return "N/A"
-        return f"%{float(x):.{nd}f}"
-    except Exception:
-        return "N/A"
-
 def _fmt_x(x, nd=2):
     try:
         if x is None or (isinstance(x, float) and np.isnan(x)):
@@ -186,9 +233,6 @@ def _fmt_x(x, nd=2):
         return f"{float(x):.{nd}f}x"
     except Exception:
         return "N/A"
-
-def _yn(ok: bool) -> str:
-    return "✅" if ok else "❌"
 
 def _pct_change_close(df: pd.DataFrame, bars: int):
     try:
@@ -225,7 +269,7 @@ def calc_relative_strength(df_coin_15m: pd.DataFrame, df_btc_15m: pd.DataFrame):
     return score, rel_1h, rel_4h, rel_12h, rel_24h
 
 # ============================================================
-# 4) DATA STORE (15m barları WS ile güncelliyoruz)
+# 4) DATA STORE
 # ============================================================
 @dataclass
 class Signal:
@@ -242,7 +286,7 @@ macro_cache = {"regime": "NEUTRAL", "ts": None, "df_1h": None}
 btc_15m_cache = {"df": None, "ts": 0.0}
 
 # ============================================================
-# 5) MARKET POOL (stable/fiat çıkar)
+# 5) MARKET POOL
 # ============================================================
 IGNORED_COINS = set([
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
@@ -261,14 +305,16 @@ async def load_symbols_pool():
         and s not in IGNORED_COINS
         and s.isascii()
     ]
-
     if not syms:
         return []
 
     if not USE_TOP_VOLUME_POOL:
         return syms[:MAX_SYMBOLS] if MAX_SYMBOLS else syms
 
-    # Top volume seçimi: tek fetch_tickers (chunk'lı)
+    # Top volume seçimi (MAX_SYMBOLS kısıtlıysa anlamlı)
+    if not MAX_SYMBOLS:
+        return syms
+
     volumes = {}
     CHUNK = 120
     for i in range(0, len(syms), CHUNK):
@@ -283,7 +329,7 @@ async def load_symbols_pool():
             continue
 
     syms_sorted = sorted(syms, key=lambda x: volumes.get(x, 0.0), reverse=True)
-    return syms_sorted[:MAX_SYMBOLS] if MAX_SYMBOLS else syms_sorted
+    return syms_sorted[:MAX_SYMBOLS]
 
 # ============================================================
 # 6) REST HELPERS
@@ -296,7 +342,6 @@ async def fetch_ohlcv_df(symbol: str, timeframe: str, limit: int):
     return df
 
 def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    # sadece gerekli kolonlar
     df = df.copy()
     df["ema50"] = ta.ema(df["close"], length=50)
     df["ema200"] = ta.ema(df["close"], length=200)
@@ -316,12 +361,14 @@ def get_coin_regime_15m(df_15m: pd.DataFrame) -> str:
             cands = [c for c in adx_df.columns if str(c).upper().startswith("ADX")]
             if cands:
                 adx_val = adx_df[cands[0]].iloc[-1]
+
         last = df_15m.iloc[-1]
         ema50 = last.get("ema50", np.nan)
         ema200 = last.get("ema200", np.nan)
         close = last.get("close", np.nan)
         if pd.isna(ema50) or pd.isna(ema200) or pd.isna(close):
             return "NEUTRAL"
+
         if adx_val is not None and not pd.isna(adx_val) and adx_val > 20:
             if close > ema50 and close > ema200:
                 return "UPTREND"
@@ -379,6 +426,7 @@ async def get_macro_regime():
         bbl = bb_df[bbl_col].iloc[-1]
         bbm = bb_df[bbm_col].iloc[-1]
         close = df_1h["close"].iloc[-1]
+
         if any(pd.isna(x) for x in [ema50,ema200,adx,bbu,bbl,bbm]) or bbm == 0:
             macro_cache.update({"regime":"NEUTRAL","ts":now,"df_1h":None})
             return "NEUTRAL", None
@@ -395,6 +443,7 @@ async def get_macro_regime():
 
         macro_cache.update({"regime":regime,"ts":now,"df_1h":df_1h})
         return regime, df_1h
+
     except Exception as e:
         print(f"⚠️ Macro Regime Hatası (BTC): {e}", flush=True)
         macro_cache.update({"regime":"NEUTRAL","ts":now,"df_1h":None})
@@ -404,17 +453,17 @@ async def is_1h_trend_aligned(symbol: str):
     try:
         df_1h = await fetch_ohlcv_df(symbol, "1h", 260)
         if df_1h is None or len(df_1h) < 220:
-            return False, "❌ 1h veri eksik"
+            return False, "❌ 1s veri eksik"
         ema50 = ta.ema(df_1h["close"], length=50).iloc[-1]
         ema200 = ta.ema(df_1h["close"], length=200).iloc[-1]
         close = df_1h["close"].iloc[-1]
         if pd.isna(ema50) or pd.isna(ema200):
-            return False, "❌ 1h EMA hesaplanamadı"
+            return False, "❌ 1s EMA hesaplanamadı"
         if close > ema50 > ema200:
-            return True, "✅ 1h Trend: EMA50 > EMA200"
-        return False, "❌ 1h Trend: EMA50 <= EMA200"
+            return True, "✅ 1s Trend uygun"
+        return False, "❌ 1s Trend uygun değil"
     except Exception:
-        return False, "❌ 1h trend hatası"
+        return False, "❌ 1s trend hatası"
 
 async def check_spread_safety(symbol: str):
     try:
@@ -422,17 +471,17 @@ async def check_spread_safety(symbol: str):
         bids = ob.get("bids") or []
         asks = ob.get("asks") or []
         if not bids or not asks:
-            return False, "⚠️ Spread kontrol edilemedi (orderbook boş)"
+            return False, "⚠️ Spread kontrol edilemedi"
         bid = bids[0][0]
         ask = asks[0][0]
         if not bid or bid <= 0:
-            return False, "⚠️ Spread kontrol edilemedi (bid=0)"
+            return False, "⚠️ Spread kontrol edilemedi"
         spread_pct = ((ask - bid) / bid) * 100
         if spread_pct > 0.4:
             return False, f"⚠️ Spread geniş: %{spread_pct:.2f}"
         return True, f"✅ Spread: %{spread_pct:.2f}"
     except Exception:
-        return True, "ℹ️ Spread kontrol edilemedi"
+        return True, "ℹ️ Spread alınamadı"
 
 def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PERCENT):
     risk_amount = account_size * (risk_pct / 100)
@@ -446,7 +495,7 @@ def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PER
     return position_usdt, coin_amount, actual_risk_pct
 
 # ============================================================
-# 7) SR TARGET
+# 7) SR TARGET (aynı mantık)
 # ============================================================
 def _extract_pivot_prices(df: pd.DataFrame, lookback=140, left=3, right=3):
     try:
@@ -523,7 +572,7 @@ def find_structural_target(df_15m: pd.DataFrame, entry_price: float):
         return entry_price * 1.03, 3.0, "Fallback (%3)", None
 
 # ============================================================
-# 8) STRATEJİLER (senin 3 strateji mantığını korudum)
+# 8) STRATEJİLER (senin 3 strateji)
 # ============================================================
 def strategy_sfp_gold(df_15m):
     try:
@@ -572,7 +621,7 @@ def strategy_sfp_gold(df_15m):
             if is_gold:
                 return True, {
                     "type": f"🟢 SFP-A (GOLD) | {coin_type_tag}",
-                    "desc": "Dip Süpürme + RSI Uyumsuzluğu (GOLD)",
+                    "desc": "Dip süpürme + RSI uyumsuzluğu",
                     "stop": safe_stop,
                     "coin_type": coin_type_tag,
                 }
@@ -607,7 +656,7 @@ def strategy_pullback(df_15m):
         if touched_ema and prev_sweep and bounced and not_overbought and vol_ok:
             return True, {
                 "type": "🚀 EMA PULLBACK",
-                "desc": "Trende Geri Çekilme",
+                "desc": "Trende geri çekilme",
                 "stop": float(last["low"]),
                 "coin_type": "NORMAL",
             }
@@ -671,7 +720,7 @@ def strategy_reaccumulation(df_15m):
         return False, None
 
 # ============================================================
-# 9) EXPLAIN BLOCK (opsiyonel, sinyali etkilemez)
+# 9) EXPLAIN BLOCK
 # ============================================================
 def build_explain_block(df_15m: pd.DataFrame, data: dict) -> str:
     if not EXPLAIN_SIGNALS:
@@ -679,9 +728,8 @@ def build_explain_block(df_15m: pd.DataFrame, data: dict) -> str:
     try:
         stype = (data.get("type","") or "").upper()
         last = df_15m.iloc[-1]
-        close = float(last["close"]); low = float(last["low"]); high = float(last["high"])
-        atr = float(last["atr"]); atr_mean = float(last["atr_mean"])
         rsi = float(last["rsi"])
+        atr = float(last["atr"]); atr_mean = float(last["atr_mean"])
         vol = float(last["volume"]); vol_ma = float(last["vol_ma"]) if not pd.isna(last["vol_ma"]) else 0.0
         vol_strength = (vol/vol_ma) if vol_ma else np.nan
         compression = (atr/atr_mean) if atr_mean else np.nan
@@ -704,9 +752,10 @@ def build_explain_block(df_15m: pd.DataFrame, data: dict) -> str:
 # ============================================================
 app = Flask(__name__)
 bot_status = {"last_run": "Henüz Başlamadı", "status": "BOOT", "signal_count": 0}
+
 heartbeat = {
     "last_beat_tr": None,
-    "last_beat_epoch": time.time(),   # ✅ yeni
+    "last_beat_epoch": time.time(),
     "last_symbol": None,
     "progress": None,
     "loop": 0,
@@ -717,25 +766,25 @@ WATCHDOG_STALE_SEC = 300
 _last_beat_ts = 0.0
 
 def beat(symbol=None, progress=None, status=None):
+    """Async tarafta çağrılır; 10 sn'de bir günceller."""
     global _last_beat_ts
     now = time.time()
     if now - _last_beat_ts >= 10:
-        tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
-        heartbeat["last_beat_tr"] = tr_now.strftime("%Y-%m-%d %H:%M:%S")
-        heartbeat["last_beat_epoch"] = time.time()   # ✅        if symbol is not None: heartbeat["last_symbol"] = symbol
-        if progress is not None: heartbeat["progress"] = progress
-        if status is not None: heartbeat["status"] = status
+        heartbeat["last_beat_tr"] = tr_now_str()
+        heartbeat["last_beat_epoch"] = time.time()
+        if symbol is not None:
+            heartbeat["last_symbol"] = symbol
+        if progress is not None:
+            heartbeat["progress"] = progress
+        if status is not None:
+            heartbeat["status"] = status
         _last_beat_ts = now
 
 def heartbeat_pinger():
-    """
-    Watchdog'un stale sanmaması için heartbeat'i bağımsız besler.
-    WS/async loop kopsa bile her 15 sn günceller.
-    """
+    """Render watchdog/health için: async kilitlense bile epoch günceller."""
     while True:
         try:
-            tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
-            heartbeat["last_beat_tr"] = tr_now.strftime("%Y-%m-%d %H:%M:%S")
+            heartbeat["last_beat_tr"] = tr_now_str()
             heartbeat["last_beat_epoch"] = time.time()
         except Exception:
             pass
@@ -748,7 +797,6 @@ def watchdog_thread():
             stale = time.time() - last_epoch
             if stale > WATCHDOG_STALE_SEC:
                 print(f"🛑 WATCHDOG: Heartbeat {int(stale)}s stale. Forcing restart...", flush=True)
-                import os
                 os._exit(1)
             time.sleep(10)
         except Exception:
@@ -758,7 +806,7 @@ def watchdog_thread():
 def home():
     now = datetime.now(TR_TZ).strftime("%H:%M:%S")
     return f"""
-    <h1>🚀 Sniper Bot (WS 15m + REST aday)</h1>
+    <h1>🚀 Sniper Bot</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Son:</b> {bot_status['last_run']}</p>
     <p><b>Sinyal:</b> {bot_status['signal_count']}</p>
@@ -767,26 +815,22 @@ def home():
     <p><b>Heartbeat(TR):</b> {heartbeat.get('last_beat_tr')}</p>
     <p><b>Son Coin:</b> {heartbeat.get('last_symbol')}</p>
     <p><b>İlerleme:</b> {heartbeat.get('progress')}</p>
-    <hr>
-    <p>Aktif: PULLBACK + RE-ACCUMULATION + SFP-GOLD</p>
-    <p>15m: WebSocket | Doğrulama: REST (aday)</p>
     """
 
 @app.route("/health")
 def health():
-    return {"bot_status": bot_status, "heartbeat": heartbeat}
+    return {"bot_status": bot_status, "heartbeat": heartbeat, "stats": dict(stats)}
 
 # ============================================================
 # 11) TELEGRAM
 # ============================================================
 def send_telegram(text_html: str):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram ayarı yok, mesaj atlanıyor.", flush=True)
         return
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text_html, "parse_mode": "HTML"},
+            json={"chat_id": TELELEGRAM_CHAT_ID if False else TELEGRAM_CHAT_ID, "text": text_html, "parse_mode": "HTML"},
             timeout=10
         )
         if r.status_code != 200:
@@ -795,7 +839,7 @@ def send_telegram(text_html: str):
         print(f"⚠️ Telegram Exception: {e}", flush=True)
 
 # ============================================================
-# 12) BOOTSTRAP (REST ile 15m geçmişi tek sefer çek)
+# 12) BOOTSTRAP
 # ============================================================
 async def bootstrap_symbol(symbol: str):
     try:
@@ -803,112 +847,107 @@ async def bootstrap_symbol(symbol: str):
         if df is None or len(df) < 220:
             return False
         df = prepare_indicators(df)
-        # son KEEP_BARS_15M sakla
         if len(df) > KEEP_BARS_15M:
             df = df.iloc[-KEEP_BARS_15M:]
         bars_15m[symbol] = df
         return True
     except Exception as e:
-        print(f"⚠️ Bootstrap hata {symbol}: {str(e)[:120]}", flush=True)
+        print(f"⚠️ Bootstrap hata {symbol}: {str(e)[:140]}", flush=True)
         return False
 
 async def bootstrap_all(symbols: list[str]):
     ok = 0
     total = len(symbols)
-    print(f"🧱 Bootstrap başlıyor (REST tek sefer) | toplam={total}", flush=True)
+    bot_status["status"] = "BOOTSTRAP"
+    print(f"🧱 Hazırlık başlıyor | toplam coin={total}", flush=True)
+
     for i, s in enumerate(symbols, 1):
-        beat(symbol=s, progress=f"BOOT {i}/{total}", status="BOOTSTRAP")
-        if i % 20 == 0:
-            print(f"-> Bootstrap: {i}/{total} ({s})", flush=True)
+        beat(symbol=s, progress=f"Hazırlık {i}/{total}", status="BOOTSTRAP")
+        if i % BOOT_PROGRESS_EVERY == 0:
+            print(f"-> Hazırlık: {i}/{total} ({s})", flush=True)
         got = await bootstrap_symbol(s)
         if got:
             ok += 1
-    print(f"✅ Bootstrap bitti | ok={ok}/{total}", flush=True)
+
+    print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
 
 # ============================================================
 # 13) WS KLINE LISTENER
 # ============================================================
 def to_ws_symbol(symbol: str) -> str:
-    # BTC/USDT -> btcusdt
     return symbol.replace("/", "").lower()
 
 async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
-    """
-    Binance Combined Streams:
-      wss://stream.binance.com:9443/stream?streams=btcusdt@kline_15m/ethusdt@kline_15m/...
-    """
     streams = "/".join([f"{to_ws_symbol(s)}@kline_{WS_KLINE_INTERVAL}" for s in symbols])
     url = f"wss://stream.binance.com:9443/stream?streams={streams}"
 
-    print(f"🛰️ WS bağlanıyor | streams={len(symbols)}", flush=True)
-    bot_status["status"] = "WS CONNECTING"
+    bot_status["status"] = "CANLI VERİ (WS)"
+    print(f"🛰️ Canlı veri başladı | coin={len(symbols)} | timeframe=15m", flush=True)
 
     while True:
         try:
             async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=10) as ws:
-                print("✅ WS bağlı (15m klines)", flush=True)
-                bot_status["status"] = "WS ONLINE"
+                print("✅ Canlı bağlantı OK", flush=True)
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
                     payload = data.get("data", {})
                     k = payload.get("k", {})
-                    is_closed = k.get("x", False)
-                    if not is_closed:
+                    if not k.get("x", False):  # kapanış değilse
                         continue
 
                     sym_raw = payload.get("s", "")
-                    # btcusdt -> BTC/USDT
                     symbol = sym_raw.upper().replace("USDT", "/USDT")
 
-                    # kapanan mum değerleri
                     ts_ms = int(k.get("t"))
                     o = float(k.get("o")); h = float(k.get("h"))
                     l = float(k.get("l")); c = float(k.get("c"))
                     v = float(k.get("v"))
 
-                    # df güncelle
                     df = bars_15m.get(symbol)
                     if df is None or len(df) < 50:
-                        # bootstrap kaçmış olabilir, atla
+                        stats["veri_yetersiz"] += 1
                         continue
 
                     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
                     df.loc[tstamp, ["open","high","low","close","volume"]] = [o,h,l,c,v]
                     df = df.sort_index()
-                    # keep size
                     if len(df) > KEEP_BARS_15M:
                         df = df.iloc[-KEEP_BARS_15M:]
-                    # indicatorlar
                     df = prepare_indicators(df)
                     bars_15m[symbol] = df
 
-                    # aday kontrol -> sadece kapanışta bir kez
                     await evaluate_symbol_on_close(symbol, df, candidate_queue)
 
         except Exception as e:
-            print(f"⚠️ WS error: {type(e).__name__}: {str(e)[:160]}", flush=True)
-            bot_status["status"] = "WS RECONNECTING"
+            print(f"⚠️ WS kopma: {type(e).__name__}: {str(e)[:160]}", flush=True)
+            bot_status["status"] = "WS yeniden bağlanıyor"
             await asyncio.sleep(5)
 
 # ============================================================
-# 14) ADAY ÜRETİMİ (WS kapanışında hafif kontrol)
+# 14) ADAY ÜRETİMİ (15m kapanışında)
 # ============================================================
 async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_queue: asyncio.Queue):
+    global ws_close_count
     try:
+        ws_close_count += 1
         tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
         bot_status["last_run"] = tr_now.strftime("%H:%M:%S")
         heartbeat["loop"] += 1
-        beat(symbol=symbol, progress="CLOSE", status="RUN")
+        beat(symbol=symbol, progress="15m kapanış", status="RUN")
 
         if df_15m is None or len(df_15m) < 220:
+            stats["veri_yetersiz"] += 1
             return
 
         last = df_15m.iloc[-1]
         if pd.isna(last["atr"]) or float(last["close"]) == 0:
+            stats["atr_yok"] += 1
             return
+
         atr_pct = float(last["atr"]) / float(last["close"])
         if atr_pct < MIN_ATR_PCT:
+            stats["atr_dusuk"] += 1
             return
 
         coin_regime = get_coin_regime_15m(df_15m)
@@ -925,9 +964,9 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
             except Exception:
                 pass
 
-        # RS filtresi (hafif, df zaten hazır)
+        # RS filtresi
         if USE_RS_FILTER and btc_15m_cache["df"] is not None:
-            rs_score, rs_1h, rs_4h, rs_12h, rs_24h = calc_relative_strength(df_15m, btc_15m_cache["df"])
+            rs_score, rs_1h, rs_4h, _, _ = calc_relative_strength(df_15m, btc_15m_cache["df"])
             rs_ok = True
             if not np.isnan(rs_1h) and rs_1h < RS_MIN_REL_1H:
                 rs_ok = False
@@ -938,9 +977,10 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
             if macro_regime == "RISK_OFF" and (np.isnan(rs_score) or rs_score < RS_RISK_OFF_MIN_SCORE):
                 rs_ok = False
             if not rs_ok:
+                stats["rs_red"] += 1
                 return
 
-        # Strateji
+        # Strateji seçimi
         signal_found = False
         data = None
 
@@ -962,9 +1002,10 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
                 signal_found = True; data = d
 
         if not signal_found:
+            stats["kurulum_yok"] += 1
             return
 
-        # cooldown (spam)
+        # cooldown
         utc_now = datetime.now(timezone.utc)
         stype = (data.get("type","") or "").upper()
         cooldown_min = COOLDOWN_MINUTES
@@ -976,11 +1017,15 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
         key = (symbol, data.get("type","UNKNOWN"))
         last_ts = last_signal_ts.get(key)
         if last_ts and (utc_now - last_ts) < timedelta(minutes=cooldown_min):
+            stats["cooldown"] += 1
             return
-
         last_signal_ts[key] = utc_now
 
         # Aday kuyruğa
+        stats["aday"] += 1
+        if PRINT_ADAY_LOG:
+            print(f"🔍 ADAY: {symbol} | {data.get('type','?')} | {tr_now.strftime('%H:%M')}", flush=True)
+
         await candidate_queue.put(Signal(
             symbol=symbol,
             data=data,
@@ -991,7 +1036,7 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
         ))
 
     except Exception as e:
-        print(f"⚠️ evaluate error {symbol}: {str(e)[:120]}", flush=True)
+        print(f"⚠️ evaluate error {symbol}: {str(e)[:140]}", flush=True)
 
 # ============================================================
 # 15) ADAY DOĞRULAMA WORKER (REST sadece burada)
@@ -1007,15 +1052,17 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             macro_regime = sig.macro_regime
             tr_time = sig.tr_time
 
-            # 1h trend confirm (REST)
+            # 1h trend
             is_ok, trend_msg = await is_1h_trend_aligned(symbol)
             if not is_ok:
+                stats["1h_trend_red"] += 1
                 candidate_queue.task_done()
                 continue
 
-            # spread (REST)
+            # spread
             spread_ok, spread_msg = await check_spread_safety(symbol)
             if not spread_ok:
+                stats["spread_red"] += 1
                 candidate_queue.task_done()
                 continue
 
@@ -1023,7 +1070,7 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             tp_price, tp_pct, tp_note, sr_support = find_structural_target(df_15m, entry_price)
             stop_price = float(data["stop"])
 
-            # SR support buffer
+            # SR destek buffer
             atr_now = float(df_15m["atr"].iloc[-1]) if "atr" in df_15m.columns else np.nan
             if sr_support is not None and not pd.isna(atr_now):
                 buffer = 0.25 * atr_now
@@ -1032,23 +1079,24 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
 
             risk_pct = ((entry_price - stop_price) / entry_price) * 100.0
             if tp_pct < risk_pct:
+                stats["rr_red"] += 1
                 candidate_queue.task_done()
                 continue
 
             position_usdt, coin_amount, actual_risk_pct = calc_position_size(entry_price, stop_price)
 
-            # Ticker (REST) sadece adayda
+            # ticker (likidite)
+            liq = ""
+            last_price = None
             try:
                 t = await api_gate.call(exchange.fetch_ticker, symbol)
                 last_price = t.get("last", None)
                 qv = float(t.get("quoteVolume", 0) or 0)
-                liq = None
                 if qv < 5_000_000:
                     liq = f"⚠️ Likidite düşük: ${qv/1e6:.1f}M"
                 elif qv < 15_000_000:
                     liq = f"ℹ️ Likidite orta: ${qv/1e6:.1f}M"
             except Exception:
-                last_price = None
                 liq = "❓ Likidite alınamadı"
 
             entry_s = fmt_price(symbol, entry_price)
@@ -1057,29 +1105,31 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             last_s  = fmt_price(symbol, last_price)
 
             rr_ratio = (tp_pct / risk_pct) if risk_pct else 0.0
-
             explain = build_explain_block(df_15m, data)
-
             signal_time_str = tr_time.strftime("%H:%M")
+
             msg = f"""
 <b>{data['type']}</b>
 ━━━━━━━━━━━━━━━━━━━━
 <b>#{symbol}</b> | <b>Fiyat:</b> {last_s} | 🕒 {signal_time_str}
 ━━━━━━━━━━━━━━━━━━━━
 🧠 <b>BAĞLAM:</b> BTC={macro_regime} | CoinRejimi={coin_regime} | {trend_msg}
-{liq if liq else ""}
+{liq}
 {spread_msg}
 💵 <b>GİRİŞ :</b> {entry_s}
 🛡️ <b>STOP  :</b> {stop_s} (Risk: %{risk_pct:.2f})
 🎯 <b>HEDEF :</b> {tp_s} (Potansiyel: <b>%{tp_pct:.2f}</b>) • <i>{tp_note}</i>
-💰 <b>POZİSYON:</b> ${position_usdt:.0f} (~{coin_amount:.2f} adet) | GerçekRisk=%{actual_risk_pct:.2f} | RR 1:{rr_ratio:.2f}
+💰 <b>POZİSYON:</b> ${position_usdt:.0f} (~{coin_amount:.2f}) | GerçekRisk=%{actual_risk_pct:.2f} | RR 1:{rr_ratio:.2f}
 📝 <b>NEDEN:</b> {data['desc']}
 {explain}
 """.strip()
 
             send_telegram(msg)
             bot_status["signal_count"] += 1
-            print(f"✅ SİNYAL: {symbol} | {data['type']}", flush=True)
+            stats["sinyal_gonderildi"] += 1
+
+            if PRINT_SIGNAL_LOG:
+                print(f"✅ SİNYAL: {symbol} | {data['type']} | RR 1:{rr_ratio:.2f}", flush=True)
 
         except Exception as e:
             print(f"⚠️ Candidate worker err: {str(e)[:160]}", flush=True)
@@ -1093,37 +1143,35 @@ def start_flask():
     app.run(host="0.0.0.0", port=10000, use_reloader=False)
 
 async def main():
-    print("🚀 Sniper Bot (WS 15m + REST aday) başlıyor...", flush=True)
+    print("🚀 Bot başladı", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
-        print("🛑 Sembol havuzu boş. Çıkıyorum.", flush=True)
+        print("🛑 Sembol havuzu boş.", flush=True)
         return
 
-    print(f"✅ Sembol havuzu hazır: {len(symbols)} coin (MAX_SYMBOLS={MAX_SYMBOLS})", flush=True)
-    bot_status["status"] = "BOOTSTRAP"
+    global tracked_symbols
+    tracked_symbols = list(symbols)
 
-    # bootstrap
-    await bootstrap_all(symbols + ([MACRO_SYMBOL] if MACRO_SYMBOL not in symbols else []))
+    print(f"✅ Coin sayısı: {len(symbols)} (MAX_SYMBOLS={MAX_SYMBOLS})", flush=True)
+
+    # bootstrap (macro yoksa ekle)
+    boot_list = symbols + ([MACRO_SYMBOL] if MACRO_SYMBOL not in symbols else [])
+    await bootstrap_all(boot_list)
 
     # queue + worker
     candidate_queue = asyncio.Queue()
-    worker_task = asyncio.create_task(candidate_worker(candidate_queue))
+    asyncio.create_task(candidate_worker(candidate_queue))
 
     # ws listener
-    bot_status["status"] = "WS START"
     await ws_listen_klines(symbols, candidate_queue)
 
 if __name__ == "__main__":
-    # Flask + Watchdog thread
-    flask_t = threading.Thread(target=start_flask, daemon=True)
-    flask_t.start()
-
-    hb = threading.Thread(target=heartbeat_pinger, daemon=True)
-    hb.start()
-
-    wd = threading.Thread(target=watchdog_thread, daemon=True)
-    wd.start()
+    # Flask + Heartbeat + Watchdog + Summary threads
+    threading.Thread(target=start_flask, daemon=True).start()
+    threading.Thread(target=heartbeat_pinger, daemon=True).start()
+    threading.Thread(target=watchdog_thread, daemon=True).start()
+    threading.Thread(target=summary_pinger, daemon=True).start()
 
     try:
         asyncio.run(main())
