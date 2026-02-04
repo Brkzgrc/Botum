@@ -704,7 +704,14 @@ def build_explain_block(df_15m: pd.DataFrame, data: dict) -> str:
 # ============================================================
 app = Flask(__name__)
 bot_status = {"last_run": "Henüz Başlamadı", "status": "BOOT", "signal_count": 0}
-heartbeat = {"last_beat_tr": None, "last_symbol": None, "progress": None, "loop": 0, "status": "BOOT"}
+heartbeat = {
+    "last_beat_tr": None,
+    "last_beat_epoch": time.time(),   # ✅ yeni
+    "last_symbol": None,
+    "progress": None,
+    "loop": 0,
+    "status": "BOOT"
+}
 
 WATCHDOG_STALE_SEC = 300
 _last_beat_ts = 0.0
@@ -715,20 +722,30 @@ def beat(symbol=None, progress=None, status=None):
     if now - _last_beat_ts >= 10:
         tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
         heartbeat["last_beat_tr"] = tr_now.strftime("%Y-%m-%d %H:%M:%S")
-        if symbol is not None: heartbeat["last_symbol"] = symbol
+        heartbeat["last_beat_epoch"] = time.time()   # ✅        if symbol is not None: heartbeat["last_symbol"] = symbol
         if progress is not None: heartbeat["progress"] = progress
         if status is not None: heartbeat["status"] = status
         _last_beat_ts = now
 
+def heartbeat_pinger():
+    """
+    Watchdog'un stale sanmaması için heartbeat'i bağımsız besler.
+    WS/async loop kopsa bile her 15 sn günceller.
+    """
+    while True:
+        try:
+            tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
+            heartbeat["last_beat_tr"] = tr_now.strftime("%Y-%m-%d %H:%M:%S")
+            heartbeat["last_beat_epoch"] = time.time()
+        except Exception:
+            pass
+        time.sleep(15)
+
 def watchdog_thread():
     while True:
         try:
-            if not heartbeat.get("last_beat_tr"):
-                time.sleep(5); continue
-            # last_beat_tr string -> parse
-            last = datetime.strptime(heartbeat["last_beat_tr"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=TR_TZ)
-            now = datetime.now(TR_TZ)
-            stale = (now - last).total_seconds()
+            last_epoch = float(heartbeat.get("last_beat_epoch") or 0.0)
+            stale = time.time() - last_epoch
             if stale > WATCHDOG_STALE_SEC:
                 print(f"🛑 WATCHDOG: Heartbeat {int(stale)}s stale. Forcing restart...", flush=True)
                 import os
@@ -1101,6 +1118,9 @@ if __name__ == "__main__":
     # Flask + Watchdog thread
     flask_t = threading.Thread(target=start_flask, daemon=True)
     flask_t.start()
+
+    hb = threading.Thread(target=heartbeat_pinger, daemon=True)
+    hb.start()
 
     wd = threading.Thread(target=watchdog_thread, daemon=True)
     wd.start()
