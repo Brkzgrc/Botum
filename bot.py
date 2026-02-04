@@ -869,7 +869,8 @@ async def bootstrap_all(symbols: list[str]):
         if got:
             ok += 1
 
-    print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
+  print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
+  print_summary()
 
 # ============================================================
 # 13) WS KLINE LISTENER
@@ -1171,7 +1172,6 @@ if __name__ == "__main__":
     threading.Thread(target=start_flask, daemon=True).start()
     threading.Thread(target=heartbeat_pinger, daemon=True).start()
     threading.Thread(target=watchdog_thread, daemon=True).start()
-    threading.Thread(target=summary_pinger, daemon=True).start()
 
     try:
         asyncio.run(main())
