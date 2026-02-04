@@ -53,7 +53,7 @@ REACCU_COOLDOWN_MIN = 480
 # WebSocket'ten kaç sembol dinlenecek?
 # 433 sembol dinlemek mümkün olabilir ama bağlantı/limit sorunları yaşatabilir.
 # Burayı 120-200 arası öneririm. İstersen yükselt.
-MAX_SYMBOLS = 200
+MAX_SYMBOLS = None
 
 # Eğer MAX_SYMBOLS kısıtlıysa: en yüksek quoteVolume'a göre seç
 USE_TOP_VOLUME_POOL = True
