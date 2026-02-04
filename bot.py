@@ -869,8 +869,8 @@ async def bootstrap_all(symbols: list[str]):
         if got:
             ok += 1
 
-  print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
-  print_summary()
+    print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
+    print_summary()
 
 # ============================================================
 # 13) WS KLINE LISTENER
