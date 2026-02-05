@@ -84,7 +84,6 @@ TR_TZ = timezone(timedelta(hours=3))
 # ============================================================
 # 0.1) ANLAŞILIR LOG / ÖZET
 # ============================================================
-SUMMARY_EVERY_SEC = 60         # Her 60 saniyede 1 özet
 BOOT_PROGRESS_EVERY = 20       # Bootstrapte her 20 coinde 1 yaz
 PRINT_ADAY_LOG = True          # Aday yakalayınca tek satır yaz
 PRINT_SIGNAL_LOG = True        # Sinyal gönderince tek satır yaz
@@ -827,7 +826,7 @@ def send_telegram(text_html: str):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELELEGRAM_CHAT_ID if False else TELEGRAM_CHAT_ID, "text": text_html, "parse_mode": "HTML"},
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text_html, "parse_mode": "HTML"},
             timeout=10
         )
         if r.status_code != 200:
@@ -867,7 +866,6 @@ async def bootstrap_all(symbols: list[str]):
             ok += 1
 
     print(f"✅ Hazırlık bitti | ok={ok}/{total}", flush=True)
-    print_summary()
 
 # ============================================================
 # 13) WS KLINE LISTENER
@@ -890,6 +888,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
                 ping_timeout=30,
                 close_timeout=10,
                 max_queue=2048
+                compression=None
             ) as ws:
                 print("✅ Canlı bağlantı OK", flush=True)
                 while True:
