@@ -76,6 +76,7 @@ EXPLAIN_SIGNALS = True
 BOOTSTRAP_LIMIT_15M = 260
 KEEP_BARS_15M = 300
 WS_KLINE_INTERVAL = "15m"
+WS_STREAM_CHUNK = 120
 
 # --- TR timezone ---
 TR_TZ = timezone(timedelta(hours=3))
@@ -126,14 +127,6 @@ def print_summary():
         print("• (Henüz eleme/olay yok)", flush=True)
 
     print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
-
-def summary_pinger():
-    while True:
-        try:
-            time.sleep(SUMMARY_EVERY_SEC)
-            print_summary()
-        except Exception:
-            time.sleep(5)
 
 # ============================================================
 # 1) RATE LIMIT KAPISI (REST için)
@@ -891,7 +884,13 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
 
     while True:
         try:
-            async with websockets.connect(url, ping_interval=30, ping_timeout=20, close_timeout=10) as ws:
+            async with websockets.connect(
+                url,
+                ping_interval=30,
+                ping_timeout=30,
+                close_timeout=10,
+                max_queue=2048
+            ) as ws:
                 print("✅ Canlı bağlantı OK", flush=True)
                 while True:
                     msg = await ws.recv()
@@ -928,6 +927,13 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
             print(f"⚠️ WS kopma: {type(e).__name__}: {str(e)[:160]}", flush=True)
             bot_status["status"] = "WS yeniden bağlanıyor"
             await asyncio.sleep(5)
+
+async def ws_listen_klines_multi(symbols: list[str], candidate_queue: asyncio.Queue):
+    tasks = []
+    for i in range(0, len(symbols), WS_STREAM_CHUNK):
+        part = symbols[i:i+WS_STREAM_CHUNK]
+        tasks.append(asyncio.create_task(ws_listen_klines(part, candidate_queue)))
+    await asyncio.gather(*tasks)
 
 # ============================================================
 # 14) ADAY ÜRETİMİ (15m kapanışında)
@@ -1165,12 +1171,15 @@ async def main():
     boot_list = symbols + ([MACRO_SYMBOL] if MACRO_SYMBOL not in symbols else [])
     await bootstrap_all(boot_list)
 
+    # ✅ SADECE BURADA 1 KERE ÖZET
+    print_summary()
+
     # queue + worker
     candidate_queue = asyncio.Queue()
     asyncio.create_task(candidate_worker(candidate_queue))
 
-    # ws listener
-    await ws_listen_klines(symbols, candidate_queue)
+    # ws listener (multi)
+    await ws_listen_klines_multi(symbols, candidate_queue)
 
 if __name__ == "__main__":
     # Flask + Heartbeat + Watchdog + Summary threads
