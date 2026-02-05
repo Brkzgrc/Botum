@@ -753,6 +753,10 @@ def build_explain_block(df_15m: pd.DataFrame, data: dict) -> str:
 app = Flask(__name__)
 bot_status = {"last_run": "Henüz Başlamadı", "status": "BOOT", "signal_count": 0}
 
+import logging
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+app.logger.disabled = True
+
 heartbeat = {
     "last_beat_tr": None,
     "last_beat_epoch": time.time(),
