@@ -1141,7 +1141,8 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
 # 16) MAIN
 # ============================================================
 def start_flask():
-    app.run(host="0.0.0.0", port=10000, use_reloader=False)
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 async def main():
     print("🚀 Bot başladı", flush=True)
