@@ -887,7 +887,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
                 ping_interval=30,
                 ping_timeout=30,
                 close_timeout=10,
-                max_queue=2048
+                max_queue=2048,
                 compression=None
             ) as ws:
                 print("✅ Canlı bağlantı OK", flush=True)
