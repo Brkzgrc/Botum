@@ -891,7 +891,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
 
     while True:
         try:
-            async with websockets.connect(url, ping_interval=20, ping_timeout=20, close_timeout=10) as ws:
+            async with websockets.connect(url, ping_interval=30, ping_timeout=20, close_timeout=10) as ws:
                 print("✅ Canlı bağlantı OK", flush=True)
                 while True:
                     msg = await ws.recv()
