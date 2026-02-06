@@ -1066,14 +1066,12 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             is_ok, trend_msg = await is_1h_trend_aligned(symbol)
             if not is_ok:
                 stats["1h_trend_red"] += 1
-                candidate_queue.task_done()
                 continue
 
             # spread
             spread_ok, spread_msg = await check_spread_safety(symbol)
             if not spread_ok:
                 stats["spread_red"] += 1
-                candidate_queue.task_done()
                 continue
 
             entry_price = float(df_15m["close"].iloc[-1])
@@ -1090,7 +1088,6 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             risk_pct = ((entry_price - stop_price) / entry_price) * 100.0
             if tp_pct < risk_pct:
                 stats["rr_red"] += 1
-                candidate_queue.task_done()
                 continue
 
             position_usdt, coin_amount, actual_risk_pct = calc_position_size(entry_price, stop_price)
