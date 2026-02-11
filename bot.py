@@ -176,7 +176,7 @@ class ApiGate:
 
             raise RuntimeError("API call failed after retries")
 
-api_gate = ApiGate(min_interval_sec=0.22, max_concurrent=1, max_retries=6)
+api_gate = ApiGate(min_interval_sec=0.30, max_concurrent=1, max_retries=6)  # 0.22 → 0.30
 
 # ============================================================
 # 2) CCXT EXCHANGE
@@ -758,7 +758,7 @@ heartbeat = {
     "status": "BOOT"
 }
 
-WATCHDOG_STALE_SEC = 300
+WATCHDOG_STALE_SEC = 600
 _last_beat_ts = 0.0
 
 def beat(symbol=None, progress=None, status=None):
@@ -1049,7 +1049,7 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
         print(f"⚠️ evaluate error {symbol}: {str(e)[:140]}", flush=True)
 
 # ============================================================
-# 15) ADAY DOĞRULAMA WORKER (REST sadece burada)
+# 15) ADAY DOĞRULAMA WORKER - İYİLEŞTİRİLMİŞ
 # ============================================================
 async def candidate_worker(candidate_queue: asyncio.Queue):
     while True:
@@ -1062,16 +1062,21 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             macro_regime = sig.macro_regime
             tr_time = sig.tr_time
 
+            # 🔍 DEBUG: Aday işleme başlangıcı
+            print(f"🔬 İşleniyor: {symbol} | {data.get('type','?')}", flush=True)
+
             # 1h trend
             is_ok, trend_msg = await is_1h_trend_aligned(symbol)
             if not is_ok:
                 stats["1h_trend_red"] += 1
+                print(f"  ❌ {symbol}: {trend_msg}", flush=True)  # ← YENİ
                 continue
 
             # spread
             spread_ok, spread_msg = await check_spread_safety(symbol)
             if not spread_ok:
                 stats["spread_red"] += 1
+                print(f"  ❌ {symbol}: {spread_msg}", flush=True)  # ← YENİ
                 continue
 
             entry_price = float(df_15m["close"].iloc[-1])
@@ -1086,8 +1091,11 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                     stop_price = float(sr_support - buffer)
 
             risk_pct = ((entry_price - stop_price) / entry_price) * 100.0
+            
+            # RR kontrolü - geliştirilmiş log
             if tp_pct < risk_pct:
                 stats["rr_red"] += 1
+                print(f"  ❌ {symbol}: RR yetersiz (TP={tp_pct:.2f}% < Risk={risk_pct:.2f}%)", flush=True)  # ← YENİ
                 continue
 
             position_usdt, coin_amount, actual_risk_pct = calc_position_size(entry_price, stop_price)
@@ -1103,8 +1111,9 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                     liq = f"⚠️ Likidite düşük: ${qv/1e6:.1f}M"
                 elif qv < 15_000_000:
                     liq = f"ℹ️ Likidite orta: ${qv/1e6:.1f}M"
-            except Exception:
+            except Exception as e:
                 liq = "❓ Likidite alınamadı"
+                print(f"  ⚠️ {symbol}: Ticker hatası - {str(e)[:80]}", flush=True)  # ← YENİ
 
             entry_s = fmt_price(symbol, entry_price)
             stop_s  = fmt_price(symbol, stop_price)
@@ -1139,10 +1148,9 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                 print(f"✅ SİNYAL: {symbol} | {data['type']} | RR 1:{rr_ratio:.2f}", flush=True)
 
         except Exception as e:
-            print(f"⚠️ Candidate worker err: {str(e)[:160]}", flush=True)
+            print(f"⚠️ Worker hatası ({symbol}): {str(e)[:160]}", flush=True)  # ← GELİŞTİRİLDİ
         finally:
             candidate_queue.task_done()
-
 # ============================================================
 # 16) MAIN
 # ============================================================
@@ -1174,9 +1182,18 @@ async def main():
     candidate_queue = asyncio.Queue()
     asyncio.create_task(candidate_worker(candidate_queue))
 
+    # ⭐ YENİ: Periyodik özet task'ı başlat
+    async def periodic_summary():
+        while True:
+            await asyncio.sleep(600)  # Her 10 dakikada
+            print_summary()
+    
+    asyncio.create_task(periodic_summary())
+    # ⭐ YENİ BÖLÜM BİTİŞ
+
     # ws listener (multi)
     await ws_listen_klines_multi(symbols, candidate_queue)
-
+  
 if __name__ == "__main__":
     # Flask + Heartbeat + Watchdog + Summary threads
     threading.Thread(target=start_flask, daemon=True).start()
