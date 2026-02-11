@@ -35,8 +35,8 @@ from flask import Flask
 BINANCE_API_KEY = ""        # Boş bırak (public veri için şart değil)
 BINANCE_API_SECRET = ""     # Boş bırak
 
-TELEGRAM_TOKEN = ""         # Bot token
-TELEGRAM_CHAT_ID = ""       # Chat id
+TELEGRAM_TOKEN = "7583261338:AAFwkpxsumCBpYI5Ai-aIiII6INm_thmg-I"         # Bot token
+TELEGRAM_CHAT_ID = "5124859166"       # Chat id
 
 # --- RİSK ---
 ACCOUNT_SIZE = 5000.0
