@@ -97,10 +97,12 @@ def tr_now_str():
 
 def print_summary():
     total = len(tracked_symbols) if tracked_symbols else 0
-    print("\n📊 TARAMA SONUÇ ÖZETİ (ANLAŞILIR)", flush=True)
+    total_closes = ws_close_count or 1
+    
+    print("\n📊 TARAMA SONUÇ ÖZETİ", flush=True)
     print("━━━━━━━━━━━━━━━━━━━━", flush=True)
     print(f"🧭 Takip edilen coin         : {total}", flush=True)
-    print(f"🕯️ 15dk kapanış sayısı       : {ws_close_count}", flush=True)
+    print(f"🕯️ Son 15dk kapanış          : {total} coin", flush=True)
     print(f"🔍 Aday sayısı               : {stats.get('aday',0)}", flush=True)
     print(f"✅ Gönderilen sinyal         : {stats.get('sinyal_gonderildi',0)}", flush=True)
     print("— Eleme sebepleri —", flush=True)
@@ -121,12 +123,13 @@ def print_summary():
         v = stats.get(k, 0)
         if v:
             any_printed = True
-            print(f"• {label:18s}: {v}", flush=True)
+            pct = (v / total_closes) * 100
+            print(f"• {label:18s}: {v:5d} ({pct:5.1f}%)", flush=True)
     if not any_printed:
         print("• (Henüz eleme/olay yok)", flush=True)
 
     print("━━━━━━━━━━━━━━━━━━━━\n", flush=True)
-
+  
 # ============================================================
 # 1) RATE LIMIT KAPISI (REST için)
 # ============================================================
