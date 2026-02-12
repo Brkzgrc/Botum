@@ -17,7 +17,7 @@ import json
 import time
 import threading
 import os
-from collections import defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -67,13 +67,13 @@ RS_RISK_OFF_MIN_SCORE = 1.50
 
 # --- Macro ---
 MACRO_SYMBOL = "BTC/USDT"
-MACRO_TTL_MIN = 10
+MACRO_TTL_MIN = 30
 
 # --- Explain (telegram mesajında “neden” bloğu) ---
 EXPLAIN_SIGNALS = True
 
 # --- WS / DATA ---
-BOOTSTRAP_LIMIT_15M = 260
+BOOTSTRAP_LIMIT_15M = 300
 KEEP_BARS_15M = 300
 WS_KLINE_INTERVAL = "15m"
 WS_STREAM_CHUNK = 120
@@ -88,7 +88,7 @@ BOOT_PROGRESS_EVERY = 20       # Bootstrapte her 20 coinde 1 yaz
 PRINT_ADAY_LOG = True          # Aday yakalayınca tek satır yaz
 PRINT_SIGNAL_LOG = True        # Sinyal gönderince tek satır yaz
 
-stats = defaultdict(int)       # eleme/olay sayacı
+stats = Counter()
 ws_close_count = 0
 tracked_symbols = []
 
@@ -179,7 +179,7 @@ class ApiGate:
 
             raise RuntimeError("API call failed after retries")
 
-api_gate = ApiGate(min_interval_sec=0.30, max_concurrent=1, max_retries=6)  # 0.22 → 0.30
+api_gate = ApiGate(min_interval_sec=0.25, max_concurrent=3, max_retries=6)
 
 # ============================================================
 # 2) CCXT EXCHANGE
@@ -780,15 +780,11 @@ def beat(symbol=None, progress=None, status=None):
         _last_beat_ts = now
 
 def heartbeat_pinger():
-    """Render watchdog/health için: async kilitlense bile epoch günceller."""
     while True:
-        try:
-            heartbeat["last_beat_tr"] = tr_now_str()
-            heartbeat["last_beat_epoch"] = time.time()
-        except Exception:
-            pass
+        heartbeat["last_beat_tr"] = tr_now_str()
+        heartbeat["last_beat_epoch"] = time.time()
         time.sleep(15)
-
+      
 def watchdog_thread():
     while True:
         try:
@@ -883,6 +879,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
     bot_status["status"] = "CANLI VERİ (WS)"
     print(f"🛰️ Canlı veri başladı | coin={len(symbols)} | timeframe=15m", flush=True)
 
+    retry_count = 0
     while True:
         try:
             async with websockets.connect(
@@ -893,6 +890,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
                 max_queue=2048,
                 compression=None
             ) as ws:
+                retry_count = 0
                 print("✅ Canlı bağlantı OK", flush=True)
                 while True:
                     msg = await ws.recv()
@@ -926,9 +924,11 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
                     await evaluate_symbol_on_close(symbol, df, candidate_queue)
 
         except Exception as e:
-            print(f"⚠️ WS kopma: {type(e).__name__}: {str(e)[:160]}", flush=True)
+            retry_count += 1
+            backoff = min(60, 5 * (2 ** min(retry_count, 4)))
+            print(f"⚠️ WS kopma (#{retry_count}): {type(e).__name__} | {backoff}s bekliyor", flush=True)
             bot_status["status"] = "WS yeniden bağlanıyor"
-            await asyncio.sleep(5)
+            await asyncio.sleep(backoff)
 
 async def ws_listen_klines_multi(symbols: list[str], candidate_queue: asyncio.Queue):
     tasks = []
@@ -968,7 +968,8 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
 
         # BTC 15m cache (RS için) - seyrek
         now_ts = time.time()
-        if now_ts - btc_15m_cache["ts"] > 60:
+        # BTC 15m'i sadece 15 dakikada bir güncelle
+        if now_ts - btc_15m_cache["ts"] > 900:  # 900 saniye = 15 dakika
             try:
                 btc_df = await fetch_ohlcv_df(MACRO_SYMBOL, "15m", 260)
                 btc_df = prepare_indicators(btc_df)
@@ -1033,7 +1034,12 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
             stats["cooldown"] += 1
             return
         last_signal_ts[key] = utc_now
-
+        
+        # Eski cooldown kayıtlarını temizle
+        if len(last_signal_ts) > 1000:
+            cutoff = utc_now - timedelta(hours=24)
+            last_signal_ts = {k: v for k, v in last_signal_ts.items() if v > cutoff}
+          
         # Aday kuyruğa
         stats["aday"] += 1
         if PRINT_ADAY_LOG:
