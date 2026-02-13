@@ -43,8 +43,12 @@ ACCOUNT_SIZE = 5000.0
 RISK_PERCENT = 2.0
 
 # --- FİLTRE / PARAMETRE ---
-MIN_ATR_PCT = 0.0018
+# --- FİLTRE / PARAMETRE ---
+MIN_ATR_PCT = 0.0030
+MAX_SPREAD_PCT = 0.15
+MIN_RR = 1.5
 COOLDOWN_MINUTES = 120
+SFP_COOLDOWN_MIN = 60
 PULLBACK_COOLDOWN_MIN = 360
 REACCU_COOLDOWN_MIN = 480
 
@@ -451,15 +455,19 @@ async def is_1h_trend_aligned(symbol: str):
             return False, "❌ 1s veri eksik"
         ema50 = ta.ema(df_1h["close"], length=50).iloc[-1]
         ema200 = ta.ema(df_1h["close"], length=200).iloc[-1]
+        ema50_prev = ta.ema(df_1h["close"], length=50).iloc[-5]
         close = df_1h["close"].iloc[-1]
-        if pd.isna(ema50) or pd.isna(ema200):
+        if pd.isna(ema50) or pd.isna(ema200) or pd.isna(ema50_prev):
             return False, "❌ 1s EMA hesaplanamadı"
-        if close > ema50 > ema200:
+        
+        ema50_rising = ema50 > ema50_prev
+        
+        if close > ema200 and ema50 > ema200 and ema50_rising:
             return True, "✅ 1s Trend uygun"
         return False, "❌ 1s Trend uygun değil"
     except Exception:
         return False, "❌ 1s trend hatası"
-
+      
 async def check_spread_safety(symbol: str):
     try:
         ob = await api_gate.call(exchange.fetch_order_book, symbol, 5)
@@ -472,12 +480,12 @@ async def check_spread_safety(symbol: str):
         if not bid or bid <= 0:
             return False, "⚠️ Spread kontrol edilemedi"
         spread_pct = ((ask - bid) / bid) * 100
-        if spread_pct > 0.4:
+        if spread_pct > MAX_SPREAD_PCT:
             return False, f"⚠️ Spread geniş: %{spread_pct:.2f}"
         return True, f"✅ Spread: %{spread_pct:.2f}"
     except Exception:
         return True, "ℹ️ Spread alınamadı"
-
+      
 def calc_position_size(entry, stop, account_size=ACCOUNT_SIZE, risk_pct=RISK_PERCENT):
     risk_amount = account_size * (risk_pct / 100)
     risk_per_coin = entry - stop
@@ -637,7 +645,7 @@ def strategy_pullback(df_15m):
         if pd.isna(ema200) or not (ema50 > ema200):
             return False, None
 
-        touched_ema = float(last["low"]) <= ema50 * 1.001
+        touched_ema = float(last["low"]) <= ema50 * 1.005
         prev = df_15m.iloc[-2]
         prev_sweep = float(prev["low"]) < ema50 * 0.999
 
@@ -680,9 +688,9 @@ def strategy_reaccumulation(df_15m):
             return False, None
 
         compression = atr / atr_mean
-        if compression > 0.80:
+        if compression > 0.85:
             return False, None
-
+          
         recent_high = float(recent["high"].max())
         breakout_level = recent_high + (0.25 * atr)
         prev_close = float(df_15m["close"].iloc[-2])
@@ -1027,7 +1035,9 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
             cooldown_min = PULLBACK_COOLDOWN_MIN
         elif "RE-ACCUMULATION" in stype:
             cooldown_min = REACCU_COOLDOWN_MIN
-
+        elif "SFP" in stype:
+            cooldown_min = SFP_COOLDOWN_MIN
+          
         key = (symbol, data.get("type","UNKNOWN"))
         last_ts = last_signal_ts.get(key)
         if last_ts and (utc_now - last_ts) < timedelta(minutes=cooldown_min):
@@ -1100,13 +1110,14 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                     stop_price = float(sr_support - buffer)
 
             risk_pct = ((entry_price - stop_price) / entry_price) * 100.0
+            rr_ratio = (tp_pct / risk_pct) if risk_pct > 0 else 0.0
             
             # RR kontrolü - geliştirilmiş log
-            if tp_pct < risk_pct:
+            if rr_ratio < MIN_RR:
                 stats["rr_red"] += 1
-                print(f"  ❌ {symbol}: RR yetersiz (TP={tp_pct:.2f}% < Risk={risk_pct:.2f}%)", flush=True)  # ← YENİ
+                print(f"  ❌ {symbol}: RR yetersiz (RR={rr_ratio:.2f} < {MIN_RR})", flush=True)
                 continue
-
+              
             position_usdt, coin_amount, actual_risk_pct = calc_position_size(entry_price, stop_price)
 
             # ticker (likidite)
