@@ -1047,6 +1047,7 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
         
         # Eski cooldown kayıtlarını temizle
         if len(last_signal_ts) > 1000:
+            global last_signal_ts
             cutoff = utc_now - timedelta(hours=24)
             last_signal_ts = {k: v for k, v in last_signal_ts.items() if v > cutoff}
           
