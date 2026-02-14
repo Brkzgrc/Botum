@@ -949,7 +949,7 @@ async def ws_listen_klines_multi(symbols: list[str], candidate_queue: asyncio.Qu
 # 14) ADAY ÜRETİMİ (15m kapanışında)
 # ============================================================
 async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_queue: asyncio.Queue):
-    global ws_close_count
+    global ws_close_count, last_signal_ts
     try:
         ws_close_count += 1
         tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -1047,7 +1047,6 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
         
         # Eski cooldown kayıtlarını temizle
         if len(last_signal_ts) > 1000:
-            global last_signal_ts
             cutoff = utc_now - timedelta(hours=24)
             last_signal_ts = {k: v for k, v in last_signal_ts.items() if v > cutoff}
           
