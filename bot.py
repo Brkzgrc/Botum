@@ -523,8 +523,8 @@ def find_structural_target(df_15m: pd.DataFrame, entry_price: float):
                 tp = res
             note = f"Yakın direnç (güç={res_n})"
         else:
-            tp = entry_price + max(3.0 * atr, entry_price * 0.02)
-            note = "Direnç net değil (ATR bazlı)"
+            tp = entry_price + max(5.0 * atr, entry_price * 0.035)
+            note = "ATR bazlı"
         tp_pct = ((tp - entry_price) / entry_price) * 100.0
         return tp, tp_pct, note, sup
     except Exception:
@@ -1297,13 +1297,20 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                 continue
 
             position_usdt, coin_amount, actual_risk_pct = calc_position_size(entry_price, stop_price)
-
+            # ticker (likidite)
             liq = ""
             last_price = None
             try:
                 t = await api_gate.call(exchange.fetch_ticker, symbol)
                 last_price = t.get("last", None)
                 qv = float(t.get("quoteVolume", 0) or 0)
+                
+                # Minimum $1M likidite
+                if qv < 1_000_000:
+                    stats["likidite_red"] += 1
+                    print(f"  ❌ {symbol}: Likidite çok düşük: ${qv/1e6:.1f}M", flush=True)
+                    continue
+                
                 if qv < 5_000_000:
                     liq = f"⚠️ Likidite düşük: ${qv/1e6:.1f}M"
                 elif qv < 15_000_000:
@@ -1321,19 +1328,19 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
             signal_time_str = tr_time.strftime("%H:%M")
 
             msg = f"""
-<b>{data['type']}</b>
-━━━━━━━━━━━━━━━━━━━━
-<b>#{symbol}</b> | <b>Fiyat:</b> {last_s} | 🕒 {signal_time_str}
-━━━━━━━━━━━━━━━━━━━━
-🧠 <b>BAĞLAM:</b> BTC={macro_regime} | CoinRejimi={coin_regime} | {trend_msg}
+<b>🎯 {data['type']}</b>
+
+<b>#{symbol}</b>
+💵 Giriş: {entry_s}
+🎯 Hedef: {tp_s} (+%{tp_pct:.1f})
+🛡️ Stop: {stop_s} (-%{risk_pct:.1f})
+━━━━━━━━━━━━━━━━
+💰 Pozisyon: ${position_usdt:.0f} (~{coin_amount:.1f} adet)
+📊 RR: 1:{rr_ratio:.1f}
+━━━━━━━━━━━━━━━━
+📌 {data['desc']}
+🕒 {signal_time_str} | {macro_regime}
 {liq}
-{spread_msg}
-💵 <b>GİRİŞ :</b> {entry_s}
-🛡️ <b>STOP  :</b> {stop_s} (Risk: %{risk_pct:.2f})
-🎯 <b>HEDEF :</b> {tp_s} (Potansiyel: <b>%{tp_pct:.2f}</b>) • <i>{tp_note}</i>
-💰 <b>POZİSYON:</b> ${position_usdt:.0f} (~{coin_amount:.2f}) | GerçekRisk=%{actual_risk_pct:.2f} | RR 1:{rr_ratio:.2f}
-📝 <b>NEDEN:</b> {data['desc']}
-{explain}
 """.strip()
 
             send_telegram(msg)
