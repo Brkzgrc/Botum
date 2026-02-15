@@ -679,7 +679,7 @@ def strategy_reversal(df_15m):
         recent_low = float(recent_20["low"].min())
         
         decline = ((recent_high - recent_low) / recent_high) * 100
-        if decline < 8:  # En az %8 düşüş
+        if decline < 5:  # En az %5 düşüş (daha kolay tetiklenir)
             return False, None
         
         # 2) Şu anki fiyat dibe yakın mı?
@@ -1176,12 +1176,13 @@ async def evaluate_symbol_on_close(symbol: str, df_15m: pd.DataFrame, candidate_
             if ok:
                 signal_found = True; data = d
         
-        if not signal_found:
-            ok, d = strategy_momentum(df_15m)
-            if ok:
-                signal_found = True; data = d
-        
+        # MOMENTUM geçici kapalı (manuel giriş için uygun değil)
+        # if not signal_found:
+        #     ok, d = strategy_momentum(df_15m)
+        #     if ok:
+        #         signal_found = True; data = d        
         # Sonra eski stratejiler
+        
         if not signal_found and coin_regime == "UPTREND":
             ok, d = strategy_pullback(df_15m)
             if ok:
@@ -1305,15 +1306,15 @@ async def candidate_worker(candidate_queue: asyncio.Queue):
                 last_price = t.get("last", None)
                 qv = float(t.get("quoteVolume", 0) or 0)
                 
-                # Minimum $1M likidite
-                if qv < 1_000_000:
+                # Minimum $5M likidite
+                if qv < 5_000_000:
                     stats["likidite_red"] += 1
                     print(f"  ❌ {symbol}: Likidite çok düşük: ${qv/1e6:.1f}M", flush=True)
                     continue
                 
-                if qv < 5_000_000:
+                if qv < 10_000_000:
                     liq = f"⚠️ Likidite düşük: ${qv/1e6:.1f}M"
-                elif qv < 15_000_000:
+                elif qv < 25_000_000:
                     liq = f"ℹ️ Likidite orta: ${qv/1e6:.1f}M"
             except Exception as e:
                 liq = "❓ Likidite alınamadı"
