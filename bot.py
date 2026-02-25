@@ -196,7 +196,7 @@ IGNORED_COINS = set([
     'EUR/USDT','TRY/USDT','GBP/USDT','BUSD/USDT','USTC/USDT',
     'PAXG/USDT','WBTC/USDT','USDE/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT',
-    'BFUSD/USDT',  # ← YENİ: Binance Funding USD (stablecoin)
+    'BFUSD/USDT','RLUSD/USDT',  # ← YENİ: Binance Funding USD (stablecoin)
 ])
 
 # ============================================================
