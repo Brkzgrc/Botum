@@ -196,6 +196,7 @@ IGNORED_COINS = set([
     'EUR/USDT','TRY/USDT','GBP/USDT','BUSD/USDT','USTC/USDT',
     'PAXG/USDT','WBTC/USDT','USDE/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT',
+    'BFUSD/USDT',  # ← YENİ: Binance Funding USD (stablecoin)
 ])
 
 # ============================================================
@@ -324,7 +325,15 @@ def detect_squeeze(df_15m: pd.DataFrame) -> dict:
             return {"detected": False, "reason": "Veri yetersiz"}
         
         last = df_15m.iloc[-1]
+
+        # ✅ YENİ: Stablecoin kontrolü (ATR çok düşükse eleme)
+        current_price = float(last["close"])
+        atr = float(last["atr"])
+        atr_pct = (atr / current_price) * 100
         
+        if atr_pct < 0.15:  # ATR %0.15'ten düşükse stablecoin olabilir
+            return {"detected": False, "reason": "ATR çok düşük (stablecoin?)"}        
+
         # 1) BB Width kontrolü
         if "bb_width" not in df_15m.columns or pd.isna(last["bb_width"]):
             return {"detected": False, "reason": "BB hesaplanamadı"}
@@ -443,63 +452,109 @@ def detect_accumulation(df_15m: pd.DataFrame) -> dict:
     except Exception as e:
         return {"detected": False, "reason": f"Hata: {str(e)[:50]}"}
 
-def find_support_resistance(df_15m: pd.DataFrame, current_price: float) -> dict:
+def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> dict:
     """
-    Destek/Direnç seviyeleri:
-    - Pivot points
-    - Volume clusters
-    - Recent highs/lows
+    Gerçek test edilmiş direnç/destek seviyeleri bul
     """
     try:
         if len(df_15m) < 100:
             return None
         
-        # Pivot points (son 100 mum)
-        lookback = min(100, len(df_15m))
+        lookback = min(200, len(df_15m))  # Daha fazla veri
         recent = df_15m.iloc[-lookback:]
         
+        # 1) Fiyat seviyeleri ve kaç kez test edildiğini say
         highs = recent["high"].values
         lows = recent["low"].values
+        closes = recent["close"].values
         
-        # Resistance: Son 100 mumun en yüksekleri
-        resistance_candidates = []
-        for i in range(5, len(highs)-5):
-            if highs[i] == max(highs[i-5:i+6]):
-                resistance_candidates.append(float(highs[i]))
+        # Fiyat aralıklarını oluştur (tolerance ile)
+        tolerance = current_price * 0.01  # %1 tolerans
         
-        # Support: Son 100 mumun en düşükleri
-        support_candidates = []
-        for i in range(5, len(lows)-5):
-            if lows[i] == min(lows[i-5:i+6]):
-                support_candidates.append(float(lows[i]))
+        resistance_tests = {}
+        support_tests = {}
         
-        # Cluster oluştur (yakın seviyeleri birleştir)
-        def cluster_levels(levels, tolerance=0.005):
-            if not levels:
-                return []
-            levels = sorted(levels)
-            clusters = []
-            current_cluster = [levels[0]]
-            for level in levels[1:]:
-                if abs(level - current_cluster[-1]) / current_cluster[-1] < tolerance:
-                    current_cluster.append(level)
-                else:
-                    clusters.append(np.median(current_cluster))
-                    current_cluster = [level]
-            clusters.append(np.median(current_cluster))
-            return clusters
+        # Her mumda fiyatın hangi seviyelere yaklaştığını say
+        for i in range(len(recent)):
+            high = highs[i]
+            low = lows[i]
+            
+            # Resistance test (yukarı dokunma)
+            for level in resistance_tests.keys():
+                if abs(high - level) < tolerance:
+                    resistance_tests[level] += 1
+            
+            # Yeni level ekle
+            if high > current_price:
+                # Yakın level var mı kontrol et
+                found = False
+                for level in resistance_tests.keys():
+                    if abs(high - level) < tolerance:
+                        found = True
+                        break
+                if not found:
+                    resistance_tests[high] = 1
+            
+            # Support test (aşağı dokunma)
+            for level in support_tests.keys():
+                if abs(low - level) < tolerance:
+                    support_tests[level] += 1
+            
+            if low < current_price:
+                found = False
+                for level in support_tests.keys():
+                    if abs(low - level) < tolerance:
+                        found = True
+                        break
+                if not found:
+                    support_tests[low] = 1
         
-        resistances = cluster_levels(resistance_candidates)
-        supports = cluster_levels(support_candidates)
+        # 2) En çok test edilen seviyeleri bul
+        # En az 3 kez test edilmiş olmalı
+        strong_resistances = [(lvl, cnt) for lvl, cnt in resistance_tests.items() if cnt >= 3]
+        strong_supports = [(lvl, cnt) for lvl, cnt in support_tests.items() if cnt >= 3]
         
-        # En yakın dirençleri bul
-        upper_resistances = [r for r in resistances if r > current_price]
-        lower_supports = [s for s in supports if s < current_price]
+        # Eğer yeterli güçlü seviye yoksa, en az 2 kez test edileni al
+        if not strong_resistances:
+            strong_resistances = [(lvl, cnt) for lvl, cnt in resistance_tests.items() if cnt >= 2]
+        if not strong_supports:
+            strong_supports = [(lvl, cnt) for lvl, cnt in support_tests.items() if cnt >= 2]
         
-        r1 = min(upper_resistances) if upper_resistances else current_price * 1.15
-        r2 = min([r for r in upper_resistances if r > r1]) if len(upper_resistances) > 1 else r1 * 1.08
+        # Hala yoksa, en yakınları al
+        if not strong_resistances:
+            upper = [lvl for lvl in resistance_tests.keys() if lvl > current_price]
+            strong_resistances = [(lvl, 1) for lvl in sorted(upper)[:2]] if upper else []
         
-        s1 = max(lower_supports) if lower_supports else current_price * 0.92
+        if not strong_supports:
+            lower = [lvl for lvl in support_tests.keys() if lvl < current_price]
+            strong_supports = [(lvl, 1) for lvl in sorted(lower, reverse=True)[:2]] if lower else []
+        
+        # 3) En yakın ve en güçlü seviyeleri seç
+        if not strong_resistances:
+            r1 = current_price * 1.08  # Fallback
+            r2 = current_price * 1.15
+        else:
+            # En yakın ve en güçlü direnç
+            resistances_sorted = sorted(strong_resistances, key=lambda x: (x[0] - current_price, -x[1]))
+            r1 = resistances_sorted[0][0]
+            r2 = resistances_sorted[1][0] if len(resistances_sorted) > 1 else r1 * 1.05
+        
+        if not strong_supports:
+            s1 = current_price * 0.92  # Fallback
+        else:
+            supports_sorted = sorted(strong_supports, key=lambda x: (current_price - x[0], -x[1]))
+            s1 = supports_sorted[0][0]
+        
+        # 4) Mantık kontrolü: Direnç çok uzaksa (>%30), yakınlaştır
+        r1_distance = ((r1 - current_price) / current_price) * 100
+        if r1_distance > 30:
+            r1 = current_price * 1.15  # Max %15 uzakta
+            r2 = r1 * 1.05
+        
+        # 5) Mantık kontrolü: Destek çok uzaksa (>%15), yakınlaştır
+        s1_distance = ((current_price - s1) / current_price) * 100
+        if s1_distance > 15:
+            s1 = current_price * 0.90  # Max %10 aşağıda
         
         return {
             "resistance_1": float(r1),
@@ -508,7 +563,8 @@ def find_support_resistance(df_15m: pd.DataFrame, current_price: float) -> dict:
             "current": float(current_price)
         }
         
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ SR hesaplama hatası: {str(e)[:80]}", flush=True)
         return None
 
 def check_4h_trend(df_4h: pd.DataFrame) -> dict:
