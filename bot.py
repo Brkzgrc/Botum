@@ -452,6 +452,88 @@ def detect_accumulation(df_15m: pd.DataFrame) -> dict:
     except Exception as e:
         return {"detected": False, "reason": f"Hata: {str(e)[:50]}"}
 
+def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
+    """
+    Momentum patlama tespiti:
+    - Güçlü hacim + güçlü mum
+    - Yeni yüksek yapıyor
+    - ATR genişliyor (volatilite artışı)
+    """
+    try:
+        if len(df_15m) < 50 or df_4h is None or len(df_4h) < 20:
+            return {"detected": False, "reason": "Veri yetersiz"}
+        
+        last_15m = df_15m.iloc[-1]
+        last_4h = df_4h.iloc[-1]
+        
+        # 1) Güçlü yeşil mum (15m)
+        close = float(last_15m["close"])
+        open_price = float(last_15m["open"])
+        high = float(last_15m["high"])
+        low = float(last_15m["low"])
+        
+        candle_range = high - low
+        if candle_range == 0:
+            return {"detected": False, "reason": "Mum yok"}
+        
+        body = abs(close - open_price)
+        body_ratio = body / candle_range
+        is_green = close > open_price
+        
+        if not (is_green and body_ratio > 0.60):
+            return {"detected": False, "reason": "Zayıf mum"}
+        
+        # 2) Hacim patlaması
+        vol = float(last_15m["volume"])
+        vol_ma = float(last_15m["vol_ma"]) if not pd.isna(last_15m["vol_ma"]) else 0
+        
+        if vol_ma == 0:
+            return {"detected": False, "reason": "Vol hesaplanamadı"}
+        
+        vol_ratio = vol / vol_ma
+        if vol_ratio < 2.0:  # En az 2x hacim
+            return {"detected": False, "reason": "Hacim düşük"}
+        
+        # 3) Yeni yüksek yapıyor mu? (son 40 mumun en yükseği)
+        recent_40 = df_15m.iloc[-40:-1]
+        prev_high = float(recent_40["high"].max())
+        
+        if close <= prev_high * 0.995:
+            return {"detected": False, "reason": "Yeni yüksek yok"}
+        
+        # 4) ATR genişliyor mu? (volatilite artışı)
+        atr = float(last_15m["atr"])
+        atr_prev = float(df_15m["atr"].iloc[-10])
+        
+        if atr <= atr_prev * 1.1:
+            return {"detected": False, "reason": "ATR genişlemiyor"}
+        
+        # 5) RSI güçlü ama aşırı değil
+        rsi = float(last_15m["rsi"])
+        if pd.isna(rsi) or rsi < 50 or rsi > 75:
+            return {"detected": False, "reason": "RSI uygun değil"}
+        
+        # 6) 4h trend pozitif
+        ema20_4h = float(last_4h["ema20"])
+        ema50_4h = float(last_4h["ema50"])
+        close_4h = float(last_4h["close"])
+        
+        if not (close_4h > ema20_4h and ema20_4h > ema50_4h):
+            return {"detected": False, "reason": "4h trend zayıf"}
+        
+        # MOMENTUM PATLAMA TESPİT EDİLDİ!
+        return {
+            "detected": True,
+            "vol_ratio": vol_ratio,
+            "body_ratio": body_ratio * 100,
+            "rsi": rsi,
+            "atr_expansion": (atr / atr_prev) if atr_prev > 0 else 1.0,
+            "score": vol_ratio + (body_ratio * 5) + (rsi / 10)
+        }
+        
+    except Exception as e:
+        return {"detected": False, "reason": f"Hata: {str(e)[:50]}"}
+
 def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> dict:
     """
     Gerçek test edilmiş direnç/destek seviyeleri bul
@@ -662,26 +744,40 @@ async def check_order_book(symbol: str) -> dict:
 # ============================================================
 async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
     """
-    Tam analiz:
-    1. Sıkışma var mı?
-    2. Birikim var mı?
-    3. Potansiyel ne kadar?
-    4. Risk ne kadar?
-    5. 4h trend uygun mu?
+    Hibrit analiz:
+    MOD 1: SIKIŞMA (patlama öncesi)
+    MOD 2: MOMENTUM (patlama başladı)
     """
     try:
-        # 1) Sıkışma kontrolü
+        signal_type = None
+        analysis_data = {}
+        
+        # MOD 1: SIKIŞMA TESPİTİ (Patlama ÖNCE)
         squeeze = detect_squeeze(df_15m)
-        if not squeeze["detected"]:
+        if squeeze["detected"]:
+            stats["squeeze_detected"] += 1
+            
+            # Birikim var mı?
+            accumulation = detect_accumulation(df_15m)
+            if accumulation["detected"]:
+                signal_type = "SQUEEZE"
+                analysis_data = {
+                    "squeeze": squeeze,
+                    "accumulation": accumulation
+                }
+        
+        # MOD 2: MOMENTUM TESPİTİ (Patlama BAŞLADI)
+        if not signal_type:
+            momentum = detect_momentum_breakout(df_15m, df_4h)
+            if momentum["detected"]:
+                signal_type = "MOMENTUM"
+                analysis_data = {
+                    "momentum": momentum
+                }
+        
+        # Hiçbir mod tetiklenmediyse eleme
+        if not signal_type:
             stats["no_squeeze"] += 1
-            return None
-        
-        stats["squeeze_detected"] += 1
-        
-        # 2) Birikim kontrolü
-        accumulation = detect_accumulation(df_15m)
-        if not accumulation["detected"]:
-            stats["no_accumulation"] += 1
             return None
         
         # 3) Fiyat & SR seviyeleri
@@ -734,6 +830,7 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
         # Analiz tamamlandı!
         return {
             "symbol": symbol,
+            "signal_type": signal_type,  # SQUEEZE veya MOMENTUM
             "current_price": current_price,
             "entry_zone_low": current_price * 0.99,
             "entry_zone_high": current_price * 1.01,
@@ -743,8 +840,7 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
             "potential_pct": potential_pct,
             "risk_pct": risk_pct,
             "rr_ratio": rr_ratio,
-            "squeeze": squeeze,
-            "accumulation": accumulation,
+            "analysis_data": analysis_data,
             "trend_4h": trend_4h,
             "order_book": ob,
             "liquidity": liquidity
@@ -776,6 +872,7 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     Detaylı sinyal mesajı oluştur
     """
     symbol = analysis["symbol"]
+    signal_type = analysis["signal_type"]
     current = analysis["current_price"]
     entry_low = analysis["entry_zone_low"]
     entry_high = analysis["entry_zone_high"]
@@ -786,8 +883,7 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     risk = analysis["risk_pct"]
     rr = analysis["rr_ratio"]
     
-    squeeze = analysis["squeeze"]
-    accum = analysis["accumulation"]
+    analysis_data = analysis["analysis_data"]
     trend = analysis["trend_4h"]
     ob = analysis["order_book"]
     liq = analysis["liquidity"]
@@ -819,8 +915,14 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     else:
         ob_msg = ""
     
+# Sinyal tipine göre başlık
+    if signal_type == "SQUEEZE":
+        title = "⚡ SIKIŞMA - PATLAMA BEKLENİYOR"
+    else:
+        title = "🚀 MOMENTUM PATLAMA"
+    
     msg = f"""
-⚡ <b>SIKIŞMA - PATLAMA BEKLENİYOR</b>
+<b>{title}</b>
 
 <b>#{symbol}</b>
 💵 Şu an: {current_s}
@@ -834,10 +936,24 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
 📈 RR: 1:{rr:.1f}
 ━━━━━━━━━━━━━━━━
 🔍 <b>ANALİZ:</b>
-- {squeeze['squeeze_hours']:.1f} saattir sıkışmada (BB: %{squeeze['bb_width']:.1f})
+"""
+    
+    # Analiz tipine göre detay
+    if signal_type == "SQUEEZE":
+        squeeze = analysis_data["squeeze"]
+        accum = analysis_data["accumulation"]
+        msg += f"""• {squeeze['squeeze_hours']:.1f} saattir sıkışmada (BB: %{squeeze['bb_width']:.1f})
 - Range: %{squeeze['range_pct']:.1f} | {"Hacim azalıyor" if squeeze.get('vol_decreasing') else "Hacim normal"}
 - {"✅ Dipte yükseliş var" if accum.get('higher_lows') else "⚠️ Dipte yükseliş yok"}
-- Alım hacmi: %{accum['buy_pressure']:.0f} | RSI: {accum['rsi']:.0f}
+- Alım hacmi: %{accum['buy_pressure']:.0f} | RSI: {accum['rsi']:.0f}"""
+    else:  # MOMENTUM
+        mom = analysis_data["momentum"]
+        msg += f"""• Güçlü momentum! Hacim: {mom['vol_ratio']:.1f}x
+- Body: %{mom['body_ratio']:.0f} | RSI: {mom['rsi']:.0f}
+- ATR genişleme: {mom['atr_expansion']:.2f}x
+- Yeni yüksek yapıyor!"""
+    
+    msg += f"""
 - 4h Trend: {trend['status']} ({trend['momentum']})
 {("• " + ob_msg) if ob_msg else ""}
 
