@@ -686,7 +686,7 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
         
         # 3) Fiyat & SR seviyeleri
         current_price = float(df_15m["close"].iloc[-1])
-        sr = find_support_resistance(df_15m, current_price)
+        sr = find_support_resistance_v2(df_15m, current_price)
         
         if sr is None:
             stats["data_insufficient"] += 1
