@@ -199,8 +199,48 @@ IGNORED_COINS = set([
 ])
 
 # ============================================================
+# 3.1) SIGNAL LOGGING - YENİ EKLEME
+# ============================================================
+SIGNAL_LOG_FILE = "/mnt/user-data/outputs/signal_log.json"
+
+def save_signal_log(analysis: dict, tr_time: datetime):
+    """Sinyali kaydet"""
+    try:
+        # Mevcut kayıtları oku
+        if os.path.exists(SIGNAL_LOG_FILE):
+            with open(SIGNAL_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        else:
+            logs = []
+        
+        # Yeni kayıt ekle
+        log_entry = {
+            "symbol": analysis["symbol"],
+            "timestamp": tr_time.isoformat(),
+            "entry_price": analysis["current_price"],
+            "resistance_1": analysis["resistance_1"],
+            "resistance_2": analysis["resistance_2"],
+            "support": analysis["support"],
+            "potential_pct": analysis["potential_pct"],
+            "risk_pct": analysis["risk_pct"],
+            "rr_ratio": analysis["rr_ratio"],
+            "status": "ACTIVE"
+        }
+        
+        logs.append(log_entry)
+        
+        # Kaydet
+        os.makedirs(os.path.dirname(SIGNAL_LOG_FILE), exist_ok=True)
+        with open(SIGNAL_LOG_FILE, "w") as f:
+            json.dump(logs, f, indent=2)
+            
+    except Exception as e:
+        print(f"⚠️ Log kayıt hatası: {e}", flush=True)
+
+# ============================================================
 # 4) MARKET POOL
 # ============================================================
+
 async def load_symbols_pool():
     await api_gate.call(exchange.load_markets)
     syms = [
@@ -820,9 +860,134 @@ def home():
 def health():
     return {"bot_status": bot_status, "heartbeat": heartbeat, "stats": dict(stats)}
 
+@app.route("/backtest")
+def backtest_report():
+    """Verilen sinyallerin performans raporu"""
+    try:
+        if not os.path.exists(SIGNAL_LOG_FILE):
+            return "<h1>📊 Henüz sinyal yok</h1><p>Bot sinyal verdiğinde burada görünecek.</p>"
+        
+        with open(SIGNAL_LOG_FILE, "r") as f:
+            logs = json.load(f)
+        
+        if not logs:
+            return "<h1>📊 Henüz sinyal yok</h1><p>Bot sinyal verdiğinde burada görünecek.</p>"
+        
+        # Her sinyalin mevcut durumunu kontrol et
+        results = []
+        for log in logs:
+            symbol = log["symbol"]
+            entry = log["entry_price"]
+            r1 = log["resistance_1"]
+            support = log["support"]
+            
+            # Şu anki fiyatı al
+            try:
+                ticker = exchange.fetch_ticker(symbol)
+                current = ticker["last"]
+                
+                # Sonuç hesapla
+                if current >= r1:
+                    result = "WIN"
+                    pnl = ((current - entry) / entry) * 100
+                elif current <= support:
+                    result = "LOSS"
+                    pnl = ((current - entry) / entry) * 100
+                else:
+                    result = "ACTIVE"
+                    pnl = ((current - entry) / entry) * 100
+                
+                results.append({
+                    **log,
+                    "current_price": current,
+                    "pnl_pct": pnl,
+                    "result": result
+                })
+            except Exception as e:
+                results.append({**log, "result": "ERROR", "error": str(e)[:50]})
+        
+        # HTML rapor oluştur
+        html = """
+        <html>
+        <head>
+            <title>Backtest Raporu</title>
+            <style>
+                body { font-family: Arial; padding: 20px; background: #1a1a1a; color: #fff; }
+                h1 { color: #4CAF50; }
+                .stats { background: #2a2a2a; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                .signal { background: #2a2a2a; padding: 10px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #666; }
+                .win { border-left-color: #4CAF50; }
+                .loss { border-left-color: #f44336; }
+                .active { border-left-color: #ff9800; }
+            </style>
+        </head>
+        <body>
+        """
+        
+        html += "<h1>📊 Backtest Raporu</h1>"
+        
+        wins = [r for r in results if r.get("result") == "WIN"]
+        losses = [r for r in results if r.get("result") == "LOSS"]
+        active = [r for r in results if r.get("result") == "ACTIVE"]
+        errors = [r for r in results if r.get("result") == "ERROR"]
+        
+        html += '<div class="stats">'
+        html += f"<p><b>Toplam Sinyal:</b> {len(results)}</p>"
+        html += f"<p>✅ <b>Kazananlar:</b> {len(wins)}</p>"
+        html += f"<p>❌ <b>Kaybedenler:</b> {len(losses)}</p>"
+        html += f"<p>⏳ <b>Devam Edenler:</b> {len(active)}</p>"
+        
+        if wins or losses:
+            win_rate = (len(wins) / (len(wins) + len(losses))) * 100
+            avg_win = sum([r["pnl_pct"] for r in wins]) / len(wins) if wins else 0
+            avg_loss = sum([r["pnl_pct"] for r in losses]) / len(losses) if losses else 0
+            
+            html += f"<p><b>📈 Win Rate:</b> %{win_rate:.1f}</p>"
+            html += f"<p><b>💰 Ortalama Kazanç:</b> %{avg_win:.1f}</p>"
+            html += f"<p><b>💸 Ortalama Kayıp:</b> %{avg_loss:.1f}</p>"
+        
+        html += '</div>'
+        
+        html += "<h2>📋 Sinyal Detayları:</h2>"
+        
+        # Sinyalleri yeniden eskiye sırala
+        results_sorted = sorted(results, key=lambda x: x.get("timestamp", ""), reverse=True)
+        
+        for r in results_sorted:
+            status_emoji = {"WIN": "✅", "LOSS": "❌", "ACTIVE": "⏳", "ERROR": "❓"}.get(r.get("result"), "❓")
+            css_class = r.get("result", "").lower()
+            
+            html += f'<div class="signal {css_class}">'
+            html += f"<p><b>{status_emoji} {r['symbol']}</b></p>"
+            html += f"<p>📅 {r['timestamp'][:16]}</p>"
+            html += f"<p>💵 Giriş: {r['entry_price']:.8f}</p>"
+            
+            if "current_price" in r:
+                html += f"<p>💵 Şu an: {r['current_price']:.8f}</p>"
+            if "pnl_pct" in r:
+                pnl_color = "green" if r["pnl_pct"] > 0 else "red"
+                html += f"<p>📊 PnL: <span style='color:{pnl_color}'><b>%{r['pnl_pct']:.1f}</b></span></p>"
+            
+            html += f"<p>🎯 Hedef: {r['resistance_1']:.8f} (Pot: %{r['potential_pct']:.1f})</p>"
+            html += f"<p>🛡️ Stop: {r['support']:.8f} (Risk: %{r['risk_pct']:.1f})</p>"
+            html += f"<p>📊 RR: 1:{r['rr_ratio']:.1f}</p>"
+            
+            if r.get("result") == "ERROR":
+                html += f"<p>⚠️ Hata: {r.get('error', 'Bilinmeyen')}</p>"
+            
+            html += '</div>'
+        
+        html += "</body></html>"
+        
+        return html
+        
+    except Exception as e:
+        return f"<h1>⚠️ Hata</h1><p>{str(e)}</p>"
+
 # ============================================================
 # 10) BOOTSTRAP
 # ============================================================
+
 async def bootstrap_symbol(symbol: str):
     try:
         df_15m = await fetch_ohlcv_df(symbol, "15m", BOOTSTRAP_LIMIT_15M)
@@ -993,6 +1158,9 @@ async def signal_worker(candidate_queue: asyncio.Queue):
             
             # Gönder
             send_telegram(msg)
+            
+            # ✅ YENİ: Sinyali kaydet
+            save_signal_log(analysis, tr_time)
             
             # Cooldown kaydet
             last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
