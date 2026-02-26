@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Squeeze & Breakout Detector v3.0
-Patlama 6-12 saat ÖNCE tespit eden sistem
+Squeeze & Breakout Detector v3.1 - HYBRID
+Hem Sıkışma Hem Momentum
 """
 
 import asyncio
@@ -78,12 +78,12 @@ def print_summary():
     print(f"🧭 Takip edilen coin     : {total}", flush=True)
     print(f"🕯️ Son 15dk kapanış      : {total} coin", flush=True)
     print(f"🔍 Sıkışma tespit        : {stats.get('squeeze_detected',0)}", flush=True)
+    print(f"🚀 Momentum tespit       : {stats.get('momentum_detected',0)}", flush=True)
     print(f"✅ Gönderilen sinyal     : {stats.get('signal_sent',0)}", flush=True)
     print("— Eleme sebepleri —", flush=True)
 
     keys = [
-        ("no_squeeze",           "Sıkışma yok"),
-        ("no_accumulation",      "Birikim yok"),
+        ("no_squeeze",           "Sıkışma/Momentum yok"),
         ("low_potential",        "Düşük potansiyel"),
         ("high_risk",            "Yüksek risk"),
         ("bad_rr",               "Kötü RR"),
@@ -196,27 +196,26 @@ IGNORED_COINS = set([
     'EUR/USDT','TRY/USDT','GBP/USDT','BUSD/USDT','USTC/USDT',
     'PAXG/USDT','WBTC/USDT','USDE/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT',
-    'BFUSD/USDT','RLUSD/USDT',  # ← YENİ: Binance Funding USD (stablecoin)
+    'BFUSD/USDT',
 ])
 
 # ============================================================
-# 3.1) SIGNAL LOGGING - YENİ EKLEME
+# 3.1) SIGNAL LOGGING
 # ============================================================
 SIGNAL_LOG_FILE = "/mnt/user-data/outputs/signal_log.json"
 
 def save_signal_log(analysis: dict, tr_time: datetime):
     """Sinyali kaydet"""
     try:
-        # Mevcut kayıtları oku
         if os.path.exists(SIGNAL_LOG_FILE):
             with open(SIGNAL_LOG_FILE, "r") as f:
                 logs = json.load(f)
         else:
             logs = []
         
-        # Yeni kayıt ekle
         log_entry = {
             "symbol": analysis["symbol"],
+            "signal_type": analysis["signal_type"],
             "timestamp": tr_time.isoformat(),
             "entry_price": analysis["current_price"],
             "resistance_1": analysis["resistance_1"],
@@ -230,7 +229,6 @@ def save_signal_log(analysis: dict, tr_time: datetime):
         
         logs.append(log_entry)
         
-        # Kaydet
         os.makedirs(os.path.dirname(SIGNAL_LOG_FILE), exist_ok=True)
         with open(SIGNAL_LOG_FILE, "w") as f:
             json.dump(logs, f, indent=2)
@@ -241,7 +239,6 @@ def save_signal_log(analysis: dict, tr_time: datetime):
 # ============================================================
 # 4) MARKET POOL
 # ============================================================
-
 async def load_symbols_pool():
     await api_gate.call(exchange.load_markets)
     syms = [
@@ -284,14 +281,12 @@ async def fetch_ohlcv_df(symbol: str, timeframe: str, limit: int):
 
 def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    # Temel indikatörler
     df["ema20"] = ta.ema(df["close"], length=20)
     df["ema50"] = ta.ema(df["close"], length=50)
     df["atr"] = ta.atr(df["high"], df["low"], df["close"], length=14)
     df["rsi"] = ta.rsi(df["close"], length=14)
     df["vol_ma"] = df["volume"].rolling(20, min_periods=1).mean()
     
-    # Bollinger Bands
     bb = ta.bbands(df["close"], length=20, std=2)
     if bb is not None and hasattr(bb, "columns"):
         for col in bb.columns:
@@ -303,7 +298,6 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
             elif "BBU" in col_upper:
                 df["bb_upper"] = bb[col]
     
-    # BB Width (sıkışma tespiti)
     if "bb_upper" in df.columns and "bb_lower" in df.columns and "bb_mid" in df.columns:
         df["bb_width"] = ((df["bb_upper"] - df["bb_lower"]) / df["bb_mid"]) * 100
     
@@ -314,69 +308,56 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 
 def detect_squeeze(df_15m: pd.DataFrame) -> dict:
-    """
-    Sıkışma tespiti:
-    - BB width düşük mü?
-    - ATR düşüyor mu?
-    - Fiyat dar range'de mi?
-    """
+    """Sıkışma tespiti"""
     try:
         if len(df_15m) < 50:
             return {"detected": False, "reason": "Veri yetersiz"}
         
         last = df_15m.iloc[-1]
 
-        # ✅ YENİ: Stablecoin kontrolü (ATR çok düşükse eleme)
         current_price = float(last["close"])
         atr = float(last["atr"])
         atr_pct = (atr / current_price) * 100
         
-        if atr_pct < 0.15:  # ATR %0.15'ten düşükse stablecoin olabilir
-            return {"detected": False, "reason": "ATR çok düşük (stablecoin?)"}        
+        if atr_pct < 0.15:
+            return {"detected": False, "reason": "ATR çok düşük (stablecoin?)"}
 
-        # 1) BB Width kontrolü
         if "bb_width" not in df_15m.columns or pd.isna(last["bb_width"]):
             return {"detected": False, "reason": "BB hesaplanamadı"}
         
         bb_width = float(last["bb_width"])
         bb_width_ma = df_15m["bb_width"].rolling(50).mean().iloc[-1]
         
-        # BB son 50 mumun en darı mı?
         recent_50_bb = df_15m["bb_width"].iloc[-50:]
         is_narrowest = bb_width == recent_50_bb.min()
         
-        # 2) ATR düşüyor mu?
         atr_now = float(last["atr"])
         atr_prev = float(df_15m["atr"].iloc[-5])
         atr_decreasing = atr_now < atr_prev
         
-        # 3) Fiyat dar range'de mi? (son 20 mumda %10'dan az hareket)
         recent_20 = df_15m.iloc[-20:]
         range_high = float(recent_20["high"].max())
         range_low = float(recent_20["low"].min())
         range_pct = ((range_high - range_low) / range_low) * 100
         
-        # 4) Hacim azalıyor mu? (satış baskısı bitiyor)
         vol_now = float(last["volume"])
         vol_ma = float(last["vol_ma"]) if not pd.isna(last["vol_ma"]) else 0
         vol_decreasing = vol_now < vol_ma * 0.8 if vol_ma > 0 else False
         
-        # Sıkışma var mı?
         squeeze_detected = (
-            bb_width < 4.0 and  # BB %4'ten dar
-            (is_narrowest or bb_width < bb_width_ma * 0.7) and  # Son 50 mumun en darı VEYA ortalamanın %70 altında
-            range_pct < 12.0 and  # Son 20 mumda %12'den az hareket
-            atr_decreasing  # ATR düşüyor
+            bb_width < 4.0 and
+            (is_narrowest or bb_width < bb_width_ma * 0.7) and
+            range_pct < 12.0 and
+            atr_decreasing
         )
         
         if not squeeze_detected:
             return {"detected": False, "reason": "Sıkışma yok"}
         
-        # Sıkışma süresi (kaç saattir dar range'de)
         squeeze_hours = 0
         for i in range(len(df_15m)-1, max(0, len(df_15m)-50), -1):
             if df_15m["bb_width"].iloc[i] < 4.5:
-                squeeze_hours += 0.25  # 15 dakika
+                squeeze_hours += 0.25
             else:
                 break
         
@@ -386,19 +367,14 @@ def detect_squeeze(df_15m: pd.DataFrame) -> dict:
             "range_pct": range_pct,
             "squeeze_hours": squeeze_hours,
             "vol_decreasing": vol_decreasing,
-            "score": 10 - bb_width  # Dar olduğu kadar yüksek skor
+            "score": 10 - bb_width
         }
         
     except Exception as e:
         return {"detected": False, "reason": f"Hata: {str(e)[:50]}"}
 
 def detect_accumulation(df_15m: pd.DataFrame) -> dict:
-    """
-    Birikim tespiti:
-    - Higher lows var mı? (dipte yükseliş)
-    - Volume pattern pozitif mi?
-    - RSI oversold'dan çıkıyor mu?
-    """
+    """Birikim tespiti"""
     try:
         if len(df_15m) < 30:
             return {"detected": False, "reason": "Veri yetersiz"}
@@ -406,7 +382,6 @@ def detect_accumulation(df_15m: pd.DataFrame) -> dict:
         last = df_15m.iloc[-1]
         recent_20 = df_15m.iloc[-20:]
         
-        # 1) Higher lows tespiti (dipte yükseliş)
         lows = recent_20["low"].values
         higher_lows_count = 0
         for i in range(1, len(lows)):
@@ -414,9 +389,8 @@ def detect_accumulation(df_15m: pd.DataFrame) -> dict:
                 higher_lows_count += 1
         
         higher_lows_ratio = higher_lows_count / (len(lows) - 1)
-        has_higher_lows = higher_lows_ratio > 0.4  # %40'tan fazla yükselen dip
+        has_higher_lows = higher_lows_ratio > 0.4
         
-        # 2) Volume Delta (yeşil vs kırmızı hacim)
         green_volume = 0
         red_volume = 0
         for i in range(-20, 0):
@@ -428,14 +402,12 @@ def detect_accumulation(df_15m: pd.DataFrame) -> dict:
                 red_volume += vol
         
         buy_pressure = (green_volume / (green_volume + red_volume)) if (green_volume + red_volume) > 0 else 0.5
-        strong_buy_pressure = buy_pressure > 0.55  # %55'ten fazla alım hacmi
+        strong_buy_pressure = buy_pressure > 0.55
         
-        # 3) RSI oversold'dan çıkış
         rsi = float(last["rsi"])
         rsi_prev = float(df_15m["rsi"].iloc[-5])
         rsi_rising_from_oversold = (rsi > 35 and rsi < 60 and rsi > rsi_prev)
         
-        # Birikim var mı?
         accumulation_detected = has_higher_lows or (strong_buy_pressure and rsi_rising_from_oversold)
         
         if not accumulation_detected:
@@ -457,7 +429,7 @@ def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
     Momentum patlama tespiti:
     - Güçlü hacim + güçlü mum
     - Yeni yüksek yapıyor
-    - ATR genişliyor (volatilite artışı)
+    - ATR genişliyor
     """
     try:
         if len(df_15m) < 50 or df_4h is None or len(df_4h) < 20:
@@ -466,7 +438,7 @@ def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
         last_15m = df_15m.iloc[-1]
         last_4h = df_4h.iloc[-1]
         
-        # 1) Güçlü yeşil mum (15m)
+        # 1) Güçlü yeşil mum
         close = float(last_15m["close"])
         open_price = float(last_15m["open"])
         high = float(last_15m["high"])
@@ -491,24 +463,24 @@ def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
             return {"detected": False, "reason": "Vol hesaplanamadı"}
         
         vol_ratio = vol / vol_ma
-        if vol_ratio < 2.0:  # En az 2x hacim
+        if vol_ratio < 2.0:
             return {"detected": False, "reason": "Hacim düşük"}
         
-        # 3) Yeni yüksek yapıyor mu? (son 40 mumun en yükseği)
+        # 3) Yeni yüksek
         recent_40 = df_15m.iloc[-40:-1]
         prev_high = float(recent_40["high"].max())
         
         if close <= prev_high * 0.995:
             return {"detected": False, "reason": "Yeni yüksek yok"}
         
-        # 4) ATR genişliyor mu? (volatilite artışı)
+        # 4) ATR genişliyor
         atr = float(last_15m["atr"])
         atr_prev = float(df_15m["atr"].iloc[-10])
         
         if atr <= atr_prev * 1.1:
             return {"detected": False, "reason": "ATR genişlemiyor"}
         
-        # 5) RSI güçlü ama aşırı değil
+        # 5) RSI güçlü
         rsi = float(last_15m["rsi"])
         if pd.isna(rsi) or rsi < 50 or rsi > 75:
             return {"detected": False, "reason": "RSI uygun değil"}
@@ -521,7 +493,6 @@ def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
         if not (close_4h > ema20_4h and ema20_4h > ema50_4h):
             return {"detected": False, "reason": "4h trend zayıf"}
         
-        # MOMENTUM PATLAMA TESPİT EDİLDİ!
         return {
             "detected": True,
             "vol_ratio": vol_ratio,
@@ -535,40 +506,31 @@ def detect_momentum_breakout(df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
         return {"detected": False, "reason": f"Hata: {str(e)[:50]}"}
 
 def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> dict:
-    """
-    Gerçek test edilmiş direnç/destek seviyeleri bul
-    """
+    """Gerçek test edilmiş SR seviyeleri"""
     try:
         if len(df_15m) < 100:
             return None
         
-        lookback = min(200, len(df_15m))  # Daha fazla veri
+        lookback = min(200, len(df_15m))
         recent = df_15m.iloc[-lookback:]
         
-        # 1) Fiyat seviyeleri ve kaç kez test edildiğini say
         highs = recent["high"].values
         lows = recent["low"].values
-        closes = recent["close"].values
         
-        # Fiyat aralıklarını oluştur (tolerance ile)
-        tolerance = current_price * 0.01  # %1 tolerans
+        tolerance = current_price * 0.01
         
         resistance_tests = {}
         support_tests = {}
         
-        # Her mumda fiyatın hangi seviyelere yaklaştığını say
         for i in range(len(recent)):
             high = highs[i]
             low = lows[i]
             
-            # Resistance test (yukarı dokunma)
             for level in resistance_tests.keys():
                 if abs(high - level) < tolerance:
                     resistance_tests[level] += 1
             
-            # Yeni level ekle
             if high > current_price:
-                # Yakın level var mı kontrol et
                 found = False
                 for level in resistance_tests.keys():
                     if abs(high - level) < tolerance:
@@ -577,7 +539,6 @@ def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> di
                 if not found:
                     resistance_tests[high] = 1
             
-            # Support test (aşağı dokunma)
             for level in support_tests.keys():
                 if abs(low - level) < tolerance:
                     support_tests[level] += 1
@@ -591,18 +552,14 @@ def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> di
                 if not found:
                     support_tests[low] = 1
         
-        # 2) En çok test edilen seviyeleri bul
-        # En az 3 kez test edilmiş olmalı
         strong_resistances = [(lvl, cnt) for lvl, cnt in resistance_tests.items() if cnt >= 3]
         strong_supports = [(lvl, cnt) for lvl, cnt in support_tests.items() if cnt >= 3]
         
-        # Eğer yeterli güçlü seviye yoksa, en az 2 kez test edileni al
         if not strong_resistances:
             strong_resistances = [(lvl, cnt) for lvl, cnt in resistance_tests.items() if cnt >= 2]
         if not strong_supports:
             strong_supports = [(lvl, cnt) for lvl, cnt in support_tests.items() if cnt >= 2]
         
-        # Hala yoksa, en yakınları al
         if not strong_resistances:
             upper = [lvl for lvl in resistance_tests.keys() if lvl > current_price]
             strong_resistances = [(lvl, 1) for lvl in sorted(upper)[:2]] if upper else []
@@ -611,32 +568,28 @@ def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> di
             lower = [lvl for lvl in support_tests.keys() if lvl < current_price]
             strong_supports = [(lvl, 1) for lvl in sorted(lower, reverse=True)[:2]] if lower else []
         
-        # 3) En yakın ve en güçlü seviyeleri seç
         if not strong_resistances:
-            r1 = current_price * 1.08  # Fallback
+            r1 = current_price * 1.08
             r2 = current_price * 1.15
         else:
-            # En yakın ve en güçlü direnç
             resistances_sorted = sorted(strong_resistances, key=lambda x: (x[0] - current_price, -x[1]))
             r1 = resistances_sorted[0][0]
             r2 = resistances_sorted[1][0] if len(resistances_sorted) > 1 else r1 * 1.05
         
         if not strong_supports:
-            s1 = current_price * 0.92  # Fallback
+            s1 = current_price * 0.92
         else:
             supports_sorted = sorted(strong_supports, key=lambda x: (current_price - x[0], -x[1]))
             s1 = supports_sorted[0][0]
         
-        # 4) Mantık kontrolü: Direnç çok uzaksa (>%30), yakınlaştır
         r1_distance = ((r1 - current_price) / current_price) * 100
         if r1_distance > 30:
-            r1 = current_price * 1.15  # Max %15 uzakta
+            r1 = current_price * 1.15
             r2 = r1 * 1.05
         
-        # 5) Mantık kontrolü: Destek çok uzaksa (>%15), yakınlaştır
         s1_distance = ((current_price - s1) / current_price) * 100
         if s1_distance > 15:
-            s1 = current_price * 0.90  # Max %10 aşağıda
+            s1 = current_price * 0.90
         
         return {
             "resistance_1": float(r1),
@@ -650,11 +603,7 @@ def find_support_resistance_v2(df_15m: pd.DataFrame, current_price: float) -> di
         return None
 
 def check_4h_trend(df_4h: pd.DataFrame) -> dict:
-    """
-    4h trend kontrolü:
-    - Uptrend mi, downtrend mi?
-    - EMA alignment
-    """
+    """4h trend kontrolü"""
     try:
         if df_4h is None or len(df_4h) < 50:
             return {"status": "UNKNOWN", "reason": "Veri yok"}
@@ -666,7 +615,6 @@ def check_4h_trend(df_4h: pd.DataFrame) -> dict:
         close = float(last["close"])
         rsi = float(last["rsi"])
         
-        # Trend belirleme
         if close > ema20 and ema20 > ema50:
             trend = "UPTREND"
         elif close < ema20 and ema20 < ema50:
@@ -674,7 +622,6 @@ def check_4h_trend(df_4h: pd.DataFrame) -> dict:
         else:
             trend = "SIDEWAYS"
         
-        # RSI momentum
         if rsi > 50:
             momentum = "BULLISH"
         elif rsi < 50:
@@ -692,11 +639,7 @@ def check_4h_trend(df_4h: pd.DataFrame) -> dict:
         return {"status": "UNKNOWN", "reason": "Hesaplama hatası"}
 
 async def check_order_book(symbol: str) -> dict:
-    """
-    Order book analizi:
-    - Bid/Ask dengesi
-    - Destek/Direnç gücü
-    """
+    """Order book analizi"""
     try:
         ob = await api_gate.call(exchange.fetch_order_book, symbol, 20)
         
@@ -706,7 +649,6 @@ async def check_order_book(symbol: str) -> dict:
         if not bids or not asks:
             return {"status": "UNKNOWN"}
         
-        # Toplam hacim
         bid_volume = sum([b[1] for b in bids])
         ask_volume = sum([a[1] for a in asks])
         
@@ -716,12 +658,10 @@ async def check_order_book(symbol: str) -> dict:
         
         bid_ratio = bid_volume / total
         
-        # Spread
         best_bid = bids[0][0]
         best_ask = asks[0][0]
         spread_pct = ((best_ask - best_bid) / best_bid) * 100
         
-        # Değerlendirme
         if bid_ratio > 0.6:
             balance = "STRONG_BID"
         elif bid_ratio < 0.4:
@@ -740,7 +680,7 @@ async def check_order_book(symbol: str) -> dict:
         return {"status": "ERROR"}
 
 # ============================================================
-# 7) ANA ANALİZ - SİNYAL ÜRETİMİ
+# 7) HİBRİT ANALİZ
 # ============================================================
 async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame) -> dict:
     """
@@ -752,12 +692,11 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
         signal_type = None
         analysis_data = {}
         
-        # MOD 1: SIKIŞMA TESPİTİ (Patlama ÖNCE)
+        # MOD 1: SIKIŞMA
         squeeze = detect_squeeze(df_15m)
         if squeeze["detected"]:
             stats["squeeze_detected"] += 1
             
-            # Birikim var mı?
             accumulation = detect_accumulation(df_15m)
             if accumulation["detected"]:
                 signal_type = "SQUEEZE"
@@ -766,21 +705,21 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
                     "accumulation": accumulation
                 }
         
-        # MOD 2: MOMENTUM TESPİTİ (Patlama BAŞLADI)
+        # MOD 2: MOMENTUM
         if not signal_type:
             momentum = detect_momentum_breakout(df_15m, df_4h)
             if momentum["detected"]:
+                stats["momentum_detected"] += 1
                 signal_type = "MOMENTUM"
                 analysis_data = {
                     "momentum": momentum
                 }
         
-        # Hiçbir mod tetiklenmediyse eleme
         if not signal_type:
             stats["no_squeeze"] += 1
             return None
         
-        # 3) Fiyat & SR seviyeleri
+        # SR seviyeleri
         current_price = float(df_15m["close"].iloc[-1])
         sr = find_support_resistance_v2(df_15m, current_price)
         
@@ -788,7 +727,6 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
             stats["data_insufficient"] += 1
             return None
         
-        # 4) Potansiyel & Risk hesaplama
         r1 = sr["resistance_1"]
         r2 = sr["resistance_2"]
         s1 = sr["support_1"]
@@ -810,13 +748,9 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
             stats["bad_rr"] += 1
             return None
         
-        # 5) 4h trend
         trend_4h = check_4h_trend(df_4h)
-        
-        # 6) Order book
         ob = await check_order_book(symbol)
         
-        # 7) Liquidity check
         try:
             ticker = await api_gate.call(exchange.fetch_ticker, symbol)
             liquidity = float(ticker.get("quoteVolume", 0) or 0)
@@ -827,10 +761,9 @@ async def analyze_symbol(symbol: str, df_15m: pd.DataFrame, df_4h: pd.DataFrame)
         except Exception:
             liquidity = 0
         
-        # Analiz tamamlandı!
         return {
             "symbol": symbol,
-            "signal_type": signal_type,  # SQUEEZE veya MOMENTUM
+            "signal_type": signal_type,
             "current_price": current_price,
             "entry_zone_low": current_price * 0.99,
             "entry_zone_high": current_price * 1.01,
@@ -868,9 +801,7 @@ def send_telegram(text_html: str):
         print(f"⚠️ Telegram: {e}", flush=True)
 
 def format_signal_message(analysis: dict, tr_time: datetime) -> str:
-    """
-    Detaylı sinyal mesajı oluştur
-    """
+    """Detaylı sinyal mesajı"""
     symbol = analysis["symbol"]
     signal_type = analysis["signal_type"]
     current = analysis["current_price"]
@@ -888,7 +819,6 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     ob = analysis["order_book"]
     liq = analysis["liquidity"]
     
-    # Fiyat formatla
     current_s = fmt_price(symbol, current)
     entry_low_s = fmt_price(symbol, entry_low)
     entry_high_s = fmt_price(symbol, entry_high)
@@ -896,7 +826,6 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     r2_s = fmt_price(symbol, r2)
     support_s = fmt_price(symbol, support)
     
-    # Likidite mesajı
     if liq < 10_000_000:
         liq_msg = f"⚠️ Likidite: ${liq/1e6:.1f}M"
     elif liq < 25_000_000:
@@ -904,7 +833,6 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     else:
         liq_msg = f"✅ Likidite: ${liq/1e6:.1f}M"
     
-    # Order book mesajı
     if ob["status"] == "OK":
         if ob["balance"] == "STRONG_BID":
             ob_msg = f"✅ Alım baskısı güçlü (%{ob['bid_ratio']:.0f})"
@@ -915,7 +843,6 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
     else:
         ob_msg = ""
     
-# Sinyal tipine göre başlık
     if signal_type == "SQUEEZE":
         title = "⚡ SIKIŞMA - PATLAMA BEKLENİYOR"
     else:
@@ -938,7 +865,6 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
 🔍 <b>ANALİZ:</b>
 """
     
-    # Analiz tipine göre detay
     if signal_type == "SQUEEZE":
         squeeze = analysis_data["squeeze"]
         accum = analysis_data["accumulation"]
@@ -946,7 +872,7 @@ def format_signal_message(analysis: dict, tr_time: datetime) -> str:
 - Range: %{squeeze['range_pct']:.1f} | {"Hacim azalıyor" if squeeze.get('vol_decreasing') else "Hacim normal"}
 - {"✅ Dipte yükseliş var" if accum.get('higher_lows') else "⚠️ Dipte yükseliş yok"}
 - Alım hacmi: %{accum['buy_pressure']:.0f} | RSI: {accum['rsi']:.0f}"""
-    else:  # MOMENTUM
+    else:
         mom = analysis_data["momentum"]
         msg += f"""• Güçlü momentum! Hacim: {mom['vol_ratio']:.1f}x
 - Body: %{mom['body_ratio']:.0f} | RSI: {mom['rsi']:.0f}
@@ -1018,7 +944,7 @@ def watchdog_thread():
 def home():
     now = datetime.now(TR_TZ).strftime("%H:%M:%S")
     return f"""
-    <h1>🚀 Squeeze Detector v3.0</h1>
+    <h1>🚀 Squeeze Detector v3.1 HYBRID</h1>
     <p><b>Durum:</b> {bot_status['status']}</p>
     <p><b>Son:</b> {bot_status['last_run']}</p>
     <p><b>Sinyal:</b> {bot_status['signal_count']}</p>
@@ -1034,18 +960,17 @@ def health():
 
 @app.route("/backtest")
 def backtest_report():
-    """Verilen sinyallerin performans raporu"""
+    """Performans raporu"""
     try:
         if not os.path.exists(SIGNAL_LOG_FILE):
-            return "<h1>📊 Henüz sinyal yok</h1><p>Bot sinyal verdiğinde burada görünecek.</p>"
+            return "<h1>📊 Henüz sinyal yok</h1>"
         
         with open(SIGNAL_LOG_FILE, "r") as f:
             logs = json.load(f)
         
         if not logs:
-            return "<h1>📊 Henüz sinyal yok</h1><p>Bot sinyal verdiğinde burada görünecek.</p>"
+            return "<h1>📊 Henüz sinyal yok</h1>"
         
-        # Her sinyalin mevcut durumunu kontrol et
         results = []
         for log in logs:
             symbol = log["symbol"]
@@ -1053,12 +978,10 @@ def backtest_report():
             r1 = log["resistance_1"]
             support = log["support"]
             
-            # Şu anki fiyatı al
             try:
                 ticker = exchange.fetch_ticker(symbol)
                 current = ticker["last"]
                 
-                # Sonuç hesapla
                 if current >= r1:
                     result = "WIN"
                     pnl = ((current - entry) / entry) * 100
@@ -1078,88 +1001,68 @@ def backtest_report():
             except Exception as e:
                 results.append({**log, "result": "ERROR", "error": str(e)[:50]})
         
-        # HTML rapor oluştur
-        html = """
-        <html>
-        <head>
-            <title>Backtest Raporu</title>
-            <style>
-                body { font-family: Arial; padding: 20px; background: #1a1a1a; color: #fff; }
-                h1 { color: #4CAF50; }
-                .stats { background: #2a2a2a; padding: 15px; border-radius: 8px; margin: 20px 0; }
-                .signal { background: #2a2a2a; padding: 10px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #666; }
-                .win { border-left-color: #4CAF50; }
-                .loss { border-left-color: #f44336; }
-                .active { border-left-color: #ff9800; }
-            </style>
-        </head>
-        <body>
-        """
+        html = """<html><head><title>Backtest</title><style>
+body{font-family:Arial;padding:20px;background:#1a1a1a;color:#fff}
+h1{color:#4CAF50}
+.stats{background:#2a2a2a;padding:15px;border-radius:8px;margin:20px 0}
+.signal{background:#2a2a2a;padding:10px;margin:10px 0;border-radius:5px;border-left:4px solid #666}
+.win{border-left-color:#4CAF50}
+.loss{border-left-color:#f44336}
+.active{border-left-color:#ff9800}
+</style></head><body>"""
         
         html += "<h1>📊 Backtest Raporu</h1>"
         
         wins = [r for r in results if r.get("result") == "WIN"]
         losses = [r for r in results if r.get("result") == "LOSS"]
         active = [r for r in results if r.get("result") == "ACTIVE"]
-        errors = [r for r in results if r.get("result") == "ERROR"]
         
         html += '<div class="stats">'
-        html += f"<p><b>Toplam Sinyal:</b> {len(results)}</p>"
-        html += f"<p>✅ <b>Kazananlar:</b> {len(wins)}</p>"
-        html += f"<p>❌ <b>Kaybedenler:</b> {len(losses)}</p>"
-        html += f"<p>⏳ <b>Devam Edenler:</b> {len(active)}</p>"
+        html += f"<p><b>Toplam:</b> {len(results)}</p>"
+        html += f"<p>✅ Kazanan: {len(wins)}</p>"
+        html += f"<p>❌ Kaybeden: {len(losses)}</p>"
+        html += f"<p>⏳ Devam Eden: {len(active)}</p>"
         
         if wins or losses:
-            win_rate = (len(wins) / (len(wins) + len(losses))) * 100
+            wr = (len(wins) / (len(wins) + len(losses))) * 100
             avg_win = sum([r["pnl_pct"] for r in wins]) / len(wins) if wins else 0
             avg_loss = sum([r["pnl_pct"] for r in losses]) / len(losses) if losses else 0
             
-            html += f"<p><b>📈 Win Rate:</b> %{win_rate:.1f}</p>"
-            html += f"<p><b>💰 Ortalama Kazanç:</b> %{avg_win:.1f}</p>"
-            html += f"<p><b>💸 Ortalama Kayıp:</b> %{avg_loss:.1f}</p>"
+            html += f"<p><b>Win Rate:</b> %{wr:.1f}</p>"
+            html += f"<p><b>Ort Kazanç:</b> %{avg_win:.1f}</p>"
+            html += f"<p><b>Ort Kayıp:</b> %{avg_loss:.1f}</p>"
         
-        html += '</div>'
+        html += '</div><h2>Detaylar:</h2>'
         
-        html += "<h2>📋 Sinyal Detayları:</h2>"
-        
-        # Sinyalleri yeniden eskiye sırala
         results_sorted = sorted(results, key=lambda x: x.get("timestamp", ""), reverse=True)
         
         for r in results_sorted:
-            status_emoji = {"WIN": "✅", "LOSS": "❌", "ACTIVE": "⏳", "ERROR": "❓"}.get(r.get("result"), "❓")
-            css_class = r.get("result", "").lower()
+            emoji = {"WIN": "✅", "LOSS": "❌", "ACTIVE": "⏳", "ERROR": "❓"}.get(r.get("result"), "❓")
+            css = r.get("result", "").lower()
             
-            html += f'<div class="signal {css_class}">'
-            html += f"<p><b>{status_emoji} {r['symbol']}</b></p>"
-            html += f"<p>📅 {r['timestamp'][:16]}</p>"
-            html += f"<p>💵 Giriş: {r['entry_price']:.8f}</p>"
+            html += f'<div class="signal {css}"><p><b>{emoji} {r["symbol"]}</b> [{r.get("signal_type", "?")}]</p>'
+            html += f'<p>📅 {r["timestamp"][:16]}</p>'
+            html += f'<p>💵 Giriş: {r["entry_price"]:.8f}</p>'
             
             if "current_price" in r:
-                html += f"<p>💵 Şu an: {r['current_price']:.8f}</p>"
+                html += f'<p>💵 Şu an: {r["current_price"]:.8f}</p>'
             if "pnl_pct" in r:
-                pnl_color = "green" if r["pnl_pct"] > 0 else "red"
-                html += f"<p>📊 PnL: <span style='color:{pnl_color}'><b>%{r['pnl_pct']:.1f}</b></span></p>"
+                color = "green" if r["pnl_pct"] > 0 else "red"
+                html += f'<p>📊 PnL: <span style="color:{color}"><b>%{r["pnl_pct"]:.1f}</b></span></p>'
             
-            html += f"<p>🎯 Hedef: {r['resistance_1']:.8f} (Pot: %{r['potential_pct']:.1f})</p>"
-            html += f"<p>🛡️ Stop: {r['support']:.8f} (Risk: %{r['risk_pct']:.1f})</p>"
-            html += f"<p>📊 RR: 1:{r['rr_ratio']:.1f}</p>"
-            
-            if r.get("result") == "ERROR":
-                html += f"<p>⚠️ Hata: {r.get('error', 'Bilinmeyen')}</p>"
-            
-            html += '</div>'
+            html += f'<p>🎯 Hedef: {r["resistance_1"]:.8f}</p>'
+            html += f'<p>🛡️ Stop: {r["support"]:.8f}</p>'
+            html += f'<p>📊 RR: 1:{r["rr_ratio"]:.1f}</p></div>'
         
         html += "</body></html>"
-        
         return html
         
     except Exception as e:
-        return f"<h1>⚠️ Hata</h1><p>{str(e)}</p>"
+        return f"<h1>Hata: {e}</h1>"
 
 # ============================================================
 # 10) BOOTSTRAP
 # ============================================================
-
 async def bootstrap_symbol(symbol: str):
     try:
         df_15m = await fetch_ohlcv_df(symbol, "15m", BOOTSTRAP_LIMIT_15M)
@@ -1202,7 +1105,7 @@ async def bootstrap_all(symbols: list[str]):
     print(f"✅ Hazır | ok={ok}/{total}", flush=True)
 
 # ============================================================
-# 11) WS LISTENER
+# 11) WS
 # ============================================================
 def to_ws_symbol(symbol: str) -> str:
     return symbol.replace("/", "").lower()
@@ -1211,14 +1114,14 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
     streams = "/".join([f"{to_ws_symbol(s)}@kline_{WS_KLINE_INTERVAL}" for s in symbols])
     url = f"wss://stream.binance.com:9443/stream?streams={streams}"
     bot_status["status"] = "LIVE"
-    print(f"🛰️ Canlı veri | coins={len(symbols)}", flush=True)
+    print(f"🛰️ Canlı | coins={len(symbols)}", flush=True)
     
     retry_count = 0
     while True:
         try:
             async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
                 retry_count = 0
-                print("✅ Bağlantı OK", flush=True)
+                print("✅ WS OK", flush=True)
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
@@ -1258,7 +1161,7 @@ async def ws_listen_klines(symbols: list[str], candidate_queue: asyncio.Queue):
         except Exception as e:
             retry_count += 1
             backoff = min(60, 5 * (2 ** min(retry_count, 4)))
-            print(f"⚠️ WS koptu (#{retry_count}): {backoff}s", flush=True)
+            print(f"⚠️ WS koptu: {backoff}s", flush=True)
             bot_status["status"] = "RECONNECTING"
             await asyncio.sleep(backoff)
 
@@ -1270,7 +1173,7 @@ async def ws_listen_klines_multi(symbols: list[str], candidate_queue: asyncio.Qu
     await asyncio.gather(*tasks)
 
 # ============================================================
-# 12) EVALUATION & WORKER
+# 12) EVAL & WORKER
 # ============================================================
 async def evaluate_on_close(symbol: str, df_15m: pd.DataFrame, candidate_queue: asyncio.Queue):
     global ws_close_count
@@ -1280,28 +1183,24 @@ async def evaluate_on_close(symbol: str, df_15m: pd.DataFrame, candidate_queue: 
         bot_status["last_run"] = tr_now.strftime("%H:%M:%S")
         beat(symbol=symbol, status="RUN")
         
-        # Cooldown kontrolü
         last_ts = last_signal_ts.get(symbol)
         if last_ts:
-            hours_passed = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
-            if hours_passed < SIGNAL_COOLDOWN_HOURS:
+            hours = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
+            if hours < SIGNAL_COOLDOWN_HOURS:
                 stats["cooldown"] += 1
                 return
         
-        # 4h veri
         df_4h = bars_4h.get(symbol)
         if df_4h is None or len(df_4h) < 50:
             stats["data_insufficient"] += 1
             return
         
-        # Analiz
         analysis = await analyze_symbol(symbol, df_15m, df_4h)
         
         if analysis is None:
             return
         
-        # SİNYAL BULUNDU!
-        print(f"🔍 SİNYAL ADAYI: {symbol} | Pot:%{analysis['potential_pct']:.1f} RR:1:{analysis['rr_ratio']:.1f}", flush=True)
+        print(f"🔍 ADAY: {symbol} [{analysis['signal_type']}] | %{analysis['potential_pct']:.1f} RR:1:{analysis['rr_ratio']:.1f}", flush=True)
         
         await candidate_queue.put(Signal(
             symbol=symbol,
@@ -1315,9 +1214,7 @@ async def evaluate_on_close(symbol: str, df_15m: pd.DataFrame, candidate_queue: 
         print(f"⚠️ Eval error {symbol}: {str(e)[:80]}", flush=True)
 
 async def signal_worker(candidate_queue: asyncio.Queue):
-    """
-    Aday sinyalleri işle ve Telegram'a gönder
-    """
+    """Sinyal işleyici"""
     while True:
         sig: Signal = await candidate_queue.get()
         try:
@@ -1325,27 +1222,20 @@ async def signal_worker(candidate_queue: asyncio.Queue):
             analysis = sig.analysis
             tr_time = sig.tr_time
             
-            # Mesaj oluştur
             msg = format_signal_message(analysis, tr_time)
-            
-            # Gönder
             send_telegram(msg)
-            
-            # ✅ YENİ: Sinyali kaydet
             save_signal_log(analysis, tr_time)
             
-            # Cooldown kaydet
             last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
             
-            # İstatistik
             stats["signal_sent"] += 1
             bot_status["signal_count"] += 1
             
             if PRINT_SIGNAL_LOG:
-                print(f"✅ SİNYAL GÖNDERİLDİ: {symbol}", flush=True)
+                print(f"✅ SİNYAL: {symbol} [{analysis['signal_type']}]", flush=True)
             
         except Exception as e:
-            print(f"⚠️ Worker error: {str(e)[:100]}", flush=True)
+            print(f"⚠️ Worker: {str(e)[:100]}", flush=True)
         finally:
             candidate_queue.task_done()
 
@@ -1357,7 +1247,7 @@ def start_flask():
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 async def main():
-    print("🚀 Squeeze Detector v3.0", flush=True)
+    print("🚀 Squeeze Detector v3.1 HYBRID", flush=True)
     
     symbols = await load_symbols_pool()
     if not symbols:
@@ -1370,13 +1260,11 @@ async def main():
     print(f"✅ Coins: {len(symbols)}", flush=True)
     
     await bootstrap_all(symbols)
-    
     print_summary()
     
     candidate_queue = asyncio.Queue()
     asyncio.create_task(signal_worker(candidate_queue))
     
-    # Periyodik özet
     async def periodic_summary():
         while True:
             await asyncio.sleep(600)
