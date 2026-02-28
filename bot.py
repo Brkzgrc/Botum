@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Professional Accumulation Detector v5.0
-Gerçek birikim tespiti - Patlama öncesi sinyal
+Professional Scoring System v7.0
+10 üzerinden skorlama - Şeffaf analiz
 """
 
 import asyncio
@@ -21,34 +21,36 @@ import requests
 import ccxt
 import websockets
 from flask import Flask
-from scipy.stats import linregress
 
 # ============================================================
 # AYARLAR
 # ============================================================
-BINANCE_API_KEY = ""
-BINANCE_API_SECRET = ""
-
 TELEGRAM_TOKEN = "7583261338:AAFwkpxsumCBpYI5Ai-aIiII6INm_thmg-I"
 TELEGRAM_CHAT_ID = "5124859166"
 
-# KALİTE FİLTRELERİ
-MIN_LIQUIDITY = 4_000_000
-MIN_POTENTIAL_PCT = 10.0
-MAX_RISK_PCT = 8.0
-MIN_ACCUMULATION_SCORE = 7.0
+# SİNYAL EŞİKLERİ
+STRONG_SIGNAL_MIN = 7.5    # ⭐⭐⭐
+GOOD_SIGNAL_MIN = 6.5      # ⭐⭐
+MEDIUM_SIGNAL_MIN = 6.0    # ⭐
 
+# POTANSİYEL
+MIN_POTENTIAL = {
+    "STRONG": 10.0,   # Güçlü sinyal için %10 yeterli
+    "GOOD": 12.0,     # İyi sinyal için %12
+    "MEDIUM": 15.0    # Orta sinyal için %15
+}
+
+MIN_LIQUIDITY = 3_000_000
 SIGNAL_COOLDOWN_HOURS = 24
 
-MAX_SYMBOLS = None
-USE_TOP_VOLUME_POOL = True
-
-# WS / DATA
-BOOTSTRAP_LIMIT_1H = 200
+# DATA
+BOOTSTRAP_LIMIT_15M = 100
+BOOTSTRAP_LIMIT_1H = 100
 BOOTSTRAP_LIMIT_4H = 100
-KEEP_BARS_1H = 200
+KEEP_BARS_15M = 100
+KEEP_BARS_1H = 100
 KEEP_BARS_4H = 100
-WS_KLINE_INTERVAL = "1h"
+WS_KLINE_INTERVAL = "15m"
 WS_STREAM_CHUNK = 100
 
 TR_TZ = timezone(timedelta(hours=3))
@@ -60,6 +62,7 @@ stats = Counter()
 ws_close_count = 0
 tracked_symbols = []
 
+bars_15m = {}
 bars_1h = {}
 bars_4h = {}
 last_signal_ts = {}
@@ -87,33 +90,29 @@ class ApiGate:
     def __init__(self):
         self.sem = asyncio.Semaphore(3)
         self._lock = asyncio.Lock()
-        self._last_call_ts = 0.0
+        self._last = 0.0
 
     async def call(self, fn, *args, **kwargs):
         async with self.sem:
             for attempt in range(5):
                 try:
                     async with self._lock:
-                        now = time.time()
-                        wait = (self._last_call_ts + 0.25) - now
+                        wait = (self._last + 0.25) - time.time()
                         if wait > 0:
                             await asyncio.sleep(wait)
-                        self._last_call_ts = time.time()
+                        self._last = time.time()
                     
                     loop = asyncio.get_running_loop()
                     return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
                 except Exception:
                     await asyncio.sleep(min(30, 2 ** attempt))
-            raise RuntimeError("API failed")
+            return None
 
 api_gate = ApiGate()
-
 exchange = ccxt.binance({
-    "apiKey": BINANCE_API_KEY or None,
-    "secret": BINANCE_API_SECRET or None,
-    "options": {"defaultType": "spot"},
     "enableRateLimit": True,
     "timeout": 20000,
+    "options": {"defaultType": "spot"}
 })
 
 # ============================================================
@@ -124,8 +123,6 @@ def tr_now_str():
 
 def fmt_price(symbol, price):
     try:
-        if price is None:
-            return "N/A"
         return exchange.price_to_precision(symbol, float(price))
     except Exception:
         p = float(price)
@@ -157,10 +154,9 @@ def save_signal_log(analysis, tr_time):
         logs.append({
             "symbol": analysis["symbol"],
             "timestamp": tr_time.isoformat(),
-            "price": analysis["price"],
-            "score": analysis["score"],
+            "total_score": analysis["total_score"],
             "potential": analysis["potential_pct"],
-            "risk": analysis["risk_pct"],
+            "price": analysis["price"]
         })
         
         os.makedirs(os.path.dirname(SIGNAL_LOG_FILE), exist_ok=True)
@@ -180,26 +176,23 @@ async def load_symbols_pool():
         and exchange.markets[s].get("active", False)
         and s not in IGNORED_COINS
     ]
-    if not USE_TOP_VOLUME_POOL or not MAX_SYMBOLS:
-        return syms[:MAX_SYMBOLS] if MAX_SYMBOLS else syms
     
     volumes = {}
     for i in range(0, len(syms), 120):
-        try:
-            res = await api_gate.call(exchange.fetch_tickers, syms[i:i+120])
-            if isinstance(res, dict):
-                for k, v in res.items():
-                    volumes[k] = float(v.get("quoteVolume", 0) or 0)
-        except Exception:
-            continue
+        res = await api_gate.call(exchange.fetch_tickers, syms[i:i+120])
+        if res and isinstance(res, dict):
+            for k, v in res.items():
+                volumes[k] = float(v.get("quoteVolume", 0) or 0)
     
-    return sorted(syms, key=lambda x: volumes.get(x, 0), reverse=True)[:MAX_SYMBOLS] if MAX_SYMBOLS else sorted(syms, key=lambda x: volumes.get(x, 0), reverse=True)
+    return sorted(syms, key=lambda x: volumes.get(x, 0), reverse=True)
 
 # ============================================================
 # DATA
 # ============================================================
 async def fetch_ohlcv_df(symbol, timeframe, limit):
     bars = await api_gate.call(exchange.fetch_ohlcv, symbol, timeframe=timeframe, limit=limit)
+    if not bars:
+        return None
     df = pd.DataFrame(bars, columns=["timestamp","open","high","low","close","volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df.set_index("timestamp", inplace=True)
@@ -213,6 +206,17 @@ def prepare_indicators(df):
     df["atr"] = ta.atr(df["high"], df["low"], df["close"], length=14)
     df["vol_ma"] = df["volume"].rolling(20).mean()
     
+    # MACD
+    macd = ta.macd(df["close"], fast=12, slow=26, signal=9)
+    if macd is not None and hasattr(macd, "columns"):
+        for col in macd.columns:
+            col_upper = str(col).upper()
+            if "MACD_12" in col_upper:
+                df["macd"] = macd[col]
+            elif "MACDS_12" in col_upper:
+                df["macd_signal"] = macd[col]
+    
+    # Bollinger Bands
     bb = ta.bbands(df["close"], length=20, std=2)
     if bb is not None and hasattr(bb, "columns"):
         for col in bb.columns:
@@ -230,188 +234,311 @@ def prepare_indicators(df):
     return df
 
 # ============================================================
-# ANALİZ
+# SKORLAMA SİSTEMİ - 10 ÜZERINDEN
 # ============================================================
-def detect_accumulation_zone(df_1h):
-    try:
-        if len(df_1h) < 100:
-            return None
-        
-        score = 0.0
-        details = {}
-        
-        recent_48 = df_1h.iloc[-48:]
-        last = df_1h.iloc[-1]
-        
-        # Dar Range
-        range_high = float(recent_48["high"].max())
-        range_low = float(recent_48["low"].min())
-        range_pct = ((range_high - range_low) / range_low) * 100
-        
-        if range_pct < 8:
-            score += 3.0
-            details["narrow_range"] = True
-        elif range_pct < 12:
-            score += 1.5
-        
-        details["range_pct"] = range_pct
-        
-        # Volatilite
-        atr_now = float(last["atr"])
-        atr_avg = float(df_1h["atr"].iloc[-100:-48].mean())
-        
-        if atr_now < atr_avg * 0.6:
-            score += 2.0
-            details["low_volatility"] = True
-        elif atr_now < atr_avg * 0.8:
-            score += 1.0
-        
-        # Hacim
-        vol_recent = float(recent_48["volume"].mean())
-        vol_before = float(df_1h["volume"].iloc[-100:-48].mean())
-        
-        if vol_recent < vol_before * 0.7:
-            score += 2.0
-            details["volume_decrease"] = True
-        elif vol_recent < vol_before * 0.85:
-            score += 1.0
-        
-        # Lower Lows
-        lows_last = recent_48["low"].iloc[-24:].values
-        lows_prev = recent_48["low"].iloc[-48:-24].values
-        
-        if len(lows_last) > 10 and len(lows_prev) > 10:
-            slope_recent, _, _, _, _ = linregress(range(len(lows_last)), lows_last)
-            slope_before, _, _, _, _ = linregress(range(len(lows_prev)), lows_prev)
-            
-            if slope_before < 0 and slope_recent >= -0.00001:
-                score += 3.0
-                details["lower_lows_stopped"] = True
-            elif slope_recent > slope_before:
-                score += 1.5
-        
-        return {"score": score, "max_score": 10.0, "details": details}
-        
-    except Exception:
-        return None
 
-def detect_smart_money(df_1h):
+def calculate_trend_score(df_1h, df_4h):
+    """
+    TREND ANALİZİ - 3 puan
+    """
     try:
-        if len(df_1h) < 50:
-            return None
-        
         score = 0.0
         details = {}
+        
+        if df_4h is None or len(df_4h) < 50:
+            return {"score": 0, "details": {"error": "Veri yok"}}
+        
+        last_4h = df_4h.iloc[-1]
+        
+        # 1) 4h EMA Alignment (1.5 puan)
+        close_4h = float(last_4h["close"])
+        ema20_4h = float(last_4h["ema20"])
+        ema50_4h = float(last_4h["ema50"])
+        
+        if close_4h > ema20_4h and ema20_4h > ema50_4h:
+            score += 1.5
+            details["ema_alignment"] = "Perfect"
+        elif close_4h > ema20_4h or ema20_4h > ema50_4h:
+            score += 0.75
+            details["ema_alignment"] = "Partial"
+        else:
+            details["ema_alignment"] = "Weak"
+        
+        # 2) RSI Pozisyon (1 puan)
+        if df_1h is not None and len(df_1h) > 20:
+            last_1h = df_1h.iloc[-1]
+            rsi = float(last_1h["rsi"])
+            
+            if 45 <= rsi <= 60:
+                score += 1.0
+                details["rsi_position"] = "Ideal"
+            elif 40 <= rsi <= 65:
+                score += 0.6
+                details["rsi_position"] = "Good"
+            elif 35 <= rsi <= 70:
+                score += 0.3
+                details["rsi_position"] = "Ok"
+            else:
+                details["rsi_position"] = "Bad"
+            
+            details["rsi"] = rsi
+        
+        # 3) Fiyat Momentum (0.5 puan)
+        if close_4h > float(last_4h["open"]):
+            score += 0.5
+            details["momentum"] = "Positive"
+        else:
+            details["momentum"] = "Negative"
+        
+        return {
+            "score": round(score, 2),
+            "max_score": 3.0,
+            "details": details
+        }
+        
+    except Exception as e:
+        return {"score": 0, "details": {"error": str(e)[:50]}}
+
+def calculate_accumulation_score(df_15m, df_1h):
+    """
+    BİRİKİM ANALİZİ - 3 puan
+    """
+    try:
+        score = 0.0
+        details = {}
+        
+        if df_1h is None or len(df_1h) < 50:
+            return {"score": 0, "details": {"error": "Veri yok"}}
         
         recent_24 = df_1h.iloc[-24:]
+        recent_20 = df_1h.iloc[-20:]
         
-        # Volume Clusters
-        volumes = recent_24["volume"].values
-        vol_mean = float(np.mean(volumes))
-        vol_std = float(np.std(volumes))
+        # 1) Volume Spikes (1.5 puan)
+        vol_mean = float(recent_24["volume"].mean())
+        vol_std = float(recent_24["volume"].std())
         
-        big_volume_count = sum(1 for v in volumes if v > vol_mean + vol_std)
+        big_volume_count = 0
+        for i in range(len(recent_24)):
+            if float(recent_24["volume"].iloc[i]) > vol_mean + vol_std:
+                big_volume_count += 1
         
         if big_volume_count >= 3:
-            score += 4.0
-            details["volume_clusters"] = big_volume_count
-        elif big_volume_count >= 2:
-            score += 2.0
-            details["volume_clusters"] = big_volume_count
+            score += 1.5
+            details["volume_spikes"] = f"{big_volume_count} spikes"
+        elif big_volume_count == 2:
+            score += 1.0
+            details["volume_spikes"] = "2 spikes"
+        elif big_volume_count == 1:
+            score += 0.5
+            details["volume_spikes"] = "1 spike"
+        else:
+            details["volume_spikes"] = "None"
         
-        # Higher Lows
-        lows = recent_24["low"].values
+        # 2) Higher Lows Pattern (1 puan)
+        lows = recent_20["low"].values
         higher_lows = sum(1 for i in range(1, len(lows)) if lows[i] > lows[i-1])
-        hl_ratio = higher_lows / (len(lows) - 1)
+        hl_ratio = higher_lows / (len(lows) - 1) if len(lows) > 1 else 0
         
         if hl_ratio > 0.5:
-            score += 3.0
-            details["higher_lows"] = True
-        elif hl_ratio > 0.35:
-            score += 1.5
+            score += 1.0
+            details["higher_lows"] = "Strong"
+        elif hl_ratio > 0.4:
+            score += 0.7
+            details["higher_lows"] = "Good"
+        elif hl_ratio > 0.3:
+            score += 0.4
+            details["higher_lows"] = "Weak"
+        else:
+            details["higher_lows"] = "None"
         
-        # Alım Baskısı
+        # 3) Buy Pressure (0.5 puan)
         green_vol = 0
         red_vol = 0
         
-        for i in range(len(recent_24)):
-            candle = recent_24.iloc[i]
+        for i in range(len(recent_20)):
+            candle = recent_20.iloc[i]
             vol = float(candle["volume"])
             if float(candle["close"]) > float(candle["open"]):
                 green_vol += vol
             else:
                 red_vol += vol
         
-        if green_vol + red_vol > 0:
-            buy_pressure = green_vol / (green_vol + red_vol)
-            
-            if buy_pressure > 0.6:
-                score += 3.0
-                details["buy_pressure"] = buy_pressure
-            elif buy_pressure > 0.52:
-                score += 1.5
-                details["buy_pressure"] = buy_pressure
+        total_vol = green_vol + red_vol
+        buy_pressure = (green_vol / total_vol) if total_vol > 0 else 0
         
-        return {"score": score, "max_score": 10.0, "details": details}
+        if buy_pressure > 0.6:
+            score += 0.5
+            details["buy_pressure"] = "Strong"
+        elif buy_pressure > 0.55:
+            score += 0.3
+            details["buy_pressure"] = "Good"
+        else:
+            details["buy_pressure"] = "Weak"
         
-    except Exception:
-        return None
+        details["buy_pressure_pct"] = round(buy_pressure * 100, 1)
+        
+        return {
+            "score": round(score, 2),
+            "max_score": 3.0,
+            "details": details
+        }
+        
+    except Exception as e:
+        return {"score": 0, "details": {"error": str(e)[:50]}}
 
-def detect_breakout_setup(df_1h, df_4h):
+def calculate_squeeze_score(df_1h):
+    """
+    SIKIŞMA/VOLATİLİTE - 2 puan
+    """
     try:
-        if len(df_1h) < 50 or len(df_4h) < 20:
-            return None
-        
         score = 0.0
         details = {}
         
-        last_1h = df_1h.iloc[-1]
-        last_4h = df_4h.iloc[-1]
+        if df_1h is None or len(df_1h) < 50:
+            return {"score": 0, "details": {"error": "Veri yok"}}
         
-        # BB Squeeze
-        if "bb_width" in df_1h.columns:
-            bb_width = float(last_1h["bb_width"])
-            bb_avg = float(df_1h["bb_width"].iloc[-50:].mean())
+        last = df_1h.iloc[-1]
+        
+        # 1) BB Width (1 puan)
+        if "bb_width" in df_1h.columns and not pd.isna(last["bb_width"]):
+            bb_width = float(last["bb_width"])
             
             if bb_width < 3.0:
-                score += 4.0
-                details["bb_squeeze"] = True
-            elif bb_width < bb_avg * 0.7:
-                score += 2.0
+                score += 1.0
+                details["bb_squeeze"] = "Strong"
+            elif bb_width < 4.0:
+                score += 0.7
+                details["bb_squeeze"] = "Good"
+            elif bb_width < 5.0:
+                score += 0.4
+                details["bb_squeeze"] = "Weak"
+            else:
+                details["bb_squeeze"] = "None"
             
-            details["bb_width"] = bb_width
+            details["bb_width"] = round(bb_width, 2)
         
-        # 4h Trend
-        close_4h = float(last_4h["close"])
-        ema20_4h = float(last_4h["ema20"])
-        ema50_4h = float(last_4h["ema50"])
+        # 2) ATR Düşüşü (0.5 puan)
+        atr_now = float(last["atr"])
+        atr_avg = float(df_1h["atr"].iloc[-50:].mean())
         
-        if close_4h > ema20_4h and ema20_4h > ema50_4h:
-            score += 3.0
-            details["trend_4h"] = "UPTREND"
-        elif close_4h > ema50_4h:
-            score += 1.5
-            details["trend_4h"] = "SIDEWAYS_UP"
+        if atr_now < atr_avg * 0.6:
+            score += 0.5
+            details["atr_drop"] = "Strong"
+        elif atr_now < atr_avg * 0.8:
+            score += 0.3
+            details["atr_drop"] = "Moderate"
+        else:
+            details["atr_drop"] = "None"
         
-        # RSI
-        rsi = float(last_1h["rsi"])
+        # 3) Range Daralması (0.5 puan)
+        recent_48 = df_1h.iloc[-48:]
+        range_high = float(recent_48["high"].max())
+        range_low = float(recent_48["low"].min())
+        range_pct = ((range_high - range_low) / range_low) * 100
         
-        if 40 <= rsi <= 60:
-            score += 3.0
-            details["rsi_neutral"] = True
-        elif 35 <= rsi <= 65:
-            score += 1.5
+        if range_pct < 8.0:
+            score += 0.5
+            details["range"] = "Tight"
+        elif range_pct < 12.0:
+            score += 0.3
+            details["range"] = "Moderate"
+        else:
+            details["range"] = "Wide"
         
-        details["rsi"] = rsi
+        details["range_pct"] = round(range_pct, 2)
         
-        return {"score": score, "max_score": 10.0, "details": details}
+        return {
+            "score": round(score, 2),
+            "max_score": 2.0,
+            "details": details
+        }
         
-    except Exception:
-        return None
+    except Exception as e:
+        return {"score": 0, "details": {"error": str(e)[:50]}}
 
+def calculate_momentum_score(df_15m, df_1h):
+    """
+    MOMENTUM - 2 puan
+    """
+    try:
+        score = 0.0
+        details = {}
+        
+        if df_15m is None or len(df_15m) < 50:
+            return {"score": 0, "details": {"error": "Veri yok"}}
+        
+        last_15m = df_15m.iloc[-1]
+        
+        # 1) Son Mum Gücü (1 puan)
+        close = float(last_15m["close"])
+        open_price = float(last_15m["open"])
+        high = float(last_15m["high"])
+        low = float(last_15m["low"])
+        vol = float(last_15m["volume"])
+        vol_ma = float(last_15m["vol_ma"]) if not pd.isna(last_15m["vol_ma"]) else 0
+        
+        is_green = close > open_price
+        body_ratio = ((close - open_price) / (high - low)) if (high > low) else 0
+        vol_ratio = (vol / vol_ma) if vol_ma > 0 else 0
+        
+        if is_green and vol_ratio > 2.0 and body_ratio > 0.65:
+            score += 1.0
+            details["candle_strength"] = "Strong"
+        elif is_green and vol_ratio > 1.8 and body_ratio > 0.60:
+            score += 0.6
+            details["candle_strength"] = "Good"
+        elif is_green and vol_ratio > 1.5 and body_ratio > 0.55:
+            score += 0.3
+            details["candle_strength"] = "Weak"
+        else:
+            details["candle_strength"] = "None"
+        
+        details["vol_ratio"] = round(vol_ratio, 2)
+        details["body_ratio"] = round(body_ratio * 100, 1)
+        
+        # 2) Yeni Yüksek (0.5 puan)
+        recent_40 = df_15m.iloc[-40:-1]
+        prev_high = float(recent_40["high"].max())
+        
+        if close > prev_high:
+            recent_20 = df_15m.iloc[-20:-1]
+            if close > float(recent_20["high"].max()):
+                score += 0.5
+                details["new_high"] = "Strong (20 bar)"
+            else:
+                score += 0.3
+                details["new_high"] = "Moderate (40 bar)"
+        else:
+            details["new_high"] = "None"
+        
+        # 3) MACD Pozitif (0.5 puan)
+        if df_1h is not None and len(df_1h) > 20:
+            last_1h = df_1h.iloc[-1]
+            if "macd" in df_1h.columns and "macd_signal" in df_1h.columns:
+                macd = float(last_1h["macd"])
+                macd_signal = float(last_1h["macd_signal"])
+                
+                if macd > macd_signal:
+                    score += 0.5
+                    details["macd"] = "Positive"
+                else:
+                    details["macd"] = "Negative"
+        
+        return {
+            "score": round(score, 2),
+            "max_score": 2.0,
+            "details": details
+        }
+        
+    except Exception as e:
+        return {"score": 0, "details": {"error": str(e)[:50]}}
+
+# ============================================================
+# SR & POTANSİYEL
+# ============================================================
 def find_resistance_support(df_1h, current_price):
     try:
-        if len(df_1h) < 100:
+        if df_1h is None or len(df_1h) < 100:
             return None
         
         recent = df_1h.iloc[-100:]
@@ -436,34 +563,32 @@ def find_resistance_support(df_1h, current_price):
     except Exception:
         return None
 
-async def analyze_symbol(symbol, df_1h, df_4h):
+# ============================================================
+# ANA ANALİZ
+# ============================================================
+async def analyze_symbol(symbol, df_15m, df_1h, df_4h):
     try:
-        accum_zone = detect_accumulation_zone(df_1h)
-        if not accum_zone or accum_zone["score"] < 5.0:
-            stats["low_accumulation"] += 1
-            return None
+        # 4 aşama skorlama
+        trend = calculate_trend_score(df_1h, df_4h)
+        accumulation = calculate_accumulation_score(df_15m, df_1h)
+        squeeze = calculate_squeeze_score(df_1h)
+        momentum = calculate_momentum_score(df_15m, df_1h)
         
-        smart_money = detect_smart_money(df_1h)
-        if not smart_money or smart_money["score"] < 5.0:
-            stats["no_smart_money"] += 1
-            return None
-        
-        breakout_setup = detect_breakout_setup(df_1h, df_4h)
-        if not breakout_setup or breakout_setup["score"] < 5.0:
-            stats["no_breakout_setup"] += 1
-            return None
-        
+        # Toplam skor
         total_score = (
-            accum_zone["score"] * 0.35 +
-            smart_money["score"] * 0.35 +
-            breakout_setup["score"] * 0.30
+            trend["score"] +
+            accumulation["score"] +
+            squeeze["score"] +
+            momentum["score"]
         )
         
-        if total_score < MIN_ACCUMULATION_SCORE:
-            stats["low_total_score"] += 1
+        # Minimum skor kontrolü
+        if total_score < MEDIUM_SIGNAL_MIN:
+            stats["low_score"] += 1
             return None
         
-        current_price = float(df_1h["close"].iloc[-1])
+        # SR & Potansiyel
+        current_price = float(df_15m["close"].iloc[-1])
         sr = find_resistance_support(df_1h, current_price)
         
         if not sr:
@@ -473,15 +598,26 @@ async def analyze_symbol(symbol, df_1h, df_4h):
         potential_pct = ((sr["resistance"] - current_price) / current_price) * 100
         risk_pct = ((current_price - sr["support"]) / current_price) * 100
         
-        if potential_pct < MIN_POTENTIAL_PCT:
+        # Sinyal seviyesi belirleme
+        if total_score >= STRONG_SIGNAL_MIN:
+            signal_level = "STRONG"
+            min_pot = MIN_POTENTIAL["STRONG"]
+        elif total_score >= GOOD_SIGNAL_MIN:
+            signal_level = "GOOD"
+            min_pot = MIN_POTENTIAL["GOOD"]
+        else:
+            signal_level = "MEDIUM"
+            min_pot = MIN_POTENTIAL["MEDIUM"]
+        
+        if potential_pct < min_pot:
             stats["low_potential"] += 1
             return None
         
-        if risk_pct > MAX_RISK_PCT:
-            stats["high_risk"] += 1
+        # Likidite
+        ticker = await api_gate.call(exchange.fetch_ticker, symbol)
+        if not ticker:
             return None
         
-        ticker = await api_gate.call(exchange.fetch_ticker, symbol)
         liquidity = float(ticker.get("quoteVolume", 0) or 0)
         
         if liquidity < MIN_LIQUIDITY:
@@ -491,14 +627,16 @@ async def analyze_symbol(symbol, df_1h, df_4h):
         return {
             "symbol": symbol,
             "price": current_price,
+            "total_score": round(total_score, 2),
+            "signal_level": signal_level,
+            "trend": trend,
+            "accumulation": accumulation,
+            "squeeze": squeeze,
+            "momentum": momentum,
             "resistance": sr["resistance"],
             "support": sr["support"],
             "potential_pct": potential_pct,
             "risk_pct": risk_pct,
-            "score": total_score,
-            "accumulation": accum_zone,
-            "smart_money": smart_money,
-            "breakout_setup": breakout_setup,
             "liquidity": liquidity
         }
         
@@ -512,34 +650,59 @@ async def analyze_symbol(symbol, df_1h, df_4h):
 def format_signal(analysis, tr_time):
     symbol = analysis["symbol"]
     price = analysis["price"]
+    total = analysis["total_score"]
+    level = analysis["signal_level"]
+    
+    trend = analysis["trend"]
+    accum = analysis["accumulation"]
+    squeeze = analysis["squeeze"]
+    momentum = analysis["momentum"]
+    
     resistance = analysis["resistance"]
     support = analysis["support"]
     potential = analysis["potential_pct"]
     risk = analysis["risk_pct"]
-    score = analysis["score"]
     liq = analysis["liquidity"]
     
     price_s = fmt_price(symbol, price)
     res_s = fmt_price(symbol, resistance)
     sup_s = fmt_price(symbol, support)
     
+    # Yıldız sayısı
+    if level == "STRONG":
+        stars = "⭐⭐⭐"
+    elif level == "GOOD":
+        stars = "⭐⭐"
+    else:
+        stars = "⭐"
+    
+    # Trend detay
+    trend_bar = "🟩" * int(trend["score"] * 3) + "⬜" * (9 - int(trend["score"] * 3))
+    accum_bar = "🟩" * int(accum["score"] * 3) + "⬜" * (9 - int(accum["score"] * 3))
+    squeeze_bar = "🟩" * int(squeeze["score"] * 4.5) + "⬜" * (9 - int(squeeze["score"] * 4.5))
+    momentum_bar = "🟩" * int(momentum["score"] * 4.5) + "⬜" * (9 - int(momentum["score"] * 4.5))
+    
     msg = f"""
 🔍 <b>BİRİKİM TESPİT EDİLDİ</b>
 
 <b>#{symbol}</b>
 💵 Fiyat: {price_s}
+━━━━━━━━━━━━━━━━
+{stars} <b>SKOR: {total}/10</b>
+
+📊 <b>Detay:</b>
+- Trend: {trend['score']}/3
+  {trend_bar}
+- Birikim: {accum['score']}/3
+  {accum_bar}
+- Sıkışma: {squeeze['score']}/2
+  {squeeze_bar}
+- Momentum: {momentum['score']}/2
+  {momentum_bar}
+
 🎯 Direnç: {res_s} (+%{potential:.1f})
 🛡️ Destek: {sup_s} (-%{risk:.1f})
-━━━━━━━━━━━━━━━━
-⭐ Kalite: {score:.1f}/10
 💰 Likidite: ${liq/1e6:.1f}M
-
-📊 <b>ANALİZ:</b>
-- Birikim bölgesinde
-- Akıllı para giriyor
-- Patlama hazırlığı var
-
-⚠️ Henüz patlama olmadı!
 
 🕐 {tr_time.strftime("%d.%m %H:%M")}
 """.strip()
@@ -549,26 +712,31 @@ def format_signal(analysis, tr_time):
 # ============================================================
 # WS & EVAL
 # ============================================================
-async def evaluate_on_close(symbol, df_1h, queue):
+async def evaluate_on_close(symbol, df_15m, queue):
     global ws_close_count
     try:
         ws_close_count += 1
         tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
         
+        # Cooldown
         last_ts = last_signal_ts.get(symbol)
         if last_ts:
             hours = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
             if hours < SIGNAL_COOLDOWN_HOURS:
                 return
         
+        df_1h = bars_1h.get(symbol)
         df_4h = bars_4h.get(symbol)
+        
+        if df_1h is None or len(df_1h) < 50:
+            return
         if df_4h is None or len(df_4h) < 20:
             return
         
-        analysis = await analyze_symbol(symbol, df_1h, df_4h)
+        analysis = await analyze_symbol(symbol, df_15m, df_1h, df_4h)
         
         if analysis:
-            print(f"🔍 ADAY: {symbol} | Skor:{analysis['score']:.1f}", flush=True)
+            print(f"🔍 {symbol} | Skor:{analysis['total_score']}/10 | Pot:%{analysis['potential_pct']:.1f}", flush=True)
             await queue.put(Signal(symbol=symbol, analysis=analysis, tr_time=tr_now))
         
     except Exception as e:
@@ -585,7 +753,7 @@ async def signal_worker(queue):
             last_signal_ts[sig.symbol] = sig.tr_time.replace(tzinfo=None)
             stats["signal_sent"] += 1
             
-            print(f"✅ SİNYAL: {sig.symbol}", flush=True)
+            print(f"✅ SİNYAL: {sig.symbol} [{sig.analysis['signal_level']}]", flush=True)
         except Exception as e:
             print(f"⚠️ Worker: {str(e)[:50]}", flush=True)
         finally:
@@ -596,17 +764,22 @@ async def signal_worker(queue):
 # ============================================================
 async def bootstrap_symbol(symbol):
     try:
+        df_15m = await fetch_ohlcv_df(symbol, "15m", BOOTSTRAP_LIMIT_15M)
         df_1h = await fetch_ohlcv_df(symbol, "1h", BOOTSTRAP_LIMIT_1H)
         df_4h = await fetch_ohlcv_df(symbol, "4h", BOOTSTRAP_LIMIT_4H)
         
-        if df_1h is None or len(df_1h) < 100:
+        if df_15m is None or len(df_15m) < 50:
+            return False
+        if df_1h is None or len(df_1h) < 50:
             return False
         if df_4h is None or len(df_4h) < 20:
             return False
         
+        df_15m = prepare_indicators(df_15m)
         df_1h = prepare_indicators(df_1h)
         df_4h = prepare_indicators(df_4h)
         
+        bars_15m[symbol] = df_15m.iloc[-KEEP_BARS_15M:]
         bars_1h[symbol] = df_1h.iloc[-KEEP_BARS_1H:]
         bars_4h[symbol] = df_4h.iloc[-KEEP_BARS_4H:]
         return True
@@ -653,19 +826,19 @@ async def ws_listen_klines(symbols, queue):
                     
                     symbol = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
                     
-                    df_1h = bars_1h.get(symbol)
-                    if df_1h is None or len(df_1h) < 50:
+                    df_15m = bars_15m.get(symbol)
+                    if df_15m is None or len(df_15m) < 20:
                         continue
                     
                     ts = pd.to_datetime(int(k["t"]), unit="ms", utc=True)
-                    df_1h.loc[ts, ["open","high","low","close","volume"]] = [
+                    df_15m.loc[ts, ["open","high","low","close","volume"]] = [
                         float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]), float(k["v"])
                     ]
-                    df_1h = df_1h.sort_index().iloc[-KEEP_BARS_1H:]
-                    df_1h = prepare_indicators(df_1h)
-                    bars_1h[symbol] = df_1h
+                    df_15m = df_15m.sort_index().iloc[-KEEP_BARS_15M:]
+                    df_15m = prepare_indicators(df_15m)
+                    bars_15m[symbol] = df_15m
                     
-                    await evaluate_on_close(symbol, df_1h, queue)
+                    await evaluate_on_close(symbol, df_15m, queue)
         except Exception:
             retry += 1
             await asyncio.sleep(min(60, 5 * (2 ** min(retry, 4))))
@@ -688,10 +861,30 @@ app.logger.disabled = True
 @app.route("/")
 def home():
     return f"""
-    <h1>🔍 Professional Accumulation v5.0</h1>
-    <p>Coins: {len(tracked_symbols)}</p>
-    <p>Signals: {stats.get('signal_sent', 0)}</p>
-    <p>Time: {tr_now_str()}</p>
+    <html>
+    <head>
+        <style>
+            body {{ background: #1a1a1a; color: #fff; font-family: Arial; padding: 20px; }}
+            h1 {{ color: #4CAF50; }}
+            .stat {{ background: #2a2a2a; padding: 15px; margin: 10px 0; border-radius: 8px; }}
+        </style>
+    </head>
+    <body>
+        <h1>🔍 Professional Scoring System v7.0</h1>
+        <div class="stat">
+            <p><b>Coins:</b> {len(tracked_symbols)}</p>
+            <p><b>Checks:</b> {ws_close_count}</p>
+            <p><b>Signals:</b> {stats.get('signal_sent', 0)}</p>
+            <p><b>Time:</b> {tr_now_str()}</p>
+        </div>
+        <div class="stat">
+            <h3>Eleme Sebepleri:</h3>
+            <p>Low score: {stats.get('low_score', 0)}</p>
+            <p>Low potential: {stats.get('low_potential', 0)}</p>
+            <p>Low liquidity: {stats.get('low_liquidity', 0)}</p>
+        </div>
+    </body>
+    </html>
     """
 
 @app.route("/health")
@@ -705,19 +898,25 @@ def start_flask():
 # MAIN
 # ============================================================
 async def main():
-    print("🔍 Professional Accumulation v5.0", flush=True)
+    print("🔍 Professional Scoring System v7.0", flush=True)
     
     symbols = await load_symbols_pool()
     if not symbols:
-        print("❌ Sembol yok", flush=True)
         return
     
-    print(f"✅ {len(symbols)} coin", flush=True)
-    
+    print(f"✅ {len(symbols)} coins", flush=True)
     await bootstrap_all(symbols)
     
     queue = asyncio.Queue()
     asyncio.create_task(signal_worker(queue))
+    
+    # Stats her 10 dakikada
+    async def periodic_stats():
+        while True:
+            await asyncio.sleep(600)
+            print(f"📊 [{tr_now_str()}] Checks:{ws_close_count} Signals:{stats.get('signal_sent', 0)}", flush=True)
+    
+    asyncio.create_task(periodic_stats())
     
     await ws_listen_multi(symbols, queue)
 
