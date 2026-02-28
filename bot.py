@@ -9,7 +9,7 @@ import json
 import time
 import threading
 import os
-from collections import Counter, deque
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -33,10 +33,10 @@ TELEGRAM_TOKEN = "7583261338:AAFwkpxsumCBpYI5Ai-aIiII6INm_thmg-I"
 TELEGRAM_CHAT_ID = "5124859166"
 
 # KALİTE FİLTRELERİ
-MIN_LIQUIDITY = 4_000_000          # $4M likidite
-MIN_POTENTIAL_PCT = 10.0           # Minimum %10 potansiyel
-MAX_RISK_PCT = 8.0                 # Maximum %8 risk
-MIN_ACCUMULATION_SCORE = 7.0       # 10 üzerinden minimum 7 puan
+MIN_LIQUIDITY = 4_000_000
+MIN_POTENTIAL_PCT = 10.0
+MAX_RISK_PCT = 8.0
+MIN_ACCUMULATION_SCORE = 7.0
 
 SIGNAL_COOLDOWN_HOURS = 24
 
@@ -60,9 +60,9 @@ stats = Counter()
 ws_close_count = 0
 tracked_symbols = []
 
-bars_1h: dict[str, pd.DataFrame] = {}
-bars_4h: dict[str, pd.DataFrame] = {}
-last_signal_ts: dict[str, datetime] = {}
+bars_1h = {}
+bars_4h = {}
+last_signal_ts = {}
 
 IGNORED_COINS = set([
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
@@ -122,7 +122,7 @@ exchange = ccxt.binance({
 def tr_now_str():
     return datetime.now(timezone.utc).astimezone(TR_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
-def fmt_price(symbol: str, price) -> str:
+def fmt_price(symbol, price):
     try:
         if price is None:
             return "N/A"
@@ -135,7 +135,7 @@ def fmt_price(symbol: str, price) -> str:
             return f"{p:.6f}"
         return f"{p:.4f}"
 
-def send_telegram(text: str):
+def send_telegram(text):
     if not TELEGRAM_TOKEN:
         return
     try:
@@ -147,7 +147,7 @@ def send_telegram(text: str):
     except Exception as e:
         print(f"⚠️ TG: {e}", flush=True)
 
-def save_signal_log(analysis: dict, tr_time: datetime):
+def save_signal_log(analysis, tr_time):
     try:
         logs = []
         if os.path.exists(SIGNAL_LOG_FILE):
@@ -198,14 +198,14 @@ async def load_symbols_pool():
 # ============================================================
 # DATA
 # ============================================================
-async def fetch_ohlcv_df(symbol: str, timeframe: str, limit: int):
+async def fetch_ohlcv_df(symbol, timeframe, limit):
     bars = await api_gate.call(exchange.fetch_ohlcv, symbol, timeframe=timeframe, limit=limit)
     df = pd.DataFrame(bars, columns=["timestamp","open","high","low","close","volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df.set_index("timestamp", inplace=True)
     return df
 
-def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_indicators(df):
     df = df.copy()
     df["ema20"] = ta.ema(df["close"], length=20)
     df["ema50"] = ta.ema(df["close"], length=50)
@@ -230,14 +230,9 @@ def prepare_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # ============================================================
-# PROFESYONEL ANALİZ
+# ANALİZ
 # ============================================================
-
-def detect_accumulation_zone(df_1h: pd.DataFrame) -> Optional[dict]:
-    """
-    AŞAMA 1: Birikim bölgesi tespiti
-    Skor: 0-10
-    """
+def detect_accumulation_zone(df_1h):
     try:
         if len(df_1h) < 100:
             return None
@@ -245,11 +240,10 @@ def detect_accumulation_zone(df_1h: pd.DataFrame) -> Optional[dict]:
         score = 0.0
         details = {}
         
-        # Son 48 saat (48 mum)
         recent_48 = df_1h.iloc[-48:]
         last = df_1h.iloc[-1]
         
-        # 1) Dar Range (3 puan)
+        # Dar Range
         range_high = float(recent_48["high"].max())
         range_low = float(recent_48["low"].min())
         range_pct = ((range_high - range_low) / range_low) * 100
@@ -259,11 +253,10 @@ def detect_accumulation_zone(df_1h: pd.DataFrame) -> Optional[dict]:
             details["narrow_range"] = True
         elif range_pct < 12:
             score += 1.5
-            details["narrow_range"] = "Partial"
         
         details["range_pct"] = range_pct
         
-        # 2) Volatilite Düşüşü (2 puan)
+        # Volatilite
         atr_now = float(last["atr"])
         atr_avg = float(df_1h["atr"].iloc[-100:-48].mean())
         
@@ -272,9 +265,8 @@ def detect_accumulation_zone(df_1h: pd.DataFrame) -> Optional[dict]:
             details["low_volatility"] = True
         elif atr_now < atr_avg * 0.8:
             score += 1.0
-            details["low_volatility"] = "Partial"
         
-        # 3) Hacim Azalması (2 puan)
+        # Hacim
         vol_recent = float(recent_48["volume"].mean())
         vol_before = float(df_1h["volume"].iloc[-100:-48].mean())
         
@@ -283,39 +275,27 @@ def detect_accumulation_zone(df_1h: pd.DataFrame) -> Optional[dict]:
             details["volume_decrease"] = True
         elif vol_recent < vol_before * 0.85:
             score += 1.0
-            details["volume_decrease"] = "Partial"
         
-        # 4) Lower Lows Durdu (3 puan)
-        lows_last_24 = recent_48["low"].iloc[-24:].values
-        lows_prev_24 = recent_48["low"].iloc[-48:-24].values
+        # Lower Lows
+        lows_last = recent_48["low"].iloc[-24:].values
+        lows_prev = recent_48["low"].iloc[-48:-24].values
         
-        # Trend analizi
-        if len(lows_last_24) > 10 and len(lows_prev_24) > 10:
-            slope_recent, _, _, _, _ = linregress(range(len(lows_last_24)), lows_last_24)
-            slope_before, _, _, _, _ = linregress(range(len(lows_prev_24)), lows_prev_24)
+        if len(lows_last) > 10 and len(lows_prev) > 10:
+            slope_recent, _, _, _, _ = linregress(range(len(lows_last)), lows_last)
+            slope_before, _, _, _, _ = linregress(range(len(lows_prev)), lows_prev)
             
-            # Düşüş trendi durdu mu?
             if slope_before < 0 and slope_recent >= -0.00001:
                 score += 3.0
                 details["lower_lows_stopped"] = True
             elif slope_recent > slope_before:
                 score += 1.5
-                details["lower_lows_stopped"] = "Improving"
         
-        return {
-            "score": score,
-            "max_score": 10.0,
-            "details": details
-        }
+        return {"score": score, "max_score": 10.0, "details": details}
         
     except Exception:
         return None
 
-def detect_smart_money(df_1h: pd.DataFrame) -> Optional[dict]:
-    """
-    AŞAMA 2: Akıllı para izleri
-    Skor: 0-10
-    """
+def detect_smart_money(df_1h):
     try:
         if len(df_1h) < 50:
             return None
@@ -325,7 +305,7 @@ def detect_smart_money(df_1h: pd.DataFrame) -> Optional[dict]:
         
         recent_24 = df_1h.iloc[-24:]
         
-        # 1) Volume Clusters (4 puan)
+        # Volume Clusters
         volumes = recent_24["volume"].values
         vol_mean = float(np.mean(volumes))
         vol_std = float(np.std(volumes))
@@ -339,13 +319,9 @@ def detect_smart_money(df_1h: pd.DataFrame) -> Optional[dict]:
             score += 2.0
             details["volume_clusters"] = big_volume_count
         
-        # 2) Higher Lows Starting (3 puan)
+        # Higher Lows
         lows = recent_24["low"].values
-        higher_lows = 0
-        for i in range(1, len(lows)):
-            if lows[i] > lows[i-1]:
-                higher_lows += 1
-        
+        higher_lows = sum(1 for i in range(1, len(lows)) if lows[i] > lows[i-1])
         hl_ratio = higher_lows / (len(lows) - 1)
         
         if hl_ratio > 0.5:
@@ -353,9 +329,8 @@ def detect_smart_money(df_1h: pd.DataFrame) -> Optional[dict]:
             details["higher_lows"] = True
         elif hl_ratio > 0.35:
             score += 1.5
-            details["higher_lows"] = "Partial"
         
-        # 3) Alım Baskısı (3 puan)
+        # Alım Baskısı
         green_vol = 0
         red_vol = 0
         
@@ -377,20 +352,12 @@ def detect_smart_money(df_1h: pd.DataFrame) -> Optional[dict]:
                 score += 1.5
                 details["buy_pressure"] = buy_pressure
         
-        return {
-            "score": score,
-            "max_score": 10.0,
-            "details": details
-        }
+        return {"score": score, "max_score": 10.0, "details": details}
         
     except Exception:
         return None
 
-def detect_breakout_setup(df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[dict]:
-    """
-    AŞAMA 3: Patlama hazırlığı
-    Skor: 0-10
-    """
+def detect_breakout_setup(df_1h, df_4h):
     try:
         if len(df_1h) < 50 or len(df_4h) < 20:
             return None
@@ -401,7 +368,7 @@ def detect_breakout_setup(df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[
         last_1h = df_1h.iloc[-1]
         last_4h = df_4h.iloc[-1]
         
-        # 1) BB Squeeze (4 puan)
+        # BB Squeeze
         if "bb_width" in df_1h.columns:
             bb_width = float(last_1h["bb_width"])
             bb_avg = float(df_1h["bb_width"].iloc[-50:].mean())
@@ -411,11 +378,10 @@ def detect_breakout_setup(df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[
                 details["bb_squeeze"] = True
             elif bb_width < bb_avg * 0.7:
                 score += 2.0
-                details["bb_squeeze"] = "Partial"
             
             details["bb_width"] = bb_width
         
-        # 2) 4h Trend Pozitif (3 puan)
+        # 4h Trend
         close_4h = float(last_4h["close"])
         ema20_4h = float(last_4h["ema20"])
         ema50_4h = float(last_4h["ema50"])
@@ -427,7 +393,7 @@ def detect_breakout_setup(df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[
             score += 1.5
             details["trend_4h"] = "SIDEWAYS_UP"
         
-        # 3) RSI Neutral Zone (3 puan)
+        # RSI
         rsi = float(last_1h["rsi"])
         
         if 40 <= rsi <= 60:
@@ -435,28 +401,21 @@ def detect_breakout_setup(df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[
             details["rsi_neutral"] = True
         elif 35 <= rsi <= 65:
             score += 1.5
-            details["rsi_neutral"] = "Close"
         
         details["rsi"] = rsi
         
-        return {
-            "score": score,
-            "max_score": 10.0,
-            "details": details
-        }
+        return {"score": score, "max_score": 10.0, "details": details}
         
     except Exception:
         return None
 
-def find_resistance_support(df_1h: pd.DataFrame, current_price: float) -> Optional[dict]:
-    """Basit SR hesaplama"""
+def find_resistance_support(df_1h, current_price):
     try:
         if len(df_1h) < 100:
             return None
         
         recent = df_1h.iloc[-100:]
         
-        # Pivot highs/lows
         highs = []
         lows = []
         
@@ -466,43 +425,34 @@ def find_resistance_support(df_1h: pd.DataFrame, current_price: float) -> Option
             if recent["low"].iloc[i] == recent["low"].iloc[i-5:i+6].min():
                 lows.append(float(recent["low"].iloc[i]))
         
-        # En yakın direnç/destek
         upper = [h for h in highs if h > current_price]
         lower = [l for l in lows if l < current_price]
         
         resistance = min(upper) if upper else current_price * 1.12
         support = max(lower) if lower else current_price * 0.92
         
-        return {
-            "resistance": resistance,
-            "support": support
-        }
+        return {"resistance": resistance, "support": support}
         
     except Exception:
         return None
 
-async def analyze_symbol(symbol: str, df_1h: pd.DataFrame, df_4h: pd.DataFrame) -> Optional[dict]:
-    """Ana analiz"""
+async def analyze_symbol(symbol, df_1h, df_4h):
     try:
-        # AŞAMA 1: Birikim bölgesi
         accum_zone = detect_accumulation_zone(df_1h)
         if not accum_zone or accum_zone["score"] < 5.0:
             stats["low_accumulation"] += 1
             return None
         
-        # AŞAMA 2: Akıllı para
         smart_money = detect_smart_money(df_1h)
         if not smart_money or smart_money["score"] < 5.0:
             stats["no_smart_money"] += 1
             return None
         
-        # AŞAMA 3: Patlama hazırlığı
         breakout_setup = detect_breakout_setup(df_1h, df_4h)
         if not breakout_setup or breakout_setup["score"] < 5.0:
             stats["no_breakout_setup"] += 1
             return None
         
-        # Toplam skor
         total_score = (
             accum_zone["score"] * 0.35 +
             smart_money["score"] * 0.35 +
@@ -513,7 +463,6 @@ async def analyze_symbol(symbol: str, df_1h: pd.DataFrame, df_4h: pd.DataFrame) 
             stats["low_total_score"] += 1
             return None
         
-        # SR ve potansiyel
         current_price = float(df_1h["close"].iloc[-1])
         sr = find_resistance_support(df_1h, current_price)
         
@@ -532,7 +481,6 @@ async def analyze_symbol(symbol: str, df_1h: pd.DataFrame, df_4h: pd.DataFrame) 
             stats["high_risk"] += 1
             return None
         
-        # Likidite
         ticker = await api_gate.call(exchange.fetch_ticker, symbol)
         liquidity = float(ticker.get("quoteVolume", 0) or 0)
         
@@ -561,7 +509,7 @@ async def analyze_symbol(symbol: str, df_1h: pd.DataFrame, df_4h: pd.DataFrame) 
 # ============================================================
 # TELEGRAM
 # ============================================================
-def format_signal(analysis: dict, tr_time: datetime) -> str:
+def format_signal(analysis, tr_time):
     symbol = analysis["symbol"]
     price = analysis["price"]
     resistance = analysis["resistance"]
@@ -583,7 +531,7 @@ def format_signal(analysis: dict, tr_time: datetime) -> str:
 🎯 Direnç: {res_s} (+%{potential:.1f})
 🛡️ Destek: {sup_s} (-%{risk:.1f})
 ━━━━━━━━━━━━━━━━
-⭐ Kalite Skoru: {score:.1f}/10
+⭐ Kalite: {score:.1f}/10
 💰 Likidite: ${liq/1e6:.1f}M
 
 📊 <b>ANALİZ:</b>
@@ -591,7 +539,7 @@ def format_signal(analysis: dict, tr_time: datetime) -> str:
 - Akıllı para giriyor
 - Patlama hazırlığı var
 
-⚠️ Henüz patlama olmadı, bekle!
+⚠️ Henüz patlama olmadı!
 
 🕐 {tr_time.strftime("%d.%m %H:%M")}
 """.strip()
@@ -601,13 +549,12 @@ def format_signal(analysis: dict, tr_time: datetime) -> str:
 # ============================================================
 # WS & EVAL
 # ============================================================
-async def evaluate_on_close(symbol: str, df_1h: pd.DataFrame, queue: asyncio.Queue):
+async def evaluate_on_close(symbol, df_1h, queue):
     global ws_close_count
     try:
         ws_close_count += 1
         tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
         
-        # Cooldown
         last_ts = last_signal_ts.get(symbol)
         if last_ts:
             hours = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
@@ -621,15 +568,15 @@ async def evaluate_on_close(symbol: str, df_1h: pd.DataFrame, queue: asyncio.Que
         analysis = await analyze_symbol(symbol, df_1h, df_4h)
         
         if analysis:
-            print(f"🔍 ADAY: {symbol} | Skor:{analysis['score']:.1f} Pot:%{analysis['potential_pct']:.1f}", flush=True)
+            print(f"🔍 ADAY: {symbol} | Skor:{analysis['score']:.1f}", flush=True)
             await queue.put(Signal(symbol=symbol, analysis=analysis, tr_time=tr_now))
         
     except Exception as e:
-        print(f"⚠️ Eval: {symbol[:20]} {str(e)[:30]}", flush=True)
+        print(f"⚠️ {symbol[:15]}: {str(e)[:30]}", flush=True)
 
-async def signal_worker(queue: asyncio.Queue):
+async def signal_worker(queue):
     while True:
-        sig: Signal = await queue.get()
+        sig = await queue.get()
         try:
             msg = format_signal(sig.analysis, sig.tr_time)
             send_telegram(msg)
@@ -645,9 +592,9 @@ async def signal_worker(queue: asyncio.Queue):
             queue.task_done()
 
 # ============================================================
-# BOOTSTRAP & WS
+# BOOTSTRAP
 # ============================================================
-async def bootstrap_symbol(symbol: str):
+async def bootstrap_symbol(symbol):
     try:
         df_1h = await fetch_ohlcv_df(symbol, "1h", BOOTSTRAP_LIMIT_1H)
         df_4h = await fetch_ohlcv_df(symbol, "4h", BOOTSTRAP_LIMIT_4H)
@@ -666,7 +613,7 @@ async def bootstrap_symbol(symbol: str):
     except Exception:
         return False
 
-async def bootstrap_all(symbols: list[str]):
+async def bootstrap_all(symbols):
     ok = 0
     print(f"🧱 Hazırlık: {len(symbols)} coin", flush=True)
     
@@ -680,10 +627,13 @@ async def bootstrap_all(symbols: list[str]):
     global tracked_symbols
     tracked_symbols = symbols
 
-def to_ws_symbol(symbol: str) -> str:
+# ============================================================
+# WS
+# ============================================================
+def to_ws_symbol(symbol):
     return symbol.replace("/", "").lower()
 
-async def ws_listen_klines(symbols: list[str], queue: asyncio.Queue):
+async def ws_listen_klines(symbols, queue):
     streams = "/".join([f"{to_ws_symbol(s)}@kline_{WS_KLINE_INTERVAL}" for s in symbols])
     url = f"wss://stream.binance.com:9443/stream?streams={streams}"
     
@@ -720,7 +670,7 @@ async def ws_listen_klines(symbols: list[str], queue: asyncio.Queue):
             retry += 1
             await asyncio.sleep(min(60, 5 * (2 ** min(retry, 4))))
 
-async def ws_listen_multi(symbols: list[str], queue: asyncio.Queue):
+async def ws_listen_multi(symbols, queue):
     tasks = []
     for i in range(0, len(symbols), WS_STREAM_CHUNK):
         tasks.append(asyncio.create_task(ws_listen_klines(symbols[i:i+WS_STREAM_CHUNK], queue)))
@@ -738,7 +688,7 @@ app.logger.disabled = True
 @app.route("/")
 def home():
     return f"""
-    <h1>🔍 Professional Accumulation Detector v5.0</h1>
+    <h1>🔍 Professional Accumulation v5.0</h1>
     <p>Coins: {len(tracked_symbols)}</p>
     <p>Signals: {stats.get('signal_sent', 0)}</p>
     <p>Time: {tr_now_str()}</p>
@@ -755,13 +705,14 @@ def start_flask():
 # MAIN
 # ============================================================
 async def main():
-    print("🔍 Professional Accumulation Detector v5.0", flush=True)
+    print("🔍 Professional Accumulation v5.0", flush=True)
     
     symbols = await load_symbols_pool()
     if not symbols:
+        print("❌ Sembol yok", flush=True)
         return
     
-    print(f"✅ Symbols: {len(symbols)}", flush=True)
+    print(f"✅ {len(symbols)} coin", flush=True)
     
     await bootstrap_all(symbols)
     
@@ -776,4 +727,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("🛑 Durduruldu", flush=True)
+        print("🛑 Stop", flush=True)
