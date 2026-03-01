@@ -1,107 +1,381 @@
-import os
+# -*- coding: utf-8 -*-
+"""
+Oversold Scanner v2.0
+Squeeze Detector mimarisini temel alır.
+WebSocket tabanlı — her mum kapanisinda tetiklenir.
+RSI / Williams %R / MACD / StochRSI / ATR
+"""
+
+import asyncio
+import json
 import time
 import threading
-import requests
+import os
+from collections import Counter
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
 import numpy as np
-from datetime import datetime, timezone
-from flask import Flask, jsonify, render_template_string
-from collections import deque
+import pandas as pd
+import pandas_ta as ta
+import requests
+import ccxt
+import websockets
+from flask import Flask
 
-app = Flask(__name__)
-
-# ── Environment ───────────────────────────────────────────────────────────────
-ACCOUNT_SIZE       = float(os.getenv("ACCOUNT_SIZE",       "5000"))
-BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY",          "")
-BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET",       "")
-RISK_PERCENT       = float(os.getenv("RISK_PERCENT",       "2"))
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",         "")
-TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",           "")
-
-INTERVAL     = os.getenv("INTERVAL",   "1h")
-SCAN_EVERY   = int(os.getenv("SCAN_EVERY", "900"))
-MAX_SYMBOLS  = int(os.getenv("MAX_SYMBOLS", "0"))   # 0 = tümü
-CANDLE_LIMIT = 100
+# ============================================================
+# 0) AYARLAR
+# ============================================================
+BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY",    "")
+BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 
 RSI_OVERSOLD      = float(os.getenv("RSI_OVERSOLD",      "32"))
 WILLIAMS_OVERSOLD = float(os.getenv("WILLIAMS_OVERSOLD", "-80"))
-DROP_PCT          = float(os.getenv("DROP_PCT",          "4"))
+DROP_PCT_THRESH   = float(os.getenv("DROP_PCT",          "4"))
 STOCHRSI_THRESH   = float(os.getenv("STOCHRSI_THRESH",  "25"))
 MIN_SCORE         = int(os.getenv("MIN_SCORE",           "4"))
 
-IGNORED_COINS = {
-    'UPUSDT','DOWNUSDT','BEARUSDT','BULLUSDT',
-    'USDCUSDT','TUSDUSDT','FDUSDUSDT','DAIUSDT','USDPUSDT',
-    'EURUSDT','TRYUSDT','GBPUSDT','BUSDUSTUSDT','USTCUSDT',
-    'PAXGUSDT','WBTCUSDT','USDEUSDT','BRLUSDT','RUBUSDT',
-    'AUDUSDT','USUSDT','BFUSDUSDT','RLUSDUSDT',
-}
+ATR_STOP_MULT   = float(os.getenv("ATR_STOP_MULT",   "1.5"))
+ATR_TARGET_MULT = float(os.getenv("ATR_TARGET_MULT", "2.5"))
 
-# ── State ─────────────────────────────────────────────────────────────────────
-signals       = deque(maxlen=200)
-last_scan     = {}
-scan_log      = deque(maxlen=100)
-alerted       = {}
-active_symbols = []
+SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
+MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",        "5000000"))
+MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",            "0"))
 
-# ── Sembol yükleme (Binance'den tüm aktif USDT çiftleri, hacme göre) ─────────
-def load_symbols():
-    global active_symbols
+WS_INTERVAL     = os.getenv("WS_INTERVAL",    "1h")
+WS_STREAM_CHUNK = int(os.getenv("WS_STREAM_CHUNK", "120"))
+BOOTSTRAP_LIMIT = int(os.getenv("BOOTSTRAP_LIMIT", "200"))
+KEEP_BARS       = int(os.getenv("KEEP_BARS",        "200"))
+
+TR_TZ = timezone(timedelta(hours=3))
+
+IGNORED_COINS = set([
+    'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
+    'USDC/USDT','TUSD/USDT','FDUSD/USDT','DAI/USDT','USDP/USDT',
+    'EUR/USDT','TRY/USDT','GBP/USDT','BUSD/USDT','USTC/USDT',
+    'PAXG/USDT','WBTC/USDT','USDE/USDT','BRL/USDT','RUB/USDT',
+    'AUD/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
+])
+
+# ============================================================
+# 0.1) STATS
+# ============================================================
+BOOT_PROGRESS_EVERY = 50
+stats           = Counter()
+ws_close_count  = 0
+tracked_symbols = []
+
+def tr_now_str():
+    return datetime.now(timezone.utc).astimezone(TR_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+def print_summary():
+    closes = max(ws_close_count, 1)
+    print("\n TARAMA OZETI", flush=True)
+    print("--------------------", flush=True)
+    print(f"Takip edilen  : {len(tracked_symbols)}", flush=True)
+    print(f"Mum kapanis   : {ws_close_count}", flush=True)
+    print(f"Sinyal        : {stats.get('signal_sent', 0)}", flush=True)
+    for k, label in [
+        ("score_low",     "Skor yetersiz"),
+        ("cooldown",      "Cooldown"),
+        ("low_liquidity", "Dusuk hacim"),
+        ("data_missing",  "Veri yok"),
+    ]:
+        v = stats.get(k, 0)
+        if v:
+            print(f"  {label:20s}: {v} ({v/closes*100:.1f}%)", flush=True)
+    print("--------------------\n", flush=True)
+
+# ============================================================
+# 1) API GATE
+# ============================================================
+class ApiGate:
+    def __init__(self, min_interval_sec=0.25, max_concurrent=3, max_retries=6):
+        self.min_interval_sec = float(min_interval_sec)
+        self.sem              = asyncio.Semaphore(int(max_concurrent))
+        self.max_retries      = int(max_retries)
+        self._lock            = asyncio.Lock()
+        self._last_call_ts    = 0.0
+
+    async def _sleep_for_spacing(self):
+        async with self._lock:
+            now  = time.time()
+            wait = (self._last_call_ts + self.min_interval_sec) - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_call_ts = time.time()
+
+    async def call(self, fn, *args, **kwargs):
+        async with self.sem:
+            for attempt in range(self.max_retries):
+                try:
+                    await self._sleep_for_spacing()
+                    loop = asyncio.get_running_loop()
+                    return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+                except (ccxt.RateLimitExceeded, ccxt.DDoSProtection):
+                    await asyncio.sleep(min(30.0, 1.0 * (2 ** attempt)))
+                except (ccxt.NetworkError, ccxt.RequestTimeout, ccxt.ExchangeNotAvailable):
+                    await asyncio.sleep(min(20.0, 0.8 * (2 ** attempt)))
+                except ccxt.ExchangeError:
+                    await asyncio.sleep(min(12.0, 0.6 * (2 ** attempt)))
+                except Exception:
+                    await asyncio.sleep(min(8.0, 0.5 * (2 ** attempt)))
+            raise RuntimeError("API call failed")
+
+api_gate = ApiGate()
+
+exchange = ccxt.binance({
+    "apiKey":  BINANCE_API_KEY  or None,
+    "secret":  BINANCE_API_SECRET or None,
+    "options": {"defaultType": "spot", "adjustForTimeDifference": True},
+    "enableRateLimit": True,
+    "timeout": 15000,
+})
+
+# ============================================================
+# 2) DATA STORE
+# ============================================================
+@dataclass
+class SignalCandidate:
+    symbol:  str
+    result:  dict
+    tr_time: datetime
+
+bars:             dict = {}
+last_signal_ts:   dict = {}
+last_scan_result: dict = {}
+all_signals:      list = []
+
+# ============================================================
+# 3) SEMBOL HAVUZU
+# ============================================================
+async def load_symbols_pool():
+    await api_gate.call(exchange.load_markets)
+    syms = [
+        s for s in exchange.markets
+        if s.endswith("/USDT")
+        and exchange.markets[s].get("active", False)
+        and s not in IGNORED_COINS
+        and s.isascii()
+    ]
+    if not syms:
+        return []
+
+    volumes = {}
+    for i in range(0, len(syms), 120):
+        part = syms[i:i + 120]
+        try:
+            res = await api_gate.call(exchange.fetch_tickers, part)
+            if isinstance(res, dict):
+                for k, v in res.items():
+                    volumes[k] = float(v.get("quoteVolume", 0) or 0)
+        except Exception:
+            continue
+
+    sorted_syms = sorted(syms, key=lambda x: volumes.get(x, 0), reverse=True)
+    return sorted_syms[:MAX_SYMBOLS] if MAX_SYMBOLS else sorted_syms
+
+# ============================================================
+# 4) VERİ + İNDİKATOR HAZIRLIK
+# ============================================================
+async def fetch_ohlcv_df(symbol, timeframe, limit):
+    raw = await api_gate.call(exchange.fetch_ohlcv, symbol, timeframe=timeframe, limit=limit)
+    df  = pd.DataFrame(raw, columns=["timestamp","open","high","low","close","volume"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df.set_index("timestamp", inplace=True)
+    return df
+
+def prepare_indicators(df):
+    df = df.copy()
+
+    df["ema20"] = ta.ema(df["close"], length=20)
+    df["ema50"] = ta.ema(df["close"], length=50)
+    df["atr"]   = ta.atr(df["high"], df["low"], df["close"], length=14)
+    df["rsi"]   = ta.rsi(df["close"], length=14)
+
+    # Williams %R
+    h14 = df["high"].rolling(14)
+    l14 = df["low"].rolling(14)
+    df["williams_r"] = -100 * (h14.max() - df["close"]) / (h14.max() - l14.min())
+
+    # MACD histogram
+    macd_df = ta.macd(df["close"], fast=12, slow=26, signal=9)
+    if macd_df is not None:
+        cols = macd_df.columns.tolist()
+        hist_col = next((c for c in cols if "MACDh" in c), None)
+        if hist_col is None:
+            hist_col = next((c for c in cols if "h" in c.lower()), None)
+        df["macd_hist"] = macd_df[hist_col] if hist_col else np.nan
+    else:
+        df["macd_hist"] = np.nan
+
+    # StochRSI K
+    srsi_df = ta.stochrsi(df["close"], length=14, rsi_length=14, k=3, d=3)
+    if srsi_df is not None:
+        cols  = srsi_df.columns.tolist()
+        k_col = next((c for c in cols if c.lower().endswith("k")), None)
+        df["stochrsi_k"] = srsi_df[k_col] if k_col else np.nan
+    else:
+        df["stochrsi_k"] = np.nan
+
+    df["vol_ma"] = df["volume"].rolling(20, min_periods=1).mean()
+    return df
+
+# ============================================================
+# 5) OVERSOLD TESPİTİ
+# ============================================================
+def detect_oversold(df):
     try:
-        # Tüm sembolleri çek
-        r = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=15)
-        r.raise_for_status()
-        all_syms = [
-            s["symbol"] for s in r.json()["symbols"]
-            if s["symbol"].endswith("USDT")
-            and s["status"] == "TRADING"
-            and s["symbol"] not in IGNORED_COINS
-        ]
+        if len(df) < 60:
+            return {"detected": False, "reason": "Veri yetersiz"}
 
-        # Hacim verisi çek (24h ticker)
-        t = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=20)
-        t.raise_for_status()
-        volumes = {
-            item["symbol"]: float(item.get("quoteVolume", 0) or 0)
-            for item in t.json()
+        last = df.iloc[-2]  # son kapanan mum
+
+        def safe(col):
+            v = last.get(col, np.nan)
+            return None if pd.isna(v) else float(v)
+
+        rsi   = safe("rsi")
+        wr    = safe("williams_r")
+        srsi  = safe("stochrsi_k")
+        mhist = safe("macd_hist")
+
+        if rsi is None or wr is None or srsi is None:
+            return {"detected": False, "reason": "Indiktor hesaplanamadi"}
+
+        open_p  = float(last["open"])
+        close_p = float(last["close"])
+        drop_pct = round((open_p - close_p) / open_p * 100, 2) if open_p > 0 else 0.0
+
+        conditions = {
+            "drop_candle":       drop_pct >= DROP_PCT_THRESH,
+            "rsi_oversold":      rsi      <= RSI_OVERSOLD,
+            "williams_oversold": wr       <= WILLIAMS_OVERSOLD,
+            "macd_neg":          mhist is not None and mhist < 0,
+            "stochrsi_low":      srsi     <= STOCHRSI_THRESH,
+        }
+        score = sum(conditions.values())
+
+        if score < MIN_SCORE:
+            return {"detected": False, "reason": f"Skor dusuk ({score})"}
+
+        return {
+            "detected":   True,
+            "conditions": conditions,
+            "score":      score,
+            "drop_pct":   drop_pct,
+            "rsi":        round(rsi,   2),
+            "williams_r": round(wr,    2),
+            "macd_hist":  round(mhist, 8) if mhist is not None else None,
+            "stochrsi":   round(srsi,  2),
         }
 
-        # Hacme göre sırala
-        sorted_syms = sorted(all_syms, key=lambda x: volumes.get(x, 0), reverse=True)
+    except Exception as e:
+        return {"detected": False, "reason": str(e)[:60]}
 
-        if MAX_SYMBOLS and MAX_SYMBOLS > 0:
-            active_symbols = sorted_syms[:MAX_SYMBOLS]
-        else:
-            active_symbols = sorted_syms
+# ============================================================
+# 6) PUAN (100 uzerinden)
+# ============================================================
+def calc_score100(rsi, wr, mhist, srsi, drop_pct):
+    s = 0.0
 
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] ✓ {len(active_symbols)} sembol yüklendi (hacme göre sıralı)")
+    if   rsi <= 20:           s += 25
+    elif rsi <= 25:           s += 20
+    elif rsi <= 30:           s += 15
+    elif rsi <= RSI_OVERSOLD: s += 8
+
+    if   wr <= -90:           s += 25
+    elif wr <= -85:           s += 20
+    elif wr <= -80:           s += 15
+    elif wr <= -70:           s += 8
+
+    if   srsi <= 5:                 s += 20
+    elif srsi <= 10:                s += 16
+    elif srsi <= 20:                s += 12
+    elif srsi <= STOCHRSI_THRESH:   s += 6
+
+    if   drop_pct >= 8: s += 20
+    elif drop_pct >= 6: s += 16
+    elif drop_pct >= 4: s += 10
+    elif drop_pct >= 2: s += 5
+
+    if mhist is not None and mhist < 0:
+        s += 10
+
+    return min(int(round(s)), 100)
+
+# ============================================================
+# 7) TAM ANALİZ
+# ============================================================
+def analyze_symbol(symbol, df):
+    try:
+        oversold = detect_oversold(df)
+        if not oversold["detected"]:
+            return None
+
+        last  = df.iloc[-2]
+        curr  = df.iloc[-1]
+        entry = float(curr["close"])
+
+        def sf(col):
+            v = last.get(col, np.nan)
+            return float(v) if not pd.isna(v) else entry
+
+        atr  = sf("atr")
+        ma20 = sf("ema20")
+        ma50 = sf("ema50")
+
+        target = round(entry + atr * ATR_TARGET_MULT, 8)
+        stop   = round(entry - atr * ATR_STOP_MULT,   8)
+
+        target_pct = round((target - entry) / entry * 100, 2) if entry else 0
+        stop_pct   = round((entry - stop)   / entry * 100, 2) if entry else 0
+
+        score100 = calc_score100(
+            oversold["rsi"],
+            oversold["williams_r"],
+            oversold.get("macd_hist"),
+            oversold["stochrsi"],
+            oversold["drop_pct"],
+        )
+
+        return {
+            "symbol":      symbol,
+            "time":        datetime.now(timezone.utc).isoformat(),
+            "candle_time": str(df.index[-2]),
+            "price":       round(entry, 8),
+            "target":      target,
+            "stop":        stop,
+            "target_pct":  target_pct,
+            "stop_pct":    stop_pct,
+            "drop_pct":    oversold["drop_pct"],
+            "rsi":         oversold["rsi"],
+            "williams_r":  oversold["williams_r"],
+            "macd_hist":   oversold.get("macd_hist"),
+            "stochrsi":    oversold["stochrsi"],
+            "ma20":        round(ma20, 8),
+            "ma50":        round(ma50, 8),
+            "atr":         round(atr,  8),
+            "conditions":  oversold["conditions"],
+            "score":       oversold["score"],
+            "score100":    score100,
+            "signal":      True,
+        }
 
     except Exception as e:
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] ❌ Sembol yükleme hatası: {e}")
-        # Hata olursa temel coinlerle devam et
-        active_symbols = ["SOLUSDT","BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT"]
+        print(f"Analiz hatasi {symbol}: {str(e)[:80]}", flush=True)
+        return None
 
-# ── Risk hesabı ───────────────────────────────────────────────────────────────
-def calc_position(entry_price: float, stop_pct: float = 3.0) -> dict:
-    risk_usd     = ACCOUNT_SIZE * (RISK_PERCENT / 100)
-    stop_dist    = entry_price * (stop_pct / 100)
-    qty          = risk_usd / stop_dist
-    position_usd = qty * entry_price
-    return {
-        "risk_usd":     round(risk_usd, 2),
-        "stop_loss":    round(entry_price - stop_dist, 4),
-        "stop_pct":     stop_pct,
-        "qty":          round(qty, 6),
-        "position_usd": round(position_usd, 2),
-    }
-
-# ── Telegram ──────────────────────────────────────────────────────────────────
-def send_telegram(text: str):
+# ============================================================
+# 8) TELEGRAM
+# ============================================================
+def send_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
-        requests.post(
+        r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             json={
                 "chat_id":                  TELEGRAM_CHAT_ID,
@@ -111,432 +385,418 @@ def send_telegram(text: str):
             },
             timeout=10,
         )
+        if r.status_code != 200:
+            print(f"Telegram {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
-        scan_log.appendleft(f"[TG HATA] {e}")
+        print(f"Telegram hata: {e}", flush=True)
 
-def build_tg_message(r: dict) -> str:
-    conds = r.get("conditions", {})
+def fmt_price(price):
+    if price is None:
+        return "?"
+    p = float(price)
+    if p >= 100:   return f"{p:.2f}"
+    if p >= 1:     return f"{p:.3f}"
+    if p >= 0.01:  return f"{p:.4f}"
+    return f"{p:.6f}"
+
+def build_tg_message(r, tr_time):
+    conds     = r.get("conditions", {})
     label_map = {
-        "drop_candle":       "📉 Sert Düşüş",
+        "drop_candle":       "Sert Dusus",
         "rsi_oversold":      "RSI Oversold",
         "williams_oversold": "Williams %R Oversold",
         "macd_neg":          "MACD Negatif",
-        "stochrsi_low":      "StochRSI Düşük",
+        "stochrsi_low":      "StochRSI Dusuk",
     }
     met  = [v for k, v in label_map.items() if conds.get(k)]
     miss = [v for k, v in label_map.items() if not conds.get(k)]
-    score = r.get("score", 0)
-    stars = "⭐" * score + "☆" * (5 - score)
-    pos   = r.get("position", {})
+    sym  = r["symbol"].replace("/", "").replace("USDT", "")
+    now  = tr_time.strftime("%d/%m/%Y %H:%M")
 
     return (
-        f"🚨 <b>ALIM SİNYALİ — {r['symbol']}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 Fiyat:       <b>${r.get('price', 0):.4f}</b>\n"
-        f"📊 Skor:        {stars}  ({score}/5)\n"
-        f"⏱ Periyot:     <b>{INTERVAL}</b>\n\n"
-        f"<b>📈 İndikatörler:</b>\n"
-        f"  RSI(14)     → <b>{r.get('rsi')}</b>\n"
-        f"  Williams %R → <b>{r.get('williams_r')}</b>\n"
-        f"  MACD Hist   → <b>{r.get('macd_hist')}</b>\n"
-        f"  StochRSI K  → <b>{r.get('stochrsi')}</b>\n"
-        f"  Son mum     → <b>%{r.get('drop_pct')} düşüş</b>\n\n"
-        f"<b>💼 Pozisyon ({ACCOUNT_SIZE}$ / %{RISK_PERCENT} risk):</b>\n"
-        f"  Risk:        <b>${pos.get('risk_usd')} USDT</b>\n"
-        f"  Stop Loss:   <b>${pos.get('stop_loss')}</b>  (%{pos.get('stop_pct')} alt)\n"
-        f"  Miktar:      <b>{pos.get('qty')} adet</b>\n"
-        f"  Pos. Değer:  <b>${pos.get('position_usd')}</b>\n\n"
+        f"🕐 {now}\n\n"
+        f"#{sym}/USDT\n"
+        f"💵 Giris:  {fmt_price(r.get('price'))}\n"
+        f"🎯 Hedef:  {fmt_price(r.get('target'))} (+%{r.get('target_pct')})\n"
+        f"🛡️ Stop:   {fmt_price(r.get('stop'))} (-%{r.get('stop_pct')})\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"📈 Indiktorler:\n"
+        f"RSI(14) → {r.get('rsi')}\n"
+        f"Williams %R → {r.get('williams_r')}\n"
+        f"MACD Hist → {r.get('macd_hist')}\n"
+        f"StochRSI K → {r.get('stochrsi')}\n"
+        f"Son mum → %{r.get('drop_pct')} dusus\n"
+        f"━━━━━━━━━━━━━━━━\n"
         f"✅ {', '.join(met) if met else '—'}\n"
         f"❌ {', '.join(miss) if miss else '—'}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🕐 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"Puan: {r.get('score100')}/100"
     )
 
-# ── İndikatörler ──────────────────────────────────────────────────────────────
-def calc_rsi(closes, period=14):
-    deltas = np.diff(closes)
-    gains  = np.where(deltas > 0, deltas, 0.0)
-    losses = np.where(deltas < 0, -deltas, 0.0)
-    ag = np.mean(gains[:period])
-    al = np.mean(losses[:period])
-    for i in range(period, len(gains)):
-        ag = (ag * (period - 1) + gains[i]) / period
-        al = (al * (period - 1) + losses[i]) / period
-    rs = ag / al if al != 0 else np.inf
-    return round(100 - 100 / (1 + rs), 2)
-
-def calc_ema(arr, period):
-    k = 2 / (period + 1)
-    out = [arr[0]]
-    for v in arr[1:]:
-        out.append(v * k + out[-1] * (1 - k))
-    return np.array(out)
-
-def calc_macd(closes):
-    ml   = calc_ema(closes, 12) - calc_ema(closes, 26)
-    sig  = calc_ema(ml, 9)
-    hist = ml - sig
-    return round(ml[-1], 6), round(sig[-1], 6), round(hist[-1], 6)
-
-def calc_williams_r(highs, lows, closes, period=14):
-    h = np.max(highs[-period:])
-    l = np.min(lows[-period:])
-    if h == l:
-        return -50.0
-    return round(-100 * (h - closes[-1]) / (h - l), 2)
-
-def calc_stochrsi(closes, rsi_period=14, stoch_period=14):
-    rsi_series = np.array([calc_rsi(closes[:i], rsi_period) for i in range(rsi_period + 1, len(closes) + 1)])
-    if len(rsi_series) < stoch_period:
-        return 50.0
-    rh = np.max(rsi_series[-stoch_period:])
-    rl = np.min(rsi_series[-stoch_period:])
-    if rh == rl:
-        return 50.0
-    return round(100 * (rsi_series[-1] - rl) / (rh - rl), 2)
-
-# ── Binance kline ─────────────────────────────────────────────────────────────
-def fetch_candles(symbol):
-    headers = {"X-MBX-APIKEY": BINANCE_API_KEY} if BINANCE_API_KEY else {}
-    r = requests.get(
-        "https://api.binance.com/api/v3/klines",
-        params={"symbol": symbol, "interval": INTERVAL, "limit": CANDLE_LIMIT},
-        headers=headers,
-        timeout=10,
-    )
-    r.raise_for_status()
-    data = r.json()
-    return (
-        np.array([float(c[1]) for c in data]),
-        np.array([float(c[2]) for c in data]),
-        np.array([float(c[3]) for c in data]),
-        np.array([float(c[4]) for c in data]),
-        [int(c[0]) for c in data],
-    )
-
-# ── Tek sembol tarama ─────────────────────────────────────────────────────────
-def scan_symbol(symbol: str) -> dict:
+# ============================================================
+# 9) BOOTSTRAP
+# ============================================================
+async def bootstrap_symbol(symbol):
     try:
-        opens, highs, lows, closes, times = fetch_candles(symbol)
+        df = await fetch_ohlcv_df(symbol, WS_INTERVAL, BOOTSTRAP_LIMIT)
+        if df is None or len(df) < 60:
+            return False
+        df = prepare_indicators(df)
+        if len(df) > KEEP_BARS:
+            df = df.iloc[-KEEP_BARS:]
+        bars[symbol] = df
+        return True
+    except Exception:
+        return False
 
-        drop_pct = round((opens[-2] - closes[-2]) / opens[-2] * 100, 2)
+async def bootstrap_all(symbols):
+    ok = 0
+    print(f"Bootstrap basladi | {len(symbols)} sembol", flush=True)
+    for i, sym in enumerate(symbols, 1):
+        if i % BOOT_PROGRESS_EVERY == 0:
+            print(f"  -> {i}/{len(symbols)}", flush=True)
+        if await bootstrap_symbol(sym):
+            ok += 1
+    print(f"Bootstrap bitti | {ok}/{len(symbols)}", flush=True)
 
-        c = closes[:-1]
-        h = highs[:-1]
-        l = lows[:-1]
+# ============================================================
+# 10) MUM KAPANISINI ISLE
+# ============================================================
+def safe_float(val):
+    try:
+        v = float(val)
+        return None if (v != v or v in (float("inf"), float("-inf"))) else round(v, 4)
+    except Exception:
+        return None
 
-        rsi_val      = calc_rsi(c)
-        _, _, hist   = calc_macd(c)
-        wr_val       = calc_williams_r(h, l, c)
-        srsi_val     = calc_stochrsi(c)
-        ma20         = round(float(np.mean(c[-20:])), 4)
-        ma50         = round(float(np.mean(c[-50:])), 4)
-        recovery     = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
+async def on_candle_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
+    global ws_close_count
+    ws_close_count += 1
+    beat(symbol=symbol, status="LIVE")
 
-        conditions = {
-            "drop_candle":       drop_pct  >= DROP_PCT,
-            "rsi_oversold":      rsi_val   <= RSI_OVERSOLD,
-            "williams_oversold": wr_val    <= WILLIAMS_OVERSOLD,
-            "macd_neg":          hist      <  0,
-            "stochrsi_low":      srsi_val  <= STOCHRSI_THRESH,
-        }
-        score     = sum(conditions.values())
-        is_signal = score >= MIN_SCORE
-        entry     = float(closes[-1])
+    df = bars.get(symbol)
+    if df is None or len(df) < 60:
+        stats["data_missing"] += 1
+        return
 
-        def safe(v):
-            if isinstance(v, float) and (v != v or v == float("inf") or v == float("-inf")):
-                return None
-            if hasattr(v, "item"):
-                return v.item()
-            return v
+    # Yeni mumu ekle
+    tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
+    df.loc[tstamp, ["open","high","low","close","volume"]] = [o, h, l, c, v]
+    df = df.sort_index()
+    if len(df) > KEEP_BARS:
+        df = df.iloc[-KEEP_BARS:]
+    df = prepare_indicators(df)
+    bars[symbol] = df
 
-        return {
-            "symbol":      symbol,
-            "time":        datetime.now(timezone.utc).isoformat(),
-            "candle_time": datetime.fromtimestamp(times[-2] / 1000, tz=timezone.utc).isoformat(),
-            "price":       safe(round(entry, 6)),
-            "drop_pct":    safe(drop_pct),
-            "rsi":         safe(rsi_val),
-            "macd_hist":   safe(hist),
-            "williams_r":  safe(wr_val),
-            "stochrsi":    safe(srsi_val),
-            "ma20":        safe(ma20),
-            "ma50":        safe(ma50),
-            "recovery":    safe(recovery),
-            "conditions":  conditions,
-            "score":       int(score),
-            "signal":      bool(is_signal),
-            "position":    calc_position(entry) if is_signal else {},
-        }
+    tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
 
-    except Exception as e:
-        return {"symbol": symbol, "error": str(e), "signal": False, "score": 0,
-                "time": datetime.now(timezone.utc).isoformat()}
+    # Cooldown
+    last_ts = last_signal_ts.get(symbol)
+    if last_ts:
+        hours = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
+        if hours < SIGNAL_COOLDOWN_HOURS:
+            stats["cooldown"] += 1
+            return
 
-# ── Tarama döngüsü ────────────────────────────────────────────────────────────
-def scanner_loop():
+    result = analyze_symbol(symbol, df)
+
+    # Dashboard icin her zaman guncelle
+    prev = df.iloc[-2]
+    last_scan_result[symbol] = {
+        "symbol":     symbol,
+        "time":       tr_now.isoformat(),
+        "price":      round(float(df.iloc[-1]["close"]), 8),
+        "rsi":        safe_float(prev.get("rsi")),
+        "williams_r": safe_float(prev.get("williams_r")),
+        "macd_hist":  safe_float(prev.get("macd_hist")),
+        "stochrsi":   safe_float(prev.get("stochrsi_k")),
+        "signal":     result is not None,
+        "score":      result["score"]    if result else 0,
+        "score100":   result["score100"] if result else 0,
+        "conditions": result["conditions"] if result else {},
+    }
+
+    if result is None:
+        stats["score_low"] += 1
+        return
+
+    await candidate_queue.put(SignalCandidate(
+        symbol=symbol, result=result, tr_time=tr_now,
+    ))
+
+# ============================================================
+# 11) SİNYAL WORKER
+# ============================================================
+async def signal_worker(candidate_queue):
     while True:
-        if not active_symbols:
-            time.sleep(5)
-            continue
+        sig = await candidate_queue.get()
+        try:
+            symbol  = sig.symbol
+            result  = sig.result
+            tr_time = sig.tr_time
 
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] 🔍 {len(active_symbols)} sembol taranıyor...")
+            # Hacim kontrolu
+            try:
+                ticker    = await api_gate.call(exchange.fetch_ticker, symbol)
+                liquidity = float(ticker.get("quoteVolume", 0) or 0)
+                if liquidity < MIN_LIQUIDITY:
+                    stats["low_liquidity"] += 1
+                    continue
+            except Exception:
+                pass
 
-        for sym in active_symbols:
-            result = scan_symbol(sym)
-            last_scan[sym] = result
+            msg = build_tg_message(result, tr_time)
+            send_telegram(msg)
 
-            if result.get("signal"):
-                signals.appendleft(result)
-                scan_log.appendleft(
-                    f"[{ts}] 🚨 SİNYAL → {sym} | "
-                    f"Skor:{result['score']}/5 | RSI:{result.get('rsi')} | Düşüş:%{result.get('drop_pct')}"
-                )
-                candle_key = result.get("candle_time", "")
-                if alerted.get(sym) != candle_key:
-                    alerted[sym] = candle_key
-                    send_telegram(build_tg_message(result))
-                    scan_log.appendleft(f"[{ts}] 📨 Telegram → {sym}")
+            last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
+            all_signals.insert(0, result)
+            if len(all_signals) > 200:
+                all_signals.pop()
 
-            time.sleep(0.1)  # rate limit koruması
+            stats["signal_sent"] += 1
 
-        # Her turda sembolleri yenile (yeni listelemeler vs)
-        load_symbols()
-        scan_log.appendleft(f"[{ts}] ✓ Tur bitti. Sonraki: {SCAN_EVERY}s")
-        time.sleep(SCAN_EVERY)
+            print(
+                f"SINYAL: {symbol} | Puan:{result['score100']}/100 | "
+                f"RSI:{result['rsi']} | W%R:{result['williams_r']} | Dusus:%{result['drop_pct']}",
+                flush=True
+            )
 
-# ── Flask routes ──────────────────────────────────────────────────────────────
-@app.route("/")
-def index():
-    return render_template_string(DASHBOARD_HTML)
+        except Exception as e:
+            print(f"Worker hata: {str(e)[:100]}", flush=True)
+        finally:
+            candidate_queue.task_done()
 
-@app.route("/api/status")
-def api_status():
-    def clean(obj):
-        if isinstance(obj, dict):
-            return {k: clean(v) for k, v in obj.items()}
-        if isinstance(obj, (list, deque)):
-            return [clean(i) for i in obj]
-        if isinstance(obj, float):
-            if obj != obj or obj == float("inf") or obj == float("-inf"):
-                return None
-            return round(obj, 6)
-        if hasattr(obj, "item"):  # numpy scalar
-            return clean(obj.item())
+# ============================================================
+# 12) WEBSOCKET
+# ============================================================
+def to_ws_sym(symbol):
+    return symbol.replace("/", "").lower()
+
+async def ws_chunk(symbols, candidate_queue):
+    streams = "/".join([f"{to_ws_sym(s)}@kline_{WS_INTERVAL}" for s in symbols])
+    url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    retry   = 0
+
+    while True:
+        try:
+            async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
+                retry = 0
+                print(f"WS baglandi ({len(symbols)} sembol)", flush=True)
+                while True:
+                    msg  = await ws.recv()
+                    data = json.loads(msg)
+                    k    = data.get("data", {}).get("k", {})
+
+                    if not k.get("x", False):
+                        continue
+
+                    raw_sym = data.get("data", {}).get("s", "")
+                    symbol  = raw_sym.upper().replace("USDT", "/USDT")
+
+                    await on_candle_close(
+                        symbol,
+                        float(k["o"]), float(k["h"]),
+                        float(k["l"]), float(k["c"]),
+                        float(k["v"]), int(k["t"]),
+                        candidate_queue,
+                    )
+
+        except Exception as e:
+            retry  += 1
+            backoff = min(60, 5 * (2 ** min(retry, 4)))
+            print(f"WS koptu -> {backoff}s sonra yeniden: {str(e)[:60]}", flush=True)
+            await asyncio.sleep(backoff)
+
+async def ws_all(symbols, candidate_queue):
+    tasks = [
+        asyncio.create_task(ws_chunk(symbols[i:i + WS_STREAM_CHUNK], candidate_queue))
+        for i in range(0, len(symbols), WS_STREAM_CHUNK)
+    ]
+    await asyncio.gather(*tasks)
+
+# ============================================================
+# 13) FLASK DASHBOARD
+# ============================================================
+flask_app  = Flask(__name__)
+bot_status = {"status": "BOOT", "signal_count": 0}
+
+import logging
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+flask_app.logger.disabled = True
+
+heartbeat  = {"last": tr_now_str(), "epoch": time.time(), "symbol": "?", "status": "BOOT"}
+_last_beat = 0.0
+
+def beat(symbol=None, status=None):
+    global _last_beat
+    now = time.time()
+    if now - _last_beat >= 10:
+        heartbeat["last"]  = tr_now_str()
+        heartbeat["epoch"] = now
+        if symbol: heartbeat["symbol"] = symbol
+        if status: heartbeat["status"] = status
+        _last_beat = now
+
+def heartbeat_pinger():
+    while True:
+        heartbeat["last"]  = tr_now_str()
+        heartbeat["epoch"] = time.time()
+        time.sleep(15)
+
+def watchdog_thread():
+    while True:
+        stale = time.time() - float(heartbeat.get("epoch", 0))
+        if stale > 600:
+            print(f"WATCHDOG: {int(stale)}s stale — yeniden baslatiliyor", flush=True)
+            os._exit(1)
+        time.sleep(10)
+
+def clean_json(obj):
+    if isinstance(obj, dict):
+        return {k: clean_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_json(i) for i in obj]
+    if isinstance(obj, float):
+        if obj != obj or obj in (float("inf"), float("-inf")):
+            return None
         return obj
+    if hasattr(obj, "item"):
+        return clean_json(obj.item())
+    return obj
+
+def score_color(s):
+    if s >= 80: return "#00f080"
+    if s >= 60: return "#ffb300"
+    return "#ff3a5c"
+
+@flask_app.route("/")
+def home():
+    now = datetime.now(TR_TZ).strftime("%H:%M:%S")
+    sig_rows = ""
+    for s in all_signals[:20]:
+        c   = s.get("conditions", {})
+        met = sum(c.values())
+        sc  = s.get("score100", 0)
+        col = score_color(sc)
+        sig_rows += (
+            f'<div class="sig">'
+            f'<div class="sr"><b style="font-size:1rem">{s.get("symbol","")}</b>'
+            f'<span style="color:{col};font-weight:bold;font-size:1rem">{sc}/100</span></div>'
+            f'<div class="sd">'
+            f'<span style="color:#00d4ff">${fmt_price(s.get("price"))}</span>'
+            f' &nbsp;|&nbsp; RSI {s.get("rsi","")} &nbsp;|&nbsp; W%R {s.get("williams_r","")}'
+            f' &nbsp;|&nbsp; StochRSI {s.get("stochrsi","")}'
+            f'</div>'
+            f'<div class="sd">'
+            f'🎯 Hedef: {fmt_price(s.get("target"))} (+%{s.get("target_pct","")})'
+            f' &nbsp;&nbsp; 🛡️ Stop: {fmt_price(s.get("stop"))} (-%{s.get("stop_pct","")})'
+            f'</div>'
+            f'<div class="sd" style="color:#3d5a6a">{s.get("time","")[:16]} UTC &nbsp;|&nbsp; {met}/5 kosul</div>'
+            f'</div>'
+        )
+
+    return f"""<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"><title>Oversold Scanner</title>
+<meta http-equiv="refresh" content="30">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#06090d;color:#b8cdd8;font-family:'Courier New',monospace;padding:20px;max-width:1000px;margin:0 auto}}
+h1{{color:#00d4ff;letter-spacing:4px;font-size:1.3rem;margin-bottom:18px}}
+.stats{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}}
+.stat{{background:#0c1117;border:1px solid #1c2a36;padding:10px 16px;border-radius:4px;min-width:90px}}
+.sv{{font-size:1.2rem;color:#00d4ff;display:block;font-weight:bold}}
+.sl{{font-size:.58rem;color:#3d5a6a;text-transform:uppercase;letter-spacing:1px}}
+h3{{color:#00f080;margin:0 0 10px;font-size:.8rem;letter-spacing:2px;text-transform:uppercase}}
+.sig{{background:#031409;border-left:3px solid #00f080;padding:12px 16px;margin:6px 0;border-radius:2px}}
+.sr{{display:flex;justify-content:space-between;margin-bottom:5px}}
+.sd{{font-size:.75rem;margin:3px 0;color:#8aa8b8}}
+.footer{{color:#3d5a6a;font-size:.62rem;margin-top:24px;border-top:1px solid #1c2a36;padding-top:12px;line-height:1.8}}
+</style></head><body>
+<h1>OVERSOLD SCANNER</h1>
+<div class="stats">
+  <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
+  <div class="stat"><span class="sv">{ws_close_count}</span><span class="sl">Mum Kapanis</span></div>
+  <div class="stat"><span class="sv">{stats.get("signal_sent",0)}</span><span class="sl">Sinyal</span></div>
+  <div class="stat"><span class="sv">{WS_INTERVAL}</span><span class="sl">Periyot</span></div>
+  <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
+  <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
+</div>
+<h3>Son Sinyaller</h3>
+{sig_rows if sig_rows else '<p style="color:#3d5a6a;font-size:.8rem;padding:10px 0">Henuz sinyal yok.</p>'}
+<div class="footer">
+  Heartbeat: {heartbeat["last"]} &nbsp;|&nbsp; Son coin: {heartbeat["symbol"]}<br>
+  Eleme → Skor: {stats.get("score_low",0)} &nbsp;|&nbsp;
+  Cooldown: {stats.get("cooldown",0)} &nbsp;|&nbsp;
+  Dusuk hacim: {stats.get("low_liquidity",0)} &nbsp;|&nbsp;
+  Veri yok: {stats.get("data_missing",0)}
+</div>
+</body></html>"""
+
+@flask_app.route("/api/status")
+def api_status():
+    data = clean_json({
+        "status":        bot_status["status"],
+        "total_symbols": len(tracked_symbols),
+        "ws_closes":     ws_close_count,
+        "signals":       all_signals[:30],
+        "last_scan":     dict(last_scan_result),
+        "stats":         dict(stats),
+        "heartbeat":     heartbeat,
+        "interval":      WS_INTERVAL,
+    })
+    return flask_app.response_class(
+        json.dumps(data, ensure_ascii=False),
+        mimetype="application/json",
+    )
+
+@flask_app.route("/api/health")
+def api_health():
+    return {"status": "ok", "time": tr_now_str()}
+
+# ============================================================
+# 14) MAIN
+# ============================================================
+async def periodic_summary():
+    while True:
+        await asyncio.sleep(600)
+        print_summary()
+
+async def main():
+    print("Oversold Scanner v2.0 baslatiliyor...", flush=True)
+
+    symbols = await load_symbols_pool()
+    if not symbols:
+        print("Sembol yuklenemedi", flush=True)
+        return
+
+    global tracked_symbols
+    tracked_symbols      = list(symbols)
+    bot_status["status"] = "BOOTSTRAP"
+    print(f"{len(symbols)} sembol yuklendi", flush=True)
+
+    await bootstrap_all(symbols)
+    print_summary()
+
+    candidate_queue = asyncio.Queue()
+    asyncio.create_task(signal_worker(candidate_queue))
+    asyncio.create_task(periodic_summary())
+
+    bot_status["status"] = "LIVE"
+    print(f"WebSocket canli | {len(symbols)} sembol | {WS_INTERVAL}", flush=True)
+
+    await ws_all(symbols, candidate_queue)
+
+def start_flask():
+    port = int(os.environ.get("PORT", "10000"))
+    flask_app.run(host="0.0.0.0", port=port, use_reloader=False)
+
+if __name__ == "__main__":
+    threading.Thread(target=start_flask,      daemon=True).start()
+    threading.Thread(target=heartbeat_pinger, daemon=True).start()
+    threading.Thread(target=watchdog_thread,  daemon=True).start()
 
     try:
-        return jsonify(clean({
-            "total_symbols": len(active_symbols),
-            "interval":      INTERVAL,
-            "scan_every":    SCAN_EVERY,
-            "account":       ACCOUNT_SIZE,
-            "risk_pct":      RISK_PERCENT,
-            "last_scan":     dict(last_scan),
-            "signals":       list(signals)[:30],
-            "log":           list(scan_log)[:30],
-        }))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/health")
-def health():
-    return jsonify({"status": "ok"})
-
-# ── Dashboard ─────────────────────────────────────────────────────────────────
-DASHBOARD_HTML = r"""
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Oversold Scanner</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
-<style>
-:root{--bg:#06090d;--surf:#0c1117;--surf2:#111820;--brd:#1c2a36;--acc:#00d4ff;--grn:#00f080;--red:#ff3a5c;--amb:#ffb300;--txt:#b8cdd8;--mut:#3d5a6a}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--txt);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,0,0,.07) 3px,rgba(0,0,0,.07) 4px)}
-header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#0c1117,#06090d);border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:100}
-.logo{font-family:'Bebas Neue';font-size:1.5rem;color:var(--acc);letter-spacing:4px;text-shadow:0 0 16px rgba(0,212,255,.5)}
-.hmeta{font-size:.6rem;color:var(--mut)}
-.livepill{margin-left:auto;display:flex;align-items:center;gap:6px;background:rgba(0,240,128,.07);border:1px solid rgba(0,240,128,.2);padding:3px 10px;border-radius:20px}
-.livedot{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:blink 1.4s ease infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-.livetxt{font-size:.6rem;color:var(--grn);letter-spacing:1px}
-.layout{display:grid;grid-template-columns:1fr 310px;height:calc(100vh - 54px)}
-.pmain{display:flex;flex-direction:column;overflow:hidden}
-.toolbar{padding:9px 14px;border-bottom:1px solid var(--brd);display:flex;gap:10px;align-items:center;background:var(--surf)}
-.btn{padding:5px 14px;background:transparent;border:1px solid var(--acc);color:var(--acc);font-family:'Bebas Neue';font-size:.85rem;letter-spacing:2px;cursor:pointer;transition:.15s}
-.btn:hover{background:var(--acc);color:#000}
-.stimer{font-size:.6rem;color:var(--mut);margin-left:auto}
-.statsrow{display:flex;gap:1px;border-bottom:1px solid var(--brd)}
-.stat{flex:1;padding:7px 10px;background:var(--surf2);text-align:center}
-.statv{font-family:'Bebas Neue';font-size:1.05rem;color:var(--acc)}
-.statl{font-size:.5rem;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;margin-top:1px}
-.cards{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1px;padding:1px;background:var(--brd);align-content:start}
-.card{background:var(--surf);padding:13px;display:flex;flex-direction:column;gap:7px;position:relative;overflow:hidden}
-.card.csig{background:#031409;border-left:3px solid var(--grn)}
-.card.csig::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 0 0,rgba(0,240,128,.06),transparent 70%)}
-.card.cwrn{border-left:3px solid var(--amb)}
-.ch{display:flex;justify-content:space-between;align-items:center}
-.sym{font-family:'Bebas Neue';font-size:1.35rem;color:var(--acc);letter-spacing:2px}
-.badge{font-family:'Bebas Neue';font-size:.68rem;padding:2px 7px;letter-spacing:1px;border-radius:2px}
-.bsig{background:var(--grn);color:#000;box-shadow:0 0 10px rgba(0,240,128,.35)}
-.bwrn{background:rgba(255,179,0,.14);color:var(--amb);border:1px solid rgba(255,179,0,.3)}
-.bidle{background:var(--brd);color:var(--mut)}
-.pricerow{display:flex;justify-content:space-between;align-items:baseline}
-.price{font-size:.95rem}.drop{font-size:.68rem}
-.cred{color:var(--red)}.cgrn{color:var(--grn)}.camb{color:var(--amb)}
-.barwrap{height:3px;background:var(--brd);border-radius:2px;overflow:hidden}
-.barfill{height:100%;border-radius:2px;transition:width .5s ease}
-.inds{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-.ind{background:rgba(255,255,255,.02);padding:4px 6px;border-radius:2px}
-.indl{font-size:.52rem;color:var(--mut);text-transform:uppercase;letter-spacing:.7px}
-.indv{font-size:.82rem;margin-top:1px}
-.posbox{background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.12);padding:6px 8px;border-radius:2px;font-size:.62rem}
-.posrow{display:flex;justify-content:space-between;padding:1px 0}
-.posk{color:var(--mut)}.posv{color:var(--acc)}
-.conds{display:flex;gap:3px;flex-wrap:wrap}
-.cond{font-size:.58rem;padding:2px 4px;border-radius:2px}
-.cmet{background:rgba(0,240,128,.11);color:var(--grn);border:1px solid rgba(0,240,128,.22)}
-.cmiss{background:rgba(255,255,255,.02);color:var(--mut);border:1px solid rgba(255,255,255,.05)}
-.cerr{color:var(--red);font-size:.62rem;word-break:break-all}
-.sidebar{border-left:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
-.sbhead{padding:11px 13px;font-family:'Bebas Neue';font-size:.95rem;letter-spacing:2px;color:var(--acc);border-bottom:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center}
-.cntb{font-family:'Space Mono';font-size:.6rem;background:var(--red);color:#fff;padding:2px 7px;border-radius:2px}
-.siglist{flex:1;overflow-y:auto}
-.sigitem{padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.03);animation:slid .25s ease}
-@keyframes slid{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
-.sisym{font-family:'Bebas Neue';font-size:1.05rem;color:var(--grn)}
-.sit{font-size:.58rem;color:var(--mut)}.sim{font-size:.62rem;margin-top:3px}.sipos{font-size:.58rem;color:var(--acc);margin-top:2px}
-.loghead{padding:9px 13px;font-family:'Bebas Neue';font-size:.75rem;letter-spacing:2px;color:var(--mut);border-top:1px solid var(--brd);border-bottom:1px solid var(--brd)}
-.log{height:145px;overflow-y:auto;padding:5px 9px}
-.logline{font-size:.56rem;color:var(--mut);padding:1px 0;border-bottom:1px solid rgba(255,255,255,.02)}
-.logs{color:var(--amb)}.logt{color:var(--acc)}
-::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--brd)}
-</style>
-</head>
-<body>
-<header>
-  <div class="logo">OVERSOLD SCANNER</div>
-  <div class="hmeta" id="hm">yükleniyor...</div>
-  <div class="livepill"><div class="livedot"></div><span class="livetxt">LIVE</span></div>
-</header>
-<div class="layout">
-  <div class="pmain">
-    <div class="toolbar">
-      <button class="btn" onclick="load()">⟳ REFRESH</button>
-      <div class="stimer" id="timer">—</div>
-    </div>
-    <div class="statsrow">
-      <div class="stat"><div class="statv" id="ss">—</div><div class="statl">Toplam Sembol</div></div>
-      <div class="stat"><div class="statv" id="st">—</div><div class="statl">Taranan</div></div>
-      <div class="stat"><div class="statv" id="sg">—</div><div class="statl">Sinyal</div></div>
-      <div class="stat"><div class="statv" id="sa">—</div><div class="statl">Hesap $</div></div>
-      <div class="stat"><div class="statv" id="si">—</div><div class="statl">Periyot</div></div>
-    </div>
-    <div class="cards" id="cards">
-      <div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">Semboller yükleniyor, ilk tarama başlıyor...</div>
-    </div>
-  </div>
-  <div class="sidebar">
-    <div class="sbhead">SİNYALLER <span class="cntb" id="scnt">0</span></div>
-    <div class="siglist" id="siglist"><div style="padding:14px;color:var(--mut);font-size:.68rem">Henüz sinyal yok.</div></div>
-    <div class="loghead">SCAN LOG</div>
-    <div class="log" id="logel"></div>
-  </div>
-</div>
-<script>
-const LBL={drop_candle:'DROP',rsi_oversold:'RSI',williams_oversold:'W%R',macd_neg:'MACD',stochrsi_low:'SRSI'};
-function ic(k,v){
-  if(k==='rsi')return v<=30?'cred':v<=45?'camb':'';
-  if(k==='williams_r')return v<=-80?'cred':v<=-60?'camb':'';
-  if(k==='macd_hist')return v<0?'cred':'cgrn';
-  if(k==='stochrsi')return v<=25?'cred':v<=35?'camb':'';
-  return '';
-}
-function sc(s){return['#3d5a6a','#3d5a6a','#ffb300','#ffb300','#00f080','#00f080'][s]||'#00f080'}
-function card(d){
-  if(d.error)return`<div class="card"><div class="sym">${d.symbol}</div><div class="cerr">HATA: ${d.error}</div></div>`;
-  const sig=d.signal,wrn=!sig&&d.score>=3;
-  const cls=sig?'card csig':wrn?'card cwrn':'card';
-  const bdg=sig?'<span class="badge bsig">SİNYAL</span>':wrn?'<span class="badge bwrn">YAKLAŞIYOR</span>':'<span class="badge bidle">İZLE</span>';
-  const dc=d.drop_pct>0?'cred':'cgrn',ds=d.drop_pct>0?'▼':'▲';
-  const rc=d.recovery>0?'cgrn':'cred',rs=d.recovery>0?'+':'';
-  const pct=(d.score/5*100)+'%';
-  const conds=d.conditions||{},pos=d.position;
-  const posHtml=sig&&pos?`<div class="posbox">
-    <div class="posrow"><span class="posk">Risk</span><span class="posv">$${pos.risk_usd} USDT</span></div>
-    <div class="posrow"><span class="posk">Stop</span><span class="posv">$${pos.stop_loss} (%${pos.stop_pct})</span></div>
-    <div class="posrow"><span class="posk">Miktar</span><span class="posv">${pos.qty} adet</span></div>
-    <div class="posrow"><span class="posk">Pos. $</span><span class="posv">$${pos.position_usd}</span></div>
-  </div>`:'';
-  return`<div class="${cls}">
-    <div class="ch"><span class="sym">${d.symbol}</span>${bdg}</div>
-    <div class="pricerow"><span class="price">$${(d.price||0).toFixed(4)}</span>
-    <span class="drop ${dc}">${ds}${Math.abs(d.drop_pct||0).toFixed(2)}% <span class="${rc}">${rs}${d.recovery??0}% geri</span></span></div>
-    <div class="barwrap"><div class="barfill" style="width:${pct};background:${sc(d.score)}"></div></div>
-    <div class="inds">${[['RSI(14)','rsi'],['Williams%R','williams_r'],['MACD Hist','macd_hist'],['StochRSI','stochrsi'],['MA20','ma20'],['MA50','ma50']].map(([l,k])=>
-      `<div class="ind"><div class="indl">${l}</div><div class="indv ${ic(k,d[k])}">${d[k]??'—'}</div></div>`).join('')}</div>
-    ${posHtml}
-    <div class="conds">${Object.entries(LBL).map(([k,l])=>`<span class="cond ${conds[k]?'cmet':'cmiss'}">${l}</span>`).join('')}</div>
-  </div>`;
-}
-function sigItem(s){
-  const t=new Date(s.time).toLocaleTimeString('tr-TR'),pos=s.position;
-  return`<div class="sigitem">
-    <div style="display:flex;justify-content:space-between"><span class="sisym">${s.symbol}</span><span class="sit">${t}</span></div>
-    <div class="sim">$${(s.price||0).toFixed(4)} | RSI ${s.rsi} | WR ${s.williams_r} | ▼${s.drop_pct}%</div>
-    ${pos?`<div class="sipos">Risk $${pos.risk_usd} · Stop $${pos.stop_loss} · ${pos.qty} adet</div>`:''}
-  </div>`;
-}
-let scanEvery=900;
-async function load(){
-  const d=await fetch('/api/status').then(r=>r.json()).catch(()=>null);
-  if(!d)return;
-  scanEvery=d.scan_every||900;
-  document.getElementById('ss').textContent=d.total_symbols||0;
-  document.getElementById('st').textContent=Object.keys(d.last_scan||{}).length;
-  document.getElementById('sg').textContent=(d.signals||[]).length;
-  document.getElementById('sa').textContent='$'+(d.account||0);
-  document.getElementById('si').textContent=d.interval||'—';
-  document.getElementById('hm').textContent=`Binance tüm USDT çiftleri · her ${scanEvery/60}dk`;
-  const cards=Object.values(d.last_scan||{});
-  document.getElementById('cards').innerHTML=cards.length
-    ?cards.sort((a,b)=>(b.score||0)-(a.score||0)).map(card).join('')
-    :'<div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">Tarama devam ediyor...</div>';
-  const sigs=d.signals||[];
-  document.getElementById('scnt').textContent=sigs.length;
-  document.getElementById('siglist').innerHTML=sigs.length
-    ?sigs.slice(0,40).map(sigItem).join('')
-    :'<div style="padding:14px;color:var(--mut);font-size:.68rem">Henüz sinyal yok.</div>';
-  document.getElementById('logel').innerHTML=(d.log||[]).map(l=>
-    `<div class="logline ${l.includes('SİNYAL')?'logs':l.includes('📨')?'logt':''}">${l}</div>`).join('');
-}
-function tick(){
-  const rem=scanEvery-(Math.floor(Date.now()/1000)%scanEvery);
-  const m=Math.floor(rem/60),s=rem%60;
-  document.getElementById('timer').textContent=`Sonraki tarama: ${m}:${s.toString().padStart(2,'0')}`;
-}
-setInterval(load,30000);setInterval(tick,1000);load();
-</script>
-</body>
-</html>
-"""
-
-# ── Başlatma ──────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    def boot():
-        time.sleep(2)
-        load_symbols()
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] 🟢 Bot başlatıldı — {INTERVAL} periyot | hesap ${ACCOUNT_SIZE}")
-
-    threading.Thread(target=boot,         daemon=True).start()
-    threading.Thread(target=scanner_loop, daemon=True).start()
-
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Durduruldu", flush=True)
