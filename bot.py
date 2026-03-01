@@ -9,7 +9,7 @@ from collections import deque
 
 app = Flask(__name__)
 
-# ── Environment (Render > Environment kısmına girdiğin değerler) ─────────────
+# ── Environment ───────────────────────────────────────────────────────────────
 ACCOUNT_SIZE       = float(os.getenv("ACCOUNT_SIZE",       "5000"))
 BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY",          "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET",       "")
@@ -17,24 +17,70 @@ RISK_PERCENT       = float(os.getenv("RISK_PERCENT",       "2"))
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",         "")
 TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",           "")
 
-# ── Scanner ayarları (Render > Environment'tan override edebilirsin) ──────────
-SYMBOLS      = os.getenv("SYMBOLS", "SOLUSDT,BTCUSDT,ETHUSDT,BNBUSDT,AVAXUSDT").split(",")
-INTERVAL     = os.getenv("INTERVAL", "1h")
-SCAN_EVERY   = int(os.getenv("SCAN_EVERY", "900"))  # saniye — 900 = 15 dakika
+INTERVAL     = os.getenv("INTERVAL",   "1h")
+SCAN_EVERY   = int(os.getenv("SCAN_EVERY", "900"))
+MAX_SYMBOLS  = int(os.getenv("MAX_SYMBOLS", "0"))   # 0 = tümü
 CANDLE_LIMIT = 100
 
-# ── Sinyal eşikleri ───────────────────────────────────────────────────────────
 RSI_OVERSOLD      = float(os.getenv("RSI_OVERSOLD",      "32"))
 WILLIAMS_OVERSOLD = float(os.getenv("WILLIAMS_OVERSOLD", "-80"))
 DROP_PCT          = float(os.getenv("DROP_PCT",          "4"))
 STOCHRSI_THRESH   = float(os.getenv("STOCHRSI_THRESH",  "25"))
-MIN_SCORE         = int(os.getenv("MIN_SCORE",           "4"))   # 5 üzerinden kaçı tutması lazım
+MIN_SCORE         = int(os.getenv("MIN_SCORE",           "4"))
+
+IGNORED_COINS = {
+    'UPUSDT','DOWNUSDT','BEARUSDT','BULLUSDT',
+    'USDCUSDT','TUSDUSDT','FDUSDUSDT','DAIUSDT','USDPUSDT',
+    'EURUSDT','TRYUSDT','GBPUSDT','BUSDUSTUSDT','USTCUSDT',
+    'PAXGUSDT','WBTCUSDT','USDEUSDT','BRLUSDT','RUBUSDT',
+    'AUDUSDT','USUSDT','BFUSDUSDT','RLUSDUSDT',
+}
 
 # ── State ─────────────────────────────────────────────────────────────────────
-signals   = deque(maxlen=200)
-last_scan = {}
-scan_log  = deque(maxlen=60)
-alerted   = {}  # symbol -> son sinyal mum zamanı (aynı muma tekrar alert atma)
+signals       = deque(maxlen=200)
+last_scan     = {}
+scan_log      = deque(maxlen=100)
+alerted       = {}
+active_symbols = []
+
+# ── Sembol yükleme (Binance'den tüm aktif USDT çiftleri, hacme göre) ─────────
+def load_symbols():
+    global active_symbols
+    try:
+        # Tüm sembolleri çek
+        r = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=15)
+        r.raise_for_status()
+        all_syms = [
+            s["symbol"] for s in r.json()["symbols"]
+            if s["symbol"].endswith("USDT")
+            and s["status"] == "TRADING"
+            and s["symbol"] not in IGNORED_COINS
+        ]
+
+        # Hacim verisi çek (24h ticker)
+        t = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=20)
+        t.raise_for_status()
+        volumes = {
+            item["symbol"]: float(item.get("quoteVolume", 0) or 0)
+            for item in t.json()
+        }
+
+        # Hacme göre sırala
+        sorted_syms = sorted(all_syms, key=lambda x: volumes.get(x, 0), reverse=True)
+
+        if MAX_SYMBOLS and MAX_SYMBOLS > 0:
+            active_symbols = sorted_syms[:MAX_SYMBOLS]
+        else:
+            active_symbols = sorted_syms
+
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        scan_log.appendleft(f"[{ts}] ✓ {len(active_symbols)} sembol yüklendi (hacme göre sıralı)")
+
+    except Exception as e:
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        scan_log.appendleft(f"[{ts}] ❌ Sembol yükleme hatası: {e}")
+        # Hata olursa temel coinlerle devam et
+        active_symbols = ["SOLUSDT","BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT"]
 
 # ── Risk hesabı ───────────────────────────────────────────────────────────────
 def calc_position(entry_price: float, stop_pct: float = 3.0) -> dict:
@@ -149,7 +195,7 @@ def calc_stochrsi(closes, rsi_period=14, stoch_period=14):
         return 50.0
     return round(100 * (rsi_series[-1] - rl) / (rh - rl), 2)
 
-# ── Binance kline çekme ───────────────────────────────────────────────────────
+# ── Binance kline ─────────────────────────────────────────────────────────────
 def fetch_candles(symbol):
     headers = {"X-MBX-APIKEY": BINANCE_API_KEY} if BINANCE_API_KEY else {}
     r = requests.get(
@@ -168,25 +214,24 @@ def fetch_candles(symbol):
         [int(c[0]) for c in data],
     )
 
-# ── Ana tarama ────────────────────────────────────────────────────────────────
+# ── Tek sembol tarama ─────────────────────────────────────────────────────────
 def scan_symbol(symbol: str) -> dict:
     try:
         opens, highs, lows, closes, times = fetch_candles(symbol)
 
-        # -2 = son tamamlanan mum, -1 = hâlâ oluşan mum
-        drop_pct = round((opens[-2] - closes[-2]) / opens[-2] * 100, 2)  # pozitif = kırmızı
+        drop_pct = round((opens[-2] - closes[-2]) / opens[-2] * 100, 2)
 
-        c = closes[:-1]   # tamamlanan mumların close dizisi
+        c = closes[:-1]
         h = highs[:-1]
         l = lows[:-1]
 
-        rsi_val  = calc_rsi(c)
-        _, _, hist = calc_macd(c)
-        wr_val   = calc_williams_r(h, l, c)
-        srsi_val = calc_stochrsi(c)
-        ma20     = round(float(np.mean(c[-20:])), 4)
-        ma50     = round(float(np.mean(c[-50:])), 4)
-        recovery = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
+        rsi_val      = calc_rsi(c)
+        _, _, hist   = calc_macd(c)
+        wr_val       = calc_williams_r(h, l, c)
+        srsi_val     = calc_stochrsi(c)
+        ma20         = round(float(np.mean(c[-20:])), 4)
+        ma50         = round(float(np.mean(c[-50:])), 4)
+        recovery     = round((closes[-1] - closes[-2]) / closes[-2] * 100, 2)
 
         conditions = {
             "drop_candle":       drop_pct  >= DROP_PCT,
@@ -225,10 +270,14 @@ def scan_symbol(symbol: str) -> dict:
 # ── Tarama döngüsü ────────────────────────────────────────────────────────────
 def scanner_loop():
     while True:
-        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] {len(SYMBOLS)} sembol taranıyor...")
+        if not active_symbols:
+            time.sleep(5)
+            continue
 
-        for sym in SYMBOLS:
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+        scan_log.appendleft(f"[{ts}] 🔍 {len(active_symbols)} sembol taranıyor...")
+
+        for sym in active_symbols:
             result = scan_symbol(sym)
             last_scan[sym] = result
 
@@ -244,7 +293,11 @@ def scanner_loop():
                     send_telegram(build_tg_message(result))
                     scan_log.appendleft(f"[{ts}] 📨 Telegram → {sym}")
 
-        scan_log.appendleft(f"[{ts}] ✓ Tarama bitti. Sonraki: {SCAN_EVERY}s")
+            time.sleep(0.1)  # rate limit koruması
+
+        # Her turda sembolleri yenile (yeni listelemeler vs)
+        load_symbols()
+        scan_log.appendleft(f"[{ts}] ✓ Tur bitti. Sonraki: {SCAN_EVERY}s")
         time.sleep(SCAN_EVERY)
 
 # ── Flask routes ──────────────────────────────────────────────────────────────
@@ -255,21 +308,21 @@ def index():
 @app.route("/api/status")
 def api_status():
     return jsonify({
-        "symbols":    SYMBOLS,
-        "interval":   INTERVAL,
-        "scan_every": SCAN_EVERY,
-        "account":    ACCOUNT_SIZE,
-        "risk_pct":   RISK_PERCENT,
-        "last_scan":  last_scan,
-        "signals":    list(signals)[:30],
-        "log":        list(scan_log)[:30],
+        "total_symbols": len(active_symbols),
+        "interval":      INTERVAL,
+        "scan_every":    SCAN_EVERY,
+        "account":       ACCOUNT_SIZE,
+        "risk_pct":      RISK_PERCENT,
+        "last_scan":     last_scan,
+        "signals":       list(signals)[:30],
+        "log":           list(scan_log)[:30],
     })
 
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
 
-# ── Dashboard HTML ────────────────────────────────────────────────────────────
+# ── Dashboard ─────────────────────────────────────────────────────────────────
 DASHBOARD_HTML = r"""
 <!DOCTYPE html>
 <html lang="tr">
@@ -279,112 +332,68 @@ DASHBOARD_HTML = r"""
 <title>Oversold Scanner</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg:     #06090d;
-  --surf:   #0c1117;
-  --surf2:  #111820;
-  --brd:    #1c2a36;
-  --acc:    #00d4ff;
-  --grn:    #00f080;
-  --red:    #ff3a5c;
-  --amb:    #ffb300;
-  --txt:    #b8cdd8;
-  --mut:    #3d5a6a;
-}
+:root{--bg:#06090d;--surf:#0c1117;--surf2:#111820;--brd:#1c2a36;--acc:#00d4ff;--grn:#00f080;--red:#ff3a5c;--amb:#ffb300;--txt:#b8cdd8;--mut:#3d5a6a}
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--txt);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
-  background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,0,0,.07) 3px,rgba(0,0,0,.07) 4px)}
-
-header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;
-  background:linear-gradient(90deg,#0c1117,#06090d);border-bottom:1px solid var(--brd);
-  position:sticky;top:0;z-index:100}
-.logo{font-family:'Bebas Neue';font-size:1.5rem;color:var(--acc);letter-spacing:4px;
-  text-shadow:0 0 16px rgba(0,212,255,.5)}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,0,0,.07) 3px,rgba(0,0,0,.07) 4px)}
+header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#0c1117,#06090d);border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:100}
+.logo{font-family:'Bebas Neue';font-size:1.5rem;color:var(--acc);letter-spacing:4px;text-shadow:0 0 16px rgba(0,212,255,.5)}
 .hmeta{font-size:.6rem;color:var(--mut)}
-.livepill{margin-left:auto;display:flex;align-items:center;gap:6px;
-  background:rgba(0,240,128,.07);border:1px solid rgba(0,240,128,.2);padding:3px 10px;border-radius:20px}
-.livedot{width:6px;height:6px;border-radius:50%;background:var(--grn);
-  box-shadow:0 0 8px var(--grn);animation:blink 1.4s ease infinite}
+.livepill{margin-left:auto;display:flex;align-items:center;gap:6px;background:rgba(0,240,128,.07);border:1px solid rgba(0,240,128,.2);padding:3px 10px;border-radius:20px}
+.livedot{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:blink 1.4s ease infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .livetxt{font-size:.6rem;color:var(--grn);letter-spacing:1px}
-
 .layout{display:grid;grid-template-columns:1fr 310px;height:calc(100vh - 54px)}
-
 .pmain{display:flex;flex-direction:column;overflow:hidden}
 .toolbar{padding:9px 14px;border-bottom:1px solid var(--brd);display:flex;gap:10px;align-items:center;background:var(--surf)}
-.btn{padding:5px 14px;background:transparent;border:1px solid var(--acc);color:var(--acc);
-  font-family:'Bebas Neue';font-size:.85rem;letter-spacing:2px;cursor:pointer;transition:.15s}
+.btn{padding:5px 14px;background:transparent;border:1px solid var(--acc);color:var(--acc);font-family:'Bebas Neue';font-size:.85rem;letter-spacing:2px;cursor:pointer;transition:.15s}
 .btn:hover{background:var(--acc);color:#000}
 .stimer{font-size:.6rem;color:var(--mut);margin-left:auto}
-
 .statsrow{display:flex;gap:1px;border-bottom:1px solid var(--brd)}
 .stat{flex:1;padding:7px 10px;background:var(--surf2);text-align:center}
 .statv{font-family:'Bebas Neue';font-size:1.05rem;color:var(--acc)}
 .statl{font-size:.5rem;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;margin-top:1px}
-
-.cards{flex:1;overflow-y:auto;display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(255px,1fr));
-  gap:1px;padding:1px;background:var(--brd);align-content:start}
-
+.cards{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:1px;padding:1px;background:var(--brd);align-content:start}
 .card{background:var(--surf);padding:13px;display:flex;flex-direction:column;gap:7px;position:relative;overflow:hidden}
 .card.csig{background:#031409;border-left:3px solid var(--grn)}
-.card.csig::before{content:'';position:absolute;inset:0;
-  background:radial-gradient(ellipse at 0 0,rgba(0,240,128,.06),transparent 70%)}
+.card.csig::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 0 0,rgba(0,240,128,.06),transparent 70%)}
 .card.cwrn{border-left:3px solid var(--amb)}
-
 .ch{display:flex;justify-content:space-between;align-items:center}
 .sym{font-family:'Bebas Neue';font-size:1.35rem;color:var(--acc);letter-spacing:2px}
 .badge{font-family:'Bebas Neue';font-size:.68rem;padding:2px 7px;letter-spacing:1px;border-radius:2px}
 .bsig{background:var(--grn);color:#000;box-shadow:0 0 10px rgba(0,240,128,.35)}
 .bwrn{background:rgba(255,179,0,.14);color:var(--amb);border:1px solid rgba(255,179,0,.3)}
 .bidle{background:var(--brd);color:var(--mut)}
-
 .pricerow{display:flex;justify-content:space-between;align-items:baseline}
-.price{font-size:.95rem}
-.drop{font-size:.68rem}
+.price{font-size:.95rem}.drop{font-size:.68rem}
 .cred{color:var(--red)}.cgrn{color:var(--grn)}.camb{color:var(--amb)}
-
 .barwrap{height:3px;background:var(--brd);border-radius:2px;overflow:hidden}
 .barfill{height:100%;border-radius:2px;transition:width .5s ease}
-
 .inds{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .ind{background:rgba(255,255,255,.02);padding:4px 6px;border-radius:2px}
 .indl{font-size:.52rem;color:var(--mut);text-transform:uppercase;letter-spacing:.7px}
 .indv{font-size:.82rem;margin-top:1px}
-
-.posbox{background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.12);
-  padding:6px 8px;border-radius:2px;font-size:.62rem}
+.posbox{background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.12);padding:6px 8px;border-radius:2px;font-size:.62rem}
 .posrow{display:flex;justify-content:space-between;padding:1px 0}
 .posk{color:var(--mut)}.posv{color:var(--acc)}
-
 .conds{display:flex;gap:3px;flex-wrap:wrap}
 .cond{font-size:.58rem;padding:2px 4px;border-radius:2px}
 .cmet{background:rgba(0,240,128,.11);color:var(--grn);border:1px solid rgba(0,240,128,.22)}
 .cmiss{background:rgba(255,255,255,.02);color:var(--mut);border:1px solid rgba(255,255,255,.05)}
 .cerr{color:var(--red);font-size:.62rem;word-break:break-all}
-
 .sidebar{border-left:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
-.sbhead{padding:11px 13px;font-family:'Bebas Neue';font-size:.95rem;letter-spacing:2px;
-  color:var(--acc);border-bottom:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center}
+.sbhead{padding:11px 13px;font-family:'Bebas Neue';font-size:.95rem;letter-spacing:2px;color:var(--acc);border-bottom:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center}
 .cntb{font-family:'Space Mono';font-size:.6rem;background:var(--red);color:#fff;padding:2px 7px;border-radius:2px}
 .siglist{flex:1;overflow-y:auto}
 .sigitem{padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.03);animation:slid .25s ease}
 @keyframes slid{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
 .sisym{font-family:'Bebas Neue';font-size:1.05rem;color:var(--grn)}
-.sit{font-size:.58rem;color:var(--mut)}
-.sim{font-size:.62rem;margin-top:3px}
-.sipos{font-size:.58rem;color:var(--acc);margin-top:2px}
-
-.loghead{padding:9px 13px;font-family:'Bebas Neue';font-size:.75rem;letter-spacing:2px;
-  color:var(--mut);border-top:1px solid var(--brd);border-bottom:1px solid var(--brd)}
+.sit{font-size:.58rem;color:var(--mut)}.sim{font-size:.62rem;margin-top:3px}.sipos{font-size:.58rem;color:var(--acc);margin-top:2px}
+.loghead{padding:9px 13px;font-family:'Bebas Neue';font-size:.75rem;letter-spacing:2px;color:var(--mut);border-top:1px solid var(--brd);border-bottom:1px solid var(--brd)}
 .log{height:145px;overflow-y:auto;padding:5px 9px}
 .logline{font-size:.56rem;color:var(--mut);padding:1px 0;border-bottom:1px solid rgba(255,255,255,.02)}
 .logs{color:var(--amb)}.logt{color:var(--acc)}
-
-::-webkit-scrollbar{width:3px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--brd)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--brd)}
 </style>
 </head>
 <body>
@@ -393,7 +402,6 @@ header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;
   <div class="hmeta" id="hm">yükleniyor...</div>
   <div class="livepill"><div class="livedot"></div><span class="livetxt">LIVE</span></div>
 </header>
-
 <div class="layout">
   <div class="pmain">
     <div class="toolbar">
@@ -401,17 +409,16 @@ header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;
       <div class="stimer" id="timer">—</div>
     </div>
     <div class="statsrow">
-      <div class="stat"><div class="statv" id="ss">—</div><div class="statl">Sembol</div></div>
+      <div class="stat"><div class="statv" id="ss">—</div><div class="statl">Toplam Sembol</div></div>
+      <div class="stat"><div class="statv" id="st">—</div><div class="statl">Taranan</div></div>
       <div class="stat"><div class="statv" id="sg">—</div><div class="statl">Sinyal</div></div>
       <div class="stat"><div class="statv" id="sa">—</div><div class="statl">Hesap $</div></div>
-      <div class="stat"><div class="statv" id="sr">—</div><div class="statl">Risk %</div></div>
       <div class="stat"><div class="statv" id="si">—</div><div class="statl">Periyot</div></div>
     </div>
     <div class="cards" id="cards">
-      <div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">İlk tarama bekleniyor...</div>
+      <div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">Semboller yükleniyor, ilk tarama başlıyor...</div>
     </div>
   </div>
-
   <div class="sidebar">
     <div class="sbhead">SİNYALLER <span class="cntb" id="scnt">0</span></div>
     <div class="siglist" id="siglist"><div style="padding:14px;color:var(--mut);font-size:.68rem">Henüz sinyal yok.</div></div>
@@ -419,77 +426,65 @@ header{height:54px;padding:0 20px;display:flex;align-items:center;gap:14px;
     <div class="log" id="logel"></div>
   </div>
 </div>
-
 <script>
-const LBL = {drop_candle:'DROP',rsi_oversold:'RSI',williams_oversold:'W%R',macd_neg:'MACD',stochrsi_low:'SRSI'};
-
+const LBL={drop_candle:'DROP',rsi_oversold:'RSI',williams_oversold:'W%R',macd_neg:'MACD',stochrsi_low:'SRSI'};
 function ic(k,v){
-  if(k==='rsi')        return v<=30?'cred':v<=45?'camb':'';
-  if(k==='williams_r') return v<=-80?'cred':v<=-60?'camb':'';
-  if(k==='macd_hist')  return v<0?'cred':'cgrn';
-  if(k==='stochrsi')   return v<=25?'cred':v<=35?'camb':'';
+  if(k==='rsi')return v<=30?'cred':v<=45?'camb':'';
+  if(k==='williams_r')return v<=-80?'cred':v<=-60?'camb':'';
+  if(k==='macd_hist')return v<0?'cred':'cgrn';
+  if(k==='stochrsi')return v<=25?'cred':v<=35?'camb':'';
   return '';
 }
 function sc(s){return['#3d5a6a','#3d5a6a','#ffb300','#ffb300','#00f080','#00f080'][s]||'#00f080'}
-
 function card(d){
-  if(d.error) return `<div class="card"><div class="sym">${d.symbol}</div><div class="cerr">HATA: ${d.error}</div></div>`;
-  const sig=d.signal, wrn=!sig&&d.score>=3;
+  if(d.error)return`<div class="card"><div class="sym">${d.symbol}</div><div class="cerr">HATA: ${d.error}</div></div>`;
+  const sig=d.signal,wrn=!sig&&d.score>=3;
   const cls=sig?'card csig':wrn?'card cwrn':'card';
   const bdg=sig?'<span class="badge bsig">SİNYAL</span>':wrn?'<span class="badge bwrn">YAKLAŞIYOR</span>':'<span class="badge bidle">İZLE</span>';
-  const dc=d.drop_pct>0?'cred':'cgrn', ds=d.drop_pct>0?'▼':'▲';
-  const rc=d.recovery>0?'cgrn':'cred', rs=d.recovery>0?'+':'';
+  const dc=d.drop_pct>0?'cred':'cgrn',ds=d.drop_pct>0?'▼':'▲';
+  const rc=d.recovery>0?'cgrn':'cred',rs=d.recovery>0?'+':'';
   const pct=(d.score/5*100)+'%';
-  const conds=d.conditions||{};
-  const pos=d.position;
-  const posHtml=sig&&pos?`
-    <div class="posbox">
-      <div class="posrow"><span class="posk">Risk</span><span class="posv">$${pos.risk_usd} USDT</span></div>
-      <div class="posrow"><span class="posk">Stop</span><span class="posv">$${pos.stop_loss} (%${pos.stop_pct})</span></div>
-      <div class="posrow"><span class="posk">Miktar</span><span class="posv">${pos.qty} adet</span></div>
-      <div class="posrow"><span class="posk">Pos. $</span><span class="posv">$${pos.position_usd}</span></div>
-    </div>`:'';
-  return `<div class="${cls}">
+  const conds=d.conditions||{},pos=d.position;
+  const posHtml=sig&&pos?`<div class="posbox">
+    <div class="posrow"><span class="posk">Risk</span><span class="posv">$${pos.risk_usd} USDT</span></div>
+    <div class="posrow"><span class="posk">Stop</span><span class="posv">$${pos.stop_loss} (%${pos.stop_pct})</span></div>
+    <div class="posrow"><span class="posk">Miktar</span><span class="posv">${pos.qty} adet</span></div>
+    <div class="posrow"><span class="posk">Pos. $</span><span class="posv">$${pos.position_usd}</span></div>
+  </div>`:'';
+  return`<div class="${cls}">
     <div class="ch"><span class="sym">${d.symbol}</span>${bdg}</div>
-    <div class="pricerow">
-      <span class="price">$${(d.price||0).toFixed(4)}</span>
-      <span class="drop ${dc}">${ds}${Math.abs(d.drop_pct||0).toFixed(2)}% &nbsp;<span class="${rc}">${rs}${d.recovery??0}% geri</span></span>
-    </div>
+    <div class="pricerow"><span class="price">$${(d.price||0).toFixed(4)}</span>
+    <span class="drop ${dc}">${ds}${Math.abs(d.drop_pct||0).toFixed(2)}% <span class="${rc}">${rs}${d.recovery??0}% geri</span></span></div>
     <div class="barwrap"><div class="barfill" style="width:${pct};background:${sc(d.score)}"></div></div>
-    <div class="inds">
-      ${[['RSI(14)','rsi'],['Williams%R','williams_r'],['MACD Hist','macd_hist'],['StochRSI','stochrsi'],['MA20','ma20'],['MA50','ma50']].map(([l,k])=>
-        `<div class="ind"><div class="indl">${l}</div><div class="indv ${ic(k,d[k])}">${d[k]??'—'}</div></div>`).join('')}
-    </div>
+    <div class="inds">${[['RSI(14)','rsi'],['Williams%R','williams_r'],['MACD Hist','macd_hist'],['StochRSI','stochrsi'],['MA20','ma20'],['MA50','ma50']].map(([l,k])=>
+      `<div class="ind"><div class="indl">${l}</div><div class="indv ${ic(k,d[k])}">${d[k]??'—'}</div></div>`).join('')}</div>
     ${posHtml}
     <div class="conds">${Object.entries(LBL).map(([k,l])=>`<span class="cond ${conds[k]?'cmet':'cmiss'}">${l}</span>`).join('')}</div>
   </div>`;
 }
-
 function sigItem(s){
-  const t=new Date(s.time).toLocaleTimeString('tr-TR');
-  const pos=s.position;
-  return `<div class="sigitem">
+  const t=new Date(s.time).toLocaleTimeString('tr-TR'),pos=s.position;
+  return`<div class="sigitem">
     <div style="display:flex;justify-content:space-between"><span class="sisym">${s.symbol}</span><span class="sit">${t}</span></div>
     <div class="sim">$${(s.price||0).toFixed(4)} | RSI ${s.rsi} | WR ${s.williams_r} | ▼${s.drop_pct}%</div>
     ${pos?`<div class="sipos">Risk $${pos.risk_usd} · Stop $${pos.stop_loss} · ${pos.qty} adet</div>`:''}
   </div>`;
 }
-
 let scanEvery=900;
 async function load(){
   const d=await fetch('/api/status').then(r=>r.json()).catch(()=>null);
   if(!d)return;
   scanEvery=d.scan_every||900;
-  document.getElementById('ss').textContent=(d.symbols||[]).length;
+  document.getElementById('ss').textContent=d.total_symbols||0;
+  document.getElementById('st').textContent=Object.keys(d.last_scan||{}).length;
   document.getElementById('sg').textContent=(d.signals||[]).length;
   document.getElementById('sa').textContent='$'+(d.account||0);
-  document.getElementById('sr').textContent=(d.risk_pct||0)+'%';
   document.getElementById('si').textContent=d.interval||'—';
-  document.getElementById('hm').textContent=(d.symbols||[]).join(' · ')+' · her '+(scanEvery/60)+'dk';
+  document.getElementById('hm').textContent=`Binance tüm USDT çiftleri · her ${scanEvery/60}dk`;
   const cards=Object.values(d.last_scan||{});
   document.getElementById('cards').innerHTML=cards.length
     ?cards.sort((a,b)=>(b.score||0)-(a.score||0)).map(card).join('')
-    :'<div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">Tarama bekleniyor...</div>';
+    :'<div style="padding:40px;color:var(--mut);grid-column:1/-1;text-align:center">Tarama devam ediyor...</div>';
   const sigs=d.signals||[];
   document.getElementById('scnt').textContent=sigs.length;
   document.getElementById('siglist').innerHTML=sigs.length
@@ -503,9 +498,7 @@ function tick(){
   const m=Math.floor(rem/60),s=rem%60;
   document.getElementById('timer').textContent=`Sonraki tarama: ${m}:${s.toString().padStart(2,'0')}`;
 }
-setInterval(load,30000);
-setInterval(tick,1000);
-load();
+setInterval(load,30000);setInterval(tick,1000);load();
 </script>
 </body>
 </html>
@@ -514,18 +507,13 @@ load();
 # ── Başlatma ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     def boot():
-        time.sleep(3)
+        time.sleep(2)
+        load_symbols()
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-        scan_log.appendleft(f"[{ts}] 🟢 Başlatıldı — {len(SYMBOLS)} sembol | {INTERVAL} | hesap ${ACCOUNT_SIZE}")
-        for sym in SYMBOLS:
-            r = scan_symbol(sym)
-            last_scan[sym] = r
-            if r.get("signal"):
-                signals.appendleft(r)
-        scan_log.appendleft(f"[{ts}] ✓ İlk tarama tamamlandı")
+        scan_log.appendleft(f"[{ts}] 🟢 Bot başlatıldı — {INTERVAL} periyot | hesap ${ACCOUNT_SIZE}")
 
-    threading.Thread(target=boot,          daemon=True).start()
-    threading.Thread(target=scanner_loop,  daemon=True).start()
+    threading.Thread(target=boot,         daemon=True).start()
+    threading.Thread(target=scanner_loop, daemon=True).start()
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
