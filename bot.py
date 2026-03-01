@@ -244,22 +244,29 @@ def scan_symbol(symbol: str) -> dict:
         is_signal = score >= MIN_SCORE
         entry     = float(closes[-1])
 
+        def safe(v):
+            if isinstance(v, float) and (v != v or v == float("inf") or v == float("-inf")):
+                return None
+            if hasattr(v, "item"):
+                return v.item()
+            return v
+
         return {
             "symbol":      symbol,
             "time":        datetime.now(timezone.utc).isoformat(),
             "candle_time": datetime.fromtimestamp(times[-2] / 1000, tz=timezone.utc).isoformat(),
-            "price":       round(entry, 6),
-            "drop_pct":    drop_pct,
-            "rsi":         rsi_val,
-            "macd_hist":   hist,
-            "williams_r":  wr_val,
-            "stochrsi":    srsi_val,
-            "ma20":        ma20,
-            "ma50":        ma50,
-            "recovery":    recovery,
+            "price":       safe(round(entry, 6)),
+            "drop_pct":    safe(drop_pct),
+            "rsi":         safe(rsi_val),
+            "macd_hist":   safe(hist),
+            "williams_r":  safe(wr_val),
+            "stochrsi":    safe(srsi_val),
+            "ma20":        safe(ma20),
+            "ma50":        safe(ma50),
+            "recovery":    safe(recovery),
             "conditions":  conditions,
-            "score":       score,
-            "signal":      is_signal,
+            "score":       int(score),
+            "signal":      bool(is_signal),
             "position":    calc_position(entry) if is_signal else {},
         }
 
@@ -307,16 +314,32 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    return jsonify({
-        "total_symbols": len(active_symbols),
-        "interval":      INTERVAL,
-        "scan_every":    SCAN_EVERY,
-        "account":       ACCOUNT_SIZE,
-        "risk_pct":      RISK_PERCENT,
-        "last_scan":     last_scan,
-        "signals":       list(signals)[:30],
-        "log":           list(scan_log)[:30],
-    })
+    def clean(obj):
+        if isinstance(obj, dict):
+            return {k: clean(v) for k, v in obj.items()}
+        if isinstance(obj, (list, deque)):
+            return [clean(i) for i in obj]
+        if isinstance(obj, float):
+            if obj != obj or obj == float("inf") or obj == float("-inf"):
+                return None
+            return round(obj, 6)
+        if hasattr(obj, "item"):  # numpy scalar
+            return clean(obj.item())
+        return obj
+
+    try:
+        return jsonify(clean({
+            "total_symbols": len(active_symbols),
+            "interval":      INTERVAL,
+            "scan_every":    SCAN_EVERY,
+            "account":       ACCOUNT_SIZE,
+            "risk_pct":      RISK_PERCENT,
+            "last_scan":     dict(last_scan),
+            "signals":       list(signals)[:30],
+            "log":           list(scan_log)[:30],
+        }))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/health")
 def health():
