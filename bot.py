@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Trend & Momentum Scanner v3.0
+Trend & Momentum Scanner v3.1
 1H sinyal + 4H teyit — WebSocket tabanli
-RSI, Williams %R, MFI, MACD, BB, Hacim (1H)
-EMA20/SMA50, ADX, OBV (4H)
-Puanlama: 100 uzerinden (1H=70p, 4H=30p)
+Guncellenen puanlama:
+- RSI tavan 18 (gercekci)
+- Williams %R tavan -98 (gercekci)
+- MFI tavan 5 (gercekci)
+- MACD histogram yaklasma hizi
+- EMA20/SMA50 gap daralma hizi
 """
 
 import asyncio
@@ -51,6 +54,11 @@ BOOTSTRAP_1H    = int(os.getenv("BOOTSTRAP_1H",    "200"))
 BOOTSTRAP_4H    = int(os.getenv("BOOTSTRAP_4H",    "100"))
 KEEP_1H         = int(os.getenv("KEEP_1H",         "200"))
 KEEP_4H         = int(os.getenv("KEEP_4H",         "100"))
+
+# Gercekci tavan seviyeleri — bu seviyelerde tam puan verilir
+RSI_CEIL = 18.0    # RSI 18 altinda → 20/20 puan
+WR_CEIL  = -98.0   # W%R -98 altinda → 15/15 puan
+MFI_CEIL = 5.0     # MFI 5 altinda  → 15/15 puan
 
 BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
@@ -238,15 +246,176 @@ def prepare_4h(df):
     return df
 
 # ============================================================
-# 5) 1H ANALİZ — max 70 puan
+# 5) PUAN FONKSİYONLARI
+# ============================================================
+
+def score_rsi(rsi) -> float:
+    """
+    RSI_CEIL (18) ve altinda → 20 tam puan
+    RSI_THRESH (35) ve uzerinde → 0 puan
+    Arada lineer.
+    """
+    if rsi is None or rsi >= RSI_THRESH:
+        return 0.0
+    if rsi <= RSI_CEIL:
+        return 20.0
+    return round((RSI_THRESH - rsi) / (RSI_THRESH - RSI_CEIL) * 20.0, 2)
+
+def score_wr(wr) -> float:
+    """
+    WR_CEIL (-98) ve altinda → 15 tam puan
+    WR_THRESH (-80) ve uzerinde → 0 puan
+    """
+    if wr is None or wr >= WR_THRESH:
+        return 0.0
+    if wr <= WR_CEIL:
+        return 15.0
+    return round((WR_THRESH - wr) / (WR_THRESH - WR_CEIL) * 15.0, 2)
+
+def score_mfi(mfi) -> float:
+    """
+    MFI_CEIL (5) ve altinda → 15 tam puan
+    MFI_THRESH (20) ve uzerinde → 0 puan
+    """
+    if mfi is None or mfi >= MFI_THRESH:
+        return 0.0
+    if mfi <= MFI_CEIL:
+        return 15.0
+    return round((MFI_THRESH - mfi) / (MFI_THRESH - MFI_CEIL) * 15.0, 2)
+
+def score_macd(hist_series) -> tuple:
+    """
+    Son 6 mumun histogram serisini alir, yaklasma hizini degerlendirir.
+    Dondurur: (puan float, durum_metni str, tetiklendi bool)
+
+    Mantik:
+    - Sifiri yukari gecti                           → 10p
+    - Hala negatif, donuyor + hizli yaklasma (%60+) → 8p
+    - Hala negatif, donuyor + orta yaklasma (%30+)  → 6p
+    - Hala negatif, donuyor + yavas yaklasma         → 4p
+    - Henuz donmemis ama seri %50+ daraldi           → 4p
+    - Henuz donmemis ama seri %20+ daraldi           → 2p
+    - Aciliyor veya sabit                            → 0p
+    """
+    if hist_series is None or len(hist_series) < 3:
+        return 0.0, "veri yok", False
+
+    vals = [v for v in hist_series[-6:] if v is not None and not np.isnan(v)]
+    if len(vals) < 3:
+        return 0.0, "veri yok", False
+
+    current  = vals[-1]
+    previous = vals[-2]
+    oldest   = vals[0]
+
+    # Sifiri yukari gecti
+    if current > 0 and previous <= 0:
+        return 10.0, "sifiri yukari gecti ↑", True
+
+    # Hala negatif bolgede
+    if current < 0:
+        turning = current > previous  # son deger oncekinden buyuk = donuyor
+
+        if turning and oldest < 0:
+            shrink = (oldest - current) / abs(oldest)  # ne kadar kuculdu (0-1 arasi)
+            shrink = max(0.0, min(1.0, shrink))
+            if shrink >= 0.6:
+                return 8.0, f"donuyor ↑ (hizli %{shrink*100:.0f})", True
+            elif shrink >= 0.3:
+                return 6.0, f"donuyor ↑ (orta %{shrink*100:.0f})", True
+            else:
+                return 4.0, f"donuyor ↑ (yavas %{shrink*100:.0f})", True
+
+        # Donmuyor ama mutlak deger daralıyor mu?
+        if oldest < 0 and current < 0:
+            shrink = (abs(oldest) - abs(current)) / abs(oldest)
+            if shrink >= 0.5:
+                return 4.0, f"daralıyor (%{shrink*100:.0f})", False
+            elif shrink >= 0.2:
+                return 2.0, f"daralıyor (%{shrink*100:.0f})", False
+
+    return 0.0, "aciliyor veya sabit", False
+
+def score_ema_sma(df4h) -> tuple:
+    """
+    EMA20 / SMA50 arasindaki gap'in son 5 mumda nasil degistigini degerlendirir.
+    Dondurur: (puan float, durum_metni str, tetiklendi bool)
+
+    Mantik:
+    - Son 5 mumda kesisim oldu          → 10p
+    - EMA > SMA, mesafeye gore          → 2-7p
+    - EMA < SMA ama gap %50+ daraldi    → 6p
+    - EMA < SMA ama gap %30+ daraldi    → 4p
+    - EMA < SMA ama gap %10+ daraldi    → 2p
+    - Gap aciliyor                      → 0p
+    """
+    if df4h is None or len(df4h) < 10:
+        return 0.0, "veri yok", False
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    last  = df4h.iloc[-2]
+    prev5 = df4h.iloc[-7:-2]
+
+    ema_now = sf(last, "ema20")
+    sma_now = sf(last, "sma50")
+
+    if ema_now is None or sma_now is None:
+        return 0.0, "veri yok", False
+
+    # Son 5 mumda asagidan yukari kesisim oldu mu?
+    recent_cross = False
+    for i in range(len(prev5) - 1):
+        r0 = prev5.iloc[i];   r1 = prev5.iloc[i + 1]
+        e0 = sf(r0, "ema20"); s0 = sf(r0, "sma50")
+        e1 = sf(r1, "ema20"); s1 = sf(r1, "sma50")
+        if None not in (e0, s0, e1, s1) and e0 <= s0 and e1 > s1:
+            recent_cross = True
+            break
+
+    if recent_cross:
+        return 10.0, "kesisim oldu (yakin) ↑", True
+
+    if ema_now > sma_now:
+        gap_pct = (ema_now - sma_now) / sma_now * 100
+        p = min(7.0, gap_pct * 2.0)
+        return round(p, 2), f"EMA20 > SMA50 (+%{gap_pct:.1f})", True
+
+    # EMA hala altinda — gap daralıyor mu?
+    if len(prev5) >= 3:
+        oldest = prev5.iloc[0]
+        e_old  = sf(oldest, "ema20")
+        s_old  = sf(oldest, "sma50")
+
+        if e_old is not None and s_old is not None and e_old < s_old:
+            gap_old = s_old - e_old   # eskiden ne kadar altindaydi
+            gap_now = sma_now - ema_now  # simdi ne kadar altinda
+
+            if gap_old > 0:
+                shrink = (gap_old - gap_now) / gap_old
+
+                if shrink >= 0.5:
+                    return 6.0, f"EMA<SMA gap %{shrink*100:.0f} daraldi ↑", False
+                elif shrink >= 0.3:
+                    return 4.0, f"EMA<SMA gap %{shrink*100:.0f} daraldi ↑", False
+                elif shrink >= 0.1:
+                    return 2.0, f"EMA<SMA gap %{shrink*100:.0f} daraldi", False
+                elif shrink < 0:
+                    return 0.0, "EMA<SMA gap aciliyor ↓", False
+
+    return 0.0, "EMA20 < SMA50", False
+
+# ============================================================
+# 6) 1H ANALİZ — max 70 puan
 # ============================================================
 def analyze_1h(df):
     if len(df) < 60:
         return None
 
-    prev = df.iloc[-3]
-    last = df.iloc[-2]
-    curr = df.iloc[-1]
+    last = df.iloc[-2]   # son kapanan mum
+    curr = df.iloc[-1]   # suanki mum (entry fiyati icin)
 
     def sf(row, col):
         v = row.get(col, np.nan)
@@ -255,8 +424,6 @@ def analyze_1h(df):
     rsi      = sf(last, "rsi")
     wr       = sf(last, "wr")
     mfi      = sf(last, "mfi")
-    mhist    = sf(last, "macd_hist")
-    mhist_p  = sf(prev, "macd_hist")
     bb_lower = sf(last, "bb_lower")
     close_v  = sf(last, "close")
     low_v    = sf(last, "low")
@@ -268,29 +435,22 @@ def analyze_1h(df):
     if None in (rsi, wr, mfi, entry):
         return None
 
-    # RSI < 35 — max 20p
+    # RSI — max 20p
+    p_rsi = score_rsi(rsi)
     c_rsi = rsi < RSI_THRESH
-    p_rsi = max(0.0, min(20.0, (RSI_THRESH - rsi) / (RSI_THRESH - 10) * 20)) if c_rsi else 0.0
 
-    # Williams %R < -80 — max 15p
+    # Williams %R — max 15p
+    p_wr = score_wr(wr)
     c_wr = wr < WR_THRESH
-    p_wr = max(0.0, min(15.0, (abs(wr) - abs(WR_THRESH)) / (100 - abs(WR_THRESH)) * 15)) if c_wr else 0.0
 
-    # MFI < 20 — max 15p
+    # MFI — max 15p
+    p_mfi = score_mfi(mfi)
     c_mfi = mfi < MFI_THRESH
-    p_mfi = max(0.0, min(15.0, (MFI_THRESH - mfi) / MFI_THRESH * 15)) if c_mfi else 0.0
 
-    # MACD histogram donuyor — max 10p
-    c_macd = False
-    p_macd = 0.0
-    if mhist is not None and mhist_p is not None:
-        turning = (mhist > mhist_p) and (mhist_p < 0)
-        crossed = (mhist > 0) and (mhist_p <= 0)
-        c_macd  = turning or crossed
-        if crossed:
-            p_macd = 10.0
-        elif turning:
-            p_macd = min(7.0, abs(mhist - mhist_p) / max(abs(mhist_p), 1e-10) * 7.0)
+    # MACD histogram yaklasma hizi — max 10p
+    hist_series = df["macd_hist"].iloc[-7:-1].tolist()
+    p_macd, macd_txt, c_macd = score_macd(hist_series)
+    mhist = sf(last, "macd_hist")
 
     # BB alt banttan geri donus — max 5p
     c_bb = False
@@ -309,21 +469,34 @@ def analyze_1h(df):
         p_vol = min(5.0, (vol_ratio - 1.0) * 5.0) if vol_ratio > 1.0 else 0.0
 
     return {
-        "conditions": {"rsi": c_rsi, "wr": c_wr, "mfi": c_mfi, "macd": c_macd, "bb": c_bb, "vol": c_vol},
-        "score_1h":   round(p_rsi + p_wr + p_mfi + p_macd + p_bb + p_vol, 1),
-        "rsi":        round(rsi,  2),
-        "wr":         round(wr,   2),
-        "mfi":        round(mfi,  2),
-        "macd_hist":  round(mhist,   8) if mhist   is not None else None,
-        "macd_prev":  round(mhist_p, 8) if mhist_p is not None else None,
-        "bb_lower":   round(bb_lower, 8) if bb_lower is not None else None,
-        "vol_ratio":  round(vol_ratio, 2),
-        "atr":        round(atr, 8) if atr is not None else 0.0,
-        "entry":      round(entry, 8),
+        "conditions": {
+            "rsi":  c_rsi,
+            "wr":   c_wr,
+            "mfi":  c_mfi,
+            "macd": c_macd,
+            "bb":   c_bb,
+            "vol":  c_vol,
+        },
+        "score_1h":  round(p_rsi + p_wr + p_mfi + p_macd + p_bb + p_vol, 1),
+        "p_rsi":     round(p_rsi,  2),
+        "p_wr":      round(p_wr,   2),
+        "p_mfi":     round(p_mfi,  2),
+        "p_macd":    round(p_macd, 2),
+        "p_bb":      p_bb,
+        "p_vol":     round(p_vol,  2),
+        "rsi":       round(rsi, 2),
+        "wr":        round(wr,  2),
+        "mfi":       round(mfi, 2),
+        "macd_hist": round(mhist, 8) if mhist is not None else None,
+        "macd_txt":  macd_txt,
+        "bb_lower":  round(bb_lower, 8) if bb_lower is not None else None,
+        "vol_ratio": round(vol_ratio, 2),
+        "atr":       round(atr, 8) if atr is not None else 0.0,
+        "entry":     round(entry, 8),
     }
 
 # ============================================================
-# 6) 4H TEYİT — max 30 puan
+# 7) 4H TEYİT — max 30 puan
 # ============================================================
 def analyze_4h(df):
     if df is None or len(df) < 55:
@@ -336,33 +509,15 @@ def analyze_4h(df):
         v = row.get(col, np.nan)
         return None if pd.isna(v) else float(v)
 
-    ema20  = sf(last, "ema20")
-    sma50  = sf(last, "sma50")
     adx    = sf(last, "adx")
     obv    = sf(last, "obv")
     obv_ma = sf(last, "obv_ma")
 
-    if None in (ema20, sma50, adx):
+    if adx is None:
         return None
 
-    # EMA20 / SMA50 — max 10p
-    ema_above    = ema20 > sma50
-    recent_cross = False
-    for i in range(len(prev5) - 1):
-        r0 = prev5.iloc[i];   r1 = prev5.iloc[i + 1]
-        e0 = sf(r0, "ema20"); s0 = sf(r0, "sma50")
-        e1 = sf(r1, "ema20"); s1 = sf(r1, "sma50")
-        if None not in (e0, s0, e1, s1) and e0 <= s0 and e1 > s1:
-            recent_cross = True
-            break
-
-    c_ema = ema_above or recent_cross
-    if recent_cross:
-        p_ema = 10.0
-    elif ema_above:
-        p_ema = min(7.0, (ema20 - sma50) / sma50 * 100 * 2.0)
-    else:
-        p_ema = 0.0
+    # EMA20 / SMA50 — gap daralma sistemi — max 10p
+    p_ema, ema_txt, c_ema = score_ema_sma(df)
 
     # ADX >= 20 — max 10p
     c_adx = adx >= ADX_THRESH
@@ -376,28 +531,40 @@ def analyze_4h(df):
         c_obv      = obv > obv_ma
         obv_signal = "ortalama ustunde" if c_obv else "ortalama altinda"
         p_obv      = 10.0 if c_obv else 0.0
+        # Pozitif diverjans: fiyat dusmus ama OBV artmis
         if not c_obv and len(prev5) >= 3:
             try:
                 price_ch = float(prev5["close"].iloc[-1]) - float(prev5["close"].iloc[0])
                 obv_ch   = float(prev5["obv"].iloc[-1])   - float(prev5["obv"].iloc[0])
                 if price_ch < 0 and obv_ch > 0:
-                    c_obv = True; p_obv = 8.0; obv_signal = "pozitif diverjans"
+                    c_obv      = True
+                    p_obv      = 8.0
+                    obv_signal = "pozitif diverjans"
             except Exception:
                 pass
 
+    ema20 = sf(last, "ema20")
+    sma50 = sf(last, "sma50")
+
     return {
-        "conditions":   {"ema_cross": c_ema, "adx": c_adx, "obv": c_obv},
-        "score_4h":     round(p_ema + p_adx + p_obv, 1),
-        "ema20":        round(ema20, 4),
-        "sma50":        round(sma50, 4),
-        "ema_above":    ema_above,
-        "recent_cross": recent_cross,
-        "adx":          round(adx, 2),
-        "obv_signal":   obv_signal,
+        "conditions": {
+            "ema_cross": c_ema,
+            "adx":       c_adx,
+            "obv":       c_obv,
+        },
+        "score_4h":   round(p_ema + p_adx + p_obv, 1),
+        "p_ema":      round(p_ema, 2),
+        "p_adx":      round(p_adx, 2),
+        "p_obv":      p_obv,
+        "ema20":      round(ema20, 4) if ema20 is not None else None,
+        "sma50":      round(sma50, 4) if sma50 is not None else None,
+        "ema_txt":    ema_txt,
+        "adx":        round(adx, 2),
+        "obv_signal": obv_signal,
     }
 
 # ============================================================
-# 7) TAM ANALİZ
+# 8) TAM ANALİZ
 # ============================================================
 def full_analyze(symbol, df_1h, df_4h):
     r1h = analyze_1h(df_1h)
@@ -420,8 +587,8 @@ def full_analyze(symbol, df_1h, df_4h):
     target = round(entry + atr * ATR_TARGET_MULT, 8)
     stop   = round(entry - atr * ATR_STOP_MULT,   8)
 
-    score100 = min(int(round(score_total)), 100)
-    strength = "guclu" if score100 >= STRONG_SCORE else "normal"
+    score100  = min(int(round(score_total)), 100)
+    strength  = "guclu" if score100 >= STRONG_SCORE else "normal"
     met_count = sum({**r1h["conditions"], **r4h["conditions"]}.values())
 
     return {
@@ -435,6 +602,15 @@ def full_analyze(symbol, df_1h, df_4h):
         "score100":      score100,
         "score_1h":      r1h["score_1h"],
         "score_4h":      r4h["score_4h"],
+        "p_rsi":         r1h["p_rsi"],
+        "p_wr":          r1h["p_wr"],
+        "p_mfi":         r1h["p_mfi"],
+        "p_macd":        r1h["p_macd"],
+        "p_bb":          r1h["p_bb"],
+        "p_vol":         r1h["p_vol"],
+        "p_ema":         r4h["p_ema"],
+        "p_adx":         r4h["p_adx"],
+        "p_obv":         r4h["p_obv"],
         "strength":      strength,
         "met_count":     met_count,
         "conditions_1h": r1h["conditions"],
@@ -443,19 +619,16 @@ def full_analyze(symbol, df_1h, df_4h):
         "wr":            r1h["wr"],
         "mfi":           r1h["mfi"],
         "macd_hist":     r1h["macd_hist"],
-        "macd_prev":     r1h["macd_prev"],
+        "macd_txt":      r1h["macd_txt"],
         "vol_ratio":     r1h["vol_ratio"],
-        "ema20":         r4h["ema20"],
-        "sma50":         r4h["sma50"],
-        "ema_above":     r4h["ema_above"],
-        "recent_cross":  r4h["recent_cross"],
+        "ema_txt":       r4h["ema_txt"],
         "adx":           r4h["adx"],
         "obv_signal":    r4h["obv_signal"],
         "signal":        True,
     }
 
 # ============================================================
-# 8) TELEGRAM
+# 9) TELEGRAM
 # ============================================================
 def send_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -463,8 +636,12 @@ def send_telegram(text):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
+            json={
+                "chat_id":                  TELEGRAM_CHAT_ID,
+                "text":                     text,
+                "parse_mode":               "HTML",
+                "disable_web_page_preview": True,
+            },
             timeout=10,
         )
         if r.status_code != 200:
@@ -491,19 +668,20 @@ def build_tg_message(r, tr_time):
 
     def tick(v): return "✅" if v else "❌"
 
-    mh = r.get("macd_hist"); mp = r.get("macd_prev")
-    if mh is not None and mp is not None:
-        if mh > 0 and mp <= 0:   macd_txt = "yukari gecti ↑"
-        elif mh > mp and mp < 0: macd_txt = "donuyor ↑"
-        else:                    macd_txt = "negatif"
-    else:
-        macd_txt = "?"
-
     bb_txt  = "alt banttan geri donus" if c1.get("bb") else "tetiklenmedi"
     vol_txt = f"{r.get('vol_ratio', 0):.1f}x ortalama"
-    ema_txt = ("kesisim var (yakin)" if r.get("recent_cross")
-               else "EMA20 > SMA50" if r.get("ema_above")
-               else "EMA20 < SMA50")
+
+    puan_detay = (
+        f"RSI:{r.get('p_rsi',0):.1f}/20  "
+        f"W%R:{r.get('p_wr',0):.1f}/15  "
+        f"MFI:{r.get('p_mfi',0):.1f}/15\n"
+        f"MACD:{r.get('p_macd',0):.1f}/10  "
+        f"BB:{r.get('p_bb',0):.1f}/5  "
+        f"Vol:{r.get('p_vol',0):.1f}/5\n"
+        f"EMA:{r.get('p_ema',0):.1f}/10  "
+        f"ADX:{r.get('p_adx',0):.1f}/10  "
+        f"OBV:{r.get('p_obv',0):.1f}/10"
+    )
 
     return (
         f"🕐 {now}\n\n"
@@ -512,16 +690,17 @@ def build_tg_message(r, tr_time):
         f"🎯 Hedef:  {fmt_price(r.get('target'))} (+%{r.get('target_pct')})\n"
         f"🛡️ Stop:   {fmt_price(r.get('stop'))} (-%{r.get('stop_pct')})\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"📊 Puan: {sc}/100  {emoji}\n\n"
+        f"📊 Puan: {sc}/100  {emoji}\n"
+        f"<code>{puan_detay}</code>\n\n"
         f"1H Indiktorler:\n"
         f"RSI(14)      →  {r.get('rsi')}  {tick(c1.get('rsi'))}\n"
         f"Williams %R  →  {r.get('wr')}  {tick(c1.get('wr'))}\n"
         f"MFI(14)      →  {r.get('mfi')}  {tick(c1.get('mfi'))}\n"
-        f"MACD Hist    →  {macd_txt}  {tick(c1.get('macd'))}\n"
+        f"MACD Hist    →  {r.get('macd_txt')}  {tick(c1.get('macd'))}\n"
         f"BB           →  {bb_txt}  {tick(c1.get('bb'))}\n"
         f"Hacim        →  {vol_txt}  {tick(c1.get('vol'))}\n\n"
         f"4H Teyit:\n"
-        f"EMA20/SMA50  →  {ema_txt}  {tick(c4.get('ema_cross'))}\n"
+        f"EMA20/SMA50  →  {r.get('ema_txt')}  {tick(c4.get('ema_cross'))}\n"
         f"ADX          →  {r.get('adx')}  {tick(c4.get('adx'))}\n"
         f"OBV          →  {r.get('obv_signal')}  {tick(c4.get('obv'))}\n"
         f"━━━━━━━━━━━━━━━━\n"
@@ -529,7 +708,7 @@ def build_tg_message(r, tr_time):
     )
 
 # ============================================================
-# 9) BOOTSTRAP
+# 10) BOOTSTRAP
 # ============================================================
 async def bootstrap_symbol(symbol):
     try:
@@ -558,7 +737,7 @@ async def bootstrap_all(symbols):
     print(f"Bootstrap bitti | {ok}/{len(symbols)}", flush=True)
 
 # ============================================================
-# 10) MUM KAPANISINI ISLE
+# 11) MUM KAPANISINI ISLE
 # ============================================================
 def safe_float(val, dec=4):
     try:
@@ -580,7 +759,8 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
     df1.loc[tstamp, ["open","high","low","close","volume"]] = [o, h, l, c, v]
     df1 = df1.sort_index()
-    if len(df1) > KEEP_1H: df1 = df1.iloc[-KEEP_1H:]
+    if len(df1) > KEEP_1H:
+        df1 = df1.iloc[-KEEP_1H:]
     df1 = prepare_1h(df1)
     bars_1h[symbol] = df1
 
@@ -612,25 +792,32 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     if result is None:
         return
 
-    await candidate_queue.put(SignalCandidate(symbol=symbol, result=result, tr_time=tr_now))
+    await candidate_queue.put(SignalCandidate(
+        symbol=symbol, result=result, tr_time=tr_now,
+    ))
 
 async def on_4h_close(symbol, o, h, l, c, v, ts_ms):
     df4 = bars_4h.get(symbol)
-    if df4 is None: return
+    if df4 is None:
+        return
     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
     df4.loc[tstamp, ["open","high","low","close","volume"]] = [o, h, l, c, v]
     df4 = df4.sort_index()
-    if len(df4) > KEEP_4H: df4 = df4.iloc[-KEEP_4H:]
+    if len(df4) > KEEP_4H:
+        df4 = df4.iloc[-KEEP_4H:]
     bars_4h[symbol] = prepare_4h(df4)
 
 # ============================================================
-# 11) SİNYAL WORKER
+# 12) SİNYAL WORKER
 # ============================================================
 async def signal_worker(candidate_queue):
     while True:
         sig = await candidate_queue.get()
         try:
-            symbol = sig.symbol; result = sig.result; tr_time = sig.tr_time
+            symbol  = sig.symbol
+            result  = sig.result
+            tr_time = sig.tr_time
+
             try:
                 ticker    = await api_gate.call(exchange.fetch_ticker, symbol)
                 liquidity = float(ticker.get("quoteVolume", 0) or 0)
@@ -643,28 +830,36 @@ async def signal_worker(candidate_queue):
             send_telegram(build_tg_message(result, tr_time))
             last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
             all_signals.insert(0, result)
-            if len(all_signals) > 200: all_signals.pop()
+            if len(all_signals) > 200:
+                all_signals.pop()
             stats["signal_sent"] += 1
+
             print(
-                f"SINYAL: {symbol} | {result['score100']}/100 {result['strength']} | "
-                f"RSI:{result['rsi']} WR:{result['wr']} MFI:{result['mfi']} ADX:{result['adx']}",
+                f"SINYAL: {symbol} | {result['score100']}/100 [{result['strength']}] | "
+                f"RSI:{result['rsi']}({result['p_rsi']}p) "
+                f"WR:{result['wr']}({result['p_wr']}p) "
+                f"MFI:{result['mfi']}({result['p_mfi']}p) "
+                f"MACD:{result['p_macd']}p "
+                f"EMA:{result['p_ema']}p "
+                f"ADX:{result['adx']}({result['p_adx']}p)",
                 flush=True
             )
+
         except Exception as e:
             print(f"Worker hata: {str(e)[:100]}", flush=True)
         finally:
             candidate_queue.task_done()
 
 # ============================================================
-# 12) WEBSOCKET
+# 13) WEBSOCKET
 # ============================================================
 def to_ws(symbol):
     return symbol.replace("/", "").lower()
 
 async def ws_1h_chunk(symbols, candidate_queue):
     streams = "/".join([f"{to_ws(s)}@kline_1h" for s in symbols])
-    url = f"wss://stream.binance.com:9443/stream?streams={streams}"
-    retry = 0
+    url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    retry   = 0
     while True:
         try:
             async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
@@ -676,19 +871,23 @@ async def ws_1h_chunk(symbols, candidate_queue):
                     k    = data.get("data", {}).get("k", {})
                     if not k.get("x", False): continue
                     sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
-                    await on_1h_close(sym, float(k["o"]), float(k["h"]),
-                                      float(k["l"]), float(k["c"]),
-                                      float(k["v"]), int(k["t"]), candidate_queue)
+                    await on_1h_close(
+                        sym,
+                        float(k["o"]), float(k["h"]),
+                        float(k["l"]), float(k["c"]),
+                        float(k["v"]), int(k["t"]),
+                        candidate_queue,
+                    )
         except Exception as e:
-            retry += 1
+            retry  += 1
             backoff = min(60, 5 * (2 ** min(retry, 4)))
             print(f"1H WS koptu -> {backoff}s: {str(e)[:50]}", flush=True)
             await asyncio.sleep(backoff)
 
 async def ws_4h_chunk(symbols):
     streams = "/".join([f"{to_ws(s)}@kline_4h" for s in symbols])
-    url = f"wss://stream.binance.com:9443/stream?streams={streams}"
-    retry = 0
+    url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    retry   = 0
     while True:
         try:
             async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
@@ -700,11 +899,14 @@ async def ws_4h_chunk(symbols):
                     k    = data.get("data", {}).get("k", {})
                     if not k.get("x", False): continue
                     sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
-                    await on_4h_close(sym, float(k["o"]), float(k["h"]),
-                                      float(k["l"]), float(k["c"]),
-                                      float(k["v"]), int(k["t"]))
+                    await on_4h_close(
+                        sym,
+                        float(k["o"]), float(k["h"]),
+                        float(k["l"]), float(k["c"]),
+                        float(k["v"]), int(k["t"]),
+                    )
         except Exception as e:
-            retry += 1
+            retry  += 1
             backoff = min(60, 5 * (2 ** min(retry, 4)))
             print(f"4H WS koptu -> {backoff}s: {str(e)[:50]}", flush=True)
             await asyncio.sleep(backoff)
@@ -718,7 +920,7 @@ async def ws_all(symbols, candidate_queue):
     await asyncio.gather(*tasks)
 
 # ============================================================
-# 13) FLASK DASHBOARD
+# 14) FLASK DASHBOARD
 # ============================================================
 flask_app  = Flask(__name__)
 bot_status = {"status": "BOOT", "signal_count": 0}
@@ -734,14 +936,16 @@ def beat(symbol=None, status=None):
     global _last_beat
     now = time.time()
     if now - _last_beat >= 10:
-        heartbeat["last"] = tr_now_str(); heartbeat["epoch"] = now
+        heartbeat["last"]  = tr_now_str()
+        heartbeat["epoch"] = now
         if symbol: heartbeat["symbol"] = symbol
         if status: heartbeat["status"] = status
         _last_beat = now
 
 def heartbeat_pinger():
     while True:
-        heartbeat["last"] = tr_now_str(); heartbeat["epoch"] = time.time()
+        heartbeat["last"]  = tr_now_str()
+        heartbeat["epoch"] = time.time()
         time.sleep(15)
 
 def watchdog_thread():
@@ -768,14 +972,22 @@ def score_color(s):
 
 @flask_app.route("/")
 def home():
-    now = datetime.now(TR_TZ).strftime("%H:%M:%S")
+    now      = datetime.now(TR_TZ).strftime("%H:%M:%S")
     sig_rows = ""
+
     for s in all_signals[:20]:
-        sc  = s.get("score100", 0)
-        col = score_color(sc)
-        c1  = s.get("conditions_1h", {}); c4 = s.get("conditions_4h", {})
-        met = sum(c1.values()) + sum(c4.values())
-        lbl = "Guclu ⚡" if s.get("strength") == "guclu" else "Normal"
+        sc   = s.get("score100", 0)
+        col  = score_color(sc)
+        c1   = s.get("conditions_1h", {})
+        c4   = s.get("conditions_4h", {})
+        met  = sum(c1.values()) + sum(c4.values())
+        lbl  = "Guclu ⚡" if s.get("strength") == "guclu" else "Normal"
+        puan = (
+            f"RSI:{s.get('p_rsi',0):.0f} WR:{s.get('p_wr',0):.0f} "
+            f"MFI:{s.get('p_mfi',0):.0f} MACD:{s.get('p_macd',0):.0f} "
+            f"BB:{s.get('p_bb',0):.0f} Vol:{s.get('p_vol',0):.0f} | "
+            f"EMA:{s.get('p_ema',0):.0f} ADX:{s.get('p_adx',0):.0f} OBV:{s.get('p_obv',0):.0f}"
+        )
         sig_rows += (
             f'<div class="sig">'
             f'<div class="sr"><b>{s.get("symbol","")}</b>'
@@ -785,11 +997,14 @@ def home():
             f' → 🎯 {fmt_price(s.get("target"))} (+%{s.get("target_pct","")})'
             f'  🛡️ {fmt_price(s.get("stop"))} (-%{s.get("stop_pct","")})</div>'
             f'<div class="sd">RSI {s.get("rsi","")} | W%R {s.get("wr","")} | MFI {s.get("mfi","")} | ADX {s.get("adx","")}</div>'
+            f'<div class="sd" style="color:#3d5a6a;font-size:.65rem">{puan}</div>'
             f'<div class="sd" style="color:#3d5a6a">{s.get("time","")[:16]} UTC</div>'
             f'</div>'
         )
+
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Scanner v3</title>
+<html><head>
+<meta charset="UTF-8"><title>Scanner v3.1</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -805,7 +1020,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.8rem;letter-spacing:2px}}
 .sd{{font-size:.75rem;margin:3px 0;color:#8aa8b8}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:24px;border-top:1px solid #1c2a36;padding-top:12px;line-height:2}}
 </style></head><body>
-<h1>TREND & MOMENTUM SCANNER <small style="font-size:.65rem;color:#3d5a6a">1H + 4H</small></h1>
+<h1>TREND & MOMENTUM SCANNER <small style="font-size:.65rem;color:#3d5a6a">v3.1 | 1H + 4H</small></h1>
 <div class="stats">
   <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
   <div class="stat"><span class="sv">{ws_1h_closes}</span><span class="sl">1H Kapanis</span></div>
@@ -819,23 +1034,31 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.8rem;letter-spacing:2px}}
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}<br>
   Eleme: Skor:{stats.get("score_low",0)} Cooldown:{stats.get("cooldown",0)}
   Hacim:{stats.get("low_liquidity",0)} 4H:{stats.get("no_4h_data",0)} 1H:{stats.get("data_missing",0)}
-</div></body></html>"""
+</div>
+</body></html>"""
 
 @flask_app.route("/api/status")
 def api_status():
     data = clean_json({
-        "status": bot_status["status"], "total_symbols": len(tracked_symbols),
-        "ws_1h_closes": ws_1h_closes, "signals": all_signals[:30],
-        "last_scan": dict(last_scan_result), "stats": dict(stats), "heartbeat": heartbeat,
+        "status":        bot_status["status"],
+        "total_symbols": len(tracked_symbols),
+        "ws_1h_closes":  ws_1h_closes,
+        "signals":       all_signals[:30],
+        "last_scan":     dict(last_scan_result),
+        "stats":         dict(stats),
+        "heartbeat":     heartbeat,
     })
-    return flask_app.response_class(json.dumps(data, ensure_ascii=False), mimetype="application/json")
+    return flask_app.response_class(
+        json.dumps(data, ensure_ascii=False),
+        mimetype="application/json",
+    )
 
 @flask_app.route("/api/health")
 def api_health():
     return {"status": "ok", "time": tr_now_str()}
 
 # ============================================================
-# 14) MAIN
+# 15) MAIN
 # ============================================================
 async def periodic_summary():
     while True:
@@ -843,13 +1066,15 @@ async def periodic_summary():
         print_summary()
 
 async def main():
-    print("Trend & Momentum Scanner v3.0 baslatiliyor...", flush=True)
+    print("Trend & Momentum Scanner v3.1 baslatiliyor...", flush=True)
+
     symbols = await load_symbols_pool()
     if not symbols:
-        print("Sembol yuklenemedi", flush=True); return
+        print("Sembol yuklenemedi", flush=True)
+        return
 
     global tracked_symbols
-    tracked_symbols = list(symbols)
+    tracked_symbols      = list(symbols)
     bot_status["status"] = "BOOTSTRAP"
     print(f"{len(symbols)} sembol yuklendi", flush=True)
 
@@ -862,6 +1087,7 @@ async def main():
 
     bot_status["status"] = "LIVE"
     print(f"WebSocket canli | {len(symbols)} sembol | 1H + 4H", flush=True)
+
     await ws_all(symbols, candidate_queue)
 
 def start_flask():
@@ -872,6 +1098,7 @@ if __name__ == "__main__":
     threading.Thread(target=start_flask,      daemon=True).start()
     threading.Thread(target=heartbeat_pinger, daemon=True).start()
     threading.Thread(target=watchdog_thread,  daemon=True).start()
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
