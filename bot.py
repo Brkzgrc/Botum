@@ -1068,7 +1068,7 @@ async def ws_1h_chunk(symbols, candidate_queue):
     retry   = 0
     while True:
         try:
-            async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
+            async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
                 retry = 0
                 print(f"1H WS baglandi ({len(symbols)} sembol)", flush=True)
                 while True:
@@ -1096,7 +1096,7 @@ async def ws_4h_chunk(symbols):
     retry   = 0
     while True:
         try:
-            async with websockets.connect(url, ping_interval=30, ping_timeout=30) as ws:
+            async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
                 retry = 0
                 print(f"4H WS baglandi ({len(symbols)} sembol)", flush=True)
                 while True:
