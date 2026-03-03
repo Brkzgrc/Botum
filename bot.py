@@ -282,6 +282,41 @@ def prepare_4h(df):
     obv = ta.obv(df["close"], df["volume"])
     df["obv"]    = obv if obv is not None else np.nan
     df["obv_ma"] = df["obv"].rolling(20, min_periods=1).mean()
+
+    # ── Squeeze Momentum (LazyBear) ──────────────────────────
+    sqz_len     = 20
+    bb_mult     = 2.0
+    kc_mult     = 1.5
+    bb_basis    = df["close"].rolling(sqz_len).mean()
+    bb_dev      = df["close"].rolling(sqz_len).std()
+    bb_upper    = bb_basis + bb_mult * bb_dev
+    bb_lower    = bb_basis - bb_mult * bb_dev
+    tr          = pd.concat([
+        df["high"] - df["low"],
+        (df["high"] - df["close"].shift(1)).abs(),
+        (df["low"]  - df["close"].shift(1)).abs(),
+    ], axis=1).max(axis=1)
+    kc_ma       = df["close"].rolling(sqz_len).mean()
+    kc_range    = tr.rolling(sqz_len).mean()
+    kc_upper    = kc_ma + kc_mult * kc_range
+    kc_lower    = kc_ma - kc_mult * kc_range
+    df["sqz_on"]  = (bb_lower > kc_lower) & (bb_upper < kc_upper)
+    df["sqz_off"] = (bb_lower < kc_lower) & (bb_upper > kc_upper)
+    # Momentum: linreg delta
+    highest  = df["high"].rolling(sqz_len).max()
+    lowest   = df["low"].rolling(sqz_len).min()
+    delta    = df["close"] - ((highest + lowest) / 2 + bb_basis) / 2
+    val_arr  = delta.values.astype(float)
+    sqz_val  = np.full(len(val_arr), np.nan)
+    for i in range(sqz_len - 1, len(val_arr)):
+        y = val_arr[i - sqz_len + 1: i + 1]
+        if np.any(np.isnan(y)):
+            continue
+        x = np.arange(sqz_len, dtype=float)
+        p = np.polyfit(x, y, 1)
+        sqz_val[i] = p[0] * (sqz_len - 1) + p[1]
+    df["sqz_val"] = sqz_val
+
     return df
 
 # ============================================================
@@ -512,14 +547,29 @@ def analyze_1h(df):
         c_bb = (low_v <= bb_lower * 1.002) and (close_v > bb_lower)
         p_bb = 5.0 if c_bb else 0.0
 
-    # Hacim artisi — max 5p
-    c_vol     = False
-    p_vol     = 0.0
-    vol_ratio = 0.0
-    if vol is not None and vol_ma is not None and vol_ma > 0:
-        vol_ratio = vol / vol_ma
-        c_vol = vol_ratio >= 1.2
-        p_vol = min(5.0, (vol_ratio - 1.0) * 5.0) if vol_ratio > 1.0 else 0.0
+    # Hacim — alici/satici orani (Elder-Ray tarzı) — max 5p
+    c_vol       = False
+    p_vol       = 0.0
+    vol_ratio   = 0.0
+    bvol_pct    = 0.0   # alici hacim yuzdesi
+    h_v = sf(last, "high"); l_v = sf(last, "low")
+    if (vol is not None and vol_ma is not None and vol_ma > 0
+            and h_v is not None and l_v is not None
+            and close_v is not None and (h_v - l_v) > 0):
+        vol_ratio  = vol / vol_ma
+        bvol       = vol * (close_v - l_v) / (h_v - l_v)   # alici hacim
+        svol       = vol * (h_v - close_v) / (h_v - l_v)   # satici hacim
+        bvol_pct   = bvol / (bvol + svol) * 100 if (bvol + svol) > 0 else 50.0
+        # Alici agirlikli VE toplam hacim ortalamanin uzerinde
+        c_vol = bvol_pct >= 55.0 and vol_ratio >= 1.0
+        if bvol_pct >= 65.0 and vol_ratio >= 1.2:
+            p_vol = 5.0
+        elif bvol_pct >= 60.0 and vol_ratio >= 1.0:
+            p_vol = 3.5
+        elif bvol_pct >= 55.0:
+            p_vol = 2.0
+        else:
+            p_vol = 0.0
 
     return {
         "conditions": {
@@ -547,6 +597,7 @@ def analyze_1h(df):
         "macd_txt":  macd_txt,
         "bb_lower":  round(bb_lower, 8) if bb_lower is not None else None,
         "vol_ratio": round(vol_ratio, 2),
+        "bvol_pct":  round(bvol_pct, 1),
         "atr":       round(atr, 8) if atr is not None else 0.0,
         "entry":     round(entry, 8),
     }
@@ -602,13 +653,36 @@ def analyze_4h(df):
     ema20 = sf(last, "ema20")
     sma50 = sf(last, "sma50")
 
+    # Squeeze Momentum — max 4p bonus (OBV ile birlikte max 10p kalir)
+    sqz_on  = bool(last.get("sqz_on",  False))
+    sqz_off = bool(last.get("sqz_off", False))
+    sqz_val_now  = sf(last, "sqz_val")
+    sqz_val_prev = sf(df.iloc[-3], "sqz_val") if len(df) >= 3 else None
+    p_sqz  = 0.0
+    sqz_txt = "veri yok"
+    if sqz_val_now is not None and sqz_val_prev is not None:
+        momentum_up = sqz_val_now > sqz_val_prev and sqz_val_now > 0
+        if sqz_off and momentum_up:
+            p_sqz  = 4.0   # squeeze bitti + momentum yukari
+            sqz_txt = "squeeze bitti + momentum yukari ↑"
+        elif momentum_up:
+            p_sqz  = 2.0
+            sqz_txt = "momentum yukari ↑"
+        elif sqz_on:
+            p_sqz  = 0.0
+            sqz_txt = "squeeze devam ediyor"
+        else:
+            sqz_txt = "momentum asagi"
+    # OBV max 8p, sqz max 4p — toplam 4H max 32p (genel max 102 olabilir, min(100) ile kesilir)
+    p_obv = min(p_obv, 8.0)
+
     return {
         "conditions": {
             "ema_cross": c_ema,
             "adx":       c_adx,
             "obv":       c_obv,
         },
-        "score_4h":   round(p_ema + p_adx + p_obv, 1),
+        "score_4h":   round(p_ema + p_adx + p_obv + p_sqz, 1),
         "p_ema":      round(p_ema, 2),
         "p_adx":      round(p_adx, 2),
         "p_obv":      p_obv,
@@ -617,6 +691,10 @@ def analyze_4h(df):
         "ema_txt":    ema_txt,
         "adx":        round(adx, 2),
         "obv_signal": obv_signal,
+        "p_sqz":      round(p_sqz, 2),
+        "sqz_txt":    sqz_txt,
+        "sqz_on":     sqz_on,
+        "sqz_off":    sqz_off,
     }
 
 # ============================================================
@@ -680,9 +758,14 @@ def full_analyze(symbol, df_1h, df_4h):
         "macd_hist":     r1h["macd_hist"],
         "macd_txt":      r1h["macd_txt"],
         "vol_ratio":     r1h["vol_ratio"],
+        "bvol_pct":      r1h["bvol_pct"],
         "ema_txt":       r4h["ema_txt"],
         "adx":           r4h["adx"],
         "obv_signal":    r4h["obv_signal"],
+        "p_sqz":         r4h["p_sqz"],
+        "sqz_txt":       r4h["sqz_txt"],
+        "sqz_on":        r4h["sqz_on"],
+        "sqz_off":       r4h["sqz_off"],
         "signal":        True,
     }
 
@@ -719,52 +802,116 @@ def fmt_price(price):
 def build_tg_message(r, tr_time):
     sc    = r["score100"]
     emoji = "🟢" if sc >= STRONG_SCORE else ("🟡" if sc >= MIN_SCORE else "🔴")
-    label = "Guclu Sinyal ⚡" if r["strength"] == "guclu" else "Normal Sinyal"
+    label = "GÜÇLÜ SİNYAL ⚡" if r["strength"] == "guclu" else "NORMAL SİNYAL"
     sym   = r["symbol"].replace("/", "").replace("USDT", "")
     now   = tr_time.strftime("%d/%m/%Y %H:%M")
     c1    = r["conditions_1h"]
     c4    = r["conditions_4h"]
 
-    def tick(v): return "✅" if v else "❌"
+    # Renk fonksiyonlari (HTML)
+    def grn(t):  return f'<b><i>{t}</i></b>'   # yesil yerine bold-italic (TG destegi)
+    def bold(t): return f'<b>{t}</b>'
+    def code(t): return f'<code>{t}</code>'
 
-    bb_txt  = "alt banttan geri donus" if c1.get("bb") else "tetiklenmedi"
-    vol_txt = f"{r.get('vol_ratio', 0):.1f}x ortalama"
+    # Deger renklendirme: iyi=yesil emoji, kotu=kirmizi, normal=sari
+    def val_color(val, good_thresh, bad_thresh, invert=False):
+        """invert=True: kucuk deger iyi (RSI, WR, MFI icin)"""
+        if val is None: return "—"
+        if invert:
+            if val <= good_thresh:  return f"🟢 {val}"
+            elif val >= bad_thresh: return f"🔴 {val}"
+            else:                   return f"🟡 {val}"
+        else:
+            if val >= good_thresh:  return f"🟢 {val}"
+            elif val <= bad_thresh: return f"🔴 {val}"
+            else:                   return f"🟡 {val}"
 
-    puan_detay = (
-        f"RSI:{r.get('p_rsi',0):.1f}/20  "
-        f"W%R:{r.get('p_wr',0):.1f}/15  "
-        f"MFI:{r.get('p_mfi',0):.1f}/15\n"
-        f"MACD:{r.get('p_macd',0):.1f}/10  "
-        f"BB:{r.get('p_bb',0):.1f}/5  "
-        f"Vol:{r.get('p_vol',0):.1f}/5\n"
-        f"EMA:{r.get('p_ema',0):.1f}/10  "
-        f"ADX:{r.get('p_adx',0):.1f}/10  "
-        f"OBV:{r.get('p_obv',0):.1f}/10"
-    )
+    def puan_bar(p, max_p):
+        """Puan doluluk gostergesi"""
+        filled = round(p / max_p * 5)
+        return "█" * filled + "░" * (5 - filled) + f" {p:.1f}/{max_p}"
 
-    return (
-        f"🕐 {now}\n\n"
-        f"#{sym}/USDT  •  1H + 4H teyit\n\n"
-        f"💵 Giris:  {fmt_price(r.get('entry'))}\n"
-        f"🎯 Hedef:  {fmt_price(r.get('target'))} (+%{r.get('target_pct')})\n"
-        f"🛡️ Stop:   {fmt_price(r.get('stop'))} (-%{r.get('stop_pct')})\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"📊 Puan: {sc}/100  {emoji}\n"
-        f"<code>{puan_detay}</code>\n\n"
-        f"1H Indiktorler:\n"
-        f"RSI(14)      →  {r.get('rsi')}{'  🔄 cycler cikis' if r.get('rsi_cycler_exit') else ''}  {tick(c1.get('rsi'))}\n"
-        f"Williams %R  →  {r.get('wr')}  {tick(c1.get('wr'))}\n"
-        f"MFI(14)      →  {r.get('mfi')}{'  🔔 kesme ani' if r.get('mfi_cross') else ''}  {tick(c1.get('mfi'))}\n"
-        f"MACD Hist    →  {r.get('macd_txt')}  {tick(c1.get('macd'))}\n"
-        f"BB           →  {bb_txt}  {tick(c1.get('bb'))}\n"
-        f"Hacim        →  {vol_txt}  {tick(c1.get('vol'))}\n\n"
-        f"4H Teyit:\n"
-        f"EMA20/SMA50  →  {r.get('ema_txt')}  {tick(c4.get('ema_cross'))}\n"
-        f"ADX          →  {r.get('adx')}  {tick(c4.get('adx'))}\n"
-        f"OBV          →  {r.get('obv_signal')}  {tick(c4.get('obv'))}\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ {label}"
-    )
+    # Degerler
+    rsi_v    = r.get("rsi")
+    wr_v     = r.get("wr")
+    mfi_v    = r.get("mfi")
+    adx_v    = r.get("adx")
+    bvol_v   = r.get("bvol_pct", 0)
+    vol_r    = r.get("vol_ratio", 0)
+
+    rsi_txt  = val_color(rsi_v,  25, 35, invert=True)
+    wr_txt   = val_color(wr_v,  -90, -80, invert=True)
+    mfi_txt  = val_color(mfi_v,  10, 20, invert=True)
+    adx_txt  = val_color(adx_v,  30, 20)
+    bvol_txt = val_color(round(bvol_v, 1), 60, 50) + "% alici" if bvol_v else "🟡 —"
+    vol_txt  = f"🟢 {vol_r:.1f}x" if vol_r >= 1.5 else (f"🟡 {vol_r:.1f}x" if vol_r >= 1.0 else f"🔴 {vol_r:.1f}x")
+
+    macd_t   = r.get("macd_txt", "—")
+    macd_col = "🟢" if c1.get("macd") else "🟡"
+    bb_t     = "geri donus" if c1.get("bb") else "tetiklenmedi"
+    bb_col   = "🟢" if c1.get("bb") else "🔴"
+    ema_t    = r.get("ema_txt", "—")
+    ema_col  = "🟢" if c4.get("ema_cross") else "🟡"
+    obv_t    = r.get("obv_signal", "—")
+    obv_col  = "🟢" if c4.get("obv") else "🔴"
+    sqz_t    = r.get("sqz_txt", "—")
+    sqz_col  = "🟢" if r.get("sqz_off") else ("🟡" if r.get("sqz_on") else "⚪")
+
+    cycler_sfx = "  🔄" if r.get("rsi_cycler_exit") else ""
+    mfi_sfx    = "  🔔" if r.get("mfi_cross") else ""
+
+    # Puan detay satirlari
+    p_rsi  = r.get("p_rsi",  0)
+    p_wr   = r.get("p_wr",   0)
+    p_mfi  = r.get("p_mfi",  0)
+    p_macd = r.get("p_macd", 0)
+    p_bb   = r.get("p_bb",   0)
+    p_vol  = r.get("p_vol",  0)
+    p_ema  = r.get("p_ema",  0)
+    p_adx  = r.get("p_adx",  0)
+    p_obv  = r.get("p_obv",  0)
+    p_sqz  = r.get("p_sqz",  0)
+
+    lines = [
+        f"🕐 {now}",
+        "",
+        f"{bold(f'#{sym}/USDT')}  •  1H + 4H teyit",
+        "",
+        f"💵 {bold('Giriş:')}  {fmt_price(r.get('entry'))}",
+        f"🎯 {bold('Hedef:')}  {fmt_price(r.get('target'))}  {code(f'+%{r.get('target_pct')}' )}",
+        f"🛡️ {bold('Stop:')}   {fmt_price(r.get('stop'))}  {code(f'-%{r.get('stop_pct')}')}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"📊 {bold('PUAN:')}  {bold(str(sc))}/100  {emoji}  —  {bold(label)}",
+        "",
+        code(
+            f"RSI  {puan_bar(p_rsi,  20)}\n"
+            f"W%R  {puan_bar(p_wr,   15)}\n"
+            f"MFI  {puan_bar(p_mfi,  15)}\n"
+            f"MACD {puan_bar(p_macd, 10)}\n"
+            f"BB   {puan_bar(p_bb,    5)}\n"
+            f"Vol  {puan_bar(p_vol,   5)}\n"
+            f"EMA  {puan_bar(p_ema,  10)}\n"
+            f"ADX  {puan_bar(p_adx,  10)}\n"
+            f"OBV  {puan_bar(p_obv,  10)}\n"
+            f"SQZ  {puan_bar(p_sqz,   4)}"
+        ),
+        "",
+        bold("── 1H İndikatörler ──"),
+        f"{bold('RSI(14)')}      {rsi_txt}{cycler_sfx}",
+        f"{bold('Williams %R')}  {wr_txt}",
+        f"{bold('MFI(14)')}      {mfi_txt}{mfi_sfx}",
+        f"{bold('MACD Hist')}    {macd_col} {macd_t}",
+        f"{bold('Bol. Band')}    {bb_col} {bb_t}",
+        f"{bold('Hacim')}        {vol_txt}  ({bvol_txt})",
+        "",
+        bold("── 4H Teyit ──"),
+        f"{bold('EMA20/SMA50')}  {ema_col} {ema_t}",
+        f"{bold('ADX')}          {adx_txt}",
+        f"{bold('OBV')}          {obv_col} {obv_t}",
+        f"{bold('Squeeze')}      {sqz_col} {sqz_t}",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    return "\n".join(lines)
 
 # ============================================================
 # 10) BOOTSTRAP
