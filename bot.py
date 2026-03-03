@@ -202,11 +202,50 @@ async def fetch_df(symbol, timeframe, limit):
 def prepare_1h(df):
     df = df.copy()
     df["rsi"] = ta.rsi(df["close"], length=14)
+
+    # Better RSI — Cycler
+    # RSI > 69 → bullish mod (1), RSI < 31 → bearish mod (2)
+    # Mod sifirlanir: bullish modda RSI < 39, bearish modda RSI > 61
+    cycler = [0] * len(df)
+    rsi_vals = df["rsi"].tolist()
+    for i in range(1, len(rsi_vals)):
+        r = rsi_vals[i]
+        prev = cycler[i - 1]
+        if r is None or (isinstance(r, float) and np.isnan(r)):
+            cycler[i] = prev
+            continue
+        if r > 69:
+            cycler[i] = 1   # bullish mod
+        elif r < 31:
+            cycler[i] = 2   # bearish mod
+        elif prev == 1 and r < 39:
+            cycler[i] = 0   # bullish moddan cikis
+        elif prev == 2 and r > 61:
+            cycler[i] = 0   # bearish moddan cikis
+        else:
+            cycler[i] = prev
+    df["rsi_cycler"] = cycler
+    # Bearish moddan cikis ani: bir onceki mum cycler==2, bu mum cycler==0
+    df["rsi_cycler_exit"] = (df["rsi_cycler"].shift(1) == 2) & (df["rsi_cycler"] == 0)
     h14 = df["high"].rolling(14)
     l14 = df["low"].rolling(14)
     df["wr"] = -100 * (h14.max() - df["close"]) / (h14.max() - l14.min())
-    mfi = ta.mfi(df["high"], df["low"], df["close"], df["volume"], length=14)
-    df["mfi"] = mfi if mfi is not None else np.nan
+    # MFI — TradingView RJR versiyonu (SMA tabanli, kesme ani sinyali)
+    # rawMoneyFlow = hlc3 * volume
+    # positiveFlow = hlc3 > hlc3[1] ise rawMoneyFlow, yoksa 0
+    # negativeFlow = hlc3 < hlc3[1] ise rawMoneyFlow, yoksa 0
+    # ratio = sma(positiveFlow, 14) / sma(negativeFlow, 14)
+    # MFI = 100 - 100 / (1 + ratio)
+    hlc3          = (df["high"] + df["low"] + df["close"]) / 3
+    raw_mf        = hlc3 * df["volume"]
+    pos_mf        = raw_mf.where(hlc3 > hlc3.shift(1), 0.0)
+    neg_mf        = raw_mf.where(hlc3 < hlc3.shift(1), 0.0)
+    pos_sma       = pos_mf.rolling(14, min_periods=14).mean()
+    neg_sma       = neg_mf.rolling(14, min_periods=14).mean()
+    mf_ratio      = pos_sma / neg_sma.replace(0, np.nan)
+    df["mfi"]     = 100 - 100 / (1 + mf_ratio)
+    # Kesme ani: bir onceki mum 20 ustunde, simdi 20 altina gecti
+    df["mfi_cross_os"] = (df["mfi"].shift(1) > 20) & (df["mfi"] <= 20)
     macd_df = ta.macd(df["close"], fast=12, slow=26, signal=9)
     if macd_df is not None:
         cols     = macd_df.columns.tolist()
@@ -272,16 +311,22 @@ def score_wr(wr) -> float:
         return 15.0
     return round((WR_THRESH - wr) / (WR_THRESH - WR_CEIL) * 15.0, 2)
 
-def score_mfi(mfi) -> float:
+def score_mfi(mfi, cross=False) -> float:
     """
-    MFI_CEIL (5) ve altinda → 15 tam puan
-    MFI_THRESH (20) ve uzerinde → 0 puan
+    TV RJR MFI mantigi:
+    - Kesme ani (az once 20'yi asagi kesti): 15 tam puan
+    - Zaten 20 altinda (kesme degil): deger derinligine gore 0-12p
+    - MFI_THRESH (20) ve uzerinde: 0 puan
+
+    Kesme anina bonus verilir cunku TV'deki sinyal mantigi budur.
     """
     if mfi is None or mfi >= MFI_THRESH:
         return 0.0
+    if cross:
+        return 15.0   # tam puan — tam kesme ani
     if mfi <= MFI_CEIL:
-        return 15.0
-    return round((MFI_THRESH - mfi) / (MFI_THRESH - MFI_CEIL) * 15.0, 2)
+        return 12.0   # cok derin ama kesme ani degil — biraz dusuk
+    return round((MFI_THRESH - mfi) / (MFI_THRESH - MFI_CEIL) * 12.0, 2)
 
 def score_macd(hist_series) -> tuple:
     """
@@ -423,8 +468,9 @@ def analyze_1h(df):
 
     rsi      = sf(last, "rsi")
     wr       = sf(last, "wr")
-    mfi      = sf(last, "mfi")
-    bb_lower = sf(last, "bb_lower")
+    mfi           = sf(last, "mfi")
+    mfi_cross_os  = bool(last.get("mfi_cross_os", False))   # TV kesme ani
+    bb_lower      = sf(last, "bb_lower")
     close_v  = sf(last, "close")
     low_v    = sf(last, "low")
     vol      = sf(last, "volume")
@@ -435,17 +481,24 @@ def analyze_1h(df):
     if None in (rsi, wr, mfi, entry):
         return None
 
-    # RSI — max 20p
+    # RSI — max 20p + cycler cikis bonusu max 5p
     p_rsi = score_rsi(rsi)
     c_rsi = rsi < RSI_THRESH
+    # Cycler: bearish moddan tam cikis ani → bonus
+    cycler_exit = bool(last.get("rsi_cycler_exit", False))
+    cycler_val  = int(last.get("rsi_cycler", 0))
+    if cycler_exit:
+        p_rsi = min(25.0, p_rsi + 5.0)   # tam cikis ani: +5p bonus
 
     # Williams %R — max 15p
     p_wr = score_wr(wr)
     c_wr = wr < WR_THRESH
 
-    # MFI — max 15p
-    p_mfi = score_mfi(mfi)
-    c_mfi = mfi < MFI_THRESH
+    # MFI — TV mantigi: kesme aninda tam puan, sadece altinda ise daha az puan
+    # Kesme ani (az once 20'yi asagi kesti) = 15 tam puan
+    # Zaten 20 altinda ama bu mumda kesmedi = deger derinligine gore puan
+    p_mfi = score_mfi(mfi, cross=mfi_cross_os)
+    c_mfi = mfi is not None and mfi < MFI_THRESH
 
     # MACD histogram yaklasma hizi — max 10p
     hist_series = df["macd_hist"].iloc[-7:-1].tolist()
@@ -484,9 +537,12 @@ def analyze_1h(df):
         "p_macd":    round(p_macd, 2),
         "p_bb":      p_bb,
         "p_vol":     round(p_vol,  2),
-        "rsi":       round(rsi, 2),
+        "rsi":          round(rsi, 2),
+        "rsi_cycler":   cycler_val,
+        "rsi_cycler_exit": cycler_exit,
         "wr":        round(wr,  2),
         "mfi":       round(mfi, 2),
+        "mfi_cross": mfi_cross_os,
         "macd_hist": round(mhist, 8) if mhist is not None else None,
         "macd_txt":  macd_txt,
         "bb_lower":  round(bb_lower, 8) if bb_lower is not None else None,
@@ -615,9 +671,12 @@ def full_analyze(symbol, df_1h, df_4h):
         "met_count":     met_count,
         "conditions_1h": r1h["conditions"],
         "conditions_4h": r4h["conditions"],
-        "rsi":           r1h["rsi"],
+        "rsi":              r1h["rsi"],
+        "rsi_cycler":       r1h["rsi_cycler"],
+        "rsi_cycler_exit":  r1h["rsi_cycler_exit"],
         "wr":            r1h["wr"],
         "mfi":           r1h["mfi"],
+        "mfi_cross":     r1h["mfi_cross"],
         "macd_hist":     r1h["macd_hist"],
         "macd_txt":      r1h["macd_txt"],
         "vol_ratio":     r1h["vol_ratio"],
@@ -693,9 +752,9 @@ def build_tg_message(r, tr_time):
         f"📊 Puan: {sc}/100  {emoji}\n"
         f"<code>{puan_detay}</code>\n\n"
         f"1H Indiktorler:\n"
-        f"RSI(14)      →  {r.get('rsi')}  {tick(c1.get('rsi'))}\n"
+        f"RSI(14)      →  {r.get('rsi')}{'  🔄 cycler cikis' if r.get('rsi_cycler_exit') else ''}  {tick(c1.get('rsi'))}\n"
         f"Williams %R  →  {r.get('wr')}  {tick(c1.get('wr'))}\n"
-        f"MFI(14)      →  {r.get('mfi')}  {tick(c1.get('mfi'))}\n"
+        f"MFI(14)      →  {r.get('mfi')}{'  🔔 kesme ani' if r.get('mfi_cross') else ''}  {tick(c1.get('mfi'))}\n"
         f"MACD Hist    →  {r.get('macd_txt')}  {tick(c1.get('macd'))}\n"
         f"BB           →  {bb_txt}  {tick(c1.get('bb'))}\n"
         f"Hacim        →  {vol_txt}  {tick(c1.get('vol'))}\n\n"
@@ -704,7 +763,7 @@ def build_tg_message(r, tr_time):
         f"ADX          →  {r.get('adx')}  {tick(c4.get('adx'))}\n"
         f"OBV          →  {r.get('obv_signal')}  {tick(c4.get('obv'))}\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ {label}  ({r.get('met_count')}/9 kosul)"
+        f"⚡ {label}"
     )
 
 # ============================================================
@@ -992,7 +1051,7 @@ def home():
             f'<div class="sig">'
             f'<div class="sr"><b>{s.get("symbol","")}</b>'
             f'<span style="color:{col};font-weight:bold">{sc}/100</span>'
-            f'<span style="color:#3d5a6a;font-size:.65rem">{lbl} | {met}/9</span></div>'
+            f'<span style="color:#3d5a6a;font-size:.65rem">{lbl}</span></div>'
             f'<div class="sd"><span style="color:#00d4ff">${fmt_price(s.get("entry"))}</span>'
             f' → 🎯 {fmt_price(s.get("target"))} (+%{s.get("target_pct","")})'
             f'  🛡️ {fmt_price(s.get("stop"))} (-%{s.get("stop_pct","")})</div>'
