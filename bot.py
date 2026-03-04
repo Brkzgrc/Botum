@@ -979,6 +979,15 @@ def safe_float(val, dec=4):
     except Exception:
         return None
 
+async def refresh_4h(symbol):
+    """1H skoru yeterli olunca 4H veriyi REST ile guncelle."""
+    try:
+        df4 = await fetch_df(symbol, "4h", BOOTSTRAP_4H)
+        if df4 is not None and len(df4) >= 55:
+            bars_4h[symbol] = prepare_4h(df4.iloc[-KEEP_4H:] if len(df4) > KEEP_4H else df4)
+    except Exception:
+        pass
+
 async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     global ws_1h_closes
     ws_1h_closes += 1
@@ -1005,6 +1014,26 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         if hours < SIGNAL_COOLDOWN_HOURS:
             stats["cooldown"] += 1
             return
+
+    # 1H on analiz — sadece 40+ ise 4H guncelle ve tam analiz yap
+    r1h_quick = analyze_1h(df1)
+    if r1h_quick is None or r1h_quick["score_1h"] < 40:
+        prev = df1.iloc[-2]
+        last_scan_result[symbol] = {
+            "symbol":   symbol,
+            "time":     tr_now.isoformat(),
+            "price":    round(float(df1.iloc[-1]["close"]), 8),
+            "rsi":      safe_float(prev.get("rsi")),
+            "wr":       safe_float(prev.get("wr")),
+            "mfi":      safe_float(prev.get("mfi")),
+            "signal":   False,
+            "score100": 0,
+            "strength": "",
+        }
+        return
+
+    # 1H 40+ → 4H REST ile guncelle
+    await refresh_4h(symbol)
 
     df4    = bars_4h.get(symbol)
     result = full_analyze(symbol, df1, df4)
@@ -1117,39 +1146,13 @@ async def ws_1h_chunk(symbols, candidate_queue):
             print(f"1H WS koptu -> {backoff}s: {str(e)[:50]}", flush=True)
             await asyncio.sleep(backoff)
 
-async def ws_4h_chunk(symbols):
-    streams = "/".join([f"{to_ws(s)}@kline_4h" for s in symbols])
-    url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
-    retry   = 0
-    while True:
-        try:
-            async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
-                retry = 0
-                print(f"4H WS baglandi ({len(symbols)} sembol)", flush=True)
-                while True:
-                    msg  = await ws.recv()
-                    data = json.loads(msg)
-                    k    = data.get("data", {}).get("k", {})
-                    if not k.get("x", False): continue
-                    sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
-                    await on_4h_close(
-                        sym,
-                        float(k["o"]), float(k["h"]),
-                        float(k["l"]), float(k["c"]),
-                        float(k["v"]), int(k["t"]),
-                    )
-        except Exception as e:
-            retry  += 1
-            backoff = min(60, 5 * (2 ** min(retry, 4)))
-            print(f"4H WS koptu -> {backoff}s: {str(e)[:50]}", flush=True)
-            await asyncio.sleep(backoff)
-
 async def ws_all(symbols, candidate_queue):
+    """Sadece 1H WebSocket — 4H verisi REST ile istege bagli guncellenir."""
     tasks = []
     for i in range(0, len(symbols), WS_STREAM_CHUNK):
         chunk = symbols[i:i + WS_STREAM_CHUNK]
         tasks.append(asyncio.create_task(ws_1h_chunk(chunk, candidate_queue)))
-        tasks.append(asyncio.create_task(ws_4h_chunk(chunk)))
+    print(f"4H WebSocket kapali — REST ile on-demand guncelleme aktif", flush=True)
     await asyncio.gather(*tasks)
 
 # ============================================================
