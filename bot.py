@@ -97,6 +97,17 @@ def print_summary():
         v = stats.get(k, 0)
         if v:
             print(f"  {lbl:20s}: {v} ({v/closes*100:.1f}%)", flush=True)
+    # En yuksek skorlu 5 coin
+    if _top_scores:
+        top5 = sorted(_top_scores.items(), key=lambda x: x[1]["score"], reverse=True)[:5]
+        print("  --- En Yuksek Skorlar ---", flush=True)
+        for sym, d in top5:
+            print(
+                f"  {sym:15s} skor={d['score']:5.1f}  "
+                f"1H={d['s1h']:4.1f}  4H={d['s4h']:4.1f}  "
+                f"RSI={d['rsi']}  WR={d['wr']}  MFI={d['mfi']}",
+                flush=True
+            )
     print("--------------------\n", flush=True)
 
 # ============================================================
@@ -700,6 +711,10 @@ def analyze_4h(df):
 # ============================================================
 # 8) TAM ANALİZ
 # ============================================================
+
+# Debug: en yuksek skorlu coinleri takip et
+_top_scores: dict = {}
+
 def full_analyze(symbol, df_1h, df_4h):
     r1h = analyze_1h(df_1h)
     if r1h is None:
@@ -711,6 +726,18 @@ def full_analyze(symbol, df_1h, df_4h):
         return None
 
     score_total = r1h["score_1h"] + r4h["score_4h"]
+
+    # Her zaman en yuksek skoru kaydet (debug icin)
+    prev = _top_scores.get(symbol, {}).get("score", 0)
+    if score_total > prev:
+        _top_scores[symbol] = {
+            "score": round(score_total, 1),
+            "rsi":   r1h.get("rsi"),
+            "wr":    r1h.get("wr"),
+            "mfi":   r1h.get("mfi"),
+            "s1h":   r1h["score_1h"],
+            "s4h":   r4h["score_4h"],
+        }
 
     if score_total < MIN_SCORE:
         stats["score_low"] += 1
