@@ -708,6 +708,340 @@ def analyze_4h(df):
         "sqz_off":    sqz_off,
     }
 
+
+# ============================================================
+# 8b) TREND TAKİP — 1H ANALİZ (max 70p)
+# ============================================================
+
+def score_rsi_trend(rsi) -> float:
+    """
+    Trend takip RSI puanlama:
+    RSI 50-65 arasi ideal — 50'de tam puan, 65'e dogru erir, 65+ sifir
+    RSI 50 altinda: 0 puan
+    """
+    if rsi is None:
+        return 0.0
+    if rsi < 50 or rsi > 70:
+        return 0.0
+    if rsi <= 65:
+        # 50'den 65'e: tam puan -> erime
+        # 50 = 20p, 65 = 5p
+        return round(20.0 - (rsi - 50.0) / (65.0 - 50.0) * 15.0, 2)
+    else:
+        # 65-70 arasi: hizla erir
+        return round(5.0 - (rsi - 65.0) / (70.0 - 65.0) * 5.0, 2)
+
+def score_macd_trend(hist_series) -> tuple:
+    """
+    Trend takip MACD: histogram pozitif ve artıyor mu?
+    Dondurur: (puan, durum_metni, tetiklendi)
+    - Pozitif + hizla artiyor  → 20p
+    - Pozitif + orta artiyor   → 14p
+    - Pozitif + yavas artiyor  → 8p
+    - Pozitif ama dusüyor      → 3p
+    - Negatif                  → 0p
+    """
+    if hist_series is None or len(hist_series) < 3:
+        return 0.0, "veri yok", False
+
+    vals = [v for v in hist_series[-6:] if v is not None and not np.isnan(v)]
+    if len(vals) < 3:
+        return 0.0, "veri yok", False
+
+    current  = vals[-1]
+    previous = vals[-2]
+    oldest   = vals[0]
+
+    if current <= 0:
+        return 0.0, "negatif bolge", False
+
+    rising = current > previous
+    if oldest > 0 and current > 0:
+        growth = (current - oldest) / abs(oldest) if oldest != 0 else 0
+        growth = max(0.0, growth)
+        if rising:
+            if growth >= 0.5:
+                return 20.0, f"guclu yukseliyor ↑ (%{growth*100:.0f})", True
+            elif growth >= 0.2:
+                return 14.0, f"yukseliyor ↑ (%{growth*100:.0f})", True
+            else:
+                return 8.0, "yavas yukseliyor ↑", True
+        else:
+            return 3.0, "pozitif ama dusuyor", False
+    elif rising:
+        return 8.0, "yukseliyor ↑", True
+
+    return 0.0, "zayif", False
+
+def score_ema_sma_trend(df4h) -> tuple:
+    """
+    Trend takip EMA/SMA: EMA20 > SMA50 ve gap aciliyor mu?
+    Dondurur: (puan, durum_metni, tetiklendi)
+    - Gap hizla aciliyor (%50+)  → 15p
+    - Gap aciliyor (%20+)        → 10p
+    - EMA > SMA ama sabit        → 6p
+    - EMA < SMA                  → 0p
+    """
+    if df4h is None or len(df4h) < 10:
+        return 0.0, "veri yok", False
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    last  = df4h.iloc[-2]
+    prev5 = df4h.iloc[-7:-2]
+
+    ema_now = sf(last, "ema20")
+    sma_now = sf(last, "sma50")
+
+    if ema_now is None or sma_now is None:
+        return 0.0, "veri yok", False
+
+    if ema_now <= sma_now:
+        return 0.0, "EMA20 < SMA50", False
+
+    gap_now = ema_now - sma_now
+
+    if len(prev5) >= 3:
+        oldest  = prev5.iloc[0]
+        e_old   = sf(oldest, "ema20")
+        s_old   = sf(oldest, "sma50")
+        if e_old is not None and s_old is not None and e_old > s_old:
+            gap_old = e_old - s_old
+            if gap_old > 0:
+                growth = (gap_now - gap_old) / gap_old
+                if growth >= 0.5:
+                    return 15.0, f"gap hizla aciliyor ↑ (%{growth*100:.0f})", True
+                elif growth >= 0.2:
+                    return 10.0, f"gap aciliyor ↑ (%{growth*100:.0f})", True
+                elif growth >= 0:
+                    return 6.0, "EMA > SMA sabit", True
+                else:
+                    return 3.0, "EMA > SMA gap daralıyor", True
+
+    gap_pct = gap_now / sma_now * 100
+    p = min(6.0, gap_pct * 3.0)
+    return round(p, 2), f"EMA > SMA (+%{gap_pct:.1f})", True
+
+def analyze_1h_trend(df):
+    """
+    Trend takip 1H analizi — max 70 puan
+    RSI(20) + MACD(20) + Hacim(15) + BB(10) + Williams(5)
+    """
+    if len(df) < 60:
+        return None
+
+    last = df.iloc[-2]
+    curr = df.iloc[-1]
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    rsi      = sf(last, "rsi")
+    wr       = sf(last, "wr")
+    bb_lower = sf(last, "bb_lower")
+    bb_mid   = sf(last, "bb_mid")
+    close_v  = sf(last, "close")
+    low_v    = sf(last, "low")
+    vol      = sf(last, "volume")
+    vol_ma   = sf(last, "vol_ma")
+    atr      = sf(last, "atr")
+    entry    = sf(curr, "close")
+    h_v      = sf(last, "high")
+
+    if None in (rsi, entry):
+        return None
+
+    # RSI 50-65 ideal — max 20p
+    p_rsi  = score_rsi_trend(rsi)
+    c_rsi  = 50 <= rsi <= 65
+
+    # MACD histogram pozitif ve artiyor — max 20p
+    hist_series      = df["macd_hist"].iloc[-7:-1].tolist()
+    p_macd, macd_txt, c_macd = score_macd_trend(hist_series)
+    mhist            = sf(last, "macd_hist")
+
+    # Hacim 1.5x+ — max 15p
+    c_vol     = False
+    p_vol     = 0.0
+    vol_ratio = 0.0
+    bvol_pct  = 0.0
+    if (vol is not None and vol_ma is not None and vol_ma > 0
+            and h_v is not None and l_v is not None and close_v is not None
+            and (h_v - l_v) > 0):
+        vol_ratio = vol / vol_ma
+        bvol      = vol * (close_v - l_v) / (h_v - l_v)
+        svol      = vol * (h_v - close_v) / (h_v - l_v)
+        bvol_pct  = bvol / (bvol + svol) * 100 if (bvol + svol) > 0 else 50.0
+        c_vol     = vol_ratio >= 1.5 and bvol_pct >= 55.0
+        if vol_ratio >= 2.0 and bvol_pct >= 60.0:
+            p_vol = 15.0
+        elif vol_ratio >= 1.5 and bvol_pct >= 55.0:
+            p_vol = 10.0
+        elif vol_ratio >= 1.2:
+            p_vol = 5.0
+
+    # BB: kapanış orta bandın üstünde — max 10p
+    c_bb = False
+    p_bb = 0.0
+    if bb_mid is not None and close_v is not None:
+        c_bb = close_v > bb_mid
+        if c_bb:
+            # ne kadar uzakta?
+            dist_pct = (close_v - bb_mid) / bb_mid * 100
+            p_bb = min(10.0, dist_pct * 5.0)
+
+    # Williams %R -50 ile -20 arasi (momentum var, aşırı alım değil) — max 5p
+    c_wr = False
+    p_wr = 0.0
+    if wr is not None and -50 <= wr <= -20:
+        c_wr = True
+        p_wr = round((wr - (-50)) / (-20 - (-50)) * 5.0, 2)
+
+    score_1h = p_rsi + p_macd + p_vol + p_bb + p_wr
+
+    return {
+        "conditions": {
+            "rsi":  c_rsi,
+            "macd": c_macd,
+            "vol":  c_vol,
+            "bb":   c_bb,
+            "wr":   c_wr,
+        },
+        "score_1h":  round(score_1h, 1),
+        "p_rsi":     round(p_rsi,  2),
+        "p_macd":    round(p_macd, 2),
+        "p_vol":     round(p_vol,  2),
+        "p_bb":      round(p_bb,   2),
+        "p_wr":      round(p_wr,   2),
+        "rsi":       round(rsi, 2),
+        "wr":        round(wr, 2) if wr is not None else None,
+        "macd_hist": round(mhist, 8) if mhist is not None else None,
+        "macd_txt":  macd_txt,
+        "vol_ratio": round(vol_ratio, 2),
+        "bvol_pct":  round(bvol_pct, 1),
+        "bb_mid":    round(bb_mid, 8) if bb_mid is not None else None,
+        "atr":       round(atr, 8) if atr is not None else 0.0,
+        "entry":     round(entry, 8),
+    }
+
+def analyze_4h_trend(df):
+    """
+    Trend takip 4H teyit — max 30 puan
+    EMA/SMA gap(15) + ADX(10) + OBV(5)
+    """
+    if df is None or len(df) < 55:
+        return None
+
+    last  = df.iloc[-2]
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    adx    = sf(last, "adx")
+    obv    = sf(last, "obv")
+    obv_ma = sf(last, "obv_ma")
+
+    if adx is None:
+        return None
+
+    # EMA/SMA gap aciliyor — max 15p
+    p_ema, ema_txt, c_ema = score_ema_sma_trend(df)
+
+    # ADX > 25 — max 10p (trend guclu olmali)
+    c_adx = adx >= 25
+    p_adx = max(0.0, min(10.0, (adx - 25.0) / 15.0 * 10.0)) if c_adx else 0.0
+
+    # OBV artiyor — max 5p
+    c_obv      = False
+    p_obv      = 0.0
+    obv_signal = "veri yok"
+    if obv is not None and obv_ma is not None:
+        c_obv      = obv > obv_ma
+        obv_signal = "artiyor" if c_obv else "azaliyor"
+        p_obv      = 5.0 if c_obv else 0.0
+
+    return {
+        "conditions": {
+            "ema": c_ema,
+            "adx": c_adx,
+            "obv": c_obv,
+        },
+        "score_4h":   round(p_ema + p_adx + p_obv, 1),
+        "p_ema":      round(p_ema, 2),
+        "p_adx":      round(p_adx, 2),
+        "p_obv":      p_obv,
+        "ema_txt":    ema_txt,
+        "adx":        round(adx, 2),
+        "obv_signal": obv_signal,
+    }
+
+def full_analyze_trend(symbol, df_1h, df_4h):
+    """Trend takip tam analizi."""
+    r1h = analyze_1h_trend(df_1h)
+    if r1h is None:
+        return None
+
+    # 1H on filtre — 40+ olmadan 4H sorgulanmaz
+    if r1h["score_1h"] < 40:
+        return None
+
+    r4h = analyze_4h_trend(df_4h)
+    if r4h is None:
+        return None
+
+    score_total = r1h["score_1h"] + r4h["score_4h"]
+
+    if score_total < MIN_SCORE:
+        return None
+
+    entry  = r1h["entry"]
+    atr    = r1h["atr"] if r1h["atr"] > 0 else entry * 0.02
+    # Trend takipte hedef daha genis, stop daha yakın
+    target = round(entry + atr * (ATR_TARGET_MULT + 0.5), 8)
+    stop   = round(entry - atr * (ATR_STOP_MULT  - 0.3), 8)
+
+    score100 = min(int(round(score_total)), 100)
+    strength = "guclu" if score100 >= STRONG_SCORE else "normal"
+
+    return {
+        "symbol":        symbol,
+        "signal_type":   "trend",
+        "time":          datetime.now(timezone.utc).isoformat(),
+        "entry":         entry,
+        "target":        target,
+        "stop":          stop,
+        "target_pct":    round((target - entry) / entry * 100, 2),
+        "stop_pct":      round((entry - stop)   / entry * 100, 2),
+        "score100":      score100,
+        "score_1h":      r1h["score_1h"],
+        "score_4h":      r4h["score_4h"],
+        "p_rsi":         r1h["p_rsi"],
+        "p_macd":        r1h["p_macd"],
+        "p_vol":         r1h["p_vol"],
+        "p_bb":          r1h["p_bb"],
+        "p_wr":          r1h["p_wr"],
+        "p_ema":         r4h["p_ema"],
+        "p_adx":         r4h["p_adx"],
+        "p_obv":         r4h["p_obv"],
+        "strength":      strength,
+        "conditions_1h": r1h["conditions"],
+        "conditions_4h": r4h["conditions"],
+        "rsi":           r1h["rsi"],
+        "wr":            r1h["wr"],
+        "macd_hist":     r1h["macd_hist"],
+        "macd_txt":      r1h["macd_txt"],
+        "vol_ratio":     r1h["vol_ratio"],
+        "bvol_pct":      r1h["bvol_pct"],
+        "ema_txt":       r4h["ema_txt"],
+        "adx":           r4h["adx"],
+        "obv_signal":    r4h["obv_signal"],
+        "signal":        True,
+    }
+
 # ============================================================
 # 8) TAM ANALİZ
 # ============================================================
@@ -754,6 +1088,7 @@ def full_analyze(symbol, df_1h, df_4h):
 
     return {
         "symbol":        symbol,
+        "signal_type":   "dip",
         "time":          datetime.now(timezone.utc).isoformat(),
         "entry":         entry,
         "target":        target,
@@ -825,6 +1160,92 @@ def fmt_price(price):
     if p >= 1:    return f"{p:.3f}"
     if p >= 0.01: return f"{p:.4f}"
     return f"{p:.6f}"
+
+def build_tg_message_trend(r, tr_time):
+    sc    = r["score100"]
+    emoji = "🟢" if sc >= STRONG_SCORE else ("🟡" if sc >= MIN_SCORE else "🔴")
+    label = "GÜÇLÜ TREND ⚡" if r["strength"] == "guclu" else "TREND TAKİP"
+    sym   = r["symbol"].replace("/", "").replace("USDT", "")
+    now   = tr_time.strftime("%d/%m/%Y %H:%M")
+    c1    = r["conditions_1h"]
+    c4    = r["conditions_4h"]
+
+    def bold(t): return f'<b>{t}</b>'
+    def code(t): return f'<code>{t}</code>'
+
+    def val_color(val, good_thresh, bad_thresh, invert=False):
+        if val is None: return "—"
+        if invert:
+            return f"🟢 {val}" if val <= good_thresh else (f"🔴 {val}" if val >= bad_thresh else f"🟡 {val}")
+        return f"🟢 {val}" if val >= good_thresh else (f"🔴 {val}" if val <= bad_thresh else f"🟡 {val}")
+
+    def puan_bar(p, max_p):
+        filled = round(p / max_p * 5) if max_p > 0 else 0
+        return "█" * filled + "░" * (5 - filled) + f" {p:.1f}/{max_p}"
+
+    rsi_v   = r.get("rsi")
+    wr_v    = r.get("wr")
+    adx_v   = r.get("adx")
+    vol_r   = r.get("vol_ratio", 0)
+    bvol_v  = r.get("bvol_pct", 0)
+
+    rsi_txt  = val_color(rsi_v,  60, 50)           # trend: 50-65 ideal
+    wr_txt   = val_color(wr_v,  -20, -50, invert=False) if wr_v else "🟡 —"
+    adx_txt  = val_color(adx_v,  35, 25)
+    vol_txt  = f"🟢 {vol_r:.1f}x" if vol_r >= 1.5 else (f"🟡 {vol_r:.1f}x" if vol_r >= 1.0 else f"🔴 {vol_r:.1f}x")
+    bvol_txt = f"🟢 {bvol_v:.0f}% alici" if bvol_v >= 60 else (f"🟡 {bvol_v:.0f}% alici" if bvol_v >= 50 else f"🔴 {bvol_v:.0f}% alici")
+
+    macd_t  = r.get("macd_txt", "—")
+    macd_col = "🟢" if c1.get("macd") else "🟡"
+    ema_t   = r.get("ema_txt", "—")
+    ema_col = "🟢" if c4.get("ema") else "🔴"
+    obv_t   = r.get("obv_signal", "—")
+    obv_col = "🟢" if c4.get("obv") else "🔴"
+
+    p_rsi  = r.get("p_rsi",  0)
+    p_macd = r.get("p_macd", 0)
+    p_vol  = r.get("p_vol",  0)
+    p_bb   = r.get("p_bb",   0)
+    p_wr   = r.get("p_wr",   0)
+    p_ema  = r.get("p_ema",  0)
+    p_adx  = r.get("p_adx",  0)
+    p_obv  = r.get("p_obv",  0)
+
+    lines = [
+        f"🕐 {now}",
+        "",
+        f"🟣 {bold(f'#{sym}/USDT')}  •  TREND TAKİP  •  1H + 4H",
+        "",
+        f"💵 {bold('Giriş:')}  {fmt_price(r.get('entry'))}",
+        f"🎯 {bold('Hedef:')}  {fmt_price(r.get('target'))}  {code(f'+%{r.get('target_pct')}')}",
+        f"🛡️ {bold('Stop:')}   {fmt_price(r.get('stop'))}  {code(f'-%{r.get('stop_pct')}')}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"📊 {bold('PUAN:')}  {bold(str(sc))}/100  {emoji}  —  {bold(label)}",
+        "",
+        code(
+            f"RSI  {puan_bar(p_rsi,  20)}\n"
+            f"MACD {puan_bar(p_macd, 20)}\n"
+            f"Vol  {puan_bar(p_vol,  15)}\n"
+            f"BB   {puan_bar(p_bb,   10)}\n"
+            f"W%R  {puan_bar(p_wr,    5)}\n"
+            f"EMA  {puan_bar(p_ema,  15)}\n"
+            f"ADX  {puan_bar(p_adx,  10)}\n"
+            f"OBV  {puan_bar(p_obv,   5)}"
+        ),
+        "",
+        bold("── 1H İndikatörler ──"),
+        f"{bold('RSI(14)')}      {rsi_txt}",
+        f"{bold('MACD Hist')}    {macd_col} {macd_t}",
+        f"{bold('Hacim')}        {vol_txt}  ({bvol_txt})",
+        f"{bold('Williams %R')}  {wr_txt}",
+        "",
+        bold("── 4H Teyit ──"),
+        f"{bold('EMA20/SMA50')}  {ema_col} {ema_t}",
+        f"{bold('ADX')}          {adx_txt}",
+        f"{bold('OBV')}          {obv_col} {obv_t}",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    return "\n".join(lines)
 
 def build_tg_message(r, tr_time):
     sc    = r["score100"]
@@ -1015,10 +1436,15 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
             stats["cooldown"] += 1
             return
 
-    # 1H on analiz — sadece 40+ ise 4H guncelle ve tam analiz yap
-    r1h_quick = analyze_1h(df1)
-    if r1h_quick is None or r1h_quick["score_1h"] < 40:
-        prev = df1.iloc[-2]
+    # 1H on analiz — her iki sistem icin kontrol
+    r1h_dip   = analyze_1h(df1)
+    r1h_trend = analyze_1h_trend(df1)
+
+    dip_ok   = r1h_dip   is not None and r1h_dip["score_1h"]   >= 40
+    trend_ok = r1h_trend is not None and r1h_trend["score_1h"] >= 40
+
+    prev = df1.iloc[-2]
+    if not dip_ok and not trend_ok:
         last_scan_result[symbol] = {
             "symbol":   symbol,
             "time":     tr_now.isoformat(),
@@ -1032,13 +1458,13 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         }
         return
 
-    # 1H 40+ → 4H REST ile guncelle
+    # En az biri 40+ → 4H REST ile guncelle
     await refresh_4h(symbol)
+    df4 = bars_4h.get(symbol)
 
-    df4    = bars_4h.get(symbol)
-    result = full_analyze(symbol, df1, df4)
+    result_dip   = full_analyze(symbol, df1, df4)       if dip_ok   else None
+    result_trend = full_analyze_trend(symbol, df1, df4) if trend_ok else None
 
-    prev = df1.iloc[-2]
     last_scan_result[symbol] = {
         "symbol":   symbol,
         "time":     tr_now.isoformat(),
@@ -1046,17 +1472,19 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         "rsi":      safe_float(prev.get("rsi")),
         "wr":       safe_float(prev.get("wr")),
         "mfi":      safe_float(prev.get("mfi")),
-        "signal":   result is not None,
-        "score100": result["score100"] if result else 0,
-        "strength": result["strength"] if result else "",
+        "signal":   (result_dip is not None) or (result_trend is not None),
+        "score100": max(
+            result_dip["score100"]   if result_dip   else 0,
+            result_trend["score100"] if result_trend else 0,
+        ),
+        "strength": "",
     }
 
-    if result is None:
-        return
-
-    await candidate_queue.put(SignalCandidate(
-        symbol=symbol, result=result, tr_time=tr_now,
-    ))
+    for result in [result_dip, result_trend]:
+        if result is not None:
+            await candidate_queue.put(SignalCandidate(
+                symbol=symbol, result=result, tr_time=tr_now,
+            ))
 
 async def on_4h_close(symbol, o, h, l, c, v, ts_ms):
     df4 = bars_4h.get(symbol)
@@ -1089,7 +1517,10 @@ async def signal_worker(candidate_queue):
             except Exception:
                 pass
 
-            send_telegram(build_tg_message(result, tr_time))
+            if result.get("signal_type") == "trend":
+                send_telegram(build_tg_message_trend(result, tr_time))
+            else:
+                send_telegram(build_tg_message(result, tr_time))
             last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
             all_signals.insert(0, result)
             if len(all_signals) > 200:
