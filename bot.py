@@ -869,11 +869,11 @@ def analyze_1h_trend(df):
     vol_ratio = 0.0
     bvol_pct  = 0.0
     if (vol is not None and vol_ma is not None and vol_ma > 0
-            and h_v is not None and l_v is not None and close_v is not None
-            and (h_v - l_v) > 0):
+            and h_v is not None and low_v is not None and close_v is not None
+            and (h_v - low_v) > 0):
         vol_ratio = vol / vol_ma
-        bvol      = vol * (close_v - l_v) / (h_v - l_v)
-        svol      = vol * (h_v - close_v) / (h_v - l_v)
+        bvol      = vol * (close_v - low_v) / (h_v - low_v)
+        svol      = vol * (h_v - close_v)   / (h_v - low_v)
         bvol_pct  = bvol / (bvol + svol) * 100 if (bvol + svol) > 0 else 50.0
         c_vol     = vol_ratio >= 1.5 and bvol_pct >= 55.0
         if vol_ratio >= 2.0 and bvol_pct >= 60.0:
