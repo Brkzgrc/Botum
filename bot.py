@@ -1555,22 +1555,38 @@ async def ws_1h_chunk(symbols, candidate_queue):
     retry   = 0
     while True:
         try:
-            async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
+            async with websockets.connect(
+                url,
+                ping_interval=None,
+                open_timeout=30,
+                close_timeout=10,
+                max_size=10 * 1024 * 1024,
+            ) as ws:
                 retry = 0
                 print(f"1H WS baglandi ({len(symbols)} sembol)", flush=True)
+                last_ping = time.time()
                 while True:
-                    msg  = await ws.recv()
+                    try:
+                        msg = await asyncio.wait_for(ws.recv(), timeout=30)
+                    except asyncio.TimeoutError:
+                        # 30s mesaj gelmedi, manuel ping gonder
+                        await ws.ping()
+                        last_ping = time.time()
+                        continue
                     data = json.loads(msg)
                     k    = data.get("data", {}).get("k", {})
                     if not k.get("x", False): continue
                     sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
-                    await on_1h_close(
-                        sym,
-                        float(k["o"]), float(k["h"]),
-                        float(k["l"]), float(k["c"]),
-                        float(k["v"]), int(k["t"]),
-                        candidate_queue,
-                    )
+                    try:
+                        await on_1h_close(
+                            sym,
+                            float(k["o"]), float(k["h"]),
+                            float(k["l"]), float(k["c"]),
+                            float(k["v"]), int(k["t"]),
+                            candidate_queue,
+                        )
+                    except Exception as e:
+                        print(f"on_1h_close hata [{sym}]: {str(e)[:100]}", flush=True)
         except Exception as e:
             retry  += 1
             backoff = min(60, 5 * (2 ** min(retry, 4)))
