@@ -1181,7 +1181,8 @@ def build_tg_message_trend(r, tr_time):
 
     def puan_bar(p, max_p):
         filled = round(p / max_p * 5) if max_p > 0 else 0
-        return "█" * filled + "░" * (5 - filled) + f" {p:.1f}/{max_p}"
+        bar    = "█" * filled + "░" * (5 - filled)
+        return f"{bar} {int(round(p))}/{max_p}"
 
     rsi_v   = r.get("rsi")
     wr_v    = r.get("wr")
@@ -1227,7 +1228,8 @@ def build_tg_message_trend(r, tr_time):
             f"MACD {puan_bar(p_macd, 20)}\n"
             f"Vol  {puan_bar(p_vol,  15)}\n"
             f"BB   {puan_bar(p_bb,   10)}\n"
-            f"W%R  {puan_bar(p_wr,    5)}\n"
+            f"W%%R  {puan_bar(p_wr,   5)}\n"
+            f"─────────────────\n"
             f"EMA  {puan_bar(p_ema,  15)}\n"
             f"ADX  {puan_bar(p_adx,  10)}\n"
             f"OBV  {puan_bar(p_obv,   5)}"
@@ -1275,9 +1277,9 @@ def build_tg_message(r, tr_time):
             else:                   return f"🟡 {val}"
 
     def puan_bar(p, max_p):
-        """Puan doluluk gostergesi"""
-        filled = round(p / max_p * 5)
-        return "█" * filled + "░" * (5 - filled) + f" {p:.1f}/{max_p}"
+        filled = round(p / max_p * 5) if max_p > 0 else 0
+        bar    = "█" * filled + "░" * (5 - filled)
+        return f"{bar} {int(round(p))}/{max_p}"
 
     # Degerler
     rsi_v    = r.get("rsi")
@@ -1333,11 +1335,12 @@ def build_tg_message(r, tr_time):
         "",
         code(
             f"RSI  {puan_bar(p_rsi,  20)}\n"
-            f"W%R  {puan_bar(p_wr,   15)}\n"
+            f"W%%R  {puan_bar(p_wr,  15)}\n"
             f"MFI  {puan_bar(p_mfi,  15)}\n"
             f"MACD {puan_bar(p_macd, 10)}\n"
             f"BB   {puan_bar(p_bb,    5)}\n"
             f"Vol  {puan_bar(p_vol,   5)}\n"
+            f"─────────────────\n"
             f"EMA  {puan_bar(p_ema,  10)}\n"
             f"ADX  {puan_bar(p_adx,  10)}\n"
             f"OBV  {puan_bar(p_obv,  10)}\n"
@@ -1442,6 +1445,20 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
 
     dip_ok   = r1h_dip   is not None and r1h_dip["score_1h"]   >= 40
     trend_ok = r1h_trend is not None and r1h_trend["score_1h"] >= 40
+
+    # Debug: en yuksek 1H skorlarini takip et
+    s_dip   = r1h_dip["score_1h"]   if r1h_dip   else 0
+    s_trend = r1h_trend["score_1h"] if r1h_trend else 0
+    prev_best = _top_scores.get(symbol, {}).get("score", 0)
+    best_now  = max(s_dip, s_trend)
+    if best_now > prev_best:
+        _top_scores[symbol] = {
+            "score": round(best_now, 1),
+            "dip":   round(s_dip, 1),
+            "trend": round(s_trend, 1),
+            "rsi":   round(r1h_dip["rsi"], 1) if r1h_dip else None,
+            "wr":    round(r1h_dip["wr"],  1) if r1h_dip else None,
+        }
 
     prev = df1.iloc[-2]
     if not dip_ok and not trend_ok:
