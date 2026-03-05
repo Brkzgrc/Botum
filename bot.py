@@ -104,8 +104,8 @@ def print_summary():
         for sym, d in top5:
             print(
                 f"  {sym:15s} skor={d['score']:5.1f}  "
-                f"1H={d['s1h']:4.1f}  4H={d['s4h']:4.1f}  "
-                f"RSI={d['rsi']}  WR={d['wr']}  MFI={d['mfi']}",
+                f"dip={d.get('dip',0):4.1f}  trend={d.get('trend',0):4.1f}  "
+                f"RSI={d.get('rsi','-')}  WR={d.get('wr','-')}",
                 flush=True
             )
     print("--------------------\n", flush=True)
