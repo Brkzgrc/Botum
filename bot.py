@@ -1426,6 +1426,10 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     ws_1h_closes += 1
     beat(symbol=symbol, status="LIVE")
 
+    # Acik sinyalleri bu mumun high/low ile kontrol et
+    bar_time = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+    check_pending_for_symbol(symbol, h, l, c, bar_time)
+
     df1 = bars_1h.get(symbol)
     if df1 is None or len(df1) < 60:
         stats["data_missing"] += 1
@@ -1553,6 +1557,8 @@ async def signal_worker(candidate_queue):
                 all_signals.pop()
             stats["signal_sent"] += 1
             log_signal(result, tr_time)
+            # Pending takibe ekle
+            pending_by_symbol.setdefault(result["symbol"], []).append(signal_log[0])
 
             print(
                 f"SINYAL: {symbol} | {result['score100']}/100 [{result['strength']}] | "
@@ -1606,76 +1612,92 @@ def log_signal(result: dict, tr_time):
         "stop_pct":    result.get("stop_pct", 0),
         "score":       result["score100"],
         "time":        tr_time.isoformat(),
-        "status":      "open",   # open | win | loss | expired
-        "outcomes":    {},       # {"24h": {...}, "48h": {...}, "72h": {...}}
+        "status":      "open",    # open | win | loss | expired
+        "peak_pct":    0.0,       # en yuksek anlık getiri (%)
+        "close_time":  None,      # kapanma zamani
+        "close_price": None,      # kapanma fiyati
+        "close_ret":   None,      # kapanma getirisi (%)
     }
     signal_log.insert(0, entry)
     if len(signal_log) > 500:
         signal_log.pop()
     save_signal_log(signal_log)
 
-def update_signal_outcomes():
-    """Bekleyen sinyallerin 24H/48H/72H sonuclarini guncelle."""
-    now = datetime.now(timezone.utc)
-    changed = False
+# Pending sinyaller: {symbol: [entry, ...]}
+pending_by_symbol: dict = {}
 
-    for entry in signal_log:
-        if entry["status"] in ("win", "loss"):
-            continue
+def rebuild_pending():
+    """Baslangicta acik sinyalleri pending'e yukle."""
+    for s in signal_log:
+        if s["status"] == "open":
+            sym = s["symbol"]
+            pending_by_symbol.setdefault(sym, []).append(s)
+
+def check_pending_for_symbol(symbol: str, bar_high: float, bar_low: float, bar_close: float, bar_time):
+    """
+    Her 1H mum kapanisinda o sembolun acik sinyallerini kontrol et.
+    - Stop tetiklendiyse: aninda LOSS, bir daha bakma
+    - Hedef tetiklendiyse: aninda WIN
+    - 72H gecti, ne hedef ne stop: EXPIRED, peak kaydet
+    Ayni mumda ikisi de tetiklendiyse ONCE STOP kontrol edilir (konservatif).
+    """
+    if symbol not in pending_by_symbol:
+        return
+
+    now      = datetime.now(timezone.utc)
+    to_close = []
+
+    for entry in pending_by_symbol[symbol]:
+        e   = entry["entry"]
+        tgt = entry["target"]
+        stp = entry["stop"]
 
         sig_time = datetime.fromisoformat(entry["time"])
         if sig_time.tzinfo is None:
             sig_time = sig_time.replace(tzinfo=timezone.utc)
-
         elapsed_h = (now - sig_time).total_seconds() / 3600
-        symbol    = entry["symbol"]
 
-        for horizon in [24, 48, 72]:
-            key = f"{horizon}h"
-            if key in entry["outcomes"]:
-                continue   # zaten hesaplandi
-            if elapsed_h < horizon:
-                continue   # henuz erken
+        # Peak guncelle
+        cur_ret = (bar_high - e) / e * 100
+        if cur_ret > entry["peak_pct"]:
+            entry["peak_pct"] = round(cur_ret, 2)
 
-            # Fiyati cek
-            try:
-                ticker = exchange.fetch_ticker(symbol)
-                price  = float(ticker.get("last", 0) or 0)
-                if price <= 0:
-                    continue
-            except Exception:
-                continue
+        # Ayni mumda once stop kontrol et (konservatif)
+        if bar_low <= stp:
+            entry["status"]      = "loss"
+            entry["close_time"]  = bar_time.isoformat() if hasattr(bar_time, "isoformat") else str(bar_time)
+            entry["close_price"] = round(stp, 8)
+            entry["close_ret"]   = round((stp - e) / e * 100, 2)
+            to_close.append(entry)
+            continue
 
-            e     = entry["entry"]
-            tgt   = entry["target"]
-            stp   = entry["stop"]
-            ret   = round((price - e) / e * 100, 2)
-            hit_t = price >= tgt
-            hit_s = price <= stp
+        if bar_high >= tgt:
+            entry["status"]      = "win"
+            entry["close_time"]  = bar_time.isoformat() if hasattr(bar_time, "isoformat") else str(bar_time)
+            entry["close_price"] = round(tgt, 8)
+            entry["close_ret"]   = round((tgt - e) / e * 100, 2)
+            to_close.append(entry)
+            continue
 
-            entry["outcomes"][key] = {
-                "price":      round(price, 8),
-                "ret_pct":    ret,
-                "hit_target": hit_t,
-                "hit_stop":   hit_s,
-            }
-            changed = True
+        # 72H gecti — expired
+        if elapsed_h >= 72:
+            entry["status"]      = "expired"
+            entry["close_time"]  = bar_time.isoformat() if hasattr(bar_time, "isoformat") else str(bar_time)
+            entry["close_price"] = round(bar_close, 8)
+            entry["close_ret"]   = round((bar_close - e) / e * 100, 2)
+            to_close.append(entry)
 
-            # Final durum: 72H sonunda kapat
-            if key == "72h":
-                entry["status"] = "win" if hit_t and not hit_s else ("loss" if hit_s else "expired")
-
-    if changed:
+    if to_close:
+        for e in to_close:
+            pending_by_symbol[symbol].remove(e)
+        if not pending_by_symbol[symbol]:
+            del pending_by_symbol[symbol]
         save_signal_log(signal_log)
 
 def outcome_tracker_thread():
-    """Her saat sinyal sonuclarini guncelle."""
-    while True:
-        time.sleep(3600)
-        try:
-            update_signal_outcomes()
-        except Exception as e:
-            print(f"outcome_tracker hata: {e}", flush=True)
+    """Baslangicta pending sinyalleri yukle."""
+    rebuild_pending()
+    print(f"Sinyal tracker baslatildi | {sum(len(v) for v in pending_by_symbol.values())} acik sinyal", flush=True)
 
 def perf_summary() -> dict:
     """Sinyal performans ozeti."""
@@ -1922,20 +1944,24 @@ def perf_dashboard():
         o24    = s.get("outcomes",{}).get("24h",{})
         o48    = s.get("outcomes",{}).get("48h",{})
         o72    = s.get("outcomes",{}).get("72h",{})
-        def fmt_out(o):
-            if not o: return "—"
-            r = o.get("ret_pct","")
-            col = "#00f080" if float(r or 0)>0 else "#ff4444"
-            return f'<span style="color:{col}">{r:+}%</span>' if r != "" else "—"
+        close_ret  = s.get("close_ret")
+        peak_pct   = s.get("peak_pct", 0)
+        close_time = (s.get("close_time") or "")[:16]
+
+        def fmt_ret(r):
+            if r is None: return "—"
+            col = "#00f080" if float(r)>0 else "#ff4444"
+            return f'<span style="color:{col}">{r:+}%</span>'
+
         rows += f"""<tr>
             <td>{s.get("time","")[:16]}</td>
             <td><b>{s.get("symbol","")}</b></td>
             <td>{"🔵" if s.get("signal_type")=="dip" else "🟣"}</td>
             <td>{s.get("score","")}/100</td>
             <td>${s.get("entry","")}</td>
-            <td>{fmt_out(o24)}</td>
-            <td>{fmt_out(o48)}</td>
-            <td>{fmt_out(o72)}</td>
+            <td style="color:#00f080">+{peak_pct}%</td>
+            <td>{fmt_ret(close_ret)}</td>
+            <td>{close_time}</td>
             <td style="color:{st_col}">{st.upper()}</td>
         </tr>"""
 
@@ -1969,8 +1995,8 @@ def perf_dashboard():
   <div class="card"><div class="cv">{ps.get("avg_ret_24h","—")}%</div><div class="cl">Ort. 24H Getiri</div></div>
 </div>
 <table><thead><tr>
-  <th>Zaman</th><th>Sembol</th><th>Tip</th><th>Skor</th><th>Giriş</th>
-  <th>24H</th><th>48H</th><th>72H</th><th>Durum</th>
+  <th>Sinyal Zamanı</th><th>Sembol</th><th>Tip</th><th>Skor</th><th>Giriş</th>
+  <th>Peak %</th><th>Kapanış %</th><th>Kapanış Zamanı</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
