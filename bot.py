@@ -1235,11 +1235,22 @@ def full_analyze(symbol, df_1h, df_4h):
     mode, mode_info = detect_market_mode(df_1h)
 
     if mode in ("yorgun", "yatay"):
+        if _top_scores.get(symbol, {}).get("score", 0) > 30:
+            print(f"  [DEBUG] {symbol} | mod={mode} | rise={mode_info.get('rise_from_low')}% drop={mode_info.get('drop_from_high')}%", flush=True)
         return None
 
     # 2) 1H analiz
     r1h = analyze_unified_1h(df_1h, mode)
     if r1h is None:
+        # 1H hard filtreden döndü — eski skor varsa logla
+        prev_score = _top_scores.get(symbol, {}).get("score", 0)
+        if prev_score > 30:
+            last = df_1h.iloc[-2]
+            rsi_v = float(last.get("rsi", 0) or 0)
+            wr_v  = float(last.get("wr", 0) or 0)
+            mfi_v = last.get("mfi")
+            mfi_v = float(mfi_v) if mfi_v and str(mfi_v) != "nan" else None
+            print(f"  [DEBUG] {symbol} | mod={mode} | 1H hard filtre | RSI={round(rsi_v,1)} WR={round(wr_v,1)} MFI={round(mfi_v,1) if mfi_v else 'N/A'}", flush=True)
         return None
 
     # 3) 1H ön filtre
@@ -1258,6 +1269,7 @@ def full_analyze(symbol, df_1h, df_4h):
     r4h = analyze_4h_unified(df_4h, mode) if df_4h is not None else None
     if r4h is None:
         stats["no_4h_data"] += 1
+        print(f"  [DEBUG] {symbol} | mod={mode} | 1H={r1h['score_1h']} | 4H teyit NONE (df4={'None' if df_4h is None else len(df_4h)})", flush=True)
         return None
 
     score_total = r1h["score_1h"] + r4h["score_4h"]
@@ -1272,6 +1284,7 @@ def full_analyze(symbol, df_1h, df_4h):
 
     if score_total < MIN_SCORE:
         stats["score_low"] += 1
+        print(f"  [DEBUG] {symbol} | mod={mode} | toplam={score_total} < MIN_SCORE={MIN_SCORE} | 1H={r1h['score_1h']} 4H={r4h['score_4h']}", flush=True)
         return None
 
     # 5) Hedef ve stop — moda göre ATR çarpanı farklı
@@ -1620,6 +1633,8 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     }
 
     if mode in ("yorgun", "yatay"):
+        if _top_scores.get(symbol, {}).get("score", 0) > 30:
+            print(f"  [DEBUG] {symbol} | mod={mode} | rise={mode_info.get('rise_from_low')}% drop={mode_info.get('drop_from_high')}%", flush=True)
         return
 
     # 4H veri yenile
