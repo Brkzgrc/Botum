@@ -1552,6 +1552,7 @@ async def signal_worker(candidate_queue):
             if len(all_signals) > 200:
                 all_signals.pop()
             stats["signal_sent"] += 1
+            log_signal(result, tr_time)
 
             print(
                 f"SINYAL: {symbol} | {result['score100']}/100 [{result['strength']}] | "
@@ -1568,6 +1569,140 @@ async def signal_worker(candidate_queue):
             print(f"Worker hata: {str(e)[:100]}", flush=True)
         finally:
             candidate_queue.task_done()
+
+
+# ============================================================
+# 12b) SİNYAL PERFORMANS TAKİP
+# ============================================================
+
+SIGNAL_LOG_PATH = "/tmp/signal_log.json"
+
+def load_signal_log() -> list:
+    try:
+        with open(SIGNAL_LOG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_signal_log(log: list):
+    try:
+        with open(SIGNAL_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(log[-500:], f, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"signal_log kayit hata: {e}", flush=True)
+
+signal_log: list = load_signal_log()
+
+def log_signal(result: dict, tr_time):
+    """Yeni sinyal kaydeder."""
+    entry = {
+        "id":          f"{result['symbol']}_{int(tr_time.timestamp())}",
+        "symbol":      result["symbol"],
+        "signal_type": result.get("signal_type", "dip"),
+        "entry":       result["entry"],
+        "target":      result["target"],
+        "stop":        result["stop"],
+        "target_pct":  result.get("target_pct", 0),
+        "stop_pct":    result.get("stop_pct", 0),
+        "score":       result["score100"],
+        "time":        tr_time.isoformat(),
+        "status":      "open",   # open | win | loss | expired
+        "outcomes":    {},       # {"24h": {...}, "48h": {...}, "72h": {...}}
+    }
+    signal_log.insert(0, entry)
+    if len(signal_log) > 500:
+        signal_log.pop()
+    save_signal_log(signal_log)
+
+def update_signal_outcomes():
+    """Bekleyen sinyallerin 24H/48H/72H sonuclarini guncelle."""
+    now = datetime.now(timezone.utc)
+    changed = False
+
+    for entry in signal_log:
+        if entry["status"] in ("win", "loss"):
+            continue
+
+        sig_time = datetime.fromisoformat(entry["time"])
+        if sig_time.tzinfo is None:
+            sig_time = sig_time.replace(tzinfo=timezone.utc)
+
+        elapsed_h = (now - sig_time).total_seconds() / 3600
+        symbol    = entry["symbol"]
+
+        for horizon in [24, 48, 72]:
+            key = f"{horizon}h"
+            if key in entry["outcomes"]:
+                continue   # zaten hesaplandi
+            if elapsed_h < horizon:
+                continue   # henuz erken
+
+            # Fiyati cek
+            try:
+                ticker = exchange.fetch_ticker(symbol)
+                price  = float(ticker.get("last", 0) or 0)
+                if price <= 0:
+                    continue
+            except Exception:
+                continue
+
+            e     = entry["entry"]
+            tgt   = entry["target"]
+            stp   = entry["stop"]
+            ret   = round((price - e) / e * 100, 2)
+            hit_t = price >= tgt
+            hit_s = price <= stp
+
+            entry["outcomes"][key] = {
+                "price":      round(price, 8),
+                "ret_pct":    ret,
+                "hit_target": hit_t,
+                "hit_stop":   hit_s,
+            }
+            changed = True
+
+            # Final durum: 72H sonunda kapat
+            if key == "72h":
+                entry["status"] = "win" if hit_t and not hit_s else ("loss" if hit_s else "expired")
+
+    if changed:
+        save_signal_log(signal_log)
+
+def outcome_tracker_thread():
+    """Her saat sinyal sonuclarini guncelle."""
+    while True:
+        time.sleep(3600)
+        try:
+            update_signal_outcomes()
+        except Exception as e:
+            print(f"outcome_tracker hata: {e}", flush=True)
+
+def perf_summary() -> dict:
+    """Sinyal performans ozeti."""
+    closed = [s for s in signal_log if s["status"] in ("win","loss","expired")]
+    if not closed:
+        return {}
+
+    wins    = sum(1 for s in closed if s["status"] == "win")
+    losses  = sum(1 for s in closed if s["status"] == "loss")
+    expired = sum(1 for s in closed if s["status"] == "expired")
+    win_pct = round(wins / len(closed) * 100, 1) if closed else 0
+
+    # Ortalama 24H getiri
+    rets = [s["outcomes"]["24h"]["ret_pct"] for s in closed
+            if "24h" in s["outcomes"] and "ret_pct" in s["outcomes"]["24h"]]
+    avg_ret = round(sum(rets)/len(rets), 2) if rets else 0
+
+    return {
+        "total":    len(signal_log),
+        "closed":   len(closed),
+        "open":     len(signal_log) - len(closed),
+        "wins":     wins,
+        "losses":   losses,
+        "expired":  expired,
+        "win_pct":  win_pct,
+        "avg_ret_24h": avg_ret,
+    }
 
 # ============================================================
 # 13) WEBSOCKET
@@ -1740,7 +1875,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.8rem;letter-spacing:2px}}
 <h3>SON SİNYALLER</h3>
 {sig_rows if sig_rows else '<p style="color:#3d5a6a;font-size:.8rem;padding:10px 0">Henuz sinyal yok.</p>'}
 <div class="footer">
-  Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}<br>
+  Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]} | <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
   Eleme: Skor:{stats.get("score_low",0)} Cooldown:{stats.get("cooldown",0)}
   Hacim:{stats.get("low_liquidity",0)} 4H:{stats.get("no_4h_data",0)} 1H:{stats.get("data_missing",0)}
 </div>
@@ -1765,6 +1900,79 @@ def api_status():
 @flask_app.route("/api/health")
 def api_health():
     return {"status": "ok", "time": tr_now_str()}
+
+@flask_app.route("/api/performance")
+def api_performance():
+    data = clean_json({
+        "summary":     perf_summary(),
+        "signal_log":  signal_log[:100],
+    })
+    return flask_app.response_class(
+        json.dumps(data, ensure_ascii=False, default=str),
+        mimetype="application/json",
+    )
+
+@flask_app.route("/performance")
+def perf_dashboard():
+    ps   = perf_summary()
+    rows = ""
+    for s in signal_log[:50]:
+        st     = s.get("status","open")
+        st_col = "#00f080" if st=="win" else ("#ff4444" if st=="loss" else ("#ffb300" if st=="expired" else "#3d5a6a"))
+        o24    = s.get("outcomes",{}).get("24h",{})
+        o48    = s.get("outcomes",{}).get("48h",{})
+        o72    = s.get("outcomes",{}).get("72h",{})
+        def fmt_out(o):
+            if not o: return "—"
+            r = o.get("ret_pct","")
+            col = "#00f080" if float(r or 0)>0 else "#ff4444"
+            return f'<span style="color:{col}">{r:+}%</span>' if r != "" else "—"
+        rows += f"""<tr>
+            <td>{s.get("time","")[:16]}</td>
+            <td><b>{s.get("symbol","")}</b></td>
+            <td>{"🔵" if s.get("signal_type")=="dip" else "🟣"}</td>
+            <td>{s.get("score","")}/100</td>
+            <td>${s.get("entry","")}</td>
+            <td>{fmt_out(o24)}</td>
+            <td>{fmt_out(o48)}</td>
+            <td>{fmt_out(o72)}</td>
+            <td style="color:{st_col}">{st.upper()}</td>
+        </tr>"""
+
+    return f"""<!DOCTYPE html><html lang="tr"><head>
+<meta charset="UTF-8"><title>Performans</title>
+<meta http-equiv="refresh" content="300">
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#06090d;color:#b8cdd8;font-family:'Courier New',monospace;padding:24px}}
+  h1{{color:#00d4ff;font-size:1.1rem;margin-bottom:4px}}
+  .sub{{color:#3d5a6a;font-size:.75rem;margin-bottom:20px}}
+  .cards{{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px}}
+  .card{{background:#0c1117;border:1px solid #1c2a36;border-radius:4px;padding:14px;min-width:120px;text-align:center}}
+  .cv{{font-size:1.4rem;font-weight:bold;color:#00d4ff}}
+  .cl{{font-size:.65rem;color:#3d5a6a;margin-top:4px}}
+  table{{width:100%;border-collapse:collapse}}
+  th{{background:#0c1117;color:#3d5a6a;font-size:.65rem;text-transform:uppercase;padding:7px 10px;text-align:left;border-bottom:1px solid #1c2a36}}
+  td{{padding:7px 10px;border-bottom:1px solid #0c1117;font-size:.78rem}}
+  tr:hover td{{background:#0c1117}}
+  a{{color:#00d4ff;text-decoration:none}}
+</style></head><body>
+<h1>📈 SİNYAL PERFORMANSI</h1>
+<div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()} &nbsp;|&nbsp; Her 5 dakikada yenilenir</div>
+<div class="cards">
+  <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam Sinyal</div></div>
+  <div class="card"><div class="cv">{ps.get("open",0)}</div><div class="cl">Açık</div></div>
+  <div class="card"><div class="cv" style="color:#00f080">{ps.get("wins",0)}</div><div class="cl">Kazanan</div></div>
+  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("losses",0)}</div><div class="cl">Kaybeden</div></div>
+  <div class="card"><div class="cv" style="color:#ffb300">{ps.get("expired",0)}</div><div class="cl">Expired</div></div>
+  <div class="card"><div class="cv" style="color:{"#00f080" if ps.get("win_pct",0)>=50 else "#ff4444"}">{ps.get("win_pct",0)}%</div><div class="cl">Kazanma Oranı</div></div>
+  <div class="card"><div class="cv">{ps.get("avg_ret_24h","—")}%</div><div class="cl">Ort. 24H Getiri</div></div>
+</div>
+<table><thead><tr>
+  <th>Zaman</th><th>Sembol</th><th>Tip</th><th>Skor</th><th>Giriş</th>
+  <th>24H</th><th>48H</th><th>72H</th><th>Durum</th>
+</tr></thead><tbody>{rows}</tbody></table>
+</body></html>"""
 
 # ============================================================
 # 15) MAIN
@@ -1804,9 +2012,10 @@ def start_flask():
     flask_app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
-    threading.Thread(target=start_flask,      daemon=True).start()
-    threading.Thread(target=heartbeat_pinger, daemon=True).start()
-    threading.Thread(target=watchdog_thread,  daemon=True).start()
+    threading.Thread(target=start_flask,        daemon=True).start()
+    threading.Thread(target=heartbeat_pinger,  daemon=True).start()
+    threading.Thread(target=watchdog_thread,   daemon=True).start()
+    threading.Thread(target=outcome_tracker_thread, daemon=True).start()
 
     try:
         asyncio.run(main())
