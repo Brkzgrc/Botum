@@ -1864,29 +1864,40 @@ async def ws_1h_chunk(symbols, candidate_queue):
             ) as ws:
                 retry = 0
                 print(f"1H WS baglandi ({len(symbols)} sembol)", flush=True)
-                last_ping = time.time()
-                while True:
-                    try:
-                        msg = await asyncio.wait_for(ws.recv(), timeout=30)
-                    except asyncio.TimeoutError:
-                        # 30s mesaj gelmedi, manuel ping gonder
-                        await ws.ping()
-                        last_ping = time.time()
-                        continue
-                    data = json.loads(msg)
-                    k    = data.get("data", {}).get("k", {})
-                    if not k.get("x", False): continue
-                    sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
-                    try:
-                        await on_1h_close(
-                            sym,
-                            float(k["o"]), float(k["h"]),
-                            float(k["l"]), float(k["c"]),
-                            float(k["v"]), int(k["t"]),
-                            candidate_queue,
-                        )
-                    except Exception as e:
-                        print(f"on_1h_close hata [{sym}]: {str(e)[:100]}", flush=True)
+
+                # Ping'i ayrı task olarak calistir — on_1h_close'dan bagimsiz
+                async def keep_alive(ws):
+                    while True:
+                        await asyncio.sleep(20)
+                        try:
+                            pong = await ws.ping()
+                            await asyncio.wait_for(pong, timeout=10)
+                        except Exception:
+                            break  # WS kapanmis, dis dongu yeniden baglayacak
+
+                ping_task = asyncio.create_task(keep_alive(ws))
+                try:
+                    while True:
+                        try:
+                            msg = await asyncio.wait_for(ws.recv(), timeout=60)
+                        except asyncio.TimeoutError:
+                            continue  # Ping task zaten hallediyor
+                        data = json.loads(msg)
+                        k    = data.get("data", {}).get("k", {})
+                        if not k.get("x", False): continue
+                        sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
+                        try:
+                            await on_1h_close(
+                                sym,
+                                float(k["o"]), float(k["h"]),
+                                float(k["l"]), float(k["c"]),
+                                float(k["v"]), int(k["t"]),
+                                candidate_queue,
+                            )
+                        except Exception as e:
+                            print(f"on_1h_close hata [{sym}]: {str(e)[:100]}", flush=True)
+                finally:
+                    ping_task.cancel()
         except Exception as e:
             retry  += 1
             backoff = min(60, 5 * (2 ** min(retry, 4)))
