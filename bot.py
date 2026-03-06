@@ -854,6 +854,10 @@ def analyze_1h_trend(df):
     if None in (rsi, entry):
         return None
 
+    # RSI 70+ asiri alim — trend sinyali verme
+    if rsi > 70:
+        return None
+
     # RSI 50-65 ideal — max 20p
     p_rsi  = score_rsi_trend(rsi)
     c_rsi  = 50 <= rsi <= 65
@@ -948,6 +952,10 @@ def analyze_4h_trend(df):
     if adx is None:
         return None
 
+    # ADX < 20 — trend yok, teyit verme
+    if adx < 20:
+        return None
+
     # EMA/SMA gap aciliyor — max 15p
     p_ema, ema_txt, c_ema = score_ema_sma_trend(df)
 
@@ -1032,6 +1040,7 @@ def full_analyze_trend(symbol, df_1h, df_4h):
         "conditions_4h": r4h["conditions"],
         "rsi":           r1h["rsi"],
         "wr":            r1h["wr"],
+        "mfi":           None,   # trend sinyalinde mfi kosul degil
         "macd_hist":     r1h["macd_hist"],
         "macd_txt":      r1h["macd_txt"],
         "vol_ratio":     r1h["vol_ratio"],
