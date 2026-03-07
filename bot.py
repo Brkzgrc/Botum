@@ -779,14 +779,6 @@ def detect_market_mode(df):
     if swing_low_bars_ago <= 48 and rise_from_low <= 25.0:
         return "dip_donus", info
 
-    # Trend devamı: dipten %15-50 yükselmiş, tepeye hala uzak
-    if 15.0 <= rise_from_low <= 50.0 and drop_from_high >= 5.0:
-        return "trend_devam", info
-
-    # Dip yakın değil ama henüz az yükselmiş → trend devamı dene
-    if rise_from_low <= 40.0 and drop_from_high >= 8.0:
-        return "trend_devam", info
-
     return "yatay", info
 
 
@@ -847,7 +839,7 @@ def analyze_unified_1h(df, mode):
 
     if mode == "dip_donus":
         # ── HARD FİLTRELER ──────────────────────────────────
-        if rsi >= 45:           return None  # RSI zaten yüksek
+        if rsi >= 38:           return None  # RSI zaten yüksek
         if wr  >= -50:          return None  # Williams aşırı alımda
         if mfi is not None and mfi >= 40:
                                 return None  # MFI aşırı alımda
