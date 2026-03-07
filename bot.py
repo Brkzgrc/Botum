@@ -277,6 +277,30 @@ def prepare_1h(df):
         if u_col: df["bb_upper"] = bb[u_col]
     df["vol_ma"] = df["volume"].rolling(20, min_periods=1).mean()
     df["atr"]    = ta.atr(df["high"], df["low"], df["close"], length=14)
+
+    # ── WaveTrend (LazyBear) ─────────────────────────────────
+    # n1=10 (channel), n2=21 (average)
+    # ap = hlc3
+    # esa = ema(ap, n1)
+    # d = ema(abs(ap - esa), n1)
+    # ci = (ap - esa) / (0.015 * d)
+    # wt1 = ema(ci, n2)
+    # wt2 = sma(wt1, 4)
+    wt_n1  = 10
+    wt_n2  = 21
+    ap     = (df["high"] + df["low"] + df["close"]) / 3
+    esa    = ap.ewm(span=wt_n1, adjust=False).mean()
+    d      = (ap - esa).abs().ewm(span=wt_n1, adjust=False).mean()
+    ci     = (ap - esa) / (0.015 * d.replace(0, np.nan))
+    wt1    = ci.ewm(span=wt_n2, adjust=False).mean()
+    wt2    = wt1.rolling(4).mean()
+    df["wt1"] = wt1
+    df["wt2"] = wt2
+    # wt1 wt2'yi aşağıdan yukarı kesti mi? (alım sinyali)
+    df["wt_cross_up"]   = (wt1 > wt2) & (wt1.shift(1) <= wt2.shift(1))
+    # wt1 wt2'yi yukarıdan aşağı kesti mi? (satış sinyali)
+    df["wt_cross_down"] = (wt1 < wt2) & (wt1.shift(1) >= wt2.shift(1))
+
     return df
 
 def prepare_4h(df):
@@ -837,12 +861,23 @@ def analyze_unified_1h(df, mode):
     cycler_exit = bool(last.get("rsi_cycler_exit", False))
     cycler_val  = int(last.get("rsi_cycler", 0))
 
+    # WaveTrend değerleri
+    wt1_val       = sf(last, "wt1")
+    wt2_val       = sf(last, "wt2")
+    wt_cross_up   = bool(last.get("wt_cross_up",   False))
+    wt_cross_down = bool(last.get("wt_cross_down", False))
+
     if mode == "dip_donus":
         # ── HARD FİLTRELER ──────────────────────────────────
         if rsi >= 38:           return None  # RSI zaten yüksek
         if wr  >= -50:          return None  # Williams aşırı alımda
         if mfi is not None and mfi >= 40:
                                 return None  # MFI aşırı alımda
+        # WaveTrend aşırı alımda — yukarı kesiş olmamış olmalı
+        if wt1_val is not None and wt1_val > -20:
+            return None  # WT henüz aşırı satım bölgesinde değil
+        if wt_cross_down:
+            return None  # WT yeni satış sinyali verdi, dip değil
 
         # RSI — max 25p (cycler çıkış bonusu dahil)
         if rsi <= RSI_CEIL:
@@ -908,7 +943,27 @@ def analyze_unified_1h(df, mode):
         elif bvol_pct >= 55.0:
             p_vol = 2.0
 
-        score_1h = round(p_rsi + p_wr + p_mfi + p_macd + p_bb + p_vol, 1)
+        # WaveTrend — max 10p
+        # -60 altında: aşırı satım, cross up varsa tam puan
+        p_wt = 0.0
+        wt_txt = "veri yok"
+        if wt1_val is not None:
+            if wt_cross_up and wt1_val <= -60:
+                p_wt   = 10.0
+                wt_txt = "aşırı satımdan dönüş ↑"
+            elif wt_cross_up and wt1_val <= -40:
+                p_wt   = 6.0
+                wt_txt = "yukarı kesişim ↑"
+            elif wt1_val <= -60:
+                p_wt   = 4.0
+                wt_txt = f"aşırı satım ({round(wt1_val,1)})"
+            elif wt1_val <= -40:
+                p_wt   = 2.0
+                wt_txt = f"satım bölgesi ({round(wt1_val,1)})"
+            else:
+                wt_txt = f"nötr ({round(wt1_val,1)})"
+
+        score_1h = round(p_rsi + p_wr + p_mfi + p_macd + p_bb + p_vol + p_wt, 1)
         return {
             "mode":        "dip_donus",
             "score_1h":    score_1h,
@@ -930,6 +985,11 @@ def analyze_unified_1h(df, mode):
             "entry":       round(entry, 8),
             "cycler_exit": cycler_exit,
             "cycler_val":  cycler_val,
+            "p_wt":        round(p_wt, 2),
+            "wt1":         round(wt1_val, 2) if wt1_val is not None else None,
+            "wt2":         round(wt2_val, 2) if wt2_val is not None else None,
+            "wt_cross_up": wt_cross_up,
+            "wt_txt":      wt_txt,
         }
 
     elif mode == "trend_devam":
@@ -1334,6 +1394,11 @@ def full_analyze(symbol, df_1h, df_4h):
         "macd_txt":      r1h.get("macd_txt", ""),
         "bb_txt":        r1h.get("bb_txt", ""),
         "pullback_txt":  r1h.get("pullback_txt", ""),
+        "p_wt":          r1h.get("p_wt", 0),
+        "wt1":           r1h.get("wt1"),
+        "wt2":           r1h.get("wt2"),
+        "wt_cross_up":   r1h.get("wt_cross_up", False),
+        "wt_txt":        r1h.get("wt_txt", ""),
         "vol_ratio":     r1h.get("vol_ratio", 0),
         "bvol_pct":      r1h.get("bvol_pct", 50),
         "ema_txt":       r4h["ema_txt"],
@@ -1441,6 +1506,7 @@ def build_tg_message(r, tr_time):
     p_wr      = r.get("p_wr",       0)
     p_mfi     = r.get("p_mfi",      0)
     p_macd    = r.get("p_macd",     0)
+    p_wt      = r.get("p_wt",       0)
     p_bb      = r.get("p_bb",       0)
     p_vol     = r.get("p_vol",      0)
     p_pull    = r.get("p_pullback", 0)
@@ -1462,6 +1528,7 @@ def build_tg_message(r, tr_time):
             f"W%%R  {puan_bar(p_wr,   15)}\n"
             f"MFI  {puan_bar(p_mfi,  15)}\n"
             f"MACD {puan_bar(p_macd, 10)}\n"
+            f"WT   {puan_bar(p_wt,   10)}\n"
             f"BB   {puan_bar(p_bb,    5)}\n"
             f"Vol  {puan_bar(p_vol,   5)}\n"
             f"─────────────────\n"
@@ -1477,6 +1544,7 @@ def build_tg_message(r, tr_time):
             f"{bold('MFI(14)')}      {mfi_txt}{mfi_sfx}",
             f"{bold('MACD Hist')}    🟢 {macd_t}",
             f"{bold('Bol. Band')}    {'🟢 ' + bb_t if bb_t else '🔴 tetiklenmedi'}",
+            f"{bold('WaveTrend')}    {'🟢' if r.get('wt_cross_up') else '🟡'} {r.get('wt_txt','—')}",
             f"{bold('Hacim')}        {vol_txt}  ({bvol_txt})",
         ]
     else:
