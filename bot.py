@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Trend & Momentum Scanner v4.0
+Trend & Momentum Scanner v5.0
 ==============================
-Backtest v9 kanıtlı parametreler:
-  StochRSI < 0.05
-  Williams %R < -80
-  OBV_OSC < -50
-  WaveTrend < -75
-  MACD histogram <= 0
-  Stop: -%10  |  Cooldown: 4H
+DIP sistemi (backtest_dip_v1):
+  StochRSI < 0.05, WR < -80, OBV_OSC < -50, WT < -75, MACD hist <= 0
+  Stop: -%10 | Cooldown: 4H | Funding < 0 → 💰
 
-Funding Rate: hard filtre değil, öncelik etiketi
-  Funding < 0 → 💰 (öncelikli sinyal)
-  Funding ≥ 0 → 🔵 (normal sinyal)
+TREND sistemi (backtest_trend v21/v22):
+  BB_BREAK: ALL4_LOOSE + bu barda BB(15) ust bant kirilimi
+    → Train %80.7 / Test %78.0
+  VOL3_BB:  ALL4_LOOSE + 3 barda hacim trendi + BB kirilimi
+    → Train %79.4 / Test %78.3
+  Stop: -%10 | Cooldown: 4H | Etiket: 📈 TREND
 """
 
 import asyncio
@@ -21,7 +20,7 @@ import time
 import threading
 import os
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -39,20 +38,21 @@ BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 
-# ── Backtest v9 kanıtlı eşikler ──────────────────────────────
+# Dip sistemi esikleri
 STOCH_RSI_THRESH = float(os.getenv("STOCH_RSI_THRESH", "0.05"))
 WR_THRESH        = float(os.getenv("WR_THRESH",        "-80"))
 OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-50"))
 WT_THRESH        = float(os.getenv("WT_THRESH",        "-75"))
 STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
+TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
 MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "500000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",           "0"))
 
 WS_STREAM_CHUNK = int(os.getenv("WS_STREAM_CHUNK", "120"))
-BOOTSTRAP_BARS  = int(os.getenv("BOOTSTRAP_BARS",  "200"))
-KEEP_BARS       = int(os.getenv("KEEP_BARS",       "200"))
+BOOTSTRAP_BARS  = int(os.getenv("BOOTSTRAP_BARS",  "250"))
+KEEP_BARS       = int(os.getenv("KEEP_BARS",       "250"))
 
 BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
@@ -82,6 +82,8 @@ def print_summary():
     print(f"Sembol       : {len(tracked_symbols)}", flush=True)
     print(f"1H kapanis   : {ws_1h_closes}", flush=True)
     print(f"Sinyal       : {stats.get('signal_sent', 0)}", flush=True)
+    print(f"  Dip        : {stats.get('dip_sent', 0)}", flush=True)
+    print(f"  Trend      : {stats.get('trend_sent', 0)}", flush=True)
     for k, lbl in [
         ("cooldown",      "Cooldown"),
         ("low_liquidity", "Dusuk hacim"),
@@ -149,13 +151,14 @@ exchange_fut = ccxt.binance({
 # ============================================================
 @dataclass
 class SignalCandidate:
-    symbol:  str
-    result:  dict
-    tr_time: datetime
+    symbol:   str
+    result:   dict
+    tr_time:  datetime
+    sig_type: str = "dip"   # "dip" veya "trend"
 
 bars_1h:          dict = {}
-funding_cache:    dict = {}   # {symbol: funding_rate_float | None}
-last_signal_ts:   dict = {}
+funding_cache:    dict = {}
+last_signal_ts:   dict = {}   # {symbol: {"dip": dt, "trend": dt}}
 last_scan_result: dict = {}
 all_signals:      list = []
 
@@ -177,7 +180,6 @@ async def load_symbols_pool():
     if not syms:
         return []
 
-    # Hacim sırala
     volumes = {}
     for i in range(0, len(syms), 120):
         part = syms[i:i + 120]
@@ -196,13 +198,11 @@ async def load_symbols_pool():
 # 4) FUNDING RATE
 # ============================================================
 async def fetch_funding_rate(symbol):
-    """Anlık funding rate'i çek, cache'e yaz."""
     sym_fut = symbol.replace("/USDT", "USDT")
     try:
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(
-            None,
-            lambda: exchange_fut.fetch_funding_rate(sym_fut)
+            None, lambda: exchange_fut.fetch_funding_rate(sym_fut)
         )
         rate = data.get("fundingRate")
         funding_cache[symbol] = float(rate) if rate is not None else None
@@ -210,7 +210,6 @@ async def fetch_funding_rate(symbol):
         funding_cache[symbol] = None
 
 async def refresh_funding_cache(symbols):
-    """Bootstrap sırasında tüm futures semboller için funding rate çek."""
     print("  Funding rate cache dolduruluyor...", flush=True)
     ok = 0
     for sym in symbols:
@@ -218,7 +217,7 @@ async def refresh_funding_cache(symbols):
         if funding_cache.get(sym) is not None:
             ok += 1
         await asyncio.sleep(0.05)
-    print(f"  → {ok}/{len(symbols)} sembolde funding rate bulundu", flush=True)
+    print(f"  → {ok}/{len(symbols)} sembolde funding rate", flush=True)
 
 # ============================================================
 # 5) VERİ + İNDİKATOR
@@ -233,34 +232,31 @@ async def fetch_df(symbol, timeframe, limit):
     return df
 
 def prepare_bars(df):
-    """
-    Tüm indikatörleri hesapla:
-    StochRSI, Williams %R, OBV_OSC, WaveTrend, MACD histogram
-    """
+    """Hem dip hem trend için tüm indikatörler"""
     df = df.copy()
     c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
 
-    # ── Williams %R ──────────────────────────────────────────
-    h14       = h.rolling(14).max()
-    l14       = l.rolling(14).min()
-    df["wr"]  = -100 * (h14 - c) / (h14 - l14).replace(0, np.nan)
+    # ── Williams %R ─────────────────────────────────────────
+    h14      = h.rolling(14).max()
+    l14      = l.rolling(14).min()
+    df["wr"] = -100 * (h14 - c) / (h14 - l14).replace(0, np.nan)
 
-    # ── RSI → StochRSI ───────────────────────────────────────
+    # ── StochRSI ─────────────────────────────────────────────
     d    = c.diff()
     gain = d.clip(lower=0).ewm(com=13, adjust=False).mean()
     loss = (-d).clip(lower=0).ewm(com=13, adjust=False).mean()
     rsi  = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
-    rsi_min       = rsi.rolling(14).min()
-    rsi_max       = rsi.rolling(14).max()
-    stoch_k       = (rsi - rsi_min) / (rsi_max - rsi_min).replace(0, np.nan)
-    df["stoch_rsi"] = stoch_k.rolling(3).mean()   # %K smoothed
+    rsi_min     = rsi.rolling(14).min()
+    rsi_max     = rsi.rolling(14).max()
+    stoch_k     = (rsi - rsi_min) / (rsi_max - rsi_min).replace(0, np.nan)
+    df["stoch_rsi"] = stoch_k.rolling(3).mean()
 
     # ── OBV Oscillator ───────────────────────────────────────
     obv          = (v * np.sign(c.diff()).fillna(0)).cumsum()
     obv_ma       = obv.rolling(20).mean()
     df["obv_osc"] = (obv - obv_ma) / obv_ma.abs().replace(0, np.nan) * 100
 
-    # ── WaveTrend (LazyBear) ─────────────────────────────────
+    # ── WaveTrend ────────────────────────────────────────────
     ap    = (h + l + c) / 3
     esa   = ap.ewm(span=10, adjust=False).mean()
     d_abs = (ap - esa).abs().ewm(span=10, adjust=False).mean()
@@ -268,27 +264,50 @@ def prepare_bars(df):
     df["wt"] = ci.ewm(span=21, adjust=False).mean()
 
     # ── MACD Histogram ───────────────────────────────────────
-    e12        = c.ewm(span=12, adjust=False).mean()
-    e26        = c.ewm(span=26, adjust=False).mean()
-    macd_line  = e12 - e26
+    e12         = c.ewm(span=12, adjust=False).mean()
+    e26         = c.ewm(span=26, adjust=False).mean()
+    macd_line   = e12 - e26
     signal_line = macd_line.ewm(span=9, adjust=False).mean()
     df["macd_hist"] = macd_line - signal_line
 
-    return df.dropna(subset=["stoch_rsi", "wr", "obv_osc", "wt", "macd_hist"])
+    # ── Trend indikatörleri ──────────────────────────────────
+    # ATR
+    tr       = pd.concat([h-l,(h-c.shift()).abs(),(l-c.shift()).abs()],axis=1).max(axis=1)
+    df["atr"]    = tr.ewm(alpha=1/14, adjust=False).mean()
+    df["vol_ma"] = v.rolling(20).mean()
+
+    # EMA50 / EMA200
+    df["ema50"]  = c.ewm(span=50,  adjust=False).mean()
+    df["ema200"] = c.ewm(span=200, adjust=False).mean()
+
+    # ADX
+    up   = h.diff(); dn = -l.diff()
+    pdm  = up.where((up>dn)&(up>0), 0.0)
+    mdm  = dn.where((dn>up)&(dn>0), 0.0)
+    atr14= tr.ewm(alpha=1/14, adjust=False).mean()
+    pdi  = 100*pdm.ewm(alpha=1/14,adjust=False).mean()/(atr14+1e-10)
+    mdi  = 100*mdm.ewm(alpha=1/14,adjust=False).mean()/(atr14+1e-10)
+    dx   = (pdi-mdi).abs()/(pdi+mdi+1e-10)*100
+    df["adx"] = dx.ewm(alpha=1/14, adjust=False).mean()
+
+    # BB(15, 2.0)
+    bb_ma        = c.rolling(15).mean()
+    bb_std       = c.rolling(15).std()
+    df["bb15_upper"] = bb_ma + 2.0 * bb_std
+
+    return df.dropna(subset=["stoch_rsi","wr","obv_osc","wt","macd_hist",
+                              "atr","ema50","ema200","adx","bb15_upper"])
 
 # ============================================================
 # 6) SİNYAL KRİTERLERİ
 # ============================================================
-def check_signal(df, symbol):
-    """
-    Son kapanan mumu kontrol et.
-    Tüm kriterler sağlanırsa sinyal dict döndür, değilse None.
-    """
+def check_dip_signal(df, symbol):
+    """Dip sistemi — mevcut backtest_dip_v1 parametreleri"""
     if len(df) < 60:
         return None
 
-    last  = df.iloc[-2]   # son kapanan mum
-    entry = float(df.iloc[-1]["close"])  # giriş: şu anki fiyat
+    last  = df.iloc[-2]
+    entry = float(df.iloc[-1]["close"])
 
     def sf(col):
         v = last.get(col, np.nan)
@@ -303,21 +322,19 @@ def check_signal(df, symbol):
     if None in (stoch, wr, obv, wt, hist):
         return None
 
-    # ── Backtest v9 kriterleri ───────────────────────────────
-    if stoch >= STOCH_RSI_THRESH: return None   # StochRSI < 0.05
-    if wr    >= WR_THRESH:        return None   # WR < -80
-    if obv   >= OBV_OSC_THRESH:   return None   # OBV_OSC < -50
-    if wt    >= WT_THRESH:        return None   # WT < -75
-    if hist  >  0:                return None   # MACD hist <= 0
+    if stoch >= STOCH_RSI_THRESH: return None
+    if wr    >= WR_THRESH:        return None
+    if obv   >= OBV_OSC_THRESH:   return None
+    if wt    >= WT_THRESH:        return None
+    if hist  >  0:                return None
 
-    # Funding rate
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
-
-    stop = round(entry * (1 - STOP_PCT / 100), 8)
+    stop        = round(entry * (1 - STOP_PCT / 100), 8)
 
     return {
         "symbol":      symbol,
+        "type":        "dip",
         "entry":       round(entry, 8),
         "stop":        round(stop,  8),
         "stoch_rsi":   round(stoch, 4),
@@ -327,6 +344,116 @@ def check_signal(df, symbol):
         "macd_hist":   round(hist,  8),
         "funding":     round(funding, 6) if funding is not None else None,
         "funding_neg": funding_neg,
+    }
+
+def check_trend_signal(df, symbol):
+    """
+    Trend sistemi — BB_BREAK_NOW + VOL3_BB_NOW
+    ALL4_LOOSE base:
+      Displacement + Yerel Direnc + ADX>20 yukselen
+      EMA50>%8 + EMA200>%12 + ATR/Fiyat>%1.5 + Son3bar>%5
+    + BB(15) ust bant kirilimi (onceki bar altindaydi)
+    Ek: VOL3 modu — son 3 barda hacim yukselis trendi
+    """
+    if len(df) < 60:
+        return None
+
+    # Son kapanan mum (sinyal mumu)
+    bar   = df.iloc[-2]
+    prev  = df.iloc[-3]
+    entry = float(df.iloc[-1]["close"])
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    o    = sf(bar, "open")
+    c    = sf(bar, "close")
+    h    = sf(bar, "high")
+    l    = sf(bar, "low")
+    vol  = sf(bar, "volume")
+    atr  = sf(bar, "atr")
+    vm   = sf(bar, "vol_ma")
+    e50  = sf(bar, "ema50")
+    e200 = sf(bar, "ema200")
+    adx  = sf(bar, "adx")
+    bbu  = sf(bar, "bb15_upper")
+    pbbu = sf(prev, "bb15_upper")
+    adx3 = sf(df.iloc[-5], "adx")  # 3 bar onceki adx
+
+    if None in (o, c, h, l, vol, atr, vm, e50, e200, adx, bbu, pbbu, adx3):
+        return None
+    if atr <= 0 or vm <= 0 or e50 <= 0 or e200 <= 0:
+        return None
+
+    # ALL4_LOOSE koşulları
+
+    # 1. Displacement: güçlü yeşil mum
+    if c <= o: return None
+    body = abs(c - o)
+    if body < atr * 1.2: return None
+    rng = h - l
+    if rng <= 0: return None
+    if (c - l) / rng < 0.65: return None
+    if vol < vm * 1.6: return None
+
+    # 2. Yerel direnc kirilimi (son 50 bar)
+    highs50 = df["high"].iloc[-52:-2].values
+    if len(highs50) < 10: return None
+    local_res = float(np.max(highs50))
+    if c < local_res * 1.01: return None
+
+    # 3. ADX > 20 ve yükselen
+    if adx <= 20: return None
+    if adx <= adx3: return None
+
+    # 4. EMA50 uzaklığı > %8
+    if (c - e50) / e50 * 100 <= 8.0: return None
+
+    # 5. EMA200 uzaklığı > %12
+    if (c - e200) / e200 * 100 <= 12.0: return None
+
+    # 6. ATR/Fiyat > %1.5
+    if atr / c * 100 <= 1.5: return None
+
+    # 7. Son 3 bar getirisi > %5
+    c3 = sf(df.iloc[-5], "close")
+    if c3 is None or c3 <= 0: return None
+    if (c - c3) / c3 * 100 <= 5.0: return None
+
+    # 8. BB(15) kırılımı: önceki bar altında, bu bar üstünde
+    if sf(prev, "close") >= pbbu: return None   # önceki zaten üstündeydi
+    if c < bbu: return None                      # bu bar üste çıkmadı
+
+    # Hangi trend tipi?
+    trend_subtype = "BB_BREAK"
+
+    # VOL3 kontrolü (ek kalite — varsa işaretle)
+    vol3_ok = False
+    if len(df) >= 6:
+        v_win = df["volume"].iloc[-5:-2].values  # son 3 bar (sinyal hariç)
+        if len(v_win) == 3:
+            x     = np.arange(3, dtype=float)
+            slope = np.polyfit(x, v_win, 1)[0]
+            if slope > 0 and v_win[-1] >= np.mean(v_win):
+                vol3_ok = True
+                trend_subtype = "VOL3_BB"
+
+    stop = round(entry * (1 - TREND_STOP_PCT / 100), 8)
+
+    return {
+        "symbol":       symbol,
+        "type":         "trend",
+        "subtype":      trend_subtype,
+        "entry":        round(entry, 8),
+        "stop":         round(stop,  8),
+        "ema50_dist":   round((c-e50)/e50*100, 1),
+        "ema200_dist":  round((c-e200)/e200*100, 1),
+        "adx":          round(adx, 1),
+        "atr_ratio":    round(atr/c*100, 2),
+        "vol3_ok":      vol3_ok,
+        "funding":      funding_cache.get(symbol),
+        "funding_neg":  False,
     }
 
 # ============================================================
@@ -359,30 +486,21 @@ def fmt_price(price):
     if p >= 0.01:  return f"{p:.4f}"
     return f"{p:.6f}"
 
-def build_tg_message(r, tr_time, sig_num):
+def build_dip_message(r, tr_time, sig_num):
     now         = tr_time.strftime("%d/%m/%Y %H:%M")
     sym         = r["symbol"].replace("/USDT", "")
     funding_neg = r.get("funding_neg", False)
     funding_val = r.get("funding")
+    icon        = "💰" if funding_neg else "🔵"
 
-    # Başlık ikonu
-    icon = "💰" if funding_neg else "🔵"
-
-    # Funding satırı
+    fund_line = None
     if funding_val is not None:
-        fund_str = f"{funding_val:+.4f}%"
+        fund_str  = f"{funding_val:+.4f}%"
         fund_line = f"Funding    {fund_str}{'  💰' if funding_neg else ''}"
-    else:
-        fund_line = None
 
-    # MACD hist formatı
     hist_val = r.get("macd_hist", 0)
-    if abs(hist_val) < 0.0001:
-        hist_str = f"{hist_val:.6f}"
-    elif abs(hist_val) < 0.01:
-        hist_str = f"{hist_val:.5f}"
-    else:
-        hist_str = f"{hist_val:.4f}"
+    hist_str = f"{hist_val:.6f}" if abs(hist_val) < 0.0001 else (
+               f"{hist_val:.5f}" if abs(hist_val) < 0.01 else f"{hist_val:.4f}")
 
     lines = [
         f"🕐 {now}",
@@ -399,15 +517,40 @@ def build_tg_message(r, tr_time, sig_num):
         f"WaveTrend  {r['wt']:.1f}",
         f"MACD Hist  {hist_str}",
     ]
-
     if fund_line:
         lines.append(fund_line)
-
     lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
+    return "\n".join(lines)
 
+def build_trend_message(r, tr_time, sig_num):
+    now      = tr_time.strftime("%d/%m/%Y %H:%M")
+    sym      = r["symbol"].replace("/USDT", "")
+    subtype  = r.get("subtype", "BB_BREAK")
+    vol3     = r.get("vol3_ok", False)
+
+    # VOL3_BB daha kaliteli — özel ikon
+    quality = "⭐ VOL3+BB" if vol3 else "BB Kırılım"
+
+    lines = [
+        f"🕐 {now}",
+        "",
+        f"📈 <b>#{sym}USDT</b>  •  TREND  •  1H  •  {quality}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"💵 Giriş:   {fmt_price(r['entry'])}",
+        f"🛡️ Stop:    {fmt_price(r['stop'])}  (-%{TREND_STOP_PCT:.0f})",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "📊 Trend Göstergeleri",
+        f"EMA50 uzak  +{r['ema50_dist']:.1f}%",
+        f"EMA200 uzak +{r['ema200_dist']:.1f}%",
+        f"ADX         {r['adx']:.1f}",
+        f"ATR/Fiyat   %{r['atr_ratio']:.2f}",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"✅ Başarı: ~%78 (test verisi)",
+        f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
+    ]
     return "\n".join(lines)
 
 # ============================================================
@@ -442,9 +585,10 @@ async def signal_worker(candidate_queue):
     while True:
         sig = await candidate_queue.get()
         try:
-            symbol  = sig.symbol
-            result  = sig.result
-            tr_time = sig.tr_time
+            symbol   = sig.symbol
+            result   = sig.result
+            tr_time  = sig.tr_time
+            sig_type = sig.sig_type
 
             # Hacim kontrolü
             try:
@@ -465,9 +609,23 @@ async def signal_worker(candidate_queue):
             )
 
             signal_counter += 1
-            send_telegram(build_tg_message(result, tr_time, signal_counter))
-            last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
 
+            # Mesaj tipine göre gönder
+            if sig_type == "trend":
+                msg = build_trend_message(result, tr_time, signal_counter)
+                stats["trend_sent"] += 1
+                icon = "📈"
+            else:
+                msg = build_dip_message(result, tr_time, signal_counter)
+                stats["dip_sent"] += 1
+                icon = "💰" if result.get("funding_neg") else "🔵"
+
+            send_telegram(msg)
+
+            last_signal_ts.setdefault(symbol, {})[sig_type] = tr_time.replace(tzinfo=None)
+
+            result["time"]     = tr_time.strftime("%Y-%m-%d %H:%M")
+            result["sig_type"] = sig_type
             all_signals.insert(0, result)
             if len(all_signals) > 200:
                 all_signals.pop()
@@ -475,14 +633,10 @@ async def signal_worker(candidate_queue):
             stats["signal_sent"] += 1
             log_signal(result, tr_time)
 
-            fund_str = f"{result['funding']:+.4f}%" if result["funding"] is not None else "—"
+            subtype_str = result.get("subtype","") if sig_type=="trend" else ""
             print(
-                f"SINYAL {'💰' if result['funding_neg'] else '🔵'} {symbol} | "
-                f"StRSI:{result['stoch_rsi']:.4f} "
-                f"WR:{result['wr']:.1f} "
-                f"OBV:{result['obv_osc']:.1f} "
-                f"WT:{result['wt']:.1f} "
-                f"Funding:{fund_str}",
+                f"SINYAL {icon} [{sig_type.upper()}{' '+subtype_str if subtype_str else ''}] "
+                f"{symbol} | giriş:{fmt_price(result['entry'])}",
                 flush=True
             )
 
@@ -492,7 +646,7 @@ async def signal_worker(candidate_queue):
             candidate_queue.task_done()
 
 # ============================================================
-# 10) SİNYAL PERFORMANS TAKİP
+# 10) PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
 
@@ -510,7 +664,7 @@ def save_signal_log(log):
     except Exception as e:
         print(f"signal_log kayit hata: {e}", flush=True)
 
-signal_log    = load_signal_log()
+signal_log        = load_signal_log()
 pending_by_symbol = {}
 
 def log_signal(result, tr_time):
@@ -519,6 +673,8 @@ def log_signal(result, tr_time):
         "symbol":      result["symbol"],
         "entry":       result["entry"],
         "stop":        result["stop"],
+        "sig_type":    result.get("sig_type", "dip"),
+        "subtype":     result.get("subtype", ""),
         "funding_neg": result.get("funding_neg", False),
         "time":        tr_time.isoformat(),
         "status":      "open",
@@ -553,12 +709,10 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
             sig_time = sig_time.replace(tzinfo=timezone.utc)
         elapsed_h = (now - sig_time).total_seconds() / 3600
 
-        # Peak güncelle
         cur_ret = (bar_high - e) / e * 100
         if cur_ret > entry["peak_pct"]:
             entry["peak_pct"] = round(cur_ret, 2)
 
-        # Stop kontrolü (önce stop — konservatif)
         if bar_low <= stp:
             entry["status"]      = "loss"
             entry["close_time"]  = bar_time.isoformat()
@@ -567,7 +721,6 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
             to_close.append(entry)
             continue
 
-        # 24H geçti — expired
         if elapsed_h >= 24:
             entry["status"]      = "expired"
             entry["close_time"]  = bar_time.isoformat()
@@ -583,28 +736,28 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         save_signal_log(signal_log)
 
 def perf_summary():
-    closed  = [s for s in signal_log if s["status"] in ("loss","expired")]
-    # Funding negatif alt grubu
+    closed      = [s for s in signal_log if s["status"] in ("loss","expired")]
+    dip_closed  = [s for s in closed if s.get("sig_type","dip")=="dip"]
+    trend_closed= [s for s in closed if s.get("sig_type","dip")=="trend"]
     fund_closed = [s for s in closed if s.get("funding_neg")]
-    wins    = sum(1 for s in signal_log if s["status"] == "win")
-    losses  = sum(1 for s in closed if s["status"] == "loss")
-    expired = sum(1 for s in closed if s["status"] == "expired")
-    total_c = len(closed)
-    alive   = sum(1 for s in signal_log if s["status"] == "open")
 
     def avg_peak(lst):
         peaks = [s["peak_pct"] for s in lst if s.get("peak_pct") is not None]
         return round(sum(peaks)/len(peaks), 2) if peaks else 0.0
 
     return {
-        "total":          len(signal_log),
-        "open":           alive,
-        "closed":         total_c,
-        "losses":         losses,
-        "expired":        expired,
-        "avg_peak":       avg_peak(closed),
-        "fund_neg_total": len([s for s in signal_log if s.get("funding_neg")]),
-        "fund_neg_avg_peak": avg_peak(fund_closed),
+        "total":              len(signal_log),
+        "open":               sum(1 for s in signal_log if s["status"]=="open"),
+        "closed":             len(closed),
+        "losses":             sum(1 for s in closed if s["status"]=="loss"),
+        "expired":            sum(1 for s in closed if s["status"]=="expired"),
+        "avg_peak":           avg_peak(closed),
+        "dip_total":          len([s for s in signal_log if s.get("sig_type","dip")=="dip"]),
+        "dip_avg_peak":       avg_peak(dip_closed),
+        "trend_total":        len([s for s in signal_log if s.get("sig_type")=="trend"]),
+        "trend_avg_peak":     avg_peak(trend_closed),
+        "fund_neg_total":     len([s for s in signal_log if s.get("funding_neg")]),
+        "fund_neg_avg_peak":  avg_peak(fund_closed),
     }
 
 # ============================================================
@@ -633,24 +786,42 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     bars_1h[symbol] = df
 
     tr_now = datetime.now(timezone.utc).astimezone(TR_TZ)
+    sig_ts = last_signal_ts.get(symbol, {})
 
-    # Cooldown kontrolü
-    last_ts = last_signal_ts.get(symbol)
-    if last_ts:
-        hours = (tr_now.replace(tzinfo=None) - last_ts.replace(tzinfo=None)).total_seconds() / 3600
-        if hours < SIGNAL_COOLDOWN_HOURS:
+    # ── DİP sinyali kontrolü ─────────────────────────────────
+    last_dip = sig_ts.get("dip")
+    dip_ok   = True
+    if last_dip:
+        hrs = (tr_now.replace(tzinfo=None) - last_dip.replace(tzinfo=None)).total_seconds() / 3600
+        if hrs < SIGNAL_COOLDOWN_HOURS:
+            dip_ok = False
             stats["cooldown"] += 1
-            return
 
-    # Sinyal kontrolü
-    result = check_signal(df, symbol)
-    if result is None:
-        stats["filtered"] += 1
-        return
+    if dip_ok:
+        dip_result = check_dip_signal(df, symbol)
+        if dip_result:
+            await candidate_queue.put(SignalCandidate(
+                symbol=symbol, result=dip_result,
+                tr_time=tr_now, sig_type="dip"
+            ))
+        else:
+            stats["filtered"] += 1
 
-    await candidate_queue.put(SignalCandidate(
-        symbol=symbol, result=result, tr_time=tr_now,
-    ))
+    # ── TREND sinyali kontrolü ───────────────────────────────
+    last_trend = sig_ts.get("trend")
+    trend_ok   = True
+    if last_trend:
+        hrs = (tr_now.replace(tzinfo=None) - last_trend.replace(tzinfo=None)).total_seconds() / 3600
+        if hrs < SIGNAL_COOLDOWN_HOURS:
+            trend_ok = False
+
+    if trend_ok:
+        trend_result = check_trend_signal(df, symbol)
+        if trend_result:
+            await candidate_queue.put(SignalCandidate(
+                symbol=symbol, result=trend_result,
+                tr_time=tr_now, sig_type="trend"
+            ))
 
 # ============================================================
 # 12) WEBSOCKET
@@ -772,36 +943,50 @@ def home():
     sig_rows = ""
 
     for s in all_signals[:30]:
+        st       = s.get("sig_type","dip")
+        subtype  = s.get("subtype","")
         fund_neg = s.get("funding_neg", False)
-        icon     = "💰" if fund_neg else "🔵"
-        fund_val = s.get("funding")
-        fund_str = f"{fund_val:+.4f}%" if fund_val is not None else "—"
-        fund_icon = "  💰" if fund_neg else ""
+
+        if st == "trend":
+            icon      = "⭐" if subtype == "VOL3_BB" else "📈"
+            border_c  = "#00d4ff"
+            type_label= f"TREND {subtype}"
+        else:
+            icon      = "💰" if fund_neg else "🔵"
+            border_c  = "#c8e86a" if fund_neg else "#00f080"
+            type_label= "DİP"
+
+        fund_val  = s.get("funding")
+        fund_str  = f"{fund_val:+.4f}%" if fund_val is not None else "—"
+
+        # İndikatör satırı
+        if st == "trend":
+            ind_str = (f"EMA50:+{s.get('ema50_dist',0):.1f}%  "
+                       f"EMA200:+{s.get('ema200_dist',0):.1f}%  "
+                       f"ADX:{s.get('adx',0):.1f}  "
+                       f"ATR:%{s.get('atr_ratio',0):.2f}")
+        else:
+            ind_str = (f"StRSI:{s.get('stoch_rsi',0):.4f}  "
+                       f"WR:{s.get('wr',0):.1f}  "
+                       f"OBV:{s.get('obv_osc',0):.1f}  "
+                       f"WT:{s.get('wt',0):.1f}  "
+                       f"Funding:{fund_str}")
 
         sig_rows += (
-            f'<div class="sig" style="border-color:{"#c8e86a" if fund_neg else "#00f080"}">'
+            f'<div class="sig" style="border-color:{border_c}">'
             f'<div class="sr">'
-            f'<b>{icon} {s.get("symbol","")}</b>'
-            f'<span style="color:#3d5a6a;font-size:.65rem">{s.get("time","")[:16]} UTC</span>'
+            f'<b>{icon} {s.get("symbol","")} <small style="color:#3d5a6a">[{type_label}]</small></b>'
+            f'<span style="color:#3d5a6a;font-size:.65rem">{s.get("time","")[:16]}</span>'
             f'</div>'
-            f'<div class="sd">'
-            f'💵 {fmt_price(s.get("entry"))}  '
-            f'🛡️ {fmt_price(s.get("stop"))} (-%{STOP_PCT:.0f})'
-            f'</div>'
-            f'<div class="sd">'
-            f'StRSI:{s.get("stoch_rsi",""):.4f}  '
-            f'WR:{s.get("wr",""):.1f}  '
-            f'OBV:{s.get("obv_osc",""):.1f}  '
-            f'WT:{s.get("wt",""):.1f}  '
-            f'Funding:{fund_str}{fund_icon}'
-            f'</div>'
+            f'<div class="sd">💵 {fmt_price(s.get("entry"))}  🛡️ {fmt_price(s.get("stop"))}</div>'
+            f'<div class="sd">{ind_str}</div>'
             f'</div>'
         )
 
     ps = perf_summary()
     return f"""<!DOCTYPE html>
 <html><head>
-<meta charset="UTF-8"><title>Scanner v4.0</title>
+<meta charset="UTF-8"><title>Scanner v5.0</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -817,36 +1002,32 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 .sd{{font-size:.73rem;margin:2px 0;color:#8aa8b8}}
 .params{{background:#0c1117;border:1px solid #1c3a20;border-radius:4px;padding:10px 14px;margin-bottom:16px;font-size:.72rem;color:#5a8a6a;line-height:1.8}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:20px;border-top:1px solid #1c2a36;padding-top:10px;line-height:2}}
+.badge{{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.65rem;margin-right:6px}}
 </style></head><body>
-<h1>SCANNER <small style="font-size:.6rem;color:#3d5a6a">v4.0 | Backtest v9</small></h1>
+<h1>SCANNER <small style="font-size:.6rem;color:#3d5a6a">v5.0</small></h1>
 <div class="params">
-  StochRSI &lt; {STOCH_RSI_THRESH} &nbsp;|&nbsp;
-  W%R &lt; {WR_THRESH} &nbsp;|&nbsp;
-  OBV_OSC &lt; {OBV_OSC_THRESH} &nbsp;|&nbsp;
-  WT &lt; {WT_THRESH} &nbsp;|&nbsp;
-  MACD ≤ 0 &nbsp;|&nbsp;
-  Stop -%{STOP_PCT:.0f} &nbsp;|&nbsp;
-  Cooldown {SIGNAL_COOLDOWN_HOURS}H &nbsp;|&nbsp;
-  💰 = Funding &lt; 0
+  <span class="badge" style="background:#0d1a0d;color:#00f080">🔵 DİP</span>
+  StochRSI&lt;{STOCH_RSI_THRESH} WR&lt;{WR_THRESH} OBV&lt;{OBV_OSC_THRESH} WT&lt;{WT_THRESH} MACD≤0 Stop-%{STOP_PCT:.0f}<br>
+  <span class="badge" style="background:#0d1520;color:#00d4ff">📈 TREND</span>
+  BB(15) Kırılım + EMA200&gt;%12 + ADX&gt;20 + ALL4_LOOSE | Başarı ~%78 | Stop-%{TREND_STOP_PCT:.0f}<br>
+  <span class="badge" style="background:#1a1a0d;color:#ffb300">⭐ VOL3_BB</span>
+  Trend + 3bar hacim trend (daha kaliteli)
 </div>
 <div class="stats">
   <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
   <div class="stat"><span class="sv">{ws_1h_closes}</span><span class="sl">1H Kapanış</span></div>
-  <div class="stat"><span class="sv">{stats.get("signal_sent",0)}</span><span class="sl">Sinyal</span></div>
-  <div class="stat"><span class="sv">{ps.get("fund_neg_total",0)}</span><span class="sl">💰 Öncelikli</span></div>
-  <div class="stat"><span class="sv">{ps.get("open",0)}</span><span class="sl">Açık</span></div>
+  <div class="stat"><span class="sv">{stats.get("signal_sent",0)}</span><span class="sl">Toplam</span></div>
+  <div class="stat"><span class="sv" style="color:#00f080">{stats.get("dip_sent",0)}</span><span class="sl">🔵 Dip</span></div>
+  <div class="stat"><span class="sv" style="color:#00d4ff">{stats.get("trend_sent",0)}</span><span class="sl">📈 Trend</span></div>
   <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
 </div>
 <h3>SON SİNYALLER</h3>
 {sig_rows if sig_rows else '<p style="color:#3d5a6a;font-size:.8rem;padding:8px 0">Henüz sinyal yok.</p>'}
 <div class="footer">
-  Heartbeat: {heartbeat["last"]} &nbsp;|&nbsp; Son coin: {heartbeat["symbol"]}
+  Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
-  Eleme: Cooldown:{stats.get("cooldown",0)}
-  Hacim:{stats.get("low_liquidity",0)}
-  Filtre:{stats.get("filtered",0)}
-  Veri:{stats.get("data_missing",0)}
+  Eleme: Cooldown:{stats.get("cooldown",0)} Hacim:{stats.get("low_liquidity",0)} Filtre:{stats.get("filtered",0)}
 </div>
 </body></html>"""
 
@@ -859,14 +1040,6 @@ def api_status():
         "signals":       all_signals[:30],
         "stats":         dict(stats),
         "heartbeat":     heartbeat,
-        "params": {
-            "stoch_rsi": STOCH_RSI_THRESH,
-            "wr":        WR_THRESH,
-            "obv_osc":   OBV_OSC_THRESH,
-            "wt":        WT_THRESH,
-            "stop_pct":  STOP_PCT,
-            "cooldown_h": SIGNAL_COOLDOWN_HOURS,
-        }
     })
     return flask_app.response_class(
         json.dumps(data, ensure_ascii=False),
@@ -883,20 +1056,23 @@ def perf_dashboard():
     rows = ""
     for s in signal_log[:50]:
         st     = s.get("status", "open")
-        st_col = "#00f080" if st == "win" else ("#ff4444" if st == "loss" else ("#ffb300" if st == "expired" else "#3d5a6a"))
-        fund_icon = "💰" if s.get("funding_neg") else "🔵"
+        st_col = "#00f080" if st=="win" else ("#ff4444" if st=="loss" else ("#ffb300" if st=="expired" else "#3d5a6a"))
+        stype  = s.get("sig_type","dip")
+        sub    = s.get("subtype","")
+        icon   = "⭐" if sub=="VOL3_BB" else ("📈" if stype=="trend" else ("💰" if s.get("funding_neg") else "🔵"))
         peak   = s.get("peak_pct", 0)
         cr     = s.get("close_ret")
         ct     = (s.get("close_time") or "")[:16]
 
         def fmt_ret(r):
             if r is None: return "—"
-            col = "#00f080" if float(r) > 0 else "#ff4444"
+            col = "#00f080" if float(r)>0 else "#ff4444"
             return f'<span style="color:{col}">{float(r):+.2f}%</span>'
 
         rows += f"""<tr>
           <td>{s.get("time","")[:16]}</td>
-          <td><b>{fund_icon} {s.get("symbol","")}</b></td>
+          <td><b>{icon} {s.get("symbol","")}</b></td>
+          <td style="color:{'#00d4ff' if stype=='trend' else '#00f080'}">{stype.upper()}{' '+sub if sub else ''}</td>
           <td>${s.get("entry","")}</td>
           <td style="color:#00f080">+{peak}%</td>
           <td>{fmt_ret(cr)}</td>
@@ -905,7 +1081,7 @@ def perf_dashboard():
         </tr>"""
 
     return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>Performans</title>
+<meta charset="UTF-8"><title>Performans v5</title>
 <meta http-equiv="refresh" content="300">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
@@ -922,19 +1098,21 @@ def perf_dashboard():
   tr:hover td{{background:#0c1117}}
   a{{color:#00d4ff;text-decoration:none}}
 </style></head><body>
-<h1>📈 SİNYAL PERFORMANSI</h1>
+<h1>📈 SİNYAL PERFORMANSI v5.0</h1>
 <div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()}</div>
 <div class="cards">
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>
   <div class="card"><div class="cv">{ps.get("open",0)}</div><div class="cl">Açık</div></div>
-  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("losses",0)}</div><div class="cl">Stop Yedi</div></div>
-  <div class="card"><div class="cv" style="color:#ffb300">{ps.get("expired",0)}</div><div class="cl">24H Expired</div></div>
+  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("losses",0)}</div><div class="cl">Stop</div></div>
+  <div class="card"><div class="cv" style="color:#ffb300">{ps.get("expired",0)}</div><div class="cl">Expired</div></div>
   <div class="card"><div class="cv">{ps.get("avg_peak",0)}%</div><div class="cl">Ort. Peak</div></div>
-  <div class="card"><div class="cv" style="color:#c8e86a">{ps.get("fund_neg_total",0)}</div><div class="cl">💰 Öncelikli</div></div>
-  <div class="card"><div class="cv" style="color:#c8e86a">{ps.get("fund_neg_avg_peak",0)}%</div><div class="cl">💰 Peak Ort.</div></div>
+  <div class="card"><div class="cv" style="color:#00f080">{ps.get("dip_total",0)}</div><div class="cl">🔵 Dip</div></div>
+  <div class="card"><div class="cv" style="color:#00f080">{ps.get("dip_avg_peak",0)}%</div><div class="cl">Dip Peak</div></div>
+  <div class="card"><div class="cv" style="color:#00d4ff">{ps.get("trend_total",0)}</div><div class="cl">📈 Trend</div></div>
+  <div class="card"><div class="cv" style="color:#00d4ff">{ps.get("trend_avg_peak",0)}%</div><div class="cl">Trend Peak</div></div>
 </div>
 <table><thead><tr>
-  <th>Sinyal Zamanı</th><th>Sembol</th><th>Giriş</th>
+  <th>Sinyal Zamanı</th><th>Sembol</th><th>Tip</th><th>Giriş</th>
   <th>Peak %</th><th>Kapanış %</th><th>Kapanış Zamanı</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
@@ -948,8 +1126,9 @@ async def periodic_summary():
         print_summary()
 
 async def main():
-    print("Scanner v4.0 baslatiliyor...", flush=True)
-    print(f"Parametreler: StRSI<{STOCH_RSI_THRESH} WR<{WR_THRESH} OBV<{OBV_OSC_THRESH} WT<{WT_THRESH} Stop-%{STOP_PCT}", flush=True)
+    print("Scanner v5.0 baslatiliyor...", flush=True)
+    print(f"DIP: StRSI<{STOCH_RSI_THRESH} WR<{WR_THRESH} OBV<{OBV_OSC_THRESH} WT<{WT_THRESH}", flush=True)
+    print(f"TREND: BB(15) kirilim + ALL4_LOOSE | Basari ~%78", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
@@ -972,7 +1151,7 @@ async def main():
     asyncio.create_task(periodic_summary())
 
     bot_status["status"] = "LIVE"
-    print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
+    print(f"LIVE | {len(symbols)} sembol | Dip + Trend izleniyor", flush=True)
 
     await ws_all(symbols, candidate_queue)
 
@@ -981,9 +1160,9 @@ def start_flask():
     flask_app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
-    threading.Thread(target=start_flask,       daemon=True).start()
-    threading.Thread(target=heartbeat_pinger,  daemon=True).start()
-    threading.Thread(target=watchdog_thread,   daemon=True).start()
+    threading.Thread(target=start_flask,      daemon=True).start()
+    threading.Thread(target=heartbeat_pinger, daemon=True).start()
+    threading.Thread(target=watchdog_thread,  daemon=True).start()
 
     try:
         asyncio.run(main())
