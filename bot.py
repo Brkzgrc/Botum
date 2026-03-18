@@ -502,23 +502,26 @@ def build_dip_message(r, tr_time, sig_num):
     hist_str = f"{hist_val:.6f}" if abs(hist_val) < 0.0001 else (
                f"{hist_val:.5f}" if abs(hist_val) < 0.01 else f"{hist_val:.4f}")
 
+    fund_str2 = f"{funding_val:+.4f}%" if funding_val is not None else None
+
     lines = [
         f"🕐 {now}",
         "",
-        f"{icon} <b>#{sym}USDT</b>  •  DİP DÖNÜŞÜ  •  1H",
+        f"{icon} <b>#{sym}USDT  •  DİP DÖNÜŞÜ  •  1H</b>",
         "━━━━━━━━━━━━━━━━━━━━",
-        f"💵 Giriş:   {fmt_price(r['entry'])}",
-        f"🛡️ Stop:    {fmt_price(r['stop'])}  (-%{STOP_PCT:.0f})",
+        f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-%{STOP_PCT:.0f})",
         "━━━━━━━━━━━━━━━━━━━━",
-        "📊 İndikatörler",
-        f"StochRSI   {r['stoch_rsi']:.4f}",
-        f"W%R        {r['wr']:.1f}",
-        f"OBV_OSC    {r['obv_osc']:.1f}",
-        f"WaveTrend  {r['wt']:.1f}",
-        f"MACD Hist  {hist_str}",
+        "📊 <b>İndikatörler</b>",
+        f"<b>StochRSI</b>   {r['stoch_rsi']:.4f}",
+        f"<b>W%R</b>        {r['wr']:.1f}",
+        f"<b>OBV_OSC</b>    {r['obv_osc']:.1f}",
+        f"<b>WaveTrend</b>  {r['wt']:.1f}",
+        f"<b>MACD Hist</b>  {hist_str}",
     ]
-    if fund_line:
-        lines.append(fund_line)
+    if fund_str2:
+        fund_icon = "  💰" if funding_neg else ""
+        lines.append(f"<b>Funding</b>    {fund_str2}{fund_icon}")
     lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
@@ -537,16 +540,16 @@ def build_trend_message(r, tr_time, sig_num):
     lines = [
         f"🕐 {now}",
         "",
-        f"📈 <b>#{sym}USDT</b>  •  TREND  •  1H  •  {quality}",
+        f"📈 <b>#{sym}USDT  •  TREND  •  1H  •  {quality}</b>",
         "━━━━━━━━━━━━━━━━━━━━",
-        f"💵 Giriş:   {fmt_price(r['entry'])}",
-        f"🛡️ Stop:    {fmt_price(r['stop'])}  (-%{TREND_STOP_PCT:.0f})",
+        f"💵 <b>Giriş</b>      {fmt_price(r['entry'])}",
+        f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (-%{TREND_STOP_PCT:.0f})",
         "━━━━━━━━━━━━━━━━━━━━",
-        "📊 Trend Göstergeleri",
-        f"EMA50 uzak  +{r['ema50_dist']:.1f}%",
-        f"EMA200 uzak +{r['ema200_dist']:.1f}%",
-        f"ADX         {r['adx']:.1f}",
-        f"ATR/Fiyat   %{r['atr_ratio']:.2f}",
+        "📊 <b>Trend Göstergeleri</b>",
+        f"<b>EMA50 Uzak</b>   +{r['ema50_dist']:.1f}%",
+        f"<b>EMA200 Uzak</b>  +{r['ema200_dist']:.1f}%",
+        f"<b>ADX</b>          {r['adx']:.1f}",
+        f"<b>ATR/Fiyat</b>    %{r['atr_ratio']:.2f}",
         "━━━━━━━━━━━━━━━━━━━━",
         f"✅ Başarı: ~%78 (test verisi)",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
