@@ -51,8 +51,8 @@ MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "500000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",           "0"))
 
 WS_STREAM_CHUNK = int(os.getenv("WS_STREAM_CHUNK", "120"))
-BOOTSTRAP_BARS  = int(os.getenv("BOOTSTRAP_BARS",  "250"))
-KEEP_BARS       = int(os.getenv("KEEP_BARS",       "250"))
+BOOTSTRAP_BARS  = int(os.getenv("BOOTSTRAP_BARS",  "500"))
+KEEP_BARS       = int(os.getenv("KEEP_BARS",       "300"))
 
 BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
