@@ -444,8 +444,12 @@ def check_trend_signal(df, symbol):
     if (c - c3) / c3 * 100 <= 5.0:
         stats["tr_son3bar"] += 1; return None
 
-    # 8. BB(15) kırılımı: önceki bar altında, bu bar üstünde
-    if sf(prev, "close") >= pbbu:
+    # 8. BB(15) kırılımı: son 2 bardan en az biri altındaydı, bu bar üstünde
+    prev2     = df.iloc[-4]
+    prev2_bbu = sf(prev2, "bb15_upper")
+    prev_below  = sf(prev, "close") < pbbu
+    prev2_below = prev2_bbu is not None and sf(prev2, "close") < prev2_bbu
+    if not (prev_below or prev2_below):
         stats["tr_bb"] += 1; return None
     if c < bbu:
         stats["tr_bb"] += 1; return None
@@ -622,8 +626,10 @@ async def signal_worker(candidate_queue):
             try:
                 ticker    = await api_gate.call(exchange_spot.fetch_ticker, symbol)
                 liquidity = float(ticker.get("quoteVolume", 0) or 0)
-                if liquidity < MIN_LIQUIDITY:
-                    print(f"Dusuk hacim elendi: {symbol} | hacim:{liquidity:.0f} < {MIN_LIQUIDITY:.0f}", flush=True)
+                # Son 1 saatlik hacim patlaması varsa geçir (dip/trend sinyali zaten hacim filtresi içeriyor)
+                recent_vol = float(ticker.get("baseVolume", 0) or 0) * float(ticker.get("last", 0) or 0)
+                if liquidity < MIN_LIQUIDITY and recent_vol < MIN_LIQUIDITY / 24:
+                    print(f"Dusuk hacim elendi: {symbol} | 24h:{liquidity:.0f} 1h_est:{recent_vol:.0f}", flush=True)
                     stats["low_liquidity"] += 1
                     candidate_queue.task_done()
                     continue
