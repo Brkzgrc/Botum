@@ -47,7 +47,7 @@ STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
-MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "500000"))
+MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "100000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",           "0"))
 
 WS_STREAM_CHUNK = int(os.getenv("WS_STREAM_CHUNK", "120"))
@@ -623,6 +623,7 @@ async def signal_worker(candidate_queue):
                 ticker    = await api_gate.call(exchange_spot.fetch_ticker, symbol)
                 liquidity = float(ticker.get("quoteVolume", 0) or 0)
                 if liquidity < MIN_LIQUIDITY:
+                    print(f"Dusuk hacim elendi: {symbol} | hacim:{liquidity:.0f} < {MIN_LIQUIDITY:.0f}", flush=True)
                     stats["low_liquidity"] += 1
                     candidate_queue.task_done()
                     continue
