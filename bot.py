@@ -536,7 +536,7 @@ def build_dip_message(r, tr_time, sig_num):
     lines = [
         f"🕐 {now}",
         "",
-        f"{icon} <b>#{sym}USDT  •  DİP DÖNÜŞÜ  •  1H</b>",
+        f"{icon} <b>#{sym}/USDT  •  DİP DÖNÜŞÜ  •  1H</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
         f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-%{STOP_PCT:.0f})",
@@ -569,7 +569,7 @@ def build_trend_message(r, tr_time, sig_num):
     lines = [
         f"🕐 {now}",
         "",
-        f"📈 <b>#{sym}USDT  •  TREND  •  1H  •  {quality}</b>",
+        f"📈 <b>#{sym}/USDT  •  TREND  •  1H  •  {quality}</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>      {fmt_price(r['entry'])}",
         f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (-%{TREND_STOP_PCT:.0f})",
@@ -580,7 +580,6 @@ def build_trend_message(r, tr_time, sig_num):
         f"<b>ADX</b>          {r['adx']:.1f}",
         f"<b>ATR/Fiyat</b>    %{r['atr_ratio']:.2f}",
         "━━━━━━━━━━━━━━━━━━━━",
-        f"✅ Başarı: ~%78 (test verisi)",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
     return "\n".join(lines)
