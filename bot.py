@@ -2,8 +2,8 @@
 """
 Trend & Momentum Scanner v5.0
 ==============================
-DIP sistemi (backtest_dip_v1):
-  StochRSI < 0.05, WR < -80, OBV_OSC < -50, WT < -75, MACD hist <= 0
+DIP sistemi (kapsamli test - optimal):
+  StochRSI < 0.05, WR < -70, OBV_OSC < -40, WT < -75, VOL > 1.5x, MACD hist <= 0
   Stop: -%10 | Cooldown: 4H | Funding < 0 → 💰
 
 TREND sistemi (backtest_trend v21/v22):
@@ -39,10 +39,11 @@ TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 
 # Dip sistemi esikleri
-STOCH_RSI_THRESH = float(os.getenv("STOCH_RSI_THRESH", "0.08"))
-WR_THRESH        = float(os.getenv("WR_THRESH",        "-75"))
+STOCH_RSI_THRESH = float(os.getenv("STOCH_RSI_THRESH", "0.05"))
+WR_THRESH        = float(os.getenv("WR_THRESH",        "-70"))
 OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-40"))
-WT_THRESH        = float(os.getenv("WT_THRESH",        "-65"))
+WT_THRESH        = float(os.getenv("WT_THRESH",        "-75"))
+DIP_VOL_MULT     = float(os.getenv("DIP_VOL_MULT",     "1.5"))   # hacim filtresi
 STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
@@ -339,6 +340,12 @@ def check_dip_signal(df, symbol):
     if obv   >= OBV_OSC_THRESH:   return None
     if wt    >= WT_THRESH:        return None
     if hist  >  0:                return None
+
+    # Hacim filtresi: ani hacim spike olmalı
+    vol  = sf("volume") if "volume" in last.index else None
+    vm   = sf("vol_ma")
+    if vol is not None and vm is not None and vm > 0:
+        if vol < vm * DIP_VOL_MULT: return None
 
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
