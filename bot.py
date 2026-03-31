@@ -41,7 +41,7 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 # Dip sistemi esikleri
 STOCH_RSI_THRESH = float(os.getenv("STOCH_RSI_THRESH", "0.08"))
 WR_THRESH        = float(os.getenv("WR_THRESH",        "-75"))
-OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-50"))
+OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-40"))
 WT_THRESH        = float(os.getenv("WT_THRESH",        "-65"))
 STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
