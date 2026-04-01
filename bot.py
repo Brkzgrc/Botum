@@ -393,10 +393,13 @@ def check_dip_signal(df, symbol):
     if wt    >= WT_THRESH:        return None
     if hist  >  0:                return None
 
-    # Trend filtresi: fiyat EMA200 üzerinde olmalı (bear market koruması)
-    e200 = sf("ema200")
+    # Trend filtresi: fiyat EMA200 üzerinde + EMA200 yükseliyor olmalı
+    e200      = sf("ema200")
+    e200_prev = float(df["ema200"].iloc[-3]) if len(df) >= 3 else None
     if e200 is None or entry <= e200:
         stats["filtered"] += 1; return None
+    if e200_prev is not None and e200 <= e200_prev:
+        stats["filtered"] += 1; return None  # EMA200 düşüşte veya yatay
 
     # Hacim filtresi: ani hacim spike olmalı
     vol  = sf("volume") if "volume" in last.index else None
@@ -415,11 +418,17 @@ def check_dip_signal(df, symbol):
     atr_val  = sf("atr")
     stop_fix = round(entry * (1 - STOP_PCT / 100), 8)
     if atr_val and atr_val > 0:
-        stop_atr = round(entry - atr_val * 1.8, 8)
-        tp1      = round(entry + atr_val * 1.5, 8)
-        tp2      = round(entry + atr_val * 3.0, 8)
-        max_stop = round(entry * 0.88, 8)   # max %12 kayıp
-        stop_use = max(stop_atr, max_stop)  # en yakın olan (en az risk)
+        # Adaptive ATR çarpanı: volatilite yüksekse geniş, düşükse dar
+        vol_ratio_atr = atr_val / entry  # ATR/fiyat oranı
+        if vol_ratio_atr > 0.04:      atr_mult = 2.0   # çok volatil → geniş
+        elif vol_ratio_atr > 0.02:    atr_mult = 1.8   # orta volatil
+        else:                         atr_mult = 1.4   # sakin → dar
+        stop_atr = round(entry - atr_val * atr_mult, 8)
+        floor_stop = round(entry * 0.97, 8)  # min %3 stop
+        cap_stop   = round(entry * 0.88, 8)  # max %12 stop
+        stop_use   = min(max(stop_atr, cap_stop), floor_stop)
+        tp1 = round(entry + atr_val * 1.5, 8)
+        tp2 = round(entry + atr_val * 3.0, 8)
     else:
         stop_use = stop_fix
         tp1      = round(entry * 1.05, 8)
@@ -570,10 +579,15 @@ def check_trend_signal(df, symbol):
                 vol3_ok = True
                 trend_subtype = "VOL3_BB"
 
-    stop_fix  = round(entry * (1 - TREND_STOP_PCT / 100), 8)
-    stop_atr  = round(entry - atr * 1.8, 8)
-    max_stop  = round(entry * 0.88, 8)   # max %12 kayıp
-    stop_use  = max(stop_atr, max_stop)
+    # Adaptive ATR çarpanı: volatilite yüksekse geniş, düşükse dar
+    vol_ratio_atr = atr / entry
+    if vol_ratio_atr > 0.04:    atr_mult_t = 2.0
+    elif vol_ratio_atr > 0.02:  atr_mult_t = 1.8
+    else:                       atr_mult_t = 1.4
+    stop_atr  = round(entry - atr * atr_mult_t, 8)
+    floor_stop= round(entry * 0.97, 8)  # min %3
+    cap_stop  = round(entry * 0.88, 8)  # max %12
+    stop_use  = min(max(stop_atr, cap_stop), floor_stop)
     tp1       = round(entry + atr * 1.5, 8)
     tp2       = round(entry + atr * 3.0, 8)
     vol_mult_val = round(vol / vm, 1) if vm > 0 else None
@@ -657,7 +671,7 @@ def build_dip_message(r, tr_time, sig_num):
         f"{icon} <b>#{sym}/USDT  •  DİP DÖNÜŞÜ  •  1H</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (ATR×1.5)",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (Adaptive ATR)",
         f"🎯 <b>TP1</b>      {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
         f"🎯 <b>TP2</b>      {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
         "━━━━━━━━━━━━━━━━━━━━",
@@ -714,7 +728,7 @@ def build_trend_message(r, tr_time, sig_num):
         f"📈 <b>#{sym}/USDT  •  TREND  •  1H  •  {quality}</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>      {fmt_price(r['entry'])}",
-        f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (ATR×1.5)",
+        f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (Adaptive ATR)",
         f"🎯 <b>TP1</b>        {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
         f"🎯 <b>TP2</b>        {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
         "━━━━━━━━━━━━━━━━━━━━",
