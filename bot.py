@@ -48,7 +48,7 @@ STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
-MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "100000"))
+MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "1000000"))  # min 1M USDT günlük hacim
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",           "0"))
 
 WS_STREAM_CHUNK = int(os.getenv("WS_STREAM_CHUNK", "120"))
@@ -204,7 +204,10 @@ async def load_symbols_pool():
         except Exception:
             continue
 
-    sorted_syms = sorted(syms, key=lambda x: volumes.get(x, 0), reverse=True)
+    # Minimum hacim filtresi: MIN_LIQUIDITY USDT günlük hacim şartı
+    filtered_syms = [s for s in syms if volumes.get(s, 0) >= MIN_LIQUIDITY]
+    sorted_syms = sorted(filtered_syms, key=lambda x: volumes.get(x, 0), reverse=True)
+    print(f"Sembol filtresi: {len(syms)} toplam → {len(sorted_syms)} hacim filtresi sonrası (min {MIN_LIQUIDITY/1e6:.1f}M USDT)", flush=True)
     return sorted_syms[:MAX_SYMBOLS] if MAX_SYMBOLS else sorted_syms
 
 # ============================================================
