@@ -93,6 +93,7 @@ def print_summary():
         ("trend_filtered",  "Trend filtre eledi"),
         ("tr_yesil_degil",  "Trend: yesil degil"),
         ("tr_body_kucuk",   "Trend: body kucuk"),
+        ("tr_false_breakout","Trend: tuzak mum (body>ATR×2)"),
         ("tr_kapanis_dusuk","Trend: kapanis dusuk"),
         ("tr_hacim_dusuk",  "Trend: hacim dusuk"),
         ("tr_direnc",       "Trend: direnc kirilmadi"),
@@ -340,6 +341,25 @@ def prepare_bars(df):
     bb_std       = c.rolling(15).std()
     df["bb15_upper"] = bb_ma + 2.0 * bb_std
 
+    # ATR Yüzdeliği (son 100 bar içinde kaçıncı yüzdelik dilimde)
+    def percentrank(series, n=100):
+        def _pr(x):
+            window = x[-n:] if len(x) >= n else x
+            cur = window[-1]
+            return round(sum(1 for v in window[:-1] if v < cur) / max(len(window)-1, 1) * 100, 1)
+        return series.rolling(n, min_periods=10).apply(lambda x: _pr(x), raw=True)
+    df["atr_pct"] = percentrank(df["atr"], 100)
+
+    # HMA15 (Hull Moving Average, period=15) — dinamik trailing stop referansı
+    def hma(series, n):
+        half = max(int(n/2), 1)
+        sqrt_n = max(int(n**0.5), 1)
+        wma_half = series.ewm(span=half*2-1, adjust=False).mean()  # yaklaşık WMA
+        wma_full = series.ewm(span=n*2-1, adjust=False).mean()
+        raw = 2*wma_half - wma_full
+        return raw.ewm(span=sqrt_n*2-1, adjust=False).mean()
+    df["hma15"] = hma(c, 15)
+
     return df.dropna(subset=["stoch_rsi","wr","obv_osc","wt","macd_hist",
                               "atr","ema50","ema200","adx","bb15_upper"])
 
@@ -416,6 +436,8 @@ def check_dip_signal(df, symbol):
         "macd_hist":   round(hist,  8),
         "funding":     round(funding, 6) if funding is not None else None,
         "funding_neg": funding_neg,
+        "atr_pct":     round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
+        "hma15":       round(float(df["hma15"].iloc[-2]), 8)   if "hma15"  in df.columns else None,
     }
 
 def check_trend_signal(df, symbol):
@@ -466,6 +488,9 @@ def check_trend_signal(df, symbol):
     body = abs(c - o)
     if body < atr * 1.2:
         stats["tr_body_kucuk"] += 1; return None
+    # False breakout: mum gövdesi çok büyükse alıcılar tükendi
+    if body > atr * 2.0:
+        stats["tr_false_breakout"] += 1; return None
     rng = h - l
     if rng <= 0: return None
     if (c - l) / rng < 0.65:
@@ -551,6 +576,8 @@ def check_trend_signal(df, symbol):
         "vol3_ok":      vol3_ok,
         "funding":      funding_cache.get(symbol),
         "funding_neg":  False,
+        "atr_pct":      round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
+        "hma15":        round(float(df["hma15"].iloc[-2]), 8)   if "hma15"  in df.columns else None,
     }
 
 # ============================================================
@@ -628,9 +655,22 @@ def build_dip_message(r, tr_time, sig_num):
     if fund_str2:
         fund_icon = "  💰" if funding_neg else ""
         lines.append(f"<b>Funding</b>    {fund_str2}{fund_icon}")
+    atr_pct = r.get("atr_pct")
+    hma15   = r.get("hma15")
+    if atr_pct is not None:
+        if atr_pct >= 80:   vol_risk = f"⚠️ Yüksek (%{atr_pct:.0f})"
+        elif atr_pct >= 50: vol_risk = f"🟡 Orta (%{atr_pct:.0f})"
+        else:               vol_risk = f"🟢 Düşük (%{atr_pct:.0f})"
+    else:
+        vol_risk = "?"
     lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"<b>BTC 4H</b>     {btc_trend}",
+        f"<b>Vol.Risk</b>   {vol_risk}",
+    ]
+    if hma15:
+        lines.append(f"<b>HMA15</b>      {fmt_price(hma15)}  (trailing stop ref.)")
+    lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
@@ -668,9 +708,22 @@ def build_trend_message(r, tr_time, sig_num):
     ]
     if vol_mult is not None:
         lines.append(f"<b>Hacim</b>        {vol_mult}x ortalama")
+    atr_pct = r.get("atr_pct")
+    hma15   = r.get("hma15")
+    if atr_pct is not None:
+        if atr_pct >= 80:   vol_risk = f"⚠️ Yüksek (%{atr_pct:.0f})"
+        elif atr_pct >= 50: vol_risk = f"🟡 Orta (%{atr_pct:.0f})"
+        else:               vol_risk = f"🟢 Düşük (%{atr_pct:.0f})"
+    else:
+        vol_risk = "?"
     lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"<b>BTC 4H</b>       {btc_trend}",
+        f"<b>Vol.Risk</b>     {vol_risk}",
+    ]
+    if hma15:
+        lines.append(f"<b>HMA15</b>        {fmt_price(hma15)}  (trailing stop ref.)")
+    lines += [
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
@@ -799,12 +852,16 @@ def log_signal(result, tr_time):
         "symbol":      result["symbol"],
         "entry":       result["entry"],
         "stop":        result["stop"],
+        "tp1":         result.get("tp1"),
+        "tp2":         result.get("tp2"),
         "sig_type":    result.get("sig_type", "dip"),
         "subtype":     result.get("subtype", ""),
         "funding_neg": result.get("funding_neg", False),
         "time":        tr_time.isoformat(),
         "status":      "open",
         "peak_pct":    0.0,
+        "tp1_hit":     False,
+        "tp2_hit":     False,
         "close_time":  None,
         "close_price": None,
         "close_ret":   None,
@@ -839,11 +896,28 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         if cur_ret > entry["peak_pct"]:
             entry["peak_pct"] = round(cur_ret, 2)
 
+        # TP1/TP2 ulaşım takibi
+        tp1 = entry.get("tp1")
+        tp2 = entry.get("tp2")
+        if tp2 and bar_high >= tp2 and not entry.get("tp2_hit"):
+            entry["tp2_hit"] = True
+        if tp1 and bar_high >= tp1 and not entry.get("tp1_hit"):
+            entry["tp1_hit"] = True
+
         if bar_low <= stp:
             entry["status"]      = "loss"
             entry["close_time"]  = bar_time.isoformat()
             entry["close_price"] = round(stp, 8)
             entry["close_ret"]   = round((stp - e) / e * 100, 2)
+            to_close.append(entry)
+            continue
+
+        # TP2'ye ulaştıysa başarılı say
+        if tp2 and bar_high >= tp2:
+            entry["status"]      = "win"
+            entry["close_time"]  = bar_time.isoformat()
+            entry["close_price"] = round(tp2, 8)
+            entry["close_ret"]   = round((tp2 - e) / e * 100, 2)
             to_close.append(entry)
             continue
 
@@ -1197,12 +1271,16 @@ def perf_dashboard():
             col = "#00f080" if float(r)>0 else "#ff4444"
             return f'<span style="color:{col}">{float(r):+.2f}%</span>'
 
+        tp1_hit = "✅" if s.get("tp1_hit") else "—"
+        tp2_hit = "✅" if s.get("tp2_hit") else "—"
         rows += f"""<tr>
           <td>{s.get("time","")[:16]}</td>
           <td><b>{icon} {s.get("symbol","")}</b></td>
           <td style="color:{'#00d4ff' if stype=='trend' else '#00f080'}">{stype.upper()}{' '+sub if sub else ''}</td>
           <td>${s.get("entry","")}</td>
           <td style="color:#00f080">+{peak}%</td>
+          <td style="text-align:center">{tp1_hit}</td>
+          <td style="text-align:center">{tp2_hit}</td>
           <td>{fmt_ret(cr)}</td>
           <td>{ct}</td>
           <td style="color:{st_col}">{st.upper()}</td>
@@ -1241,7 +1319,7 @@ def perf_dashboard():
 </div>
 <table><thead><tr>
   <th>Sinyal Zamanı</th><th>Sembol</th><th>Tip</th><th>Giriş</th>
-  <th>Peak %</th><th>Kapanış %</th><th>Kapanış Zamanı</th><th>Durum</th>
+  <th>Peak %</th><th>TP1</th><th>TP2</th><th>Kapanış %</th><th>Kapanış Zamanı</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
