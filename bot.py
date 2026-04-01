@@ -415,10 +415,11 @@ def check_dip_signal(df, symbol):
     atr_val  = sf("atr")
     stop_fix = round(entry * (1 - STOP_PCT / 100), 8)
     if atr_val and atr_val > 0:
-        stop_atr = round(entry - atr_val * 1.5, 8)
+        stop_atr = round(entry - atr_val * 1.8, 8)
         tp1      = round(entry + atr_val * 1.5, 8)
         tp2      = round(entry + atr_val * 3.0, 8)
-        stop_use = max(stop_fix, stop_atr)  # daha yakın olan stop
+        max_stop = round(entry * 0.88, 8)   # max %12 kayıp
+        stop_use = max(stop_atr, max_stop)  # en yakın olan (en az risk)
     else:
         stop_use = stop_fix
         tp1      = round(entry * 1.05, 8)
@@ -489,10 +490,12 @@ def check_trend_signal(df, symbol):
     if atr <= 0 or vm <= 0 or e50 <= 0 or e200 <= 0:
         return None
 
-    # BTC trend filtresi: BTC 4H düşüşteyse trend sinyali üretme
-    btc_trend = btc_4h_cache.get("trend", "?")
-    if btc_trend == "🔴 Düşüş":
-        stats["trend_filtered"] += 1; return None
+    # BTC trend filtresi: BTC 4H fiyat EMA50 altındaysa trend sinyali üretme
+    btc_close_4h = btc_4h_cache.get("close")
+    btc_ema50_4h = btc_4h_cache.get("ema50")
+    if btc_close_4h is not None and btc_ema50_4h is not None:
+        if btc_close_4h < btc_ema50_4h:
+            stats["trend_filtered"] += 1; return None
 
     # ALL4_LOOSE koşulları
 
@@ -568,8 +571,9 @@ def check_trend_signal(df, symbol):
                 trend_subtype = "VOL3_BB"
 
     stop_fix  = round(entry * (1 - TREND_STOP_PCT / 100), 8)
-    stop_atr  = round(entry - atr * 1.5, 8)
-    stop_use  = max(stop_fix, stop_atr)
+    stop_atr  = round(entry - atr * 1.8, 8)
+    max_stop  = round(entry * 0.88, 8)   # max %12 kayıp
+    stop_use  = max(stop_atr, max_stop)
     tp1       = round(entry + atr * 1.5, 8)
     tp2       = round(entry + atr * 3.0, 8)
     vol_mult_val = round(vol / vm, 1) if vm > 0 else None
