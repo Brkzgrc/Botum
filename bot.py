@@ -393,13 +393,22 @@ def check_dip_signal(df, symbol):
     if wt    >= WT_THRESH:        return None
     if hist  >  0:                return None
 
+    # Trend filtresi: fiyat EMA200 üzerinde olmalı (bear market koruması)
+    e200 = sf("ema200")
+    if e200 is None or entry <= e200:
+        stats["filtered"] += 1; return None
+
     # Hacim filtresi: ani hacim spike olmalı
     vol  = sf("volume") if "volume" in last.index else None
     vm   = sf("vol_ma")
     if vol is not None and vm is not None and vm > 0:
         if vol < vm * DIP_VOL_MULT: return None
 
-    funding     = funding_cache.get(symbol)
+    # Funding filtresi: negatif olmalı (short baskısı → squeeze potansiyeli)
+    funding = funding_cache.get(symbol)
+    if funding is not None and funding >= 0:
+        stats["filtered"] += 1; return None
+
     funding_neg = funding is not None and funding < 0
 
     # ATR bazlı stop ve hedefler
@@ -479,6 +488,11 @@ def check_trend_signal(df, symbol):
         return None
     if atr <= 0 or vm <= 0 or e50 <= 0 or e200 <= 0:
         return None
+
+    # BTC trend filtresi: BTC 4H düşüşteyse trend sinyali üretme
+    btc_trend = btc_4h_cache.get("trend", "?")
+    if btc_trend == "🔴 Düşüş":
+        stats["trend_filtered"] += 1; return None
 
     # ALL4_LOOSE koşulları
 
@@ -1209,7 +1223,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <h1>SCANNER <small style="font-size:.6rem;color:#3d5a6a">v5.0</small></h1>
 <div class="params">
   <span class="badge" style="background:#0d1a0d;color:#00f080">🔵 DİP</span>
-  StochRSI&lt;{STOCH_RSI_THRESH} WR&lt;{WR_THRESH} OBV&lt;{OBV_OSC_THRESH} WT&lt;{WT_THRESH} MACD≤0 Stop-%{STOP_PCT:.0f}<br>
+  StochRSI&lt;{STOCH_RSI_THRESH} WR&lt;{WR_THRESH} OBV&lt;{OBV_OSC_THRESH} WT&lt;{WT_THRESH} MACD≤0 | EMA200↑ | Funding&lt;0 | Stop-%{STOP_PCT:.0f}<br>
   <span class="badge" style="background:#0d1520;color:#00d4ff">📈 TREND</span>
   BB(15) Kırılım + EMA200&gt;%12 + ADX&gt;20 + ALL4_LOOSE | Başarı ~%78 | Stop-%{TREND_STOP_PCT:.0f}<br>
   <span class="badge" style="background:#1a1a0d;color:#ffb300">⭐ VOL3_BB</span>
