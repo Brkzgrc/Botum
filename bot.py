@@ -174,6 +174,7 @@ funding_cache:    dict = {}
 last_signal_ts:   dict = {}   # {symbol: {"dip": dt, "trend": dt}}
 last_scan_result: dict = {}
 all_signals:      list = []
+btc_4h_cache:     dict = {"trend": "?", "ema50": None, "close": None, "updated": None}  # BTC 4H trend
 
 # ============================================================
 # 3) SEMBOL HAVUZU
@@ -224,6 +225,34 @@ async def fetch_funding_rate(symbol):
         funding_cache[symbol] = float(rate) if rate is not None else None
     except Exception:
         funding_cache[symbol] = None
+
+async def refresh_btc_4h():
+    """BTC 4H trend bilgisini güncelle"""
+    try:
+        df = await fetch_df("BTC/USDT", "4h", 100)
+        if df is None or len(df) < 50:
+            return
+        c   = df["close"]
+        e50 = c.ewm(span=50, adjust=False).mean()
+        e200= c.ewm(span=200, adjust=False).mean()
+        last_c   = float(c.iloc[-1])
+        last_e50 = float(e50.iloc[-1])
+        last_e200= float(e200.iloc[-1])
+        if last_c > last_e50 > last_e200:
+            trend = "⬆️ Güçlü Yükseliş"
+        elif last_c > last_e50:
+            trend = "🟢 Yükseliş"
+        elif last_c > last_e200:
+            trend = "🟡 Karışık"
+        else:
+            trend = "🔴 Düşüş"
+        btc_4h_cache["trend"]   = trend
+        btc_4h_cache["ema50"]   = last_e50
+        btc_4h_cache["close"]   = last_c
+        btc_4h_cache["updated"] = datetime.now(timezone.utc).strftime("%H:%M")
+        print(f"BTC 4H: {trend} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
+    except Exception as e:
+        print(f"BTC 4H hata: {e}", flush=True)
 
 async def refresh_funding_cache(symbols):
     print("  Funding rate cache dolduruluyor...", flush=True)
@@ -352,13 +381,34 @@ def check_dip_signal(df, symbol):
 
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
-    stop        = round(entry * (1 - STOP_PCT / 100), 8)
+
+    # ATR bazlı stop ve hedefler
+    atr_val  = sf("atr")
+    stop_fix = round(entry * (1 - STOP_PCT / 100), 8)
+    if atr_val and atr_val > 0:
+        stop_atr = round(entry - atr_val * 1.5, 8)
+        tp1      = round(entry + atr_val * 1.5, 8)
+        tp2      = round(entry + atr_val * 3.0, 8)
+        stop_use = max(stop_fix, stop_atr)  # daha yakın olan stop
+    else:
+        stop_use = stop_fix
+        tp1      = round(entry * 1.05, 8)
+        tp2      = round(entry * 1.10, 8)
+
+    # Hacim çarpanı
+    vol_cur = sf("volume") if "volume" in last.index else None
+    vol_ma  = sf("vol_ma")
+    vol_mult_val = round(vol_cur / vol_ma, 1) if (vol_cur and vol_ma and vol_ma > 0) else None
 
     return {
         "symbol":      symbol,
         "type":        "dip",
         "entry":       round(entry, 8),
-        "stop":        round(stop,  8),
+        "stop":        stop_use,
+        "tp1":         tp1,
+        "tp2":         tp2,
+        "atr":         round(atr_val, 8) if atr_val else None,
+        "vol_mult":    vol_mult_val,
         "stoch_rsi":   round(stoch, 4),
         "wr":          round(wr,    2),
         "obv_osc":     round(obv,   2),
@@ -478,14 +528,22 @@ def check_trend_signal(df, symbol):
                 vol3_ok = True
                 trend_subtype = "VOL3_BB"
 
-    stop = round(entry * (1 - TREND_STOP_PCT / 100), 8)
+    stop_fix  = round(entry * (1 - TREND_STOP_PCT / 100), 8)
+    stop_atr  = round(entry - atr * 1.5, 8)
+    stop_use  = max(stop_fix, stop_atr)
+    tp1       = round(entry + atr * 1.5, 8)
+    tp2       = round(entry + atr * 3.0, 8)
+    vol_mult_val = round(vol / vm, 1) if vm > 0 else None
 
     return {
         "symbol":       symbol,
         "type":         "trend",
         "subtype":      trend_subtype,
         "entry":        round(entry, 8),
-        "stop":         round(stop,  8),
+        "stop":         stop_use,
+        "tp1":          tp1,
+        "tp2":          tp2,
+        "vol_mult":     vol_mult_val,
         "ema50_dist":   round((c-e50)/e50*100, 1),
         "ema200_dist":  round((c-e200)/e200*100, 1),
         "adx":          round(adx, 1),
@@ -543,13 +601,20 @@ def build_dip_message(r, tr_time, sig_num):
 
     fund_str2 = f"{funding_val:+.4f}%" if funding_val is not None else None
 
+    tp1       = r.get("tp1")
+    tp2       = r.get("tp2")
+    vol_mult  = r.get("vol_mult")
+    btc_trend = btc_4h_cache.get("trend", "?")
+
     lines = [
         f"🕐 {now}",
         "",
         f"{icon} <b>#{sym}/USDT  •  DİP DÖNÜŞÜ  •  1H</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-%{STOP_PCT:.0f})",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (ATR×1.5)",
+        f"🎯 <b>TP1</b>      {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
+        f"🎯 <b>TP2</b>      {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
         "━━━━━━━━━━━━━━━━━━━━",
         "📊 <b>İndikatörler</b>",
         f"<b>StochRSI</b>   {r['stoch_rsi']:.4f}",
@@ -558,10 +623,14 @@ def build_dip_message(r, tr_time, sig_num):
         f"<b>WaveTrend</b>  {r['wt']:.1f}",
         f"<b>MACD Hist</b>  {hist_str}",
     ]
+    if vol_mult is not None:
+        lines.append(f"<b>Hacim</b>      {vol_mult}x ortalama")
     if fund_str2:
         fund_icon = "  💰" if funding_neg else ""
         lines.append(f"<b>Funding</b>    {fund_str2}{fund_icon}")
     lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"<b>BTC 4H</b>     {btc_trend}",
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
@@ -576,19 +645,32 @@ def build_trend_message(r, tr_time, sig_num):
     # VOL3_BB daha kaliteli — özel ikon
     quality = "⭐ VOL3+BB" if vol3 else "BB Kırılım"
 
+    tp1       = r.get("tp1")
+    tp2       = r.get("tp2")
+    vol_mult  = r.get("vol_mult")
+    btc_trend = btc_4h_cache.get("trend", "?")
+
     lines = [
         f"🕐 {now}",
         "",
         f"📈 <b>#{sym}/USDT  •  TREND  •  1H  •  {quality}</b>",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>      {fmt_price(r['entry'])}",
-        f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (-%{TREND_STOP_PCT:.0f})",
+        f"🛡️ <b>Stop</b>       {fmt_price(r['stop'])}  (ATR×1.5)",
+        f"🎯 <b>TP1</b>        {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
+        f"🎯 <b>TP2</b>        {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
         "━━━━━━━━━━━━━━━━━━━━",
         "📊 <b>Trend Göstergeleri</b>",
         f"<b>EMA50 Uzak</b>   +{r['ema50_dist']:.1f}%",
         f"<b>EMA200 Uzak</b>  +{r['ema200_dist']:.1f}%",
         f"<b>ADX</b>          {r['adx']:.1f}",
         f"<b>ATR/Fiyat</b>    %{r['atr_ratio']:.2f}",
+    ]
+    if vol_mult is not None:
+        lines.append(f"<b>Hacim</b>        {vol_mult}x ortalama")
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"<b>BTC 4H</b>       {btc_trend}",
         "━━━━━━━━━━━━━━━━━━━━",
         f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
     ]
@@ -1167,9 +1249,13 @@ def perf_dashboard():
 # 14) MAIN
 # ============================================================
 async def periodic_summary():
+    tick = 0
     while True:
         await asyncio.sleep(600)
         print_summary()
+        tick += 1
+        if tick % 2 == 0:  # her 20 dakikada bir BTC 4H güncelle
+            await refresh_btc_4h()
 
 async def main():
     print("Scanner v5.0 baslatiliyor...", flush=True)
@@ -1188,6 +1274,7 @@ async def main():
 
     await bootstrap_all(symbols)
     await refresh_funding_cache(symbols)
+    await refresh_btc_4h()  # BTC 4H trend
     rebuild_pending()
     print(f"Pending sinyaller: {sum(len(v) for v in pending_by_symbol.values())}", flush=True)
     print_summary()
