@@ -94,6 +94,8 @@ def print_summary():
         ("tr_yesil_degil",  "Trend: yesil degil"),
         ("tr_body_kucuk",   "Trend: body kucuk"),
         ("tr_false_breakout","Trend: tuzak mum (body>ATR×2)"),
+        ("birikim_filtered", "Birikim filtre eledi"),
+        ("birikim_sent",     "Birikim sinyal gönderildi"),
         ("tr_kapanis_dusuk","Trend: kapanis dusuk"),
         ("tr_hacim_dusuk",  "Trend: hacim dusuk"),
         ("tr_direnc",       "Trend: direnc kirilmadi"),
@@ -341,6 +343,20 @@ def prepare_bars(df):
     bb_std       = c.rolling(15).std()
     df["bb15_upper"] = bb_ma + 2.0 * bb_std
 
+    # KDJ - J değeri
+    low9  = l.rolling(9).min()
+    high9 = h.rolling(9).max()
+    rsv   = (c-low9)/(high9-low9).replace(0,np.nan)*100
+    K     = rsv.ewm(com=2, adjust=False).mean()
+    D     = K.ewm(com=2, adjust=False).mean()
+    df["kdj_j"] = 3*K - 2*D
+
+    # RSI (birikim sinyali için)
+    d_rsi  = c.diff()
+    g_rsi  = d_rsi.clip(lower=0).ewm(com=13, adjust=False).mean()
+    l_rsi  = (-d_rsi).clip(lower=0).ewm(com=13, adjust=False).mean()
+    df["rsi"] = 100 - 100/(1+g_rsi/l_rsi.replace(0, np.nan))
+
     # ATR Yüzdeliği (son 100 bar içinde kaçıncı yüzdelik dilimde)
     def percentrank(series, n=100):
         def _pr(x):
@@ -361,7 +377,7 @@ def prepare_bars(df):
     df["hma15"] = hma(c, 15)
 
     return df.dropna(subset=["stoch_rsi","wr","obv_osc","wt","macd_hist",
-                              "atr","ema50","ema200","adx","bb15_upper"])
+                              "atr","ema50","ema200","adx","bb15_upper","rsi","kdj_j"])
 
 # ============================================================
 # 6) SİNYAL KRİTERLERİ
@@ -457,6 +473,110 @@ def check_dip_signal(df, symbol):
         "funding_neg": funding_neg,
         "atr_pct":     round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
         "hma15":       round(float(df["hma15"].iloc[-2]), 8)   if "hma15"  in df.columns else None,
+    }
+
+def check_birikim_signal(df, symbol):
+    """
+    Birikim/Momentum Sinyali
+    Büyük yükselişler (%20-30+) öncesi pattern:
+      RSI 45-65 (nötr-güçlü, aşırı satım değil)
+      WR -60 ile -20 arası (orta bölge)
+      OBV pozitif VE artıyor
+      WT pozitif VE artıyor
+      KDJ-J 40+ VE artıyor
+      Hacim sessizden artmaya başlamış
+      EMA200 üzerinde (trend desteği)
+    """
+    if len(df) < 60:
+        return None
+
+    bar  = df.iloc[-2]
+    bar1 = df.iloc[-3]
+    bar2 = df.iloc[-4]
+    entry = float(df.iloc[-1]["close"])
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    rsi   = sf(bar, "rsi");    rsi1  = sf(bar1, "rsi")
+    wr    = sf(bar, "wr")
+    obv   = sf(bar, "obv_osc"); obv1 = sf(bar1, "obv_osc")
+    wt    = sf(bar, "wt");      wt1  = sf(bar1, "wt")
+    kdj   = sf(bar, "kdj_j");   kdj1 = sf(bar1, "kdj_j")
+    vol   = sf(bar, "volume") if "volume" in bar.index else None
+    vm    = sf(bar, "vol_ma");  vol1 = sf(bar1, "volume") if "volume" in bar1.index else None
+    e200  = sf(bar, "ema200")
+    atr   = sf(bar, "atr")
+
+    if None in (rsi, wr, obv, obv1, wt, wt1, kdj, kdj1, e200, atr):
+        return None
+
+    # RSI nötr-güçlü bölge (45-68)
+    if not (45 <= rsi <= 68):
+        return None
+
+    # WR orta bölge (-65 ile -15 arası)
+    if not (-65 <= wr <= -15):
+        return None
+
+    # OBV pozitif VE artıyor
+    if obv <= 0:
+        return None
+    if obv <= obv1:
+        return None
+
+    # WT pozitif VE artıyor
+    if wt <= 0:
+        return None
+    if wt <= wt1:
+        return None
+
+    # KDJ-J 35+ VE artıyor
+    if kdj < 35:
+        return None
+    if kdj <= kdj1:
+        return None
+
+    # EMA200 üzerinde
+    if entry <= e200:
+        return None
+
+    # Hacim: normal veya hafif artış (çok yüksek değil — birikim sessiz olur)
+    if vol is not None and vm is not None and vm > 0:
+        vr = vol / vm
+        if vr > 3.0: return None  # çok yüksek hacim = zaten hareket başlamış
+        if vr < 0.5: return None  # çok düşük hacim = ilgi yok
+
+    # ATR bazlı stop/TP
+    stop_atr  = round(entry - atr * 1.5, 8)
+    floor_stop= round(entry * 0.97, 8)
+    cap_stop  = round(entry * 0.90, 8)
+    stop_use  = min(max(stop_atr, cap_stop), floor_stop)
+    tp1       = round(entry + atr * 2.0, 8)
+    tp2       = round(entry + atr * 4.0, 8)
+
+    vol_mult = round(vol/vm, 1) if (vol and vm and vm>0) else None
+    atr_pct  = round(atr/entry*100, 2)
+
+    return {
+        "symbol":   symbol,
+        "type":     "birikim",
+        "entry":    round(entry, 8),
+        "stop":     stop_use,
+        "tp1":      tp1,
+        "tp2":      tp2,
+        "rsi":      round(rsi, 1),
+        "wr":       round(wr, 1),
+        "obv_osc":  round(obv, 1),
+        "wt":       round(wt, 1),
+        "kdj_j":    round(kdj, 1),
+        "vol_mult": vol_mult,
+        "atr_pct":  atr_pct,
+        "atr_pct_risk": round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
+        "hma15":    round(float(df["hma15"].iloc[-2]), 8) if "hma15" in df.columns else None,
+        "funding":  funding_cache.get(symbol),
+        "funding_neg": funding_cache.get(symbol) is not None and funding_cache.get(symbol) < 0,
     }
 
 def check_trend_signal(df, symbol):
@@ -708,6 +828,58 @@ def build_dip_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
+def build_birikim_message(r, tr_time, sig_num):
+    now      = tr_time.strftime("%d/%m/%Y %H:%M")
+    sym      = r["symbol"].replace("/USDT", "")
+    tp1      = r.get("tp1"); tp2 = r.get("tp2")
+    vol_mult = r.get("vol_mult")
+    btc_trend= btc_4h_cache.get("trend", "?")
+    atr_pct  = r.get("atr_pct_risk")
+    hma15    = r.get("hma15")
+    funding_val = r.get("funding")
+    funding_neg = r.get("funding_neg", False)
+
+    if atr_pct is not None:
+        if atr_pct >= 80:   vol_risk = f"⚠️ Yüksek (%{atr_pct:.0f})"
+        elif atr_pct >= 50: vol_risk = f"🟡 Orta (%{atr_pct:.0f})"
+        else:               vol_risk = f"🟢 Düşük (%{atr_pct:.0f})"
+    else:
+        vol_risk = "?"
+
+    lines = [
+        f"🕐 {now}",
+        "",
+        f"🟣 <b>#{sym}/USDT  •  BİRİKİM  •  1H</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (Adaptive ATR)",
+        f"🎯 <b>TP1</b>      {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
+        f"🎯 <b>TP2</b>      {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "📊 <b>Göstergeler</b>",
+        f"<b>RSI</b>        {r['rsi']:.1f}",
+        f"<b>W%R</b>        {r['wr']:.1f}",
+        f"<b>OBV_OSC</b>    {r['obv_osc']:.1f} ↑",
+        f"<b>WaveTrend</b>  {r['wt']:.1f} ↑",
+        f"<b>KDJ-J</b>      {r['kdj_j']:.1f} ↑",
+    ]
+    if vol_mult: lines.append(f"<b>Hacim</b>      {vol_mult}x ortalama")
+    if funding_val is not None:
+        fund_icon = "  💰" if funding_neg else ""
+        lines.append(f"<b>Funding</b>    {funding_val:+.4f}%{fund_icon}")
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"<b>BTC 4H</b>     {btc_trend}",
+        f"<b>Vol.Risk</b>   {vol_risk}",
+    ]
+    if hma15:
+        lines.append(f"<b>HMA15</b>      {fmt_price(hma15)}  (trailing ref.)")
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
 def build_trend_message(r, tr_time, sig_num):
     now      = tr_time.strftime("%d/%m/%Y %H:%M")
     sym      = r["symbol"].replace("/USDT", "")
@@ -826,6 +998,10 @@ async def signal_worker(candidate_queue):
                 msg = build_trend_message(result, tr_time, signal_counter)
                 stats["trend_sent"] += 1
                 icon = "📈"
+            elif sig_type == "birikim":
+                msg = build_birikim_message(result, tr_time, signal_counter)
+                stats["birikim_sent"] += 1
+                icon = "🟣"
             else:
                 msg = build_dip_message(result, tr_time, signal_counter)
                 stats["dip_sent"] += 1
@@ -1057,6 +1233,24 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         else:
             stats["trend_filtered"] += 1
 
+    # ── BİRİKİM sinyali kontrolü ─────────────────────────────
+    last_bir = sig_ts.get("birikim")
+    bir_ok   = True
+    if last_bir:
+        hrs = (tr_now.replace(tzinfo=None) - last_bir.replace(tzinfo=None)).total_seconds() / 3600
+        if hrs < SIGNAL_COOLDOWN_HOURS:
+            bir_ok = False
+
+    if bir_ok:
+        bir_result = check_birikim_signal(df, symbol)
+        if bir_result:
+            await candidate_queue.put(SignalCandidate(
+                symbol=symbol, result=bir_result,
+                tr_time=tr_now, sig_type="birikim"
+            ))
+        else:
+            stats["birikim_filtered"] += 1
+
 # ============================================================
 # 12) WEBSOCKET
 # ============================================================
@@ -1185,6 +1379,10 @@ def home():
             icon      = "⭐" if subtype == "VOL3_BB" else "📈"
             border_c  = "#00d4ff"
             type_label= f"TREND {subtype}"
+        elif st == "birikim":
+            icon      = "🟣"
+            border_c  = "#cc88ff"
+            type_label= "BİRİKİM"
         else:
             icon      = "💰" if fund_neg else "🔵"
             border_c  = "#c8e86a" if fund_neg else "#00f080"
@@ -1253,6 +1451,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   <div class="stat"><span class="sv">{stats.get("signal_sent",0)}</span><span class="sl">Toplam</span></div>
   <div class="stat"><span class="sv" style="color:#00f080">{stats.get("dip_sent",0)}</span><span class="sl">🔵 Dip</span></div>
   <div class="stat"><span class="sv" style="color:#00d4ff">{stats.get("trend_sent",0)}</span><span class="sl">📈 Trend</span></div>
+  <div class="stat"><span class="sv" style="color:#cc88ff">{stats.get("birikim_sent",0)}</span><span class="sl">🟣 Birikim</span></div>
   <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
 </div>
