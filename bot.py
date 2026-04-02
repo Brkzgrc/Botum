@@ -94,6 +94,8 @@ def print_summary():
         ("tr_yesil_degil",  "Trend: yesil degil"),
         ("tr_body_kucuk",   "Trend: body kucuk"),
         ("tr_false_breakout","Trend: tuzak mum (body>ATR×2)"),
+        ("retest_filtered",  "Retest filtre eledi"),
+        ("retest_sent",      "Retest sinyal gönderildi"),
         ("birikim_filtered", "Birikim filtre eledi"),
         ("birikim_sent",     "Birikim sinyal gönderildi"),
         ("tr_kapanis_dusuk","Trend: kapanis dusuk"),
@@ -343,6 +345,12 @@ def prepare_bars(df):
     bb_std       = c.rolling(15).std()
     df["bb15_upper"] = bb_ma + 2.0 * bb_std
 
+    # BB(20, 2.0) — retest için
+    bb20_ma      = c.rolling(20).mean()
+    bb20_std     = c.rolling(20).std()
+    df["bb20_upper"] = bb20_ma + 2.0 * bb20_std
+    df["bb20_mid"]   = bb20_ma
+
     # KDJ - J değeri
     low9  = l.rolling(9).min()
     high9 = h.rolling(9).max()
@@ -377,7 +385,8 @@ def prepare_bars(df):
     df["hma15"] = hma(c, 15)
 
     return df.dropna(subset=["stoch_rsi","wr","obv_osc","wt","macd_hist",
-                              "atr","ema50","ema200","adx","bb15_upper","rsi","kdj_j"])
+                              "atr","ema50","ema200","adx","bb15_upper","rsi","kdj_j",
+                              "bb20_upper","bb20_mid"])
 
 # ============================================================
 # 6) SİNYAL KRİTERLERİ
@@ -473,6 +482,92 @@ def check_dip_signal(df, symbol):
         "funding_neg": funding_neg,
         "atr_pct":     round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
         "hma15":       round(float(df["hma15"].iloc[-2]), 8)   if "hma15"  in df.columns else None,
+    }
+
+def check_retest_signal(df, symbol):
+    """
+    BB Retest + EMA200 Sinyali
+    - Son 15 bar içinde BB(20) üst bandı kırıldı
+    - Fiyat geri çekilip BB orta bandına yaklaştı (±%2)
+    - Orta bantta tutundu (yukarı döndü)
+    - EMA200 üzerinde
+    - Hacim makul
+    """
+    if len(df) < 40: return None
+
+    bar   = df.iloc[-2]
+    bar1  = df.iloc[-3]
+    bar2  = df.iloc[-4]
+    entry = float(df.iloc[-1]["close"])
+
+    def sf(row, col):
+        v = row.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    c_cur  = sf(bar,  "close")
+    c_prev = sf(bar1, "close")
+    c_prev2= sf(bar2, "close")
+    bbu    = sf(bar,  "bb20_upper")
+    bbm    = sf(bar,  "bb20_mid")
+    e200   = sf(bar,  "ema200")
+    atr    = sf(bar,  "atr")
+    vol    = float(df["volume"].iloc[-2]) if "volume" in df.columns else None
+    vm     = sf(bar,  "vol_ma")
+
+    if None in (c_cur, c_prev, c_prev2, bbu, bbm, e200, atr): return None
+
+    # EMA200 üstü
+    if entry <= e200: return None
+
+    # Son 15 bar içinde BB kırılımı oldu mu?
+    breakout_found = False
+    for j in range(-17, -3):
+        try:
+            if float(df["close"].iloc[j]) > float(df["bb20_upper"].iloc[j]):
+                breakout_found = True
+                break
+        except: pass
+    if not breakout_found: return None
+
+    # Fiyat BB orta bandına yakın mı? (±%2)
+    dist = abs(c_cur - bbm) / bbm * 100
+    if dist > 2.0: return None
+
+    # Orta bandın altından yukarı dönüyor
+    if not (c_cur > c_prev and c_prev <= c_prev2): return None
+
+    # Hacim makul
+    if vol is not None and vm is not None and vm > 0:
+        vr = vol / vm
+        if vr < 0.7: return None
+
+    # ATR bazlı stop/TP
+    vol_ratio_atr = atr / entry
+    atr_mult = 2.0 if vol_ratio_atr > 0.04 else (1.8 if vol_ratio_atr > 0.02 else 1.4)
+    stop_atr  = round(entry - atr * atr_mult, 8)
+    floor_stop= round(entry * 0.97, 8)
+    cap_stop  = round(entry * 0.90, 8)
+    stop_use  = min(max(stop_atr, cap_stop), floor_stop)
+    tp1       = round(entry + atr * 1.5, 8)
+    tp2       = round(entry + atr * 3.0, 8)
+
+    vol_mult = round(vol/vm, 1) if (vol and vm and vm > 0) else None
+    atr_pct  = round(atr/entry*100, 2)
+
+    return {
+        "symbol":   symbol,
+        "type":     "retest",
+        "entry":    round(entry, 8),
+        "stop":     stop_use,
+        "tp1":      tp1,
+        "tp2":      tp2,
+        "bb_mid":   round(bbm, 8),
+        "vol_mult": vol_mult,
+        "atr_pct":  atr_pct,
+        "atr_pct_risk": round(float(df["atr_pct"].iloc[-2]), 1) if "atr_pct" in df.columns else None,
+        "hma15":    round(float(df["hma15"].iloc[-2]), 8) if "hma15" in df.columns else None,
+        "funding":  funding_cache.get(symbol),
+        "funding_neg": funding_cache.get(symbol) is not None and funding_cache.get(symbol) < 0,
     }
 
 def check_birikim_signal(df, symbol):
@@ -837,6 +932,56 @@ def build_dip_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
+def build_retest_message(r, tr_time, sig_num):
+    now      = tr_time.strftime("%d/%m/%Y %H:%M")
+    sym      = r["symbol"].replace("/USDT", "")
+    tp1      = r.get("tp1"); tp2 = r.get("tp2")
+    vol_mult = r.get("vol_mult")
+    btc_trend= btc_4h_cache.get("trend", "?")
+    atr_pct  = r.get("atr_pct_risk")
+    hma15    = r.get("hma15")
+    funding_val = r.get("funding")
+    funding_neg = r.get("funding_neg", False)
+
+    if atr_pct is not None:
+        if atr_pct >= 80:   vol_risk = f"⚠️ Yüksek (%{atr_pct:.0f})"
+        elif atr_pct >= 50: vol_risk = f"🟡 Orta (%{atr_pct:.0f})"
+        else:               vol_risk = f"🟢 Düşük (%{atr_pct:.0f})"
+    else:
+        vol_risk = "?"
+
+    lines = [
+        f"🕐 {now}",
+        "",
+        f"🔄 <b>#{sym}/USDT  •  BB RETEST  •  1H</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
+        f"📍 <b>BB Orta</b>  {fmt_price(r['bb_mid'])}  (destek)",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (Adaptive ATR)",
+        f"🎯 <b>TP1</b>      {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
+        f"🎯 <b>TP2</b>      {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "📊 <b>Durum</b>",
+        f"BB üst bant kırıldı → geri çekildi → orta bantta tutundu",
+        f"EMA200 üzerinde ✅",
+    ]
+    if vol_mult: lines.append(f"<b>Hacim</b>      {vol_mult}x ortalama")
+    if funding_val is not None:
+        fund_icon = "  💰" if funding_neg else ""
+        lines.append(f"<b>Funding</b>    {funding_val:+.4f}%{fund_icon}")
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"<b>BTC 4H</b>     {btc_trend}",
+        f"<b>Vol.Risk</b>   {vol_risk}",
+    ]
+    if hma15:
+        lines.append(f"<b>HMA15</b>      {fmt_price(hma15)}  (trailing ref.)")
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
 def build_birikim_message(r, tr_time, sig_num):
     now      = tr_time.strftime("%d/%m/%Y %H:%M")
     sym      = r["symbol"].replace("/USDT", "")
@@ -1007,6 +1152,10 @@ async def signal_worker(candidate_queue):
                 msg = build_trend_message(result, tr_time, signal_counter)
                 stats["trend_sent"] += 1
                 icon = "📈"
+            elif sig_type == "retest":
+                msg = build_retest_message(result, tr_time, signal_counter)
+                stats["retest_sent"] += 1
+                icon = "🔄"
             elif sig_type == "birikim":
                 msg = build_birikim_message(result, tr_time, signal_counter)
                 stats["birikim_sent"] += 1
@@ -1242,6 +1391,24 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         else:
             stats["trend_filtered"] += 1
 
+    # ── RETEST sinyali kontrolü ──────────────────────────────
+    last_ret = sig_ts.get("retest")
+    ret_ok   = True
+    if last_ret:
+        hrs = (tr_now.replace(tzinfo=None) - last_ret.replace(tzinfo=None)).total_seconds() / 3600
+        if hrs < SIGNAL_COOLDOWN_HOURS:
+            ret_ok = False
+
+    if ret_ok:
+        ret_result = check_retest_signal(df, symbol)
+        if ret_result:
+            await candidate_queue.put(SignalCandidate(
+                symbol=symbol, result=ret_result,
+                tr_time=tr_now, sig_type="retest"
+            ))
+        else:
+            stats["retest_filtered"] += 1
+
     # ── BİRİKİM sinyali kontrolü ─────────────────────────────
     last_bir = sig_ts.get("birikim")
     bir_ok   = True
@@ -1388,6 +1555,10 @@ def home():
             icon      = "⭐" if subtype == "VOL3_BB" else "📈"
             border_c  = "#00d4ff"
             type_label= f"TREND {subtype}"
+        elif st == "retest":
+            icon      = "🔄"
+            border_c  = "#00ffaa"
+            type_label= "BB RETEST"
         elif st == "birikim":
             icon      = "🟣"
             border_c  = "#cc88ff"
@@ -1460,6 +1631,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   <div class="stat"><span class="sv">{stats.get("signal_sent",0)}</span><span class="sl">Toplam</span></div>
   <div class="stat"><span class="sv" style="color:#00f080">{stats.get("dip_sent",0)}</span><span class="sl">🔵 Dip</span></div>
   <div class="stat"><span class="sv" style="color:#00d4ff">{stats.get("trend_sent",0)}</span><span class="sl">📈 Trend</span></div>
+  <div class="stat"><span class="sv" style="color:#00ffaa">{stats.get("retest_sent",0)}</span><span class="sl">🔄 Retest</span></div>
   <div class="stat"><span class="sv" style="color:#cc88ff">{stats.get("birikim_sent",0)}</span><span class="sl">🟣 Birikim</span></div>
   <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
