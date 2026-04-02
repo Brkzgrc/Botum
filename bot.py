@@ -520,10 +520,12 @@ def check_birikim_signal(df, symbol):
     if not (-65 <= wr <= -15):
         return None
 
-    # OBV pozitif VE artıyor
+    # OBV pozitif VE 3 bardır artıyor (güçlü birikim)
+    obv2 = sf(bar2, "obv_osc")
+    if obv2 is None: return None
     if obv <= 0:
         return None
-    if obv <= obv1:
+    if not (obv > obv1 > obv2):
         return None
 
     # WT pozitif VE artıyor
@@ -549,11 +551,11 @@ def check_birikim_signal(df, symbol):
     if entry <= e200:
         return None
 
-    # Hacim: normal veya hafif artış (çok yüksek değil — birikim sessiz olur)
+    # Hacim: 1.0x-2.0x arası (birikim başlamış ama patlamamış)
     if vol is not None and vm is not None and vm > 0:
         vr = vol / vm
-        if vr > 3.0: return None  # çok yüksek hacim = zaten hareket başlamış
-        if vr < 0.5: return None  # çok düşük hacim = ilgi yok
+        if vr > 2.0: return None  # çok yüksek = hareket başlamış
+        if vr < 1.0: return None  # çok düşük = ilgi yok
 
     # ATR bazlı stop/TP
     stop_atr  = round(entry - atr * 1.5, 8)
