@@ -59,11 +59,19 @@ BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
 
 IGNORED_COINS = set([
+    # Leveraged tokens
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
+    # Stablecoins
     'USDC/USDT','TUSD/USDT','FDUSD/USDT','DAI/USDT','USDP/USDT',
-    'EUR/USDT','TRY/USDT','GBP/USDT','BUSD/USDT','USTC/USDT',
-    'PAXG/USDT','WBTC/USDT','USDE/USDT','BRL/USDT','RUB/USDT',
-    'AUD/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
+    'USDE/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
+    'USTC/USDT','BUSD/USDT','FRAX/USDT','LUSD/USDT','GUSD/USDT','SUSD/USDT',
+    'USDS/USDT','USDX/USDT','USDD/USDT','CUSD/USDT','OUSD/USDT','MUSD/USDT',
+    # Fiat
+    'EUR/USDT','TRY/USDT','GBP/USDT','BRL/USDT','RUB/USDT',
+    'AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
+    # Wrapped tokens
+    'PAXG/USDT','WBTC/USDT','WETH/USDT','WBNB/USDT','BETH/USDT',
+    'BTCB/USDT','HBTC/USDT',
 ])
 LEVERAGED_PATTERNS = ['UP','DOWN','BULL','BEAR','3L','3S','2L','2S','5L','5S','10L','10S']
 
@@ -200,20 +208,39 @@ async def load_symbols_pool():
         return []
 
     volumes = {}
-    for i in range(0, len(syms), 120):
-        part = syms[i:i + 120]
-        try:
-            res = await api_gate.call(exchange_spot.fetch_tickers, part)
-            if isinstance(res, dict):
-                for k, v in res.items():
-                    volumes[k] = float(v.get("quoteVolume", 0) or 0)
-        except Exception:
-            continue
+    # Birden fazla geçişle hacim çek — bazı coinler ilk batch'te gözden kaçabilir
+    for attempt in range(2):
+        for i in range(0, len(syms), 100):
+            part = syms[i:i + 100]
+            try:
+                res = await api_gate.call(exchange_spot.fetch_tickers, part)
+                if isinstance(res, dict):
+                    for k, v in res.items():
+                        vol = float(v.get("quoteVolume", 0) or 0)
+                        if vol > 0:  # sadece geçerli değerleri kaydet
+                            volumes[k] = vol
+            except Exception:
+                continue
+        await asyncio.sleep(0.5)
 
-    # Minimum hacim filtresi: MIN_LIQUIDITY USDT günlük hacim şartı
+    # Hacim 0 olan veya eksik coinleri ayrı tek tek sorgula
+    missing = [s for s in syms if volumes.get(s, 0) == 0]
+    if missing:
+        print(f"  Eksik hacim: {len(missing)} coin tek tek sorgulanıyor...", flush=True)
+        for sym in missing[:50]:  # max 50 adet
+            try:
+                ticker = await api_gate.call(exchange_spot.fetch_ticker, sym)
+                vol = float(ticker.get("quoteVolume", 0) or 0)
+                if vol > 0:
+                    volumes[sym] = vol
+            except Exception:
+                pass
+            await asyncio.sleep(0.05)
+
+    # Minimum hacim filtresi
     filtered_syms = [s for s in syms if volumes.get(s, 0) >= MIN_LIQUIDITY]
     sorted_syms = sorted(filtered_syms, key=lambda x: volumes.get(x, 0), reverse=True)
-    print(f"Sembol filtresi: {len(syms)} toplam → {len(sorted_syms)} hacim filtresi sonrası (min {MIN_LIQUIDITY/1e6:.1f}M USDT)", flush=True)
+    print(f"Sembol filtresi: {len(syms)} toplam → {len(sorted_syms)} (min {MIN_LIQUIDITY/1e6:.1f}M USDT) | Hacim sıfır: {len([s for s in syms if volumes.get(s,0)==0])}", flush=True)
     return sorted_syms[:MAX_SYMBOLS] if MAX_SYMBOLS else sorted_syms
 
 # ============================================================
@@ -391,6 +418,38 @@ def prepare_bars(df):
 # ============================================================
 # 6) SİNYAL KRİTERLERİ
 # ============================================================
+def is_hammer(df, i):
+    """
+    Hammer mumu tespiti — ek bilgi olarak bildir (zorunlu değil)
+    Koşullar:
+      - Alt gölge >= gövdenin 2 katı
+      - Üst gölge küçük (gövdenin max %30'u)
+      - Gövde mumun üst %40'ında
+    """
+    if i < 1: return False
+    try:
+        o = float(df["open"].iloc[i])
+        c = float(df["close"].iloc[i])
+        h = float(df["high"].iloc[i])
+        l = float(df["low"].iloc[i])
+    except: return False
+
+    body      = abs(c - o)
+    rng       = h - l
+    if rng <= 0 or body <= 0: return False
+
+    upper_wick = h - max(c, o)
+    lower_wick = min(c, o) - l
+
+    # Alt gölge >= gövdenin 2 katı
+    if lower_wick < body * 2.0: return False
+    # Üst gölge küçük (gövdenin %50'sinden az)
+    if upper_wick > body * 0.5: return False
+    # Gövde mumun üst %40'ında olmalı
+    if (min(c, o) - l) / rng < 0.55: return False
+
+    return True
+
 def check_dip_signal(df, symbol):
     """Dip sistemi — mevcut backtest_dip_v1 parametreleri"""
     if len(df) < 60:
@@ -866,7 +925,7 @@ def fmt_price(price):
     if p >= 0.01:  return f"{p:.4f}"
     return f"{p:.6f}"
 
-def build_dip_message(r, tr_time, sig_num):
+def build_dip_message(r, tr_time, sig_num, df_last=None):
     now         = tr_time.strftime("%d/%m/%Y %H:%M")
     sym         = r["symbol"].replace("/USDT", "")
     funding_neg = r.get("funding_neg", False)
@@ -932,7 +991,7 @@ def build_dip_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
-def build_retest_message(r, tr_time, sig_num):
+def build_retest_message(r, tr_time, sig_num, df_last=None):
     now      = tr_time.strftime("%d/%m/%Y %H:%M")
     sym      = r["symbol"].replace("/USDT", "")
     tp1      = r.get("tp1"); tp2 = r.get("tp2")
@@ -950,10 +1009,11 @@ def build_retest_message(r, tr_time, sig_num):
     else:
         vol_risk = "?"
 
+    hammer = is_hammer(df_last, -2) if df_last is not None else False
     lines = [
         f"🕐 {now}",
         "",
-        f"🔄 <b>#{sym}/USDT  •  BB RETEST  •  1H</b>",
+        f"🔄 <b>#{sym}/USDT  •  BB RETEST  •  1H</b>{"  🔨 Hammer" if hammer else ""}",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
         f"📍 <b>BB Orta</b>  {fmt_price(r['bb_mid'])}  (destek)",
@@ -982,7 +1042,7 @@ def build_retest_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
-def build_birikim_message(r, tr_time, sig_num):
+def build_birikim_message(r, tr_time, sig_num, df_last=None):
     now      = tr_time.strftime("%d/%m/%Y %H:%M")
     sym      = r["symbol"].replace("/USDT", "")
     tp1      = r.get("tp1"); tp2 = r.get("tp2")
@@ -1000,10 +1060,11 @@ def build_birikim_message(r, tr_time, sig_num):
     else:
         vol_risk = "?"
 
+    hammer = is_hammer(df_last, -2) if df_last is not None else False
     lines = [
         f"🕐 {now}",
         "",
-        f"🟣 <b>#{sym}/USDT  •  BİRİKİM  •  1H</b>",
+        f"🟣 <b>#{sym}/USDT  •  BİRİKİM  •  1H</b>{"  🔨 Hammer" if hammer else ""}",
         "━━━━━━━━━━━━━━━━━━━━",
         f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
         f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (Adaptive ATR)",
@@ -1034,7 +1095,7 @@ def build_birikim_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
-def build_trend_message(r, tr_time, sig_num):
+def build_trend_message(r, tr_time, sig_num, df_last=None):
     now      = tr_time.strftime("%d/%m/%Y %H:%M")
     sym      = r["symbol"].replace("/USDT", "")
     subtype  = r.get("subtype", "BB_BREAK")
@@ -1148,20 +1209,26 @@ async def signal_worker(candidate_queue):
             signal_counter += 1
 
             # Mesaj tipine göre gönder
+            # Hammer için son df'i çek
+            try:
+                df_last = symbol_dfs.get(symbol)
+            except:
+                df_last = None
+
             if sig_type == "trend":
-                msg = build_trend_message(result, tr_time, signal_counter)
+                msg = build_trend_message(result, tr_time, signal_counter, df_last)
                 stats["trend_sent"] += 1
                 icon = "📈"
             elif sig_type == "retest":
-                msg = build_retest_message(result, tr_time, signal_counter)
+                msg = build_retest_message(result, tr_time, signal_counter, df_last)
                 stats["retest_sent"] += 1
                 icon = "🔄"
             elif sig_type == "birikim":
-                msg = build_birikim_message(result, tr_time, signal_counter)
+                msg = build_birikim_message(result, tr_time, signal_counter, df_last)
                 stats["birikim_sent"] += 1
                 icon = "🟣"
             else:
-                msg = build_dip_message(result, tr_time, signal_counter)
+                msg = build_dip_message(result, tr_time, signal_counter, df_last)
                 stats["dip_sent"] += 1
                 icon = "💰" if result.get("funding_neg") else "🔵"
 
