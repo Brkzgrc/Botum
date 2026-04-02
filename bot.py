@@ -538,6 +538,13 @@ def check_birikim_signal(df, symbol):
     if kdj <= kdj1:
         return None
 
+    # ADX: düşük ama yükseliyor (yeni trend başlamak üzere)
+    adx  = sf(bar,  "adx")
+    adx1 = sf(bar1, "adx")
+    if adx is None or adx1 is None: return None
+    if adx >= 30:   return None   # çok güçlü = geç kalınmış
+    if adx <= adx1: return None   # yükseliyor olmalı
+
     # EMA200 üzerinde
     if entry <= e200:
         return None
