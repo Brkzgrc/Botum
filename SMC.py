@@ -372,7 +372,7 @@ def analyze(symbol: str):
                         rsi, raw_atr, atr_ratio, depth,
                         s_label, s_note, h_icon, structure
                     )
-                    # send_telegram_msg(msg)
+                    send_telegram_msg(msg)
                     mark_sent(symbol, "phase2")
                     print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}")
                     return   # Aşama 2 gönderildi, Aşama 1 atla
