@@ -15,6 +15,7 @@ def home():
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
+    print(f"[FLASK] running on {port}")
     app.run(host="0.0.0.0", port=port)
     
 # ============================================================
