@@ -11,12 +11,15 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot running", 200
+    return "SMC Sniper Running", 200
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    print(f"[FLASK] running on {port}")
-    app.run(host="0.0.0.0", port=port)
+    try:
+        port = int(os.environ.get("PORT", 10000))
+        print(f"[FLASK] running on port {port}")
+        app.run(host="0.0.0.0", port=port)
+    except Exception as e:
+        print(f"[FLASK ERROR] {e}")
     
 # ============================================================
 # 1) AYARLAR
