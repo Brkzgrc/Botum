@@ -23,7 +23,7 @@ PHASE1_COOLDOWN  = 86400      # 24 saat — aynı coin için tekrar hazırlık a
 
 PHASE2_DEPTH     = 65         # Aksiyon: CHoCH geldiğinde minimum derinlik
 PHASE2_RSI       = 48         # Aksiyon: RSI henüz aşırı alım olmamış
-PHASE2_COOLDOWN  = 8640000    # 24 saat — aksiyon sinyali için cooldown
+PHASE2_COOLDOWN  = 86400      # 24 saat — aksiyon sinyali için cooldown
 
 SWING_SIZE       = 5          # LuxAlgo iç yapı pivot penceresi
 
