@@ -1854,15 +1854,6 @@ if __name__ == "__main__":
     threading.Thread(target=heartbeat_pinger, daemon=True).start()
     threading.Thread(target=watchdog_thread,  daemon=True).start()
 
-    # --- YENİ EKLENEN SMC KISMI BAŞLANGICI ---
-    try:
-        import SMC
-        threading.Thread(target=SMC.start_scanner, daemon=True).start()
-        print("SMC Sistemi arka planda basariyla baslatildi.", flush=True)
-    except Exception as e:
-        print(f"SMC baslatilirken hata olustu: {e}", flush=True)
-    # --- YENİ EKLENEN SMC KISMI BİTİŞİ ---
-
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
