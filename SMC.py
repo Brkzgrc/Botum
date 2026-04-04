@@ -4,19 +4,18 @@ import requests
 import time
 import json
 import os
-
-import threading
+    import threading
 from flask import Flask
 
 app = Flask(__name__)
 
-@app.route('/')
-def health_check():
-    return "SMC Sniper v3 is Running!", 200
+@app.route("/")
+def home():
+    return "Bot running", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
     
 # ============================================================
 # 1) AYARLAR
@@ -439,4 +438,5 @@ def start_scanner():
         time.sleep(SCAN_INTERVAL)
 
 if __name__ == "__main__":
+    threading.Thread(target=run_flask, daemon=True).start()
     start_scanner()
