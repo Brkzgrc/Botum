@@ -6,6 +6,11 @@ import json
 import os
 import threading
 from flask import Flask
+import logging
+
+# Flask'ın her saniye 'GET /' basmasını engellemek için:
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
@@ -16,11 +21,11 @@ def home():
 def run_flask():
     try:
         port = int(os.environ.get("PORT", 10000))
-        print(f"[FLASK] running on port {port}")
+        print(f"[FLASK] running on port {port}", flush=True)
         app.run(host="0.0.0.0", port=port)
     except Exception as e:
-        print(f"[FLASK ERROR] {e}")
-    
+        print(f"[FLASK ERROR] {e}", flush=True)
+        
 # ============================================================
 # 1) AYARLAR
 # ============================================================
@@ -390,9 +395,9 @@ def analyze(symbol: str):
                     )
                     send_telegram_msg(msg)
                     mark_sent(symbol, "phase2")
-                    print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}")
-                    return   # Aşama 2 gönderildi, Aşama 1 atla
-
+                    print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}", flush=True)
+                    return
+                    
         # ============================================================
         # AŞAMA 1 — HAZIRLIK UYARISI
         # CHoCH yok ama fiyat pusu bölgesinde
@@ -408,11 +413,11 @@ def analyze(symbol: str):
                 )
                 send_telegram_msg(msg)
                 mark_sent(symbol, "phase1")
-                print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}")
-
+                print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}", flush=True)
+                
     except Exception as e:
-        print(f"[HATA] {symbol}: {e}")
-
+        print(f"[HATA] {symbol}: {e}", flush=True)
+        
 # ============================================================
 # 9) ÇALIŞTIRICI DÖNGÜ
 # ============================================================
@@ -432,15 +437,15 @@ def start_scanner():
 
     while True:
         symbols = get_clean_symbols()
-        print(f"🔄 {len(symbols)} coin taranıyor...")
+        print(f"🔄 {len(symbols)} coin taranıyor...", flush=True)
 
         for symbol in symbols:
             analyze(symbol)
             time.sleep(0.35)
 
-        print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
-        time.sleep(SCAN_INTERVAL)
-
+        print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n", flush=True)
+        time.sleep(SCAN_INTERVAL)    
+        
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     start_scanner()
