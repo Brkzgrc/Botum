@@ -6,6 +6,11 @@ import json
 import os
 import threading
 from flask import Flask
+import logging
+
+# Gereksiz Flask loglarını kapat
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
@@ -14,9 +19,14 @@ def health_check():
     return "SMC Sniper v3 is Running!", 200
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-  
+    try:
+        port = int(os.environ.get("PORT", 10000))
+        # flush=True ekledik ki Render'da anında göresin
+        print(f"[FLASK] running on port {port}", flush=True)
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        print(f"[FLASK ERROR] {e}", flush=True)
+        
 # ============================================================
 # 1) AYARLAR
 # ============================================================
@@ -430,14 +440,21 @@ def start_scanner():
 
     while True:
         symbols = get_clean_symbols()
-        print(f"🔄 {len(symbols)} coin taranıyor...")
+        print(f"🔄 {len(symbols)} coin taranıyor...", flush=True)
 
         for symbol in symbols:
             analyze(symbol)
             time.sleep(0.35)
 
-        print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
+        print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n", flush=True)
         time.sleep(SCAN_INTERVAL)
 
 if __name__ == "__main__":
-    start_scanner()
+    # 1. Önce Flask'ı başlat (Render 'açıldı' desin)
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    # 2. Render'ın bağlantıyı kurması için 5 saniye bekle
+    time.sleep(5)
+    
+    # 3. Sonra tarayıcıyı başlat
+    start_scanner()
