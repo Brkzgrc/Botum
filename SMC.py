@@ -9,18 +9,14 @@ from flask import Flask
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return "SMC Sniper Running", 200
+@app.route('/')
+def health_check():
+    return "SMC Sniper v3 is Running!", 200
 
 def run_flask():
-    try:
-        port = int(os.environ.get("PORT", 10000))
-        print(f"[FLASK] running on port {port}")
-        app.run(host="0.0.0.0", port=port)
-    except Exception as e:
-        print(f"[FLASK ERROR] {e}")
-    
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+  
 # ============================================================
 # 1) AYARLAR
 # ============================================================
@@ -420,6 +416,8 @@ def start_scanner():
     global sent_signals
     sent_signals = load_signals()
 
+    threading.Thread(target=run_flask, daemon=True).start()
+
     print("=" * 50)
     print("🚀  SMC Sniper v3 — İki Aşamalı Radar")
     print("=" * 50)
@@ -442,5 +440,4 @@ def start_scanner():
         time.sleep(SCAN_INTERVAL)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
     start_scanner()
