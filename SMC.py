@@ -447,5 +447,12 @@ def start_scanner():
         time.sleep(SCAN_INTERVAL)    
         
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
+    # 1. Flask'ı Ayrı Bir Kanala At (Daemon=True Önemli)
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
+    
+    # 2. Render'ın Flask'ı Yakalaması İçin 3 Saniye Bekle
+    time.sleep(3) 
+    
+    # 3. Ana Tarayıcıyı Başlat
     start_scanner()
