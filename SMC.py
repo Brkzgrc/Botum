@@ -30,35 +30,35 @@ def run_flask():
 # ============================================================
 # 1) AYARLAR
 # ============================================================
-TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
-TIMEFRAME        = "1h"
-RANGE_LOOKBACK   = 30
-MIN_VOLUME_24H   = 5_000_000
-SCAN_INTERVAL    = 900        # 15 dakika
+TIMEFRAME        = "1h"
+RANGE_LOOKBACK   = 30
+MIN_VOLUME_24H   = 5_000_000
+SCAN_INTERVAL    = 900        # 15 dakika
 
 # ── Aşama eşikleri ──────────────────────────────────────────
-PHASE1_DEPTH     = 85         # Hazırlık: fiyat bu derinliğin altında
-PHASE1_RSI       = 35         # Hazırlık: RSI bu seviyenin altında
-PHASE1_COOLDOWN  = 86400      # 24 saat — aynı coin için tekrar hazırlık atma
+PHASE1_DEPTH     = 85         # Hazırlık: fiyat bu derinliğin altında
+PHASE1_RSI       = 35         # Hazırlık: RSI bu seviyenin altında
+PHASE1_COOLDOWN  = 86400      # 24 saat — aynı coin için tekrar hazırlık atma
 
-PHASE2_DEPTH     = 65         # Aksiyon: CHoCH geldiğinde minimum derinlik
-PHASE2_RSI       = 48         # Aksiyon: RSI henüz aşırı alım olmamış
-PHASE2_COOLDOWN  = 86400    # 24 saat — aksiyon sinyali için cooldown
+PHASE2_DEPTH     = 65         # Aksiyon: CHoCH geldiğinde minimum derinlik
+PHASE2_RSI       = 48         # Aksiyon: RSI henüz aşırı alım olmamış
+PHASE2_COOLDOWN  = 86400    # 24 saat — aksiyon sinyali için cooldown
 
-SWING_SIZE       = 5          # LuxAlgo iç yapı pivot penceresi
+SWING_SIZE       = 5          # LuxAlgo iç yapı pivot penceresi
 
-SIGNALS_FILE     = "sent_signals.json"
+SIGNALS_FILE     = "sent_signals.json"
 
 IGNORED_COINS = {
-    'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT','USDC/USDT','TUSD/USDT',
-    'FDUSD/USDT','DAI/USDT','USDP/USDT','USDE/USDT','UST/USDT','USD/USDT',
-    'XUSD/USDT','USD1/USDT','BFUSD/USDT','USTC/USDT','BUSD/USDT','FRAX/USDT',
-    'LUSD/USDT','GUSD/USDT','SUSD/USDT','USDS/USDT','USDX/USDT','USDD/USDT',
-    'CUSD/USDT','OUSD/USDT','MUSD/USDT','EUR/USDT','TRY/USDT','GBP/USDT',
-    'BRL/USDT','RUB/USDT','AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
-    'PAXG/USDT','WBTC/USDT','WETH/USDT','WBNB/USDT','BETH/USDT','BTCB/USDT','HBTC/USDT',
+    'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT','USDC/USDT','TUSD/USDT',
+    'FDUSD/USDT','DAI/USDT','USDP/USDT','USDE/USDT','UST/USDT','USD/USDT',
+    'XUSD/USDT','USD1/USDT','BFUSD/USDT','USTC/USDT','BUSD/USDT','FRAX/USDT',
+    'LUSD/USDT','GUSD/USDT','SUSD/USDT','USDS/USDT','USDX/USDT','USDD/USDT',
+    'CUSD/USDT','OUSD/USDT','MUSD/USDT','EUR/USDT','TRY/USDT','GBP/USDT',
+    'BRL/USDT','RUB/USDT','AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
+    'PAXG/USDT','WBTC/USDT','WETH/USDT','WBNB/USDT','BETH/USDT','BTCB/USDT','HBTC/USDT',
 }
 
 exchange = ccxt.binance()
@@ -425,8 +425,6 @@ def analyze(symbol: str):
 def start_scanner():
     global sent_signals
     sent_signals = load_signals()
-
-    threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
     print("🚀  SMC Sniper v3 — İki Aşamalı Radar")
