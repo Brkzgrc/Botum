@@ -251,6 +251,11 @@ def build_phase1_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
                      strategy_label, strategy_note, header_icon,
                      trend_bias) -> str:
     base = symbol.split("/")[0]
+    
+    # Bilimsel gösterimi (e-06) tam sayıya çeviren kısım
+    p_str = f"{current_price:.10f}".rstrip("0").rstrip(".")
+    m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+    
     return (
         f"🎯🎯🎯 <b>PUSU KURULDU</b> 🎯🎯🎯\n"
         f"<b>#{base}</b>  <i>{coin_name}</i>\n"
@@ -258,8 +263,8 @@ def build_phase1_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
         f"📍 <b>AŞAMA 1 — DERİN İNDİRİM</b>\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{current_price}</code>\n"
-        f"📊 <b>200 MA:</b> <code>{round(ma200, 6)}</code> "
+        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> "
         f"(<b>%{round(dist_to_ma200, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(current_rsi, 2)}</b>\n"
         f"🌋 <b>ATR (TAM):</b> <code>{raw_atr_str}</code>\n"
@@ -283,6 +288,10 @@ def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
     strength     = "🔥 <b>GÜÇLÜ — CHoCH (Trend Döndü)</b>" if bt == "CHoCH" \
                    else "💪 <b>ORTA — BOS (Trend Devam)</b>"
 
+    # Bilimsel gösterimi (e-06) tam sayıya çeviren kısım
+    p_str = f"{current_price:.10f}".rstrip("0").rstrip(".")
+    m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+
     return (
         f"🚀🚀🚀 <b>TETİK ÇEKİLDİ</b> 🚀🚀🚀\n"
         f"<b>#{base}</b>  <i>{coin_name}</i>\n"
@@ -291,8 +300,8 @@ def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
         f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{current_price}</code>\n"
-        f"📊 <b>200 MA:</b> <code>{round(ma200, 6)}</code> "
+        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> "
         f"(<b>%{round(dist_to_ma200, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(current_rsi, 2)}</b>\n"
         f"🌋 <b>ATR (TAM):</b> <code>{raw_atr_str}</code>\n"
@@ -307,7 +316,7 @@ def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
         f"{strategy_note}\n\n"
         f"{'🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma.' if bt == 'CHoCH' else '⚠️ <b>DİKKATLİ OL:</b> BOS — trend hâlâ devam ediyordu.'}"
     )
-
+                         
 # ============================================================
 # 8) ANA ANALİZ MOTORU
 # ============================================================
