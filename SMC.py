@@ -11,12 +11,12 @@ app = Flask(__name__)
 
 @app.route('/')
 def health_check():
-    return "SMC Sniper v3 is Running!", 200
+    return "SMC Sniper v4 is Running!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-    
+
 # ============================================================
 # 1) AYARLAR
 # ============================================================
@@ -26,19 +26,17 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TIMEFRAME        = "1h"
 RANGE_LOOKBACK   = 30
 MIN_VOLUME_24H   = 5_000_000
-SCAN_INTERVAL    = 900        # 15 dakika
+SCAN_INTERVAL    = 900
 
-# ── Aşama eşikleri ──────────────────────────────────────────
-PHASE1_DEPTH     = 85         # Hazırlık: fiyat bu derinliğin altında
-PHASE1_RSI       = 35         # Hazırlık: RSI bu seviyenin altında
-PHASE1_COOLDOWN  = 86400      # 24 saat — aynı coin için tekrar hazırlık atma
+PHASE1_DEPTH     = 85
+PHASE1_RSI       = 35
+PHASE1_COOLDOWN  = 86400
 
-PHASE2_DEPTH     = 65         # Aksiyon: CHoCH geldiğinde minimum derinlik
-PHASE2_RSI       = 48         # Aksiyon: RSI henüz aşırı alım olmamış
-PHASE2_COOLDOWN  = 86400    # 24 saat — aksiyon sinyali için cooldown
+PHASE2_DEPTH     = 65
+PHASE2_RSI       = 48
+PHASE2_COOLDOWN  = 86400
 
-SWING_SIZE       = 5          # LuxAlgo iç yapı pivot penceresi
-
+SWING_SIZE       = 5
 SIGNALS_FILE     = "sent_signals.json"
 
 IGNORED_COINS = {
@@ -56,7 +54,6 @@ exchange = ccxt.binance()
 # ============================================================
 # 2) SİNYAL HAFIZASI
 # ============================================================
-# Yapı: { "BTCUSDT": { "phase1": 1720000000.0, "phase2": 1720003600.0} }
 sent_signals: dict = {}
 
 def load_signals() -> dict:
@@ -122,11 +119,6 @@ def get_clean_symbols() -> list:
 # 5) COİN ADI
 # ============================================================
 def get_coin_name(symbol: str) -> str:
-    """
-    Binance market verisinden coinin tam adını çeker.
-    Örnek: 'SOL/USDT' -> 'Solana'
-    Bulunamazsa sadece base sembolü döner.
-    """
     try:
         market = exchange.markets.get(symbol, {})
         full   = market.get("info", {}).get("baseAssetFullName", "")
@@ -147,7 +139,6 @@ def calc_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return tr.rolling(window=period).mean()
 
 def calc_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Wilder EMA — LuxAlgo ile uyumlu."""
     delta = df["close"].diff()
     gain  = delta.where(delta > 0, 0.0).ewm(alpha=1/period, adjust=False).mean()
     loss  = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/period, adjust=False).mean()
@@ -155,10 +146,124 @@ def calc_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 # ============================================================
-# 6) LuxAlgo PIVOT & YAPI TESPİTİ
+# 7) MUM FORMASYONU TESPİTİ  [YENİ]
+# ============================================================
+def detect_candle_patterns(df: pd.DataFrame) -> dict:
+    """
+    Son kapanan mumda (iloc[-2]) dönüş formasyonu tespit eder.
+    Zorunlu filtre değil — CHoCH/BOS teyidini güçlendirici.
+
+    Döner: {
+        "hammer":       bool,
+        "engulfing":    bool,
+        "doji":         bool,
+        "morning_star": bool,
+    }
+    """
+    result = {
+        "hammer":       False,
+        "engulfing":    False,
+        "doji":         False,
+        "morning_star": False,
+    }
+
+    if len(df) < 4:
+        return result
+
+    c0 = df.iloc[-2]   # son kapanan mum (sinyal mumu)
+    c1 = df.iloc[-3]   # bir önceki
+    c2 = df.iloc[-4]   # iki önceki
+
+    o0, h0, l0, cl0 = float(c0["open"]), float(c0["high"]), float(c0["low"]), float(c0["close"])
+    o1, h1, l1, cl1 = float(c1["open"]), float(c1["high"]), float(c1["low"]), float(c1["close"])
+    o2, h2, l2, cl2 = float(c2["open"]), float(c2["high"]), float(c2["low"]), float(c2["close"])
+
+    body0  = abs(cl0 - o0)
+    body1  = abs(cl1 - o1)
+    body2  = abs(cl2 - o2)
+    range0 = h0 - l0
+
+    if range0 <= 0:
+        return result
+
+    upper_wick0 = h0 - max(cl0, o0)
+    lower_wick0 = min(cl0, o0) - l0
+
+    # ── HAMMER ──────────────────────────────────────────────
+    # Koşullar:
+    #   Alt gölge >= gövdenin 2 katı
+    #   Üst gölge <= gövdenin %50'si (küçük)
+    #   Gövde mumun üst %40'ında (lower_wick / range >= 0.55)
+    if (body0 > 0
+            and lower_wick0 >= body0 * 2.0
+            and upper_wick0 <= body0 * 0.5
+            and (min(cl0, o0) - l0) / range0 >= 0.55):
+        result["hammer"] = True
+
+    # ── BULLISH ENGULFING ────────────────────────────────────
+    # c1 kırmızı, c0 yeşil ve c1'i tamamen yutuyor
+    # Gövde büyüklük kontrolü: c0 gövdesi c1 gövdesinin en az %80'ini kapsamalı
+    if (cl1 < o1              # c1 kırmızı mum
+            and cl0 > o0      # c0 yeşil mum
+            and o0 <= cl1     # c0 açılış, c1 kapanışın altında veya eşit
+            and cl0 >= o1     # c0 kapanış, c1 açılışın üstünde veya eşit
+            and body0 >= body1 * 0.8):
+        result["engulfing"] = True
+
+    # ── DOJI ────────────────────────────────────────────────
+    # Gövde range'in %8'inden küçük = kararsızlık mumu
+    if body0 <= range0 * 0.08:
+        result["doji"] = True
+
+    # ── MORNING STAR ────────────────────────────────────────
+    # 3 mumlu formasyon:
+    #   c2: büyük kırmızı mum
+    #   c1: küçük gövdeli mum (doji/ıslık) — gap oluşturabilir
+    #   c0: büyük yeşil mum, c2'nin ortasını geçmeli
+    avg_body = (body0 + body1 + body2) / 3 if (body0 + body1 + body2) > 0 else 1
+    c2_mid   = o2 - body2 / 2   # c2 gövdesinin ortası (kırmızı mum olduğu için)
+    if (cl2 < o2                         # c2 kırmızı
+            and body2 >= avg_body * 1.0  # c2 ortalama büyüklükte
+            and body1 <= avg_body * 0.5  # c1 küçük gövde
+            and cl0 > o0                 # c0 yeşil
+            and body0 >= avg_body * 1.0  # c0 ortalama büyüklükte
+            and cl0 >= c2_mid):          # c0 kapanış c2 gövde ortasını geçiyor
+        result["morning_star"] = True
+
+    return result
+
+
+def candle_pattern_summary(patterns: dict) -> str:
+    """
+    Tespit edilen formasyonları mesaj satırına çevirir.
+    Öncelik: Morning Star > Engulfing > Hammer > Doji
+    Birden fazlaysa hepsi listelenir, güç seviyesi belirlenir.
+    Hiçbiri yoksa boş string döner.
+    """
+    found = []
+    if patterns.get("morning_star"): found.append("🌅 Morning Star")
+    if patterns.get("engulfing"):    found.append("🟢 Bullish Engulfing")
+    if patterns.get("hammer"):       found.append("🔨 Hammer")
+    if patterns.get("doji"):         found.append("⚖️ Doji")
+
+    if not found:
+        return ""
+
+    # Güç etiketi: Morning Star veya 2+ formasyon = çok güçlü
+    if patterns.get("morning_star") or len(found) >= 2:
+        power = "⚡⚡ ÇOK GÜÇLÜ TEYİT"
+    elif patterns.get("engulfing"):
+        power = "⚡ GÜÇLÜ TEYİT"
+    else:
+        power = "✅ TEYİT"
+
+    return f"{power}: {' + '.join(found)}"
+
+
+# ============================================================
+# 8) LuxAlgo PIVOT & YAPI TESPİTİ
 # ============================================================
 def find_pivot_highs(df: pd.DataFrame, size: int = 5) -> list:
-    """Son onaylanmış pivot high noktalarını bulur."""
     highs  = []
     window = min(len(df) - 1, 100)
     for i in range(size, window):
@@ -170,7 +275,6 @@ def find_pivot_highs(df: pd.DataFrame, size: int = 5) -> list:
     return highs
 
 def find_pivot_lows(df: pd.DataFrame, size: int = 5) -> list:
-    """Son onaylanmış pivot low noktalarını bulur."""
     lows   = []
     window = min(len(df) - 1, 100)
     for i in range(size, window):
@@ -182,29 +286,19 @@ def find_pivot_lows(df: pd.DataFrame, size: int = 5) -> list:
     return lows
 
 def infer_trend_bias(df: pd.DataFrame, size: int = 5) -> str:
-    """
-    LuxAlgo swingTrend.bias mantığı:
-    Son iki pivot high + low karşılaştırması ile trend yönü.
-    """
     ph = find_pivot_highs(df, size)
     pl = find_pivot_lows(df, size)
     if len(ph) < 2 or len(pl) < 2:
         return "NEUTRAL"
     hh = ph[0]["price"] > ph[1]["price"]
     hl = pl[0]["price"] > pl[1]["price"]
-    if hh and hl:
-        return "BULLISH"
-    if not hh and not hl:
-        return "BEARISH"
+    if hh and hl:       return "BULLISH"
+    if not hh and not hl: return "BEARISH"
     return "NEUTRAL"
 
 def detect_structure_break(df: pd.DataFrame, size: int = 5) -> dict:
-    """
-    LuxAlgo displayStructure() karşılığı.
-    Bullish yapı kırılımını tespit eder ve CHoCH / BOS ayrımı yapar.
-    """
     result = {
-        "break_type"  : None,   # "CHoCH" | "BOS" | None
+        "break_type"  : None,
         "swing_high"  : None,
         "swing_ago"   : None,
         "trend_before": None,
@@ -216,14 +310,12 @@ def detect_structure_break(df: pd.DataFrame, size: int = 5) -> dict:
     current_close = df["close"].iloc[-1]
     prev_close    = df["close"].iloc[-2]
 
-    # En yakın geçerli pivot high'ı bul
     nearest = next((ph for ph in pivot_highs if ph["ago"] >= 1), None)
     if nearest is None:
         return result
 
     swing_high = nearest["price"]
 
-    # Crossover: önceki mum altında, mevcut mum üzerinde
     if not (current_close > swing_high and prev_close <= swing_high):
         return result
 
@@ -244,18 +336,28 @@ def detect_structure_break(df: pd.DataFrame, size: int = 5) -> dict:
     return result
 
 # ============================================================
-# 7) MESAJ ŞABLONları
+# 9) MESAJ ŞABLONLARI
 # ============================================================
 def build_phase1_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
                      current_rsi, raw_atr_str, atr_ratio, depth,
                      strategy_label, strategy_note, header_icon,
-                     trend_bias) -> str:
-    base = symbol.split("/")[0]
-    
-    # Bilimsel gösterimi (e-06) tam sayıya çeviren kısım
+                     trend_bias, patterns: dict) -> str:
+    base  = symbol.split("/")[0]
     p_str = f"{current_price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
-    
+
+    pattern_line = candle_pattern_summary(patterns)
+    # Aşama 1'de formasyon varsa beklemeyi güçlendiriyor — "yakın olabilir" mesajı
+    if pattern_line:
+        pattern_block = (
+            f"\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
+            f"📊 <b>MUM FORMASYONU</b>\n"
+            f"{pattern_line}\n"
+            f"<i>Alıcı baskısı görülüyor — CHoCH/BOS yakın olabilir.</i>"
+        )
+    else:
+        pattern_block = ""
+
     return (
         f"🎯🎯🎯 <b>PUSU KURULDU</b> 🎯🎯🎯\n"
         f"<b>#{base}</b>  <i>{coin_name}</i>\n"
@@ -264,13 +366,13 @@ def build_phase1_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
-        f"📊 <b>200 MA:</b> <code>{m_str}</code> "
-        f"(<b>%{round(dist_to_ma200, 1)}</b>)\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_to_ma200, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(current_rsi, 2)}</b>\n"
         f"🌋 <b>ATR (TAM):</b> <code>{raw_atr_str}</code>\n"
         f"📊 <b>ATR ORANI:</b> %{round(atr_ratio, 2)}\n"
         f"📉 <b>İNDİRİM DERİNLİĞİ:</b> %{round(depth, 1)}\n"
-        f"📐 <b>MEVCUT TREND:</b> {trend_bias}\n\n"
+        f"📐 <b>MEVCUT TREND:</b> {trend_bias}"
+        f"{pattern_block}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"{strategy_note}\n\n"
         f"⏳ <b>CHoCH/BOS bekleniyor — tetik çekilmedi!</b>\n"
@@ -280,7 +382,7 @@ def build_phase1_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
 def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
                      current_rsi, raw_atr_str, atr_ratio, depth,
                      strategy_label, strategy_note, header_icon,
-                     structure) -> str:
+                     structure, patterns: dict) -> str:
     base         = symbol.split("/")[0]
     bt           = structure["break_type"]
     volume_line  = "Evet ✅" if structure["volume_surge"] else "Yok ⚠️"
@@ -288,9 +390,30 @@ def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
     strength     = "🔥 <b>GÜÇLÜ — CHoCH (Trend Döndü)</b>" if bt == "CHoCH" \
                    else "💪 <b>ORTA — BOS (Trend Devam)</b>"
 
-    # Bilimsel gösterimi (e-06) tam sayıya çeviren kısım
     p_str = f"{current_price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+
+    pattern_line = candle_pattern_summary(patterns)
+    # Aşama 2'de formasyon varsa çok daha önemli — "giriş güçlü" mesajı
+    if pattern_line:
+        pattern_block = (
+            f"\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
+            f"📊 <b>MUM FORMASYONU</b>\n"
+            f"<b>{pattern_line}</b>\n"
+            f"<i>Yapısal kırılım mum formasyonuyla teyit edildi.</i>"
+        )
+    else:
+        pattern_block = ""
+
+    entry_msg = (
+        "🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma."
+        if bt == "CHoCH"
+        else "⚠️ <b>DİKKATLİ OL:</b> BOS — trend hâlâ devam ediyordu."
+    )
+
+    # Formasyon varsa giriş mesajını güçlendir
+    if pattern_line and bt == "CHoCH":
+        entry_msg = "🟢🟢 <b>GÜÇLÜ GİRİŞ SİNYALİ!</b> Formasyon + CHoCH kombinasyonu. Risk yönetimini unutma."
 
     return (
         f"🚀🚀🚀 <b>TETİK ÇEKİLDİ</b> 🚀🚀🚀\n"
@@ -301,30 +424,28 @@ def build_phase2_msg(symbol, coin_name, current_price, ma200, dist_to_ma200,
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
-        f"📊 <b>200 MA:</b> <code>{m_str}</code> "
-        f"(<b>%{round(dist_to_ma200, 1)}</b>)\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_to_ma200, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(current_rsi, 2)}</b>\n"
         f"🌋 <b>ATR (TAM):</b> <code>{raw_atr_str}</code>\n"
         f"📊 <b>ATR ORANI:</b> %{round(atr_ratio, 2)}\n"
         f"📉 <b>İNDİRİM DERİNLİĞİ:</b> %{round(depth, 1)}\n\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"{icon} <b>{bt}:</b> Swing High kırıldı "
-        f"(<code>{structure['swing_ago']}</code> mum önce pivot, "
-        f"+%{structure['break_pct']})\n"
+        f"(<code>{structure['swing_ago']}</code> mum önce pivot, +%{structure['break_pct']})\n"
         f"📦 <b>Hacim Artışı:</b> {volume_line}\n"
-        f"📐 <b>Kırılım Öncesi Trend:</b> {structure['trend_before']}\n\n"
+        f"📐 <b>Kırılım Öncesi Trend:</b> {structure['trend_before']}"
+        f"{pattern_block}\n\n"
         f"{strategy_note}\n\n"
-        f"{'🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma.' if bt == 'CHoCH' else '⚠️ <b>DİKKATLİ OL:</b> BOS — trend hâlâ devam ediyordu.'}"
+        f"{entry_msg}"
     )
-                         
+
 # ============================================================
-# 8) ANA ANALİZ MOTORU
+# 10) ANA ANALİZ MOTORU
 # ============================================================
 def analyze(symbol: str):
     try:
         now = time.time()
 
-        # ── Veri çek ──────────────────────────────────────────────
         ticker = exchange.fetch_ticker(symbol)
         if float(ticker["quoteVolume"]) < MIN_VOLUME_24H:
             return
@@ -334,13 +455,11 @@ def analyze(symbol: str):
             return
 
         coin_name = get_coin_name(symbol)
-
         df = pd.DataFrame(bars, columns=["timestamp","open","high","low","close","volume"])
 
-        # ── İndikatörler ──────────────────────────────────────────
-        df["atr"]  = calc_atr(df, 14)
-        df["rsi"]  = calc_rsi(df, 14)
-        df["ma200"]= df["close"].rolling(200).mean()
+        df["atr"]   = calc_atr(df, 14)
+        df["rsi"]   = calc_rsi(df, 14)
+        df["ma200"] = df["close"].rolling(200).mean()
 
         price   = df["close"].iloc[-1]
         atr_val = df["atr"].iloc[-1]
@@ -354,7 +473,6 @@ def analyze(symbol: str):
         atr_ratio = (atr_val / price) * 100
         dist_ma   = ((price - ma200) / ma200) * 100
 
-        # ── MA200 strateji etiketi ─────────────────────────────────
         if price > ma200:
             s_label = "⏳ <b>UZUN SÜRELİ (Trend Güçlü)</b>"
             s_note  = "👉 <i>Trend arkanda, kârı koşturmaya odaklan.</i>"
@@ -364,26 +482,23 @@ def analyze(symbol: str):
             s_note  = "👉 <i>Trend zayıf, dirençlerde hızlı kâr al.</i>"
             h_icon  = "🔴🔴🔴"
 
-        # ── Discount Zone ─────────────────────────────────────────
-        r_high  = df["high"].iloc[-RANGE_LOOKBACK:].max()
-        r_low   = df["low"].iloc[-RANGE_LOOKBACK:].min()
-        equil   = (r_high + r_low) / 2.0
-        span    = equil - r_low
+        r_high = df["high"].iloc[-RANGE_LOOKBACK:].max()
+        r_low  = df["low"].iloc[-RANGE_LOOKBACK:].min()
+        equil  = (r_high + r_low) / 2.0
+        span   = equil - r_low
         if span == 0:
             return
 
-        depth = (equil - price) / span * 100   # >0 = discount
+        depth = (equil - price) / span * 100
 
-        # ── Yapı kırılımı ─────────────────────────────────────────
-        structure    = detect_structure_break(df, SWING_SIZE)
-        break_type   = structure["break_type"]   # CHoCH | BOS | None
-        trend_bias   = infer_trend_bias(df, SWING_SIZE)
+        structure  = detect_structure_break(df, SWING_SIZE)
+        break_type = structure["break_type"]
+        trend_bias = infer_trend_bias(df, SWING_SIZE)
 
-        # ============================================================
-        # AŞAMA 2 — AKSİYON SİNYALİ
-        # Önce Aşama 2'yi kontrol et: CHoCH/BOS geldi mi?
-        # Eşik: depth > PHASE2_DEPTH ve RSI < PHASE2_RSI
-        # ============================================================
+        # Mum formasyonu tespiti — her iki aşamada da kullanılır
+        patterns = detect_candle_patterns(df)
+
+        # ── AŞAMA 2 ──────────────────────────────────────────
         if break_type in ("CHoCH", "BOS"):
             if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
                 last_p2 = get_last_sent(symbol, "phase2")
@@ -391,35 +506,35 @@ def analyze(symbol: str):
                     msg = build_phase2_msg(
                         symbol, coin_name, price, ma200, dist_ma,
                         rsi, raw_atr, atr_ratio, depth,
-                        s_label, s_note, h_icon, structure
+                        s_label, s_note, h_icon, structure, patterns
                     )
                     send_telegram_msg(msg)
                     mark_sent(symbol, "phase2")
-                    print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}")
-                    return   # Aşama 2 gönderildi, Aşama 1 atla
+                    pat_log = candle_pattern_summary(patterns)
+                    print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
+                          + (f" | {pat_log}" if pat_log else ""))
+                    return
 
-        # ============================================================
-        # AŞAMA 1 — HAZIRLIK UYARISI
-        # CHoCH yok ama fiyat pusu bölgesinde
-        # Eşik: depth > PHASE1_DEPTH ve RSI < PHASE1_RSI
-        # ============================================================
+        # ── AŞAMA 1 ──────────────────────────────────────────
         if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
             last_p1 = get_last_sent(symbol, "phase1")
             if now - last_p1 > PHASE1_COOLDOWN:
                 msg = build_phase1_msg(
                     symbol, coin_name, price, ma200, dist_ma,
                     rsi, raw_atr, atr_ratio, depth,
-                    s_label, s_note, h_icon, trend_bias
+                    s_label, s_note, h_icon, trend_bias, patterns
                 )
                 send_telegram_msg(msg)
                 mark_sent(symbol, "phase1")
-                print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}")
+                pat_log = candle_pattern_summary(patterns)
+                print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
+                      + (f" | {pat_log}" if pat_log else ""))
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}")
 
 # ============================================================
-# 9) ÇALIŞTIRICI DÖNGÜ
+# 11) ÇALIŞTIRICI DÖNGÜ
 # ============================================================
 def start_scanner():
     global sent_signals
@@ -428,23 +543,21 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Sniper v3 — İki Aşamalı Radar")
+    print("🚀  SMC Sniper v4 — Mum Formasyonu Teyitli")
     print("=" * 50)
     print(f"  Timeframe    : {TIMEFRAME}")
-    print(f"  Swing size   : {SWING_SIZE} (LuxAlgo standartı)")
+    print(f"  Swing size   : {SWING_SIZE}")
     print(f"  Aşama 1      : Derinlik >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
     print(f"  Aşama 2      : Derinlik >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
-    print(f"  Cooldown 1   : {PHASE1_COOLDOWN // 3600}s  |  Cooldown 2: {PHASE2_COOLDOWN // 3600}s")
+    print(f"  Formasyonlar : Hammer / Bullish Engulfing / Doji / Morning Star")
     print("=" * 50 + "\n")
 
     while True:
         symbols = get_clean_symbols()
         print(f"🔄 {len(symbols)} coin taranıyor...")
-
         for symbol in symbols:
             analyze(symbol)
             time.sleep(0.35)
-
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
         time.sleep(SCAN_INTERVAL)
 
