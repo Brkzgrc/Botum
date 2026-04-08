@@ -782,12 +782,7 @@ def check_trend_signal(df, symbol):
     if atr <= 0 or vm <= 0 or e50 <= 0 or e200 <= 0:
         return None
 
-    # BTC trend filtresi: BTC 4H fiyat EMA50 altındaysa trend sinyali üretme
-    btc_close_4h = btc_4h_cache.get("close")
-    btc_ema50_4h = btc_4h_cache.get("ema50")
-    if btc_close_4h is not None and btc_ema50_4h is not None:
-        if btc_close_4h < btc_ema50_4h:
-            stats["trend_filtered"] += 1; return None
+    # BTC 4H bilgisi — artık filtre değil, mesajda bilgi olarak gösterilir
 
     # ALL4_LOOSE koşulları
 
