@@ -42,8 +42,8 @@ TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 
 STOCH_RSI_THRESH = float(os.getenv("STOCH_RSI_THRESH", "0.05"))
-WR_THRESH        = float(os.getenv("WR_THRESH",        "-70"))
-OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-40"))
+WR_THRESH        = float(os.getenv("WR_THRESH",        "-80"))
+OBV_OSC_THRESH   = float(os.getenv("OBV_OSC_THRESH",   "-50"))
 WT_THRESH        = float(os.getenv("WT_THRESH",        "-75"))
 DIP_VOL_MULT     = float(os.getenv("DIP_VOL_MULT",     "1.5"))
 STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
@@ -61,18 +61,13 @@ BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
 
 IGNORED_COINS = set([
-    # Leveraged tokens
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
-    # Stablecoins
     'USDC/USDT','TUSD/USDT','FDUSD/USDT','DAI/USDT','USDP/USDT',
     'USDE/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
     'USTC/USDT','BUSD/USDT','FRAX/USDT','LUSD/USDT','GUSD/USDT','SUSD/USDT',
     'USDS/USDT','USDX/USDT','USDD/USDT','CUSD/USDT','OUSD/USDT','MUSD/USDT',
-    'U/USDT',
-    # Fiat
     'EUR/USDT','TRY/USDT','GBP/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
-    # Wrapped tokens
     'PAXG/USDT','WBTC/USDT','WETH/USDT','WBNB/USDT','BETH/USDT',
     'BTCB/USDT','HBTC/USDT',
 ])
@@ -497,8 +492,7 @@ def check_dip_signal(df, symbol):
         if vol < vm * DIP_VOL_MULT: return None
 
     funding = funding_cache.get(symbol)
-    if funding is not None and funding >= 0:
-        stats["filtered"] += 1; return None
+    # Funding zorunlu değil — negatifse öncelikli sinyal (💰)
     funding_neg = funding is not None and funding < 0
 
     atr_val  = sf("atr")
