@@ -61,13 +61,18 @@ BOOT_EVERY = 50
 TR_TZ      = timezone(timedelta(hours=3))
 
 IGNORED_COINS = set([
+    # Leveraged tokens
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
+    # Stablecoins
     'USDC/USDT','TUSD/USDT','FDUSD/USDT','DAI/USDT','USDP/USDT',
     'USDE/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
     'USTC/USDT','BUSD/USDT','FRAX/USDT','LUSD/USDT','GUSD/USDT','SUSD/USDT',
     'USDS/USDT','USDX/USDT','USDD/USDT','CUSD/USDT','OUSD/USDT','MUSD/USDT',
+    'U/USDT',
+    # Fiat
     'EUR/USDT','TRY/USDT','GBP/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
+    # Wrapped tokens
     'PAXG/USDT','WBTC/USDT','WETH/USDT','WBNB/USDT','BETH/USDT',
     'BTCB/USDT','HBTC/USDT',
 ])
