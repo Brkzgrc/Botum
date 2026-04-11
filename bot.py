@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Trend & Momentum Scanner v6.0
+Trend & Momentum Scanner v7.0
 ==============================
 DIP sistemi:
   StochRSI < 0.05, WR < -70, OBV_OSC < -40, WT < -75, VOL > 1.5x, MACD hist <= 0
   EMA200 üstü + EMA200 yükseliyor | Funding < 0
-  Ek bilgi: Hammer (yeşil) / Bullish Engulfing / Morning Star
 
 TREND sistemi:
-  BB_BREAK: ALL4_LOOSE + BB(15) ust bant kirilimi
-  VOL3_BB:  ALL4_LOOSE + 3 barda hacim trendi + BB kirilimi
+  BB_BREAK / VOL3_BB: BB(15) üst bant kırılımı + güçlü mum
 
 BİRİKİM sistemi:
-  RSI 45-68, WR -65/-15, OBV↑, WT↑, KDJ-J↑, ADX<30↑, EMA200↑, Hacim 1-2x
+  RSI 45-68, WR -65/-15, OBV↑, WT↑, KDJ-J↑, ADX<30↑, EMA200↑
 
-NOT: BB Retest sistemi kaldırıldı.
+TURNING POINT sistemi (v7 yeni):
+  A) 🔻 Volatilite Bounce: ATR/Fiyat > 10% & ROC < -10 & ADX > 60
+  B) 🚀 Momentum:          MACD_hist > 1.5% & VWAP_dev > 5% & ADX > 60
+  C) 💥 Crash Dip:          EMA200_dist < -30% & VWAP_dev > 5%
+  Backtest: 150 coin × 6 yıl, %69-88 hit rate, max 12 saat tutma
 """
 
 import asyncio
@@ -50,6 +52,7 @@ STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
+TP_COOLDOWN_HOURS     = int(os.getenv("TP_COOLDOWN_HOURS", "6"))
 MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "1000000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",           "0"))
 
@@ -97,6 +100,7 @@ def print_summary():
     print(f"  Dip        : {stats.get('dip_sent', 0)}", flush=True)
     print(f"  Trend      : {stats.get('trend_sent', 0)}", flush=True)
     print(f"  Birikim    : {stats.get('birikim_sent', 0)}", flush=True)
+    print(f"  TP         : {stats.get('tp_sent', 0)}", flush=True)
     for k, lbl in [
         ("cooldown",         "Cooldown"),
         ("low_liquidity",    "Dusuk hacim"),
@@ -380,6 +384,20 @@ def prepare_bars(df):
         raw = 2*wma_half - wma_full
         return raw.ewm(span=sqrt_n*2-1, adjust=False).mean()
     df["hma15"] = hma(c, 15)
+
+    # --- Turning Point göstergeleri ---
+    df["atr_pct_tp"]     = df["atr"] / c * 100                       # ATR / fiyat %
+    df["ema200_dist"]    = (c / df["ema200"] - 1) * 100              # EMA200 mesafesi %
+    df["macd_hist_norm"] = df["macd_hist"] / c * 100                 # MACD hist normalize %
+    df["roc12"]          = (c / c.shift(12) - 1) * 100               # Rate of Change 12 bar
+
+    # VWAP günlük — sadece mevcut günün VWAP'ı yeterli
+    _ts  = df.index.to_series()
+    _day = _ts.dt.date
+    _tp  = (h + l + c) / 3
+    _cum_vol    = v.groupby(_day).cumsum()
+    _cum_tp_vol = (_tp * v).groupby(_day).cumsum()
+    df["vwap_dev"] = (c / (_cum_tp_vol / _cum_vol.replace(0, np.nan)) - 1) * 100
 
     return df.dropna(subset=["stoch_rsi","wr","obv_osc","wt","macd_hist",
                               "atr","ema50","ema200","adx","bb15_upper","rsi","kdj_j"])
@@ -695,6 +713,107 @@ def check_trend_signal(df, symbol):
         "hma15":       round(float(df["hma15"].iloc[-2]), 8)   if "hma15"  in df.columns else None,
     }
 
+
+
+# ============================================================
+# 7b) TURNING POINT SİNYAL SİSTEMİ (v7 yeni)
+# ============================================================
+# Backtest: 150 coin × 6 yıl × 1H, max 12 saat tutma
+TP_SYSTEMS = {
+    "volatilite": {
+        "icon": "🔻", "label": "VOLATİLİTE BOUNCE",
+        "conditions": {"atr_pct_tp": (">", 10), "roc12": ("<", -10), "adx": (">", 60)},
+        "hit_rate": 87.5, "avg_return": 18.2, "rr": 2.2,
+    },
+    "momentum": {
+        "icon": "🚀", "label": "MOMENTUM",
+        "conditions": {"macd_hist_norm": (">", 1.5), "vwap_dev": (">", 5), "adx": (">", 60)},
+        "hit_rate": 68.8, "avg_return": 15.7, "rr": 2.0,
+    },
+    "crash": {
+        "icon": "💥", "label": "CRASH DİP",
+        "conditions": {"ema200_dist": ("<", -30), "vwap_dev": (">", 5)},
+        "hit_rate": 87.2, "avg_return": 15.5, "rr": 3.0,
+    },
+}
+
+def check_tp_signal(df, symbol):
+    """Turning Point sistemi — backtestten çıkan 3 alt sistem."""
+    if len(df) < 60:
+        return None
+
+    last  = df.iloc[-2]
+    entry = float(df.iloc[-1]["close"])
+
+    def gv(col):
+        v = last.get(col, np.nan)
+        return None if pd.isna(v) else float(v)
+
+    atr_val = gv("atr")
+    if atr_val is None or atr_val <= 0:
+        return None
+
+    # Her alt sistemi kontrol et (öncelik: volatilite > crash > momentum)
+    for sys_key in ["volatilite", "crash", "momentum"]:
+        spec = TP_SYSTEMS[sys_key]
+        ok = True
+        values = {}
+
+        for col, (op, thresh) in spec["conditions"].items():
+            val = gv(col)
+            if val is None:
+                ok = False; break
+            if op == ">" and val <= thresh:
+                ok = False; break
+            if op == "<" and val >= thresh:
+                ok = False; break
+            values[col] = val
+
+        if not ok:
+            continue
+
+        # Sinyal bulundu — TP/Stop hesapla
+        vol_ratio_atr = atr_val / entry
+        if vol_ratio_atr > 0.04:   atr_mult = 2.0
+        elif vol_ratio_atr > 0.02: atr_mult = 1.8
+        else:                      atr_mult = 1.4
+
+        stop_atr   = round(entry - atr_val * atr_mult, 8)
+        floor_stop = round(entry * 0.97, 8)
+        cap_stop   = round(entry * 0.88, 8)
+        stop_use   = min(max(stop_atr, cap_stop), floor_stop)
+        tp1 = round(entry + atr_val * 1.5, 8)
+        tp2 = round(entry + atr_val * 3.0, 8)
+
+        candle = detect_candle(df, len(df)-2)
+
+        return {
+            "symbol":         symbol,
+            "type":           "tp",
+            "tp_system":      sys_key,
+            "tp_icon":        spec["icon"],
+            "tp_label":       spec["label"],
+            "tp_hit_rate":    spec["hit_rate"],
+            "tp_avg_return":  spec["avg_return"],
+            "tp_rr":          spec["rr"],
+            "entry":          round(entry, 8),
+            "stop":           stop_use,
+            "tp1":            tp1,
+            "tp2":            tp2,
+            "atr":            round(atr_val, 8),
+            "atr_pct_tp":     round(values.get("atr_pct_tp", gv("atr_pct_tp") or 0), 2),
+            "ema200_dist":    round(values.get("ema200_dist", gv("ema200_dist") or 0), 2),
+            "macd_hist_norm": round(values.get("macd_hist_norm", gv("macd_hist_norm") or 0), 3),
+            "vwap_dev":       round(values.get("vwap_dev", gv("vwap_dev") or 0), 2),
+            "roc12":          round(values.get("roc12", gv("roc12") or 0), 2),
+            "adx":            round(gv("adx") or 0, 1),
+            "candle":         candle,
+            "funding":        None,
+            "funding_neg":    False,
+        }
+
+    return None
+
 # ============================================================
 # 8) TELEGRAM
 # ============================================================
@@ -869,6 +988,58 @@ def build_trend_message(r, tr_time, sig_num):
     lines += ["━━━━━━━━━━━━━━━━━━━━", f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal"]
     return "\n".join(lines)
 
+
+def build_tp_message(r, tr_time, sig_num):
+    now     = tr_time.strftime("%d/%m/%Y %H:%M")
+    sym     = r["symbol"].replace("/USDT", "")
+    icon    = r.get("tp_icon", "⚡")
+    label   = r.get("tp_label", "TURNING POINT")
+    tp1     = r.get("tp1"); tp2 = r.get("tp2")
+    candle  = r.get("candle", "")
+
+    # Koşul satırları — sadece bu sistemin koşullarını göster
+    sys_key  = r.get("tp_system", "momentum")
+    spec     = TP_SYSTEMS.get(sys_key, {})
+    cond_lines = []
+    for col, (op, thresh) in spec.get("conditions", {}).items():
+        val = r.get(col, 0)
+        nice_name = {"atr_pct_tp":"ATR/Fiyat", "roc12":"ROC(12)", "adx":"ADX",
+                     "macd_hist_norm":"MACD Hist", "vwap_dev":"VWAP Sapma",
+                     "ema200_dist":"EMA200 Uzk"}.get(col, col)
+        sign = ">" if op == ">" else "<"
+        cond_lines.append(f"<b>{nice_name:12s}</b> {val:+.1f}%  ({sign}{thresh}% ✅)")
+
+    lines = [
+        f"🕐 {now}", "",
+        f"{icon} <b>#{sym}/USDT  •  TURNING POINT  •  1H</b>",
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"📌 <b>{icon} {label}</b>",
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"💵 <b>Giriş</b>    {fmt_price(r['entry'])}",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (Adaptive ATR)",
+        f"🎯 <b>TP1</b>      {fmt_price(tp1)}  (+{round((tp1/r['entry']-1)*100,1) if tp1 else '?'}%)",
+        f"🎯 <b>TP2</b>      {fmt_price(tp2)}  (+{round((tp2/r['entry']-1)*100,1) if tp2 else '?'}%)",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "📊 <b>Göstergeler</b>",
+    ]
+    lines += cond_lines
+    lines.append(f"<b>ATR/Fiyat</b>    {r.get('atr_pct_tp',0):.1f}%")
+
+    if candle:
+        lines.append(f"<b>Formasyon</b>  {candle}  ✅")
+
+    hr = r.get("tp_hit_rate", 0)
+    ar = r.get("tp_avg_return", 0)
+    rr = r.get("tp_rr", 0)
+    lines += [
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"📈 <b>Backtest</b>",
+        f"🎯  %{hr:.0f} hit  •  %{ar:.1f} avg  •  {rr:.1f}x R/R",
+        "━━━━━━━━━━━━━━━━━━━━",
+        f"⏱ Cooldown: {TP_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
 # ============================================================
 # 9) BOOTSTRAP
 # ============================================================
@@ -922,7 +1093,11 @@ async def signal_worker(candidate_queue):
 
             signal_counter += 1
 
-            if sig_type == "trend":
+            if sig_type == "tp":
+                msg  = build_tp_message(result, tr_time, signal_counter)
+                stats["tp_sent"] += 1
+                icon = result.get("tp_icon", "⚡")
+            elif sig_type == "trend":
                 msg  = build_trend_message(result, tr_time, signal_counter)
                 stats["trend_sent"] += 1
                 icon = "📈"
@@ -1072,6 +1247,8 @@ def perf_summary():
         "dip_avg_peak":   avg_peak(dip_closed),
         "trend_total":    len([s for s in signal_log if s.get("sig_type")=="trend"]),
         "trend_avg_peak": avg_peak(trend_closed),
+        "tp_total":       len([s for s in signal_log if s.get("sig_type")=="tp"]),
+        "tp_avg_peak":    avg_peak([s for s in closed if s.get("sig_type")=="tp"]),
     }
 
 # ============================================================
@@ -1133,6 +1310,21 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
                                                        tr_time=tr_now, sig_type="birikim"))
         else:
             stats["birikim_filtered"] += 1
+
+    # TURNING POINT
+    def tp_cooldown_ok():
+        last = sig_ts.get("tp")
+        if not last: return True
+        hrs = (tr_now.replace(tzinfo=None) - last.replace(tzinfo=None)).total_seconds() / 3600
+        return hrs >= TP_COOLDOWN_HOURS
+
+    if tp_cooldown_ok():
+        result = check_tp_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
+                                                       tr_time=tr_now, sig_type="tp"))
+        else:
+            stats["tp_filtered"] += 1
 
 # ============================================================
 # 13) WEBSOCKET
@@ -1243,7 +1435,10 @@ def home():
         subtype = s.get("subtype","")
         fund_neg= s.get("funding_neg", False)
         candle  = s.get("candle","")
-        if st == "trend":
+        if st == "tp":
+            tp_icon = s.get("tp_icon", "⚡"); tp_lbl = s.get("tp_label","TP")
+            icon=tp_icon; border_c="#ff9800"; type_label=f"TP {tp_lbl}"
+        elif st == "trend":
             icon="⭐" if subtype=="VOL3_BB" else "📈"; border_c="#00d4ff"; type_label=f"TREND {subtype}"
         elif st == "birikim":
             icon="🟣"; border_c="#cc88ff"; type_label="BİRİKİM"
@@ -1251,7 +1446,9 @@ def home():
             icon="💰" if fund_neg else "🔵"; border_c="#c8e86a" if fund_neg else "#00f080"; type_label="DİP"
         fund_val = s.get("funding")
         fund_str = f"{fund_val:+.4f}%" if fund_val is not None else "—"
-        if st == "trend":
+        if st == "tp":
+            ind_str = f"ATR%:{s.get('atr_pct_tp',0):.1f}  MACD%:{s.get('macd_hist_norm',0):.2f}  VWAP:{s.get('vwap_dev',0):.1f}%  ADX:{s.get('adx',0):.1f}  Hit:{s.get('tp_hit_rate',0):.0f}%"
+        elif st == "trend":
             ind_str = f"EMA50:+{s.get('ema50_dist',0):.1f}%  EMA200:+{s.get('ema200_dist',0):.1f}%  ADX:{s.get('adx',0):.1f}"
         else:
             ind_str = f"StRSI:{s.get('stoch_rsi',0):.4f}  WR:{s.get('wr',0):.1f}  OBV:{s.get('obv_osc',0):.1f}  WT:{s.get('wt',0):.1f}"
@@ -1267,7 +1464,7 @@ def home():
         )
     ps = perf_summary()
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Scanner v6.0</title>
+<html><head><meta charset="UTF-8"><title>Scanner v7.0</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1285,14 +1482,16 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:20px;border-top:1px solid #1c2a36;padding-top:10px;line-height:2}}
 .badge{{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.65rem;margin-right:6px}}
 </style></head><body>
-<h1>SCANNER <small style="font-size:.6rem;color:#3d5a6a">v6.0</small></h1>
+<h1>SCANNER <small style="font-size:.6rem;color:#3d5a6a">v7.0</small></h1>
 <div class="params">
   <span class="badge" style="background:#0d1a0d;color:#00f080">🔵 DİP</span>
   StochRSI&lt;{STOCH_RSI_THRESH} WR&lt;{WR_THRESH} OBV&lt;{OBV_OSC_THRESH} WT&lt;{WT_THRESH} MACD≤0 | EMA200↑ | Funding&lt;0 | Hammer/Engulfing/MorningStar (ek bilgi)<br>
   <span class="badge" style="background:#0d1520;color:#00d4ff">📈 TREND</span>
   BB(15) Kırılım + EMA200&gt;%12 + ADX&gt;20 + ALL4_LOOSE<br>
   <span class="badge" style="background:#1a0a1a;color:#cc88ff">🟣 BİRİKİM</span>
-  RSI 45-68 | OBV↑ | WT↑ | KDJ-J↑ | ADX&lt;30↑ | EMA200↑
+  RSI 45-68 | OBV↑ | WT↑ | KDJ-J↑ | ADX&lt;30↑ | EMA200↑<br>
+  <span class="badge" style="background:#1a1508;color:#ff9800">⚡ TURNING POINT</span>
+  🔻 ATR&gt;10%+ROC&lt;-10+ADX&gt;60 | 🚀 MACD&gt;1.5%+VWAP&gt;5%+ADX&gt;60 | 💥 EMA200&lt;-30%+VWAP&gt;5%
 </div>
 <div class="stats">
   <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
@@ -1301,6 +1500,7 @@ h3{{color:#00f080;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   <div class="stat"><span class="sv" style="color:#00f080">{stats.get("dip_sent",0)}</span><span class="sl">🔵 Dip</span></div>
   <div class="stat"><span class="sv" style="color:#00d4ff">{stats.get("trend_sent",0)}</span><span class="sl">📈 Trend</span></div>
   <div class="stat"><span class="sv" style="color:#cc88ff">{stats.get("birikim_sent",0)}</span><span class="sl">🟣 Birikim</span></div>
+  <div class="stat"><span class="sv" style="color:#ff9800">{stats.get("tp_sent",0)}</span><span class="sl">⚡ TP</span></div>
   <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
 </div>
@@ -1333,7 +1533,7 @@ def perf_dashboard():
         st_col= "#00f080" if st=="win" else ("#ff4444" if st=="loss" else ("#ffb300" if st=="expired" else "#3d5a6a"))
         stype = s.get("sig_type","dip")
         sub   = s.get("subtype","")
-        icon  = "⭐" if sub=="VOL3_BB" else ("📈" if stype=="trend" else ("🟣" if stype=="birikim" else ("💰" if s.get("funding_neg") else "🔵")))
+        icon  = s.get("tp_icon","⚡") if stype=="tp" else ("⭐" if sub=="VOL3_BB" else ("📈" if stype=="trend" else ("🟣" if stype=="birikim" else ("💰" if s.get("funding_neg") else "🔵"))))
         peak  = s.get("peak_pct", 0)
         cr    = s.get("close_ret")
         ct    = (s.get("close_time") or "")[:16]
@@ -1356,7 +1556,7 @@ def perf_dashboard():
           <td style="color:{st_col}">{st.upper()}</td>
         </tr>"""
     return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>Performans v6</title>
+<meta charset="UTF-8"><title>Performans v7</title>
 <meta http-equiv="refresh" content="300">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1373,7 +1573,7 @@ def perf_dashboard():
   tr:hover td{{background:#0c1117}}
   a{{color:#00d4ff;text-decoration:none}}
 </style></head><body>
-<h1>📈 SİNYAL PERFORMANSI v6.0</h1>
+<h1>📈 SİNYAL PERFORMANSI v7.0</h1>
 <div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()}</div>
 <div class="cards">
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>
@@ -1383,6 +1583,7 @@ def perf_dashboard():
   <div class="card"><div class="cv">{ps.get("avg_peak",0)}%</div><div class="cl">Ort. Peak</div></div>
   <div class="card"><div class="cv" style="color:#00f080">{ps.get("dip_total",0)}</div><div class="cl">🔵 Dip</div></div>
   <div class="card"><div class="cv" style="color:#00d4ff">{ps.get("trend_total",0)}</div><div class="cl">📈 Trend</div></div>
+  <div class="card"><div class="cv" style="color:#ff9800">{ps.get("tp_total",0)}</div><div class="cl">⚡ TP</div></div>
 </div>
 <table><thead><tr>
   <th>Zaman</th><th>Sembol</th><th>Tip</th><th>Giriş</th>
@@ -1403,11 +1604,11 @@ async def periodic_summary():
             await refresh_btc_4h()
 
 async def main():
-    print("Scanner v6.0 baslatiliyor...", flush=True)
+    print("Scanner v7.0 baslatiliyor...", flush=True)
     print(f"DIP: StRSI<{STOCH_RSI_THRESH} WR<{WR_THRESH} OBV<{OBV_OSC_THRESH} WT<{WT_THRESH}", flush=True)
     print("TREND: BB(15) kirilim + ALL4_LOOSE", flush=True)
     print("BİRİKİM: RSI 45-68 + OBV/WT/KDJ-J artiyor", flush=True)
-    print("NOT: BB Retest sistemi kaldirildi.", flush=True)
+    print("TURNING POINT: Volatilite + Momentum + Crash Dip", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
@@ -1430,7 +1631,7 @@ async def main():
     asyncio.create_task(periodic_summary())
 
     bot_status["status"] = "LIVE"
-    print(f"LIVE | {len(symbols)} sembol | Dip + Trend + Birikim izleniyor", flush=True)
+    print(f"LIVE | {len(symbols)} sembol | Dip + Trend + Birikim + TP izleniyor", flush=True)
 
     await ws_all(symbols, candidate_queue)
 
