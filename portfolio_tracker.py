@@ -471,6 +471,40 @@ def api_open():
     return jsonify(open_sigs)
 
 
+@app.route("/api/signal/<signal_id>", methods=["DELETE"])
+def delete_signal(signal_id):
+    """Tek bir sinyali siler."""
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+
+    with _lock:
+        before = len(signals_db)
+        signals_db[:] = [s for s in signals_db if s.get("id") != signal_id]
+        after = len(signals_db)
+        if before != after:
+            save_signals()
+            return jsonify({"ok": True, "deleted": signal_id})
+        return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/signals/clear-test", methods=["POST"])
+def clear_test_signals():
+    """source=test olan sinyalleri temizler."""
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+
+    with _lock:
+        before = len(signals_db)
+        signals_db[:] = [s for s in signals_db if s.get("source") != "test"]
+        after = len(signals_db)
+        save_signals()
+    return jsonify({"ok": True, "removed": before - after})
+
+
 # ============================================================
 # HTML DASHBOARD
 # ============================================================
