@@ -22,6 +22,8 @@ def run_flask():
 # ============================================================
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
+PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TIMEFRAME        = "1h"
 RANGE_LOOKBACK   = 30
@@ -99,6 +101,34 @@ def send_telegram_msg(text: str):
             print(f"[TELEGRAM] HTTP {r.status_code}: {r.text[:120]}")
     except Exception as e:
         print(f"[TELEGRAM] Hata: {e}")
+
+# ============================================================
+# 3b) PORTFÖY TAKİP
+# ============================================================
+def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
+    """SMC sinyalini portföy takip sistemine POST eder."""
+    if not PORTFOLIO_URL:
+        return
+    try:
+        stop = round(price - atr_val * 2.0, 10)
+        tp1  = round(price + atr_val * 2.0, 10)
+        tp2  = round(price + atr_val * 4.0, 10)
+        payload = {
+            "symbol": symbol, "entry": price, "stop": stop,
+            "tp1": tp1, "tp2": tp2, "sig_type": "smc",
+            "sub_type": break_type, "source": "smc", "phase": phase,
+        }
+        headers = {"Content-Type": "application/json"}
+        if PORTFOLIO_TOKEN:
+            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+        r = requests.post(f"{PORTFOLIO_URL}/api/signal",
+                          json=payload, headers=headers, timeout=5)
+        if r.status_code == 201:
+            print(f"[PORTFOLIO] SMC sinyal gönderildi: {symbol} ({phase})", flush=True)
+        else:
+            print(f"[PORTFOLIO] HTTP {r.status_code}: {r.text[:80]}", flush=True)
+    except Exception as e:
+        print(f"[PORTFOLIO] Hata: {e}", flush=True)
 
 # ============================================================
 # 4) PİYASA LİSTESİ
@@ -516,6 +546,7 @@ def analyze(symbol: str):
                     )
                     send_telegram_msg(msg)
                     mark_sent(symbol, "phase2")
+                    send_to_portfolio(symbol, price, atr_val, "phase2", bt)
                     pat_log = candle_pattern_summary(patterns)
                     print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
                           + (f" | {pat_log}" if pat_log else ""))
@@ -532,6 +563,7 @@ def analyze(symbol: str):
                 )
                 send_telegram_msg(msg)
                 mark_sent(symbol, "phase1")
+                send_to_portfolio(symbol, price, atr_val, "phase1")
                 pat_log = candle_pattern_summary(patterns)
                 print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
                       + (f" | {pat_log}" if pat_log else ""))
