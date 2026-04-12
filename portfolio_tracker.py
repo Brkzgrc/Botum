@@ -30,8 +30,7 @@ SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))  # 5 dakika
 EXPIRE_HOURS = int(os.getenv("EXPIRE_HOURS", "48"))
 SHADOW_EXPIRE_HOURS = int(os.getenv("SHADOW_EXPIRE_HOURS", "72"))  # TP2 shadow takip süresi
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
 AUTH_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -76,23 +75,6 @@ def tr_now():
 
 def tr_now_str():
     return tr_now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-# ============================================================
-# TELEGRAM BİLDİRİM
-# ============================================================
-def send_telegram(text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
-            timeout=10,
-        )
-    except Exception as e:
-        print(f"[TG] Hata: {e}", flush=True)
 
 
 # ============================================================
@@ -287,19 +269,6 @@ def check_open_positions():
                 print(f"  {emoji} KAPANDI: {symbol} | {close_reason.upper()} | "
                       f"{pct:+.2f}% | Peak: {sig['peak_pct']:+.2f}%", flush=True)
 
-                sym = symbol.replace("/USDT", "")
-                tp2_note = ""
-                if close_reason == "tp1" and tp2:
-                    tp2_pct = round((tp2 - entry) / entry * 100, 1)
-                    tp2_note = f"\n📊 TP2 ({fmt_price(tp2)}, +{tp2_pct}%) shadow takipte..."
-
-                send_telegram(
-                    f"{emoji} <b>#{sym} {close_reason.upper()}</b>\n"
-                    f"Giriş: {fmt_price(entry)} → Çıkış: {fmt_price(close_price)}\n"
-                    f"Getiri: {pct:+.2f}% | Peak: {sig['peak_pct']:+.2f}%"
-                    f"{tp2_note}"
-                )
-
         # ====================================================
         # B) TP2 SHADOW TAKİP
         # ====================================================
@@ -326,12 +295,6 @@ def check_open_positions():
                 sym = symbol.replace("/USDT", "")
                 print(f"  🎯 TP2 SHADOW HIT: {sym} | +{tp2_pct}% | Ekstra: +{extra_pct}%", flush=True)
 
-                send_telegram(
-                    f"🎯 <b>#{sym} TP2 ULAŞILDI</b> (shadow)\n"
-                    f"TP1'de kapandı: +{tp1_pct:.2f}%\n"
-                    f"TP2'ye de ulaştı: +{tp2_pct:.2f}%\n"
-                    f"Kaçırılan ekstra kâr: +{extra_pct:.2f}%"
-                )
             else:
                 close_time = datetime.fromisoformat(sig.get("close_time", sig["open_time"]))
                 if close_time.tzinfo is None:
