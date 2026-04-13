@@ -598,7 +598,7 @@ def start_scanner():
         print(f"🔄 {len(symbols)} coin taranıyor...")
         for symbol in symbols:
             analyze(symbol)
-            time.sleep(0.35)
+            time.sleep(0.8)
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
         time.sleep(SCAN_INTERVAL)
 
