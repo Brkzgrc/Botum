@@ -9,6 +9,9 @@ from flask import Flask
 
 app = Flask(__name__)
 
+import logging
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
 @app.route('/')
 def health_check():
     return "SMC Sniper v4 is Running!", 200
