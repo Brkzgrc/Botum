@@ -63,6 +63,12 @@ IGNORED_COINS = set([
 exchange = ccxt.binance()
 
 # ============================================================
+# 1b) TARAMA İSTATİSTİKLERİ
+# ============================================================
+from collections import Counter
+scan_stats = Counter()
+
+# ============================================================
 # 2) SİNYAL HAFIZASI
 # ============================================================
 sent_signals: dict = {}
@@ -487,10 +493,12 @@ def analyze(symbol: str):
 
         ticker = exchange.fetch_ticker(symbol)
         if float(ticker["quoteVolume"]) < MIN_VOLUME_24H:
+            scan_stats["low_volume"] += 1
             return
 
         bars = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
         if len(bars) < 220:
+            scan_stats["data_missing"] += 1
             return
 
         coin_name = get_coin_name(symbol)
@@ -531,10 +539,22 @@ def analyze(symbol: str):
             return
 
         depth = (equil - price) / span * 100   # >0 = discount bölgesi
+
+        # İstatistik: depth durumu
+        if depth < PHASE2_DEPTH:
+            scan_stats["depth_low"] += 1
     
         structure  = detect_structure_break(df, SWING_SIZE)
         break_type = structure["break_type"]
         trend_bias = infer_trend_bias(df, SWING_SIZE)
+
+        # İstatistik: yapı kırılımı
+        if break_type == "CHoCH":
+            scan_stats["choch_found"] += 1
+        elif break_type == "BOS":
+            scan_stats["bos_found"] += 1
+        else:
+            scan_stats["no_break"] += 1
 
         # Mum formasyonu tespiti — her iki aşamada da kullanılır
         patterns = detect_candle_patterns(df)
@@ -551,11 +571,19 @@ def analyze(symbol: str):
                     )
                     send_telegram_msg(msg)
                     mark_sent(symbol, "phase2")
-                    send_to_portfolio(symbol, price, atr_val, "phase2", bt)
+                    send_to_portfolio(symbol, price, atr_val, "phase2", break_type)
+                    scan_stats["signal_phase2"] += 1
                     pat_log = candle_pattern_summary(patterns)
                     print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
                           + (f" | {pat_log}" if pat_log else ""))
                     return
+                else:
+                    scan_stats["cooldown_p2"] += 1
+            else:
+                if depth < PHASE2_DEPTH:
+                    scan_stats["break_depth_low"] += 1
+                if rsi >= PHASE2_RSI:
+                    scan_stats["break_rsi_high"] += 1
 
         # ── AŞAMA 1 ──────────────────────────────────────────
         if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
@@ -569,9 +597,18 @@ def analyze(symbol: str):
                 send_telegram_msg(msg)
                 mark_sent(symbol, "phase1")
                 send_to_portfolio(symbol, price, atr_val, "phase1")
+                scan_stats["signal_phase1"] += 1
                 pat_log = candle_pattern_summary(patterns)
                 print(f"🎯 [AŞAMA 1] {symbol} | Derinlik: %{round(depth,1)} | RSI: {round(rsi,1)}"
                       + (f" | {pat_log}" if pat_log else ""))
+                return
+            else:
+                scan_stats["cooldown_p1"] += 1
+        else:
+            if depth < PHASE1_DEPTH:
+                scan_stats["p1_depth_low"] += 1
+            if rsi >= PHASE1_RSI:
+                scan_stats["p1_rsi_high"] += 1
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}")
@@ -597,10 +634,28 @@ def start_scanner():
 
     while True:
         symbols = get_clean_symbols()
+        scan_stats.clear()
         print(f"🔄 {len(symbols)} coin taranıyor...")
         for symbol in symbols:
             analyze(symbol)
             time.sleep(0.8)
+
+        # Tarama özeti
+        total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
+        print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
+        print(f"Taranan      : {len(symbols)}", flush=True)
+        print(f"Düşük hacim  : {scan_stats.get('low_volume', 0)}", flush=True)
+        print(f"Veri yok     : {scan_stats.get('data_missing', 0)}", flush=True)
+        print(f"Yapı kırılımı: CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Yok:{scan_stats.get('no_break', 0)}", flush=True)
+        print(f"Depth < %{PHASE2_DEPTH} : {scan_stats.get('depth_low', 0)}", flush=True)
+        if scan_stats.get("choch_found", 0) + scan_stats.get("bos_found", 0) > 0:
+            print(f"  Kırılım var ama depth düşük : {scan_stats.get('break_depth_low', 0)}", flush=True)
+            print(f"  Kırılım var ama RSI yüksek  : {scan_stats.get('break_rsi_high', 0)}", flush=True)
+        print(f"Cooldown P1  : {scan_stats.get('cooldown_p1', 0)}", flush=True)
+        print(f"Cooldown P2  : {scan_stats.get('cooldown_p2', 0)}", flush=True)
+        print(f"Sinyal       : {total_signals}  (🎯 Aşama1:{scan_stats.get('signal_phase1', 0)}  🚀 Aşama2:{scan_stats.get('signal_phase2', 0)})", flush=True)
+        print(f"------------------------", flush=True)
+
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
         time.sleep(SCAN_INTERVAL)
 
