@@ -51,9 +51,6 @@ DIP_VOL_MULT     = float(os.getenv("DIP_VOL_MULT",     "1.5"))
 STOP_PCT         = float(os.getenv("STOP_PCT",         "10.0"))
 TREND_STOP_PCT   = float(os.getenv("TREND_STOP_PCT",   "10.0"))
 
-PORTFOLIO_URL   = os.getenv("PORTFOLIO_URL", "")
-PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_TOKEN", "")
-
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
 TP_COOLDOWN_HOURS     = int(os.getenv("TP_COOLDOWN_HOURS", "6"))
 MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",       "1000000"))
@@ -820,37 +817,6 @@ def check_tp_signal(df, symbol):
 # ============================================================
 # 8) TELEGRAM
 # ============================================================
-def send_to_portfolio(result, sig_type):
-    """Sinyali portföy takip sistemine POST eder."""
-    if not PORTFOLIO_URL:
-        return
-    try:
-        payload = {
-            "symbol":      result["symbol"],
-            "entry":       result["entry"],
-            "stop":        result["stop"],
-            "tp1":         result.get("tp1"),
-            "tp2":         result.get("tp2"),
-            "sig_type":    sig_type,
-            "sub_type":    result.get("subtype", result.get("tp_system", "")),
-            "source":      "bot",
-            "candle":      result.get("candle", ""),
-            "funding_neg": result.get("funding_neg", False),
-        }
-        headers = {"Content-Type": "application/json"}
-        if PORTFOLIO_TOKEN:
-            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
-        r = requests.post(
-            f"{PORTFOLIO_URL}/api/signal",
-            json=payload, headers=headers, timeout=5,
-        )
-        if r.status_code == 201:
-            print(f"[PORTFOLIO] Sinyal gönderildi: {result['symbol']}", flush=True)
-        else:
-            print(f"[PORTFOLIO] HTTP {r.status_code}: {r.text[:80]}", flush=True)
-    except Exception as e:
-        print(f"[PORTFOLIO] Hata: {e}", flush=True)
-
 def send_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     try:
@@ -1145,7 +1111,6 @@ async def signal_worker(candidate_queue):
                 icon = "💰" if result.get("funding_neg") else "🔵"
 
             send_telegram(msg)
-            send_to_portfolio(result, sig_type)
 
             last_signal_ts.setdefault(symbol, {})[sig_type] = tr_time.replace(tzinfo=None)
             result["time"]     = tr_time.strftime("%Y-%m-%d %H:%M")
@@ -1319,14 +1284,34 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
             stats["cooldown"] += 1; return False
         return True
 
+    def tp_cooldown_ok():
+        last = sig_ts.get("tp")
+        if not last: return True
+        hrs = (tr_now.replace(tzinfo=None) - last.replace(tzinfo=None)).total_seconds() / 3600
+        return hrs >= TP_COOLDOWN_HOURS
+
+    # Öncelik sırası: DİP > TP > TREND > BİRİKİM
+    # Bir sinyal bulunursa diğerleri atlanır
+
     # DİP
     if cooldown_ok("dip"):
         result = check_dip_signal(df, symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
                                                        tr_time=tr_now, sig_type="dip"))
+            return
         else:
             stats["filtered"] += 1
+
+    # TURNING POINT
+    if tp_cooldown_ok():
+        result = check_tp_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
+                                                       tr_time=tr_now, sig_type="tp"))
+            return
+        else:
+            stats["tp_filtered"] += 1
 
     # TREND
     if cooldown_ok("trend"):
@@ -1334,6 +1319,7 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         if result:
             await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
                                                        tr_time=tr_now, sig_type="trend"))
+            return
         else:
             stats["trend_filtered"] += 1
 
@@ -1343,23 +1329,9 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         if result:
             await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
                                                        tr_time=tr_now, sig_type="birikim"))
+            return
         else:
             stats["birikim_filtered"] += 1
-
-    # TURNING POINT
-    def tp_cooldown_ok():
-        last = sig_ts.get("tp")
-        if not last: return True
-        hrs = (tr_now.replace(tzinfo=None) - last.replace(tzinfo=None)).total_seconds() / 3600
-        return hrs >= TP_COOLDOWN_HOURS
-
-    if tp_cooldown_ok():
-        result = check_tp_signal(df, symbol)
-        if result:
-            await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
-                                                       tr_time=tr_now, sig_type="tp"))
-        else:
-            stats["tp_filtered"] += 1
 
 # ============================================================
 # 13) WEBSOCKET
