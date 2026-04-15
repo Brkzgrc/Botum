@@ -521,14 +521,16 @@ def analyze(symbol: str):
             s_note  = "👉 <i>Trend zayıf, dirençlerde hızlı kâr al.</i>"
             h_icon  = "🔴🔴🔴"
 
-        # Derinlik = fiyatın MA200'ün ne kadar altında olduğu (%)
-        # MA200 üstündeyse 0, altındaysa pozitif değer
-        if ma200 <= 0:
+        # Discount Zone — LuxAlgo Premium/Discount mantığı
+        # Son N mumun range'ine göre fiyatın equilibrium'a uzaklığı
+        r_high = df["high"].iloc[-RANGE_LOOKBACK:].max()
+        r_low  = df["low"].iloc[-RANGE_LOOKBACK:].min()
+        equil  = (r_high + r_low) / 2.0
+        span   = equil - r_low
+        if span == 0:
             return
-        
-        depth = ((ma200 - price) / ma200) * 100
-        if depth < 0:
-            depth = 0.0
+
+        depth = (equil - price) / span * 100   # >0 = discount bölgesi
     
         structure  = detect_structure_break(df, SWING_SIZE)
         break_type = structure["break_type"]
