@@ -520,12 +520,6 @@ def analyze(symbol: str):
     try:
         now = time.time()
 
-        # BTC BEAR'dayken SMC sinyali verme
-        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
-        if btc_trend == "BEAR":
-            scan_stats["btc_bear_skip"] += 1
-            return
-
         ticker = exchange.fetch_ticker(symbol)
         if float(ticker["quoteVolume"]) < MIN_VOLUME_24H:
             scan_stats["low_volume"] += 1
@@ -670,28 +664,24 @@ def start_scanner():
         scan_stats.clear()
         print(f"🔄 {len(symbols)} coin taranıyor... | BTC: {btc_trend}")
 
-        if btc_trend == "BEAR":
-            print(f"⚠️ BTC BEAR — SMC sinyalleri devre dışı, tarama atlanıyor.")
-        else:
-            for symbol in symbols:
-                analyze(symbol)
-                time.sleep(0.8)
+        for symbol in symbols:
+            analyze(symbol)
+            time.sleep(0.8)
 
         # Tarama özeti
         total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Taranan      : {len(symbols)}", flush=True)
         print(f"BTC Trend    : {btc_trend}", flush=True)
-        if btc_trend != "BEAR":
-            print(f"Düşük hacim  : {scan_stats.get('low_volume', 0)}", flush=True)
-            print(f"Veri yok     : {scan_stats.get('data_missing', 0)}", flush=True)
-            print(f"Yapı kırılımı: CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Yok:{scan_stats.get('no_break', 0)}", flush=True)
-            print(f"Depth < %{PHASE2_DEPTH} : {scan_stats.get('depth_low', 0)}", flush=True)
-            if scan_stats.get("choch_found", 0) + scan_stats.get("bos_found", 0) > 0:
-                print(f"  Kırılım var ama depth düşük : {scan_stats.get('break_depth_low', 0)}", flush=True)
-                print(f"  Kırılım var ama RSI yüksek  : {scan_stats.get('break_rsi_high', 0)}", flush=True)
-            print(f"Cooldown P1  : {scan_stats.get('cooldown_p1', 0)}", flush=True)
-            print(f"Cooldown P2  : {scan_stats.get('cooldown_p2', 0)}", flush=True)
+        print(f"Düşük hacim  : {scan_stats.get('low_volume', 0)}", flush=True)
+        print(f"Veri yok     : {scan_stats.get('data_missing', 0)}", flush=True)
+        print(f"Yapı kırılımı: CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Yok:{scan_stats.get('no_break', 0)}", flush=True)
+        print(f"Depth < %{PHASE2_DEPTH} : {scan_stats.get('depth_low', 0)}", flush=True)
+        if scan_stats.get("choch_found", 0) + scan_stats.get("bos_found", 0) > 0:
+            print(f"  Kırılım var ama depth düşük : {scan_stats.get('break_depth_low', 0)}", flush=True)
+            print(f"  Kırılım var ama RSI yüksek  : {scan_stats.get('break_rsi_high', 0)}", flush=True)
+        print(f"Cooldown P1  : {scan_stats.get('cooldown_p1', 0)}", flush=True)
+        print(f"Cooldown P2  : {scan_stats.get('cooldown_p2', 0)}", flush=True)
         print(f"Sinyal       : {total_signals}  (🎯 P1:{scan_stats.get('signal_phase1', 0)}  🚀 P2:{scan_stats.get('signal_phase2', 0)})", flush=True)
         print(f"------------------------", flush=True)
 
