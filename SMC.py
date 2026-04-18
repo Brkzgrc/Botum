@@ -29,7 +29,6 @@ PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TIMEFRAME        = "1h"
-RANGE_LOOKBACK   = 30
 MIN_VOLUME_24H   = 5_000_000
 SCAN_INTERVAL    = 900
 
@@ -558,16 +557,46 @@ def analyze(symbol: str):
             s_note  = "👉 <i>Trend zayıf, dirençlerde hızlı kâr al.</i>"
             h_icon  = "🔴🔴🔴"
 
-        # Discount Zone — LuxAlgo Premium/Discount mantığı
-        # Son N mumun range'ine göre fiyatın equilibrium'a uzaklığı
-        r_high = df["high"].iloc[-RANGE_LOOKBACK:].max()
-        r_low  = df["low"].iloc[-RANGE_LOOKBACK:].min()
-        equil  = (r_high + r_low) / 2.0
-        span   = equil - r_low
-        if span == 0:
+        # ── Discount Zone — LuxAlgo Trailing Extremes mantığı ──
+        # LuxAlgo'da Premium/Discount zone'lar swing pivot high/low'dan hesaplanır.
+        # swingsLengthInput=50 ile bulunan swing noktaları trailing.top ve trailing.bottom olur.
+        # Discount = trailing.bottom bölgesi, Premium = trailing.top bölgesi
+        # Equilibrium = (top + bottom) / 2
+        # Depth: 0 = equilibrium, 100 = tam dip (trailing.bottom)
+
+        # Swing pivot high/low bul (size=50, LuxAlgo varsayılanı)
+        swing_size_zone = 50
+        pivot_highs_zone = find_pivot_highs(df, swing_size_zone)
+        pivot_lows_zone  = find_pivot_lows(df, swing_size_zone)
+
+        # En son onaylanmış swing high ve swing low
+        if not pivot_highs_zone or not pivot_lows_zone:
+            # Pivot bulunamazsa fallback: daha küçük pencere dene
+            pivot_highs_zone = find_pivot_highs(df, 20)
+            pivot_lows_zone  = find_pivot_lows(df, 20)
+            if not pivot_highs_zone or not pivot_lows_zone:
+                scan_stats["no_pivots"] += 1
+                return
+
+        trailing_top    = pivot_highs_zone[0]["price"]  # en son swing high
+        trailing_bottom = pivot_lows_zone[0]["price"]   # en son swing low
+
+        # LuxAlgo'daki gibi trailing güncelle — fiyat swing'i aştıysa
+        recent_high = float(df["high"].iloc[-1])
+        recent_low  = float(df["low"].iloc[-1])
+        if recent_high > trailing_top:
+            trailing_top = recent_high
+        if recent_low < trailing_bottom:
+            trailing_bottom = recent_low
+
+        equil = (trailing_top + trailing_bottom) / 2.0
+        span  = equil - trailing_bottom
+        if span <= 0:
             return
 
-        depth = (equil - price) / span * 100   # >0 = discount bölgesi
+        # Depth: 0 = equilibrium seviyesi, 100 = tam discount dibi
+        # Negatif = premium bölgesinde (equilibrium üstü)
+        depth = (equil - price) / span * 100
 
         if depth < PHASE2_DEPTH:
             scan_stats["depth_low"] += 1
