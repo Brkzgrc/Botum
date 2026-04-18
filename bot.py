@@ -730,7 +730,7 @@ TP_SYSTEMS = {
     },
     "momentum": {
         "icon": "🚀", "label": "MOMENTUM",
-        "conditions": {"macd_hist_norm": (">", 1.5), "vwap_dev": (">", 5), "adx": (">", 60)},
+        "conditions": {"macd_hist_norm": (">", 1.5), "vwap_dev": (">", 5), "adx": (">", 60), "roc12": ("<", 30)},
         "hit_rate": 68.8, "avg_return": 15.7, "rr": 2.0,
     },
     "crash": {
@@ -774,6 +774,12 @@ def check_tp_signal(df, symbol):
 
         if not ok:
             continue
+
+        # Momentum sistemine özel: histogram hâlâ yükseliyor mu? (exhaustion filtresi)
+        if sys_key == "momentum" and len(df) >= 4:
+            macd_prev2 = df.iloc[-3].get("macd_hist_norm", np.nan)
+            if pd.isna(macd_prev2) or values["macd_hist_norm"] <= float(macd_prev2):
+                continue  # MACD hist düşüyor veya sabit = momentum yorulmuş, giriş yapma
 
         # Sinyal bulundu — TP/Stop hesapla
         vol_ratio_atr = atr_val / entry
