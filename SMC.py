@@ -52,7 +52,7 @@ IGNORED_COINS = set([
     'USDE/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
     'USTC/USDT','BUSD/USDT','FRAX/USDT','LUSD/USDT','GUSD/USDT','SUSD/USDT',
     'USDS/USDT','USDX/USDT','USDD/USDT','CUSD/USDT','OUSD/USDT','MUSD/USDT',
-    'U/USDT','RLUSD/USDT',
+    'U/USDT',
     # Fiat
     'EUR/USDT','TRY/USDT','GBP/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
@@ -63,10 +63,39 @@ IGNORED_COINS = set([
 exchange = ccxt.binance()
 
 # ============================================================
-# 1b) TARAMA İSTATİSTİKLERİ
+# 1b) BTC TREND ve TARAMA İSTATİSTİKLERİ
 # ============================================================
 from collections import Counter
 scan_stats = Counter()
+btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "updated": 0}
+
+def refresh_btc_trend():
+    """BTC 4H EMA50/EMA200 ile trend belirle."""
+    try:
+        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=100)
+        if len(bars) < 60:
+            return
+        df = pd.DataFrame(bars, columns=["ts","open","high","low","close","volume"])
+        c = df["close"]
+        e50 = c.ewm(span=50, adjust=False).mean()
+        e200 = c.ewm(span=200, adjust=False).mean()
+        last_c = float(c.iloc[-1])
+        last_e50 = float(e50.iloc[-1])
+        last_e200 = float(e200.iloc[-1])
+        if last_c > last_e50 and last_e50 > last_e200:
+            trend = "BULL"
+        elif last_c > last_e50:
+            trend = "YUKSELIS"
+        elif last_c > last_e200:
+            trend = "KARISIK"
+        else:
+            trend = "BEAR"
+        btc_trend_cache["trend"] = trend
+        btc_trend_cache["close"] = last_c
+        btc_trend_cache["updated"] = time.time()
+        print(f"BTC 4H: {trend} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
+    except Exception as e:
+        print(f"BTC trend hata: {e}", flush=True)
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -491,6 +520,12 @@ def analyze(symbol: str):
     try:
         now = time.time()
 
+        # BTC BEAR'dayken SMC sinyali verme
+        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
+        if btc_trend == "BEAR":
+            scan_stats["btc_bear_skip"] += 1
+            return
+
         ticker = exchange.fetch_ticker(symbol)
         if float(ticker["quoteVolume"]) < MIN_VOLUME_24H:
             scan_stats["low_volume"] += 1
@@ -540,7 +575,6 @@ def analyze(symbol: str):
 
         depth = (equil - price) / span * 100   # >0 = discount bölgesi
 
-        # İstatistik: depth durumu
         if depth < PHASE2_DEPTH:
             scan_stats["depth_low"] += 1
     
@@ -548,7 +582,6 @@ def analyze(symbol: str):
         break_type = structure["break_type"]
         trend_bias = infer_trend_bias(df, SWING_SIZE)
 
-        # İstatistik: yapı kırılımı
         if break_type == "CHoCH":
             scan_stats["choch_found"] += 1
         elif break_type == "BOS":
@@ -604,11 +637,6 @@ def analyze(symbol: str):
                 return
             else:
                 scan_stats["cooldown_p1"] += 1
-        else:
-            if depth < PHASE1_DEPTH:
-                scan_stats["p1_depth_low"] += 1
-            if rsi >= PHASE1_RSI:
-                scan_stats["p1_rsi_high"] += 1
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}")
@@ -623,37 +651,48 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Sniper v4 — Mum Formasyonu Teyitli")
+    print("🚀  SMC Sniper v5 — BTC Trend Filtreli")
     print("=" * 50)
     print(f"  Timeframe    : {TIMEFRAME}")
     print(f"  Swing size   : {SWING_SIZE}")
     print(f"  Aşama 1      : Derinlik >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
     print(f"  Aşama 2      : Derinlik >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
+    print(f"  BTC Filtre   : BEAR'da sinyal üretilmez")
     print(f"  Formasyonlar : Hammer / Bullish Engulfing / Doji / Morning Star")
     print("=" * 50 + "\n")
 
     while True:
+        # BTC trendini güncelle
+        refresh_btc_trend()
+        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
+
         symbols = get_clean_symbols()
         scan_stats.clear()
-        print(f"🔄 {len(symbols)} coin taranıyor...")
-        for symbol in symbols:
-            analyze(symbol)
-            time.sleep(0.8)
+        print(f"🔄 {len(symbols)} coin taranıyor... | BTC: {btc_trend}")
+
+        if btc_trend == "BEAR":
+            print(f"⚠️ BTC BEAR — SMC sinyalleri devre dışı, tarama atlanıyor.")
+        else:
+            for symbol in symbols:
+                analyze(symbol)
+                time.sleep(0.8)
 
         # Tarama özeti
         total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Taranan      : {len(symbols)}", flush=True)
-        print(f"Düşük hacim  : {scan_stats.get('low_volume', 0)}", flush=True)
-        print(f"Veri yok     : {scan_stats.get('data_missing', 0)}", flush=True)
-        print(f"Yapı kırılımı: CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Yok:{scan_stats.get('no_break', 0)}", flush=True)
-        print(f"Depth < %{PHASE2_DEPTH} : {scan_stats.get('depth_low', 0)}", flush=True)
-        if scan_stats.get("choch_found", 0) + scan_stats.get("bos_found", 0) > 0:
-            print(f"  Kırılım var ama depth düşük : {scan_stats.get('break_depth_low', 0)}", flush=True)
-            print(f"  Kırılım var ama RSI yüksek  : {scan_stats.get('break_rsi_high', 0)}", flush=True)
-        print(f"Cooldown P1  : {scan_stats.get('cooldown_p1', 0)}", flush=True)
-        print(f"Cooldown P2  : {scan_stats.get('cooldown_p2', 0)}", flush=True)
-        print(f"Sinyal       : {total_signals}  (🎯 Aşama1:{scan_stats.get('signal_phase1', 0)}  🚀 Aşama2:{scan_stats.get('signal_phase2', 0)})", flush=True)
+        print(f"BTC Trend    : {btc_trend}", flush=True)
+        if btc_trend != "BEAR":
+            print(f"Düşük hacim  : {scan_stats.get('low_volume', 0)}", flush=True)
+            print(f"Veri yok     : {scan_stats.get('data_missing', 0)}", flush=True)
+            print(f"Yapı kırılımı: CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Yok:{scan_stats.get('no_break', 0)}", flush=True)
+            print(f"Depth < %{PHASE2_DEPTH} : {scan_stats.get('depth_low', 0)}", flush=True)
+            if scan_stats.get("choch_found", 0) + scan_stats.get("bos_found", 0) > 0:
+                print(f"  Kırılım var ama depth düşük : {scan_stats.get('break_depth_low', 0)}", flush=True)
+                print(f"  Kırılım var ama RSI yüksek  : {scan_stats.get('break_rsi_high', 0)}", flush=True)
+            print(f"Cooldown P1  : {scan_stats.get('cooldown_p1', 0)}", flush=True)
+            print(f"Cooldown P2  : {scan_stats.get('cooldown_p2', 0)}", flush=True)
+        print(f"Sinyal       : {total_signals}  (🎯 P1:{scan_stats.get('signal_phase1', 0)}  🚀 P2:{scan_stats.get('signal_phase2', 0)})", flush=True)
         print(f"------------------------", flush=True)
 
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
