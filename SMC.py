@@ -519,6 +519,12 @@ def analyze(symbol: str):
     try:
         now = time.time()
 
+        # BTC BEAR'dayken SMC sinyali verme
+        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
+        if btc_trend == "BEAR":
+            scan_stats["btc_bear_skip"] += 1
+            return
+
         ticker = exchange.fetch_ticker(symbol)
         if float(ticker["quoteVolume"]) < MIN_VOLUME_24H:
             scan_stats["low_volume"] += 1
