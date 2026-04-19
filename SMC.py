@@ -530,8 +530,8 @@ def analyze(symbol: str):
             scan_stats["low_volume"] += 1
             return
 
-        bars = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=250)
-        if len(bars) < 220:
+        bars = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=1000)
+        if len(bars) < 500:
             scan_stats["data_missing"] += 1
             return
 
