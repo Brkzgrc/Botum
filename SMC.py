@@ -39,8 +39,8 @@ SCAN_INTERVAL    = 900
 SWING_LENGTH     = 50
 
 # Bootstrap ayarları
-BOOTSTRAP_BARS   = 2000   # başlangıçta 2000 bar çek (~83 gün)
-KEEP_BARS        = 2000   # bellekte tut
+BOOTSTRAP_BARS   = 2500   # başlangıçta 2000 bar çek (~83 gün)
+KEEP_BARS        = 2500   # bellekte tut
 
 # Sinyal eşikleri
 PHASE1_DEPTH     = 85
