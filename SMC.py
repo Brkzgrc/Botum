@@ -650,6 +650,15 @@ def start_scanner():
     print(f"  BTC Filtre     : BEAR'da sinyal üretilmez")
     print("=" * 50 + "\n")
 
+    for attempt in range(3):
+        try:
+            exchange.load_markets()
+            print(f"Markets yüklendi: {len(exchange.markets)} piyasa", flush=True)
+            break
+        except Exception as e:
+            print(f"Markets hata (deneme {attempt+1}): {e}", flush=True)
+            time.sleep(5)
+    
     # Coin listesi al
     symbols = get_clean_symbols()
     print(f"{len(symbols)} coin bulundu", flush=True)
