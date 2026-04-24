@@ -35,19 +35,18 @@ TIMEFRAME        = "1h"
 MIN_VOLUME_24H   = 5_000_000
 SCAN_INTERVAL    = 900
 
-# LuxAlgo varsayılanları
 SWING_LENGTH     = 50
 
-# Bootstrap ayarları
-BOOTSTRAP_BARS   = 2500   # başlangıçta 2000 bar çek (~83 gün)
-KEEP_BARS        = 2500   # bellekte tut
+BOOTSTRAP_BARS   = 2500
+KEEP_BARS        = 2500
 
-# Sinyal eşikleri
-PHASE1_DEPTH     = 85
+# Sinyal eşikleri — artık discount zone İÇİNDE olma kontrolü
+# depth: 0 = discount_top, 100 = discount_bottom (tam dip)
+PHASE1_DEPTH     = 0    # discount zone içinde olması yeterli
 PHASE1_RSI       = 35
 PHASE1_COOLDOWN  = 86400
 
-PHASE2_DEPTH     = 65
+PHASE2_DEPTH     = 0    # discount zone içinde olması yeterli
 PHASE2_RSI       = 48
 PHASE2_COOLDOWN  = 86400
 
@@ -72,14 +71,12 @@ scan_stats = Counter()
 # ============================================================
 # 1b) VERİ CACHE + BOOTSTRAP
 # ============================================================
-bars_cache = {}       # symbol → DataFrame
+bars_cache = {}
 bootstrap_done = False
 
 def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
-    """Binance'den OHLCV çeker. limit > 1000 ise döngüyle çeker."""
     all_bars = []
-    since_ms = int((time.time() - limit * 3600) * 1000)  # limit saat geriye
-
+    since_ms = int((time.time() - limit * 3600) * 1000)
     while len(all_bars) < limit:
         try:
             batch = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME,
@@ -94,19 +91,15 @@ def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
         if len(batch) < 1000:
             break
         time.sleep(0.15)
-
     if not all_bars:
         return None
-
     df = pd.DataFrame(all_bars, columns=["timestamp","open","high","low","close","volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df.set_index("timestamp", inplace=True)
     df = df[~df.index.duplicated(keep='first')]
     return df
 
-
 def bootstrap_all(symbols):
-    """Başlangıçta tüm coinler için geçmiş veriyi çek."""
     global bootstrap_done
     print(f"📦 Bootstrap başladı: {len(symbols)} coin × {BOOTSTRAP_BARS} bar...", flush=True)
     ok = 0
@@ -121,21 +114,16 @@ def bootstrap_all(symbols):
     bootstrap_done = True
     print(f"✅ Bootstrap bitti: {ok}/{len(symbols)} coin yüklendi", flush=True)
 
-
 def update_cache(symbol):
-    """Her taramada sadece son barı çek ve cache'e ekle."""
     try:
         batch = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=5)
         if not batch:
             return
-
         new_df = pd.DataFrame(batch, columns=["timestamp","open","high","low","close","volume"])
         new_df["timestamp"] = pd.to_datetime(new_df["timestamp"], unit="ms", utc=True)
         new_df.set_index("timestamp", inplace=True)
-
         if symbol in bars_cache:
             df = bars_cache[symbol]
-            # Yeni barları ekle, eski tekrarları kaldır
             combined = pd.concat([df, new_df])
             combined = combined[~combined.index.duplicated(keep='last')]
             combined = combined.sort_index()
@@ -146,7 +134,6 @@ def update_cache(symbol):
             bars_cache[symbol] = new_df
     except Exception:
         pass
-
 
 # ============================================================
 # 1c) BTC TREND
@@ -305,7 +292,6 @@ def detect_candle_patterns(df):
     result = {"hammer": False, "engulfing": False, "doji": False, "morning_star": False}
     if len(df) < 4:
         return result
-
     c0 = df.iloc[-2]; c1 = df.iloc[-3]; c2 = df.iloc[-4]
     o0, h0, l0, cl0 = float(c0["open"]), float(c0["high"]), float(c0["low"]), float(c0["close"])
     o1, h1, l1, cl1 = float(c1["open"]), float(c1["high"]), float(c1["low"]), float(c1["close"])
@@ -316,7 +302,6 @@ def detect_candle_patterns(df):
         return result
     upper_wick0 = h0 - max(cl0, o0)
     lower_wick0 = min(cl0, o0) - l0
-
     if body0 > 0 and lower_wick0 >= body0 * 2.0 and upper_wick0 <= body0 * 0.5 and (min(cl0, o0) - l0) / range0 >= 0.55:
         result["hammer"] = True
     if cl1 < o1 and cl0 > o0 and o0 <= cl1 and cl0 >= o1 and body0 >= body1 * 0.8:
@@ -359,37 +344,25 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 
     legs = [0] * n
     current_leg = 0
-
     for i in range(swing_length, n):
         pivot_bar_high = highs[i - swing_length]
         pivot_bar_low  = lows[i - swing_length]
         window_high = max(highs[i - swing_length + 1 : i + 1])
         window_low  = min(lows[i - swing_length + 1 : i + 1])
-
-        new_leg_high = pivot_bar_high > window_high
-        new_leg_low  = pivot_bar_low < window_low
-
-        if new_leg_high:
+        if pivot_bar_high > window_high:
             current_leg = 0
-        elif new_leg_low:
+        elif pivot_bar_low < window_low:
             current_leg = 1
         legs[i] = current_leg
 
-    swing_high_level = None
-    swing_high_crossed = True
-    swing_low_level = None
-    swing_low_crossed = True
+    swing_high_level = None; swing_high_crossed = True
+    swing_low_level = None; swing_low_crossed = True
     swing_trend = 0
-
-    trailing_top = None
-    trailing_bottom = None
-    break_type = None
-    break_direction = None
+    trailing_top = None; trailing_bottom = None
+    break_type = None; break_direction = None
 
     for i in range(swing_length + 1, n):
-        prev_leg = legs[i - 1]
-        curr_leg = legs[i]
-
+        prev_leg = legs[i - 1]; curr_leg = legs[i]
         if curr_leg != prev_leg:
             if curr_leg == 1:
                 swing_low_level = lows[i - swing_length]
@@ -399,33 +372,22 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
                 swing_high_level = highs[i - swing_length]
                 swing_high_crossed = False
                 trailing_top = swing_high_level
-
         if trailing_top is not None and highs[i] > trailing_top:
             trailing_top = highs[i]
         if trailing_bottom is not None and lows[i] < trailing_bottom:
             trailing_bottom = lows[i]
-
         if i == n - 1:
-            c_now = closes[i]
-            c_prev = closes[i - 1]
-
+            c_now = closes[i]; c_prev = closes[i - 1]
             if (swing_high_level is not None and not swing_high_crossed
                     and c_now > swing_high_level and c_prev <= swing_high_level):
                 swing_high_crossed = True
-                if swing_trend == -1:
-                    break_type = "CHoCH"
-                else:
-                    break_type = "BOS"
+                break_type = "CHoCH" if swing_trend == -1 else "BOS"
                 break_direction = "BULLISH"
                 swing_trend = 1
-
             if (swing_low_level is not None and not swing_low_crossed
                     and c_now < swing_low_level and c_prev >= swing_low_level):
                 swing_low_crossed = True
-                if swing_trend == 1:
-                    break_type = "CHoCH"
-                else:
-                    break_type = "BOS"
+                break_type = "CHoCH" if swing_trend == 1 else "BOS"
                 break_direction = "BEARISH"
                 swing_trend = -1
 
@@ -436,21 +398,42 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 
     top = trailing_top
     bottom = trailing_bottom
+
+    # ── LuxAlgo birebir zone hesabı ──
+    # Premium zone:  top → 0.95*top + 0.05*bottom
+    # Equilibrium:   orta bant
+    # Discount zone: 0.95*bottom + 0.05*top → bottom
+    discount_top    = 0.95 * bottom + 0.05 * top
+    discount_bottom = bottom
     equil = (top + bottom) / 2.0
 
     current_price = closes[-1]
-    span = equil - bottom
-    if span <= 0:
-        return None
 
-    depth = (equil - current_price) / span * 100
+    # Fiyat discount zone içinde mi?
+    in_discount = current_price <= discount_top
+
+    # Discount zone içindeki derinlik: 0 = discount_top, 100 = bottom
+    if in_discount:
+        dz_span = discount_top - discount_bottom
+        if dz_span > 0:
+            depth = (discount_top - current_price) / dz_span * 100
+        else:
+            depth = 100.0
+    else:
+        # Zone dışında — negatif depth (ne kadar uzakta)
+        total_range = top - bottom
+        if total_range > 0:
+            depth = -((current_price - discount_top) / total_range * 100)
+        else:
+            depth = -100.0
 
     return {
         'trailing_top': round(top, 10), 'trailing_bottom': round(bottom, 10),
         'equilibrium': round(equil, 10),
+        'discount_top': round(discount_top, 10), 'discount_bottom': round(discount_bottom, 10),
         'premium_top': round(top, 10), 'premium_bottom': round(0.95 * top + 0.05 * bottom, 10),
-        'discount_top': round(0.95 * bottom + 0.05 * top, 10), 'discount_bottom': round(bottom, 10),
         'depth': round(depth, 2),
+        'in_discount': in_discount,
         'swing_high': swing_high_level, 'swing_low': swing_low_level,
         'swing_trend': swing_trend,
         'break_type': break_type, 'break_direction': break_direction,
@@ -465,6 +448,10 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
     base = symbol.split("/")[0]
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+    dt = smc_data['discount_top']
+    db = smc_data['discount_bottom']
+    dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
+    db_str = f"{db:.10f}".rstrip("0").rstrip(".")
     pattern_line = candle_pattern_summary(patterns)
     pattern_block = ""
     if pattern_line:
@@ -473,11 +460,14 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                          f"<i>Alıcı baskısı görülüyor — CHoCH/BOS yakın olabilir.</i>")
     return (
         f"🎯🎯🎯 <b>PUSU KURULDU</b> 🎯🎯🎯\n<b>#{base}</b>  <i>{coin_name}</i>\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n📍 <b>AŞAMA 1 — DERİN İNDİRİM</b>\n"
+        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n📍 <b>AŞAMA 1 — DİSCOUNT ZONE İÇİNDE</b>\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
-        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n🌋 <b>ATR (TAM):</b> <code>{raw_atr}</code>\n"
-        f"📊 <b>ATR ORANI:</b> %{round(atr_ratio, 2)}\n📉 <b>İNDİRİM DERİNLİĞİ:</b> %{round(depth, 1)}\n"
+        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
+        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
+        f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
+        f"📉 <b>DISCOUNT ZONE:</b> <code>{dt_str}</code> — <code>{db_str}</code>\n"
+        f"📉 <b>ZONE DERİNLİĞİ:</b> %{round(depth, 1)}\n"
         f"📐 <b>MEVCUT TREND:</b> {trend_bias}{pattern_block}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n{strategy_note}\n\n"
         f"⏳ <b>CHoCH/BOS bekleniyor — tetik çekilmedi!</b>\n👁 TradingView'da izlemeye al.")
@@ -492,6 +482,10 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                 else "💪 <b>ORTA — BOS (Trend Devam)</b>")
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+    dt = smc_data['discount_top']
+    db = smc_data['discount_bottom']
+    dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
+    db_str = f"{db:.10f}".rstrip("0").rstrip(".")
     pattern_line = candle_pattern_summary(patterns)
     pattern_block = ""
     if pattern_line:
@@ -507,9 +501,12 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n⚡ <b>AŞAMA 2 — YAPISAL KIRILIM</b>\n"
         f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
-        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n🌋 <b>ATR (TAM):</b> <code>{raw_atr}</code>\n"
-        f"📊 <b>ATR ORANI:</b> %{round(atr_ratio, 2)}\n📉 <b>İNDİRİM DERİNLİĞİ:</b> %{round(depth, 1)}\n\n"
+        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
+        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
+        f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
+        f"📉 <b>DISCOUNT ZONE:</b> <code>{dt_str}</code> — <code>{db_str}</code>\n"
+        f"📉 <b>ZONE DERİNLİĞİ:</b> %{round(depth, 1)}\n\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"{icon} <b>{bt}:</b> Swing yapısal kırılım ({smc_data['break_direction']})\n"
         f"📐 <b>Swing Trend:</b> {'BULLISH' if smc_data['swing_trend']==1 else 'BEARISH'}"
@@ -522,19 +519,16 @@ def analyze(symbol):
     try:
         now = time.time()
 
-        # BTC BEAR'dayken SMC sinyali verme
         btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
         if btc_trend == "BEAR":
             scan_stats["btc_bear_skip"] += 1
             return
 
-        # Cache'den veri al, yoksa atla
         df = bars_cache.get(symbol)
         if df is None or len(df) < 200:
             scan_stats["no_cache"] += 1
             return
 
-        # Son barı güncelle
         update_cache(symbol)
         df = bars_cache.get(symbol)
         if df is None or len(df) < 200:
@@ -565,15 +559,15 @@ def analyze(symbol):
             s_label = "⚡ <b>KISA SÜRELİ (Vur-Kaç)</b>"
             s_note  = "👉 <i>Trend zayıf, dirençlerde hızlı kâr al.</i>"
 
-        # ── LuxAlgo SMC hesapla — 2000 bar üzerinden ──
         smc_data = luxalgo_smc(df, SWING_LENGTH)
         if smc_data is None:
             scan_stats["no_pivots"] += 1
             return
 
-        depth      = smc_data['depth']
-        break_type = smc_data['break_type']
-        break_dir  = smc_data['break_direction']
+        depth       = smc_data['depth']
+        in_discount = smc_data['in_discount']
+        break_type  = smc_data['break_type']
+        break_dir   = smc_data['break_direction']
 
         if break_type == "CHoCH":
             scan_stats["choch_found"] += 1
@@ -582,17 +576,21 @@ def analyze(symbol):
         else:
             scan_stats["no_break"] += 1
 
-        if depth < PHASE2_DEPTH:
-            scan_stats["depth_low"] += 1
+        # Fiyat discount zone içinde değilse sinyal verme
+        if not in_discount:
+            scan_stats["not_in_discount"] += 1
+            return
+
+        scan_stats["in_discount"] += 1
 
         patterns = detect_candle_patterns(df)
         trend_bias_str = ("BULLISH" if smc_data['swing_trend'] == 1
                           else "BEARISH" if smc_data['swing_trend'] == -1
                           else "NEUTRAL")
 
-        # ── AŞAMA 2: Discount + CHoCH/BOS ──
+        # ── AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI ──
         if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-            if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
+            if rsi < PHASE2_RSI:
                 last_p2 = get_last_sent(symbol, "phase2")
                 if now - last_p2 > PHASE2_COOLDOWN:
                     msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -609,8 +607,8 @@ def analyze(symbol):
                 else:
                     scan_stats["cooldown_p2"] += 1
 
-        # ── AŞAMA 1: Derin discount ──
-        if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
+        # ── AŞAMA 1: Discount zone İÇİNDE + RSI düşük ──
+        if rsi < PHASE1_RSI:
             last_p1 = get_last_sent(symbol, "phase1")
             if now - last_p1 > PHASE1_COOLDOWN:
                 msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -645,11 +643,13 @@ def start_scanner():
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
-    print(f"  Aşama 1        : Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
-    print(f"  Aşama 2        : Depth >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
+    print(f"  Aşama 1        : Discount zone İÇİNDE + RSI <{PHASE1_RSI}")
+    print(f"  Aşama 2        : Discount zone İÇİNDE + RSI <{PHASE2_RSI} + CHoCH/BOS")
     print(f"  BTC Filtre     : BEAR'da sinyal üretilmez")
+    print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
     print("=" * 50 + "\n")
 
+    # Markets yükle (retry)
     for attempt in range(3):
         try:
             exchange.load_markets()
@@ -658,15 +658,17 @@ def start_scanner():
         except Exception as e:
             print(f"Markets hata (deneme {attempt+1}): {e}", flush=True)
             time.sleep(5)
-    
-    # Coin listesi al
+
     symbols = get_clean_symbols()
     print(f"{len(symbols)} coin bulundu", flush=True)
 
-    # Bootstrap — bir kez 2000 bar çek
-    bootstrap_all(symbols)
+    if not symbols:
+        print("⚠️ Coin listesi boş! 30 saniye bekleyip tekrar denenecek.", flush=True)
+        time.sleep(30)
+        symbols = get_clean_symbols()
+        print(f"Tekrar deneme: {len(symbols)} coin bulundu", flush=True)
 
-    # BTC trend
+    bootstrap_all(symbols)
     refresh_btc_trend()
 
     while True:
@@ -681,17 +683,17 @@ def start_scanner():
         else:
             for symbol in list(bars_cache.keys()):
                 analyze(symbol)
-                time.sleep(0.3)  # cache'den okuyor, daha hızlı
+                time.sleep(0.3)
 
         total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Cached coin  : {len(bars_cache)}", flush=True)
         print(f"BTC Trend    : {btc_trend}", flush=True)
         if btc_trend != "BEAR":
-            print(f"Cache yok    : {scan_stats.get('no_cache', 0)}", flush=True)
+            print(f"Discount'ta  : {scan_stats.get('in_discount', 0)}", flush=True)
+            print(f"Zone dışında : {scan_stats.get('not_in_discount', 0)}", flush=True)
             print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
             print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
-            print(f"Depth düşük  : {scan_stats.get('depth_low', 0)}", flush=True)
             print(f"Cooldown P1:{scan_stats.get('cooldown_p1', 0)}  P2:{scan_stats.get('cooldown_p2', 0)}", flush=True)
         print(f"Sinyal       : {total_signals}  (🎯 P1:{scan_stats.get('signal_phase1', 0)}  🚀 P2:{scan_stats.get('signal_phase2', 0)})", flush=True)
         print(f"------------------------", flush=True)
