@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Sniper v7 — LuxAlgo | {boot_status} | {cached} coin cached", 200
+    return f"SMC Trailing v7 — LuxAlgo | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -223,7 +223,7 @@ def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
         payload = {
             "symbol": symbol, "entry": price, "stop": stop,
             "tp1": tp1, "tp2": tp2, "sig_type": "smc",
-            "sub_type": break_type, "source": "smc", "phase": phase,
+            "sub_type": break_type, "source": "smc-trailing", "phase": phase,
         }
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
@@ -520,8 +520,8 @@ def analyze(symbol):
         now = time.time()
 
         btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
-        if btc_trend == "BEAR":
-            scan_stats["btc_bear_skip"] += 1
+        if btc_trend in ("BEAR", "KARISIK"):
+            scan_stats["btc_filter_skip"] += 1
             return
 
         df = bars_cache.get(symbol)
@@ -638,15 +638,16 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Sniper v7 — LuxAlgo + Bootstrap Cache")
+    print("🚀  SMC Trailing v7 — BEAR+KARISIK Filtreli")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
     print(f"  Aşama 1        : Discount zone İÇİNDE + RSI <{PHASE1_RSI}")
     print(f"  Aşama 2        : Discount zone İÇİNDE + RSI <{PHASE2_RSI} + CHoCH/BOS")
-    print(f"  BTC Filtre     : BEAR'da sinyal üretilmez")
+    print(f"  BTC Filtre     : BEAR + KARISIK'ta sinyal üretilmez")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
+    print(f"  Source         : smc-trailing")
     print("=" * 50 + "\n")
 
     # Markets yükle (retry)
@@ -678,8 +679,8 @@ def start_scanner():
         scan_stats.clear()
         print(f"\n🔄 {len(bars_cache)} coin taranıyor... | BTC: {btc_trend}")
 
-        if btc_trend == "BEAR":
-            print(f"⚠️ BTC BEAR — SMC sinyalleri devre dışı.")
+        if btc_trend in ("BEAR", "KARISIK"):
+            print(f"⚠️ BTC {btc_trend} — SMC sinyalleri devre dışı.")
         else:
             for symbol in list(bars_cache.keys()):
                 analyze(symbol)
