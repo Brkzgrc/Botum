@@ -90,7 +90,7 @@ def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
         since_ms = batch[-1][0] + 1
         if len(batch) < 1000:
             break
-        time.sleep(0.15)
+        time.sleep(0.3)
     if not all_bars:
         return None
     df = pd.DataFrame(all_bars, columns=["timestamp","open","high","low","close","volume"])
