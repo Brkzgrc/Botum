@@ -90,7 +90,7 @@ def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
         since_ms = batch[-1][0] + 1
         if len(batch) < 1000:
             break
-        time.sleep(0.3)
+        time.sleep(0.5)
     if not all_bars:
         return None
     df = pd.DataFrame(all_bars, columns=["timestamp","open","high","low","close","volume"])
@@ -110,7 +110,7 @@ def bootstrap_all(symbols):
         if df is not None and len(df) >= 200:
             bars_cache[symbol] = df.iloc[-KEEP_BARS:] if len(df) > KEEP_BARS else df
             ok += 1
-        time.sleep(0.1)
+        time.sleep(0.5)
     bootstrap_done = True
     print(f"✅ Bootstrap bitti: {ok}/{len(symbols)} coin yüklendi", flush=True)
 
@@ -684,7 +684,7 @@ def start_scanner():
         else:
             for symbol in list(bars_cache.keys()):
                 analyze(symbol)
-                time.sleep(0.3)
+                time.sleep(0.5)
 
         total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
