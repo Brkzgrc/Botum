@@ -244,7 +244,7 @@ def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
         payload = {
             "symbol": symbol, "entry": price, "stop": stop,
             "tp1": tp1, "tp2": tp2, "sig_type": "smc",
-            "sub_type": break_type, "source": "smc-momentum", "phase": phase,
+            "sub_type": break_type, "source": "momentum", "phase": phase,
         }
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
