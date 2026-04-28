@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Trailing v7 — LuxAlgo | {boot_status} | {cached} coin cached", 200
+    return f"SMC Combined v7 — Trailing + Momentum | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -40,13 +40,9 @@ SWING_LENGTH     = 50
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
-# Sinyal eşikleri — artık discount zone İÇİNDE olma kontrolü
-# depth: 0 = discount_top, 100 = discount_bottom (tam dip)
-PHASE1_DEPTH     = 0    # discount zone içinde olması yeterli
 PHASE1_RSI       = 35
 PHASE1_COOLDOWN  = 86400
 
-PHASE2_DEPTH     = 0    # discount zone içinde olması yeterli
 PHASE2_RSI       = 48
 PHASE2_COOLDOWN  = 86400
 
@@ -136,9 +132,9 @@ def update_cache(symbol):
         pass
 
 # ============================================================
-# 1c) BTC TREND
+# 1c) BTC TREND + MOMENTUM
 # ============================================================
-btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "updated": 0}
+btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "momentum": "UNKNOWN", "updated": 0}
 
 def refresh_btc_trend():
     try:
@@ -160,10 +156,27 @@ def refresh_btc_trend():
             trend = "KARISIK"
         else:
             trend = "BEAR"
+
+        # Kısa vadeli momentum: 1H EMA8/EMA21
+        momentum = "UNKNOWN"
+        try:
+            bars_1h = exchange.fetch_ohlcv("BTC/USDT", timeframe="1h", limit=30)
+            if len(bars_1h) >= 25:
+                df_1h = pd.DataFrame(bars_1h, columns=["ts","open","high","low","close","volume"])
+                c_1h = df_1h["close"]
+                ema8 = c_1h.ewm(span=8, adjust=False).mean()
+                ema21 = c_1h.ewm(span=21, adjust=False).mean()
+                last_ema8 = float(ema8.iloc[-1])
+                last_ema21 = float(ema21.iloc[-1])
+                momentum = "UP" if last_ema8 > last_ema21 else "DOWN"
+        except Exception:
+            pass
+
         btc_trend_cache["trend"] = trend
         btc_trend_cache["close"] = last_c
+        btc_trend_cache["momentum"] = momentum
         btc_trend_cache["updated"] = time.time()
-        print(f"BTC 4H: {trend} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
+        print(f"BTC 4H: {trend} | 1H Momentum: {momentum} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
     except Exception as e:
         print(f"BTC trend hata: {e}", flush=True)
 
@@ -188,13 +201,15 @@ def save_signals(data):
     except Exception as e:
         print(f"[UYARI] Sinyal kaydedilemedi: {e}")
 
-def get_last_sent(symbol, phase):
-    return sent_signals.get(symbol, {}).get(phase, 0.0)
+def get_last_sent(symbol, phase, source=""):
+    key = f"{symbol}_{source}"
+    return sent_signals.get(key, {}).get(phase, 0.0)
 
-def mark_sent(symbol, phase):
-    if symbol not in sent_signals:
-        sent_signals[symbol] = {}
-    sent_signals[symbol][phase] = time.time()
+def mark_sent(symbol, phase, source=""):
+    key = f"{symbol}_{source}"
+    if key not in sent_signals:
+        sent_signals[key] = {}
+    sent_signals[key][phase] = time.time()
     save_signals(sent_signals)
 
 # ============================================================
@@ -213,7 +228,7 @@ def send_telegram_msg(text):
     except Exception as e:
         print(f"[TELEGRAM] Hata: {e}")
 
-def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
+def send_to_portfolio(symbol, price, atr_val, phase, source, break_type=""):
     if not PORTFOLIO_URL:
         return
     try:
@@ -223,7 +238,7 @@ def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
         payload = {
             "symbol": symbol, "entry": price, "stop": stop,
             "tp1": tp1, "tp2": tp2, "sig_type": "smc",
-            "sub_type": break_type, "source": "smc-trailing", "phase": phase,
+            "sub_type": break_type, "source": source, "phase": phase,
         }
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
@@ -231,7 +246,9 @@ def send_to_portfolio(symbol, price, atr_val, phase, break_type=""):
         r = requests.post(f"{PORTFOLIO_URL}/api/signal",
                           json=payload, headers=headers, timeout=5)
         if r.status_code == 201:
-            print(f"[PORTFOLIO] SMC sinyal gönderildi: {symbol} ({phase})", flush=True)
+            print(f"[PORTFOLIO] {source} sinyal gönderildi: {symbol} ({phase})", flush=True)
+        elif r.status_code == 409:
+            print(f"[PORTFOLIO] {source} zaten açık: {symbol}", flush=True)
         else:
             print(f"[PORTFOLIO] HTTP {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
@@ -398,21 +415,13 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 
     top = trailing_top
     bottom = trailing_bottom
-
-    # ── LuxAlgo birebir zone hesabı ──
-    # Premium zone:  top → 0.95*top + 0.05*bottom
-    # Equilibrium:   orta bant
-    # Discount zone: 0.95*bottom + 0.05*top → bottom
     discount_top    = 0.95 * bottom + 0.05 * top
     discount_bottom = bottom
     equil = (top + bottom) / 2.0
 
     current_price = closes[-1]
-
-    # Fiyat discount zone içinde mi?
     in_discount = current_price <= discount_top
 
-    # Discount zone içindeki derinlik: 0 = discount_top, 100 = bottom
     if in_discount:
         dz_span = discount_top - discount_bottom
         if dz_span > 0:
@@ -420,7 +429,6 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         else:
             depth = 100.0
     else:
-        # Zone dışında — negatif depth (ne kadar uzakta)
         total_range = top - bottom
         if total_range > 0:
             depth = -((current_price - discount_top) / total_range * 100)
@@ -444,7 +452,7 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 # ============================================================
 def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, trend_bias, patterns):
+                     strategy_label, strategy_note, trend_bias, patterns, source_label):
     base = symbol.split("/")[0]
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
@@ -461,6 +469,7 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
     return (
         f"🎯🎯🎯 <b>PUSU KURULDU</b> 🎯🎯🎯\n<b>#{base}</b>  <i>{coin_name}</i>\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n📍 <b>AŞAMA 1 — DİSCOUNT ZONE İÇİNDE</b>\n"
+        f"🏷 <b>KAYNAK:</b> {source_label}\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
@@ -474,7 +483,7 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
 
 def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, patterns):
+                     strategy_label, strategy_note, patterns, source_label):
     base = symbol.split("/")[0]
     bt = smc_data['break_type']
     icon = "✅" if bt == "CHoCH" else "🔄"
@@ -499,7 +508,9 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
     return (
         f"🚀🚀🚀 <b>TETİK ÇEKİLDİ</b> 🚀🚀🚀\n<b>#{base}</b>  <i>{coin_name}</i>\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n⚡ <b>AŞAMA 2 — YAPISAL KIRILIM</b>\n"
-        f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n📈 <b>STRATEJİ:</b> {strategy_label}\n"
+        f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
+        f"🏷 <b>KAYNAK:</b> {source_label}\n"
+        f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
@@ -513,16 +524,59 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"{pattern_block}\n\n{strategy_note}\n\n{entry_msg}")
 
 # ============================================================
-# 9) ANA ANALİZ MOTORU
+# 9) ANA ANALİZ MOTORU — İKİ SİSTEM TEK FONKSİYON
 # ============================================================
+def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
+                    atr_ratio, atr_val, depth, smc_data, s_label, s_note,
+                    patterns, trend_bias_str, break_type, break_dir,
+                    source, source_label, now):
+    """Tek bir source için sinyal gönderme mantığı."""
+
+    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI
+    if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
+        if rsi < PHASE2_RSI:
+            last_p2 = get_last_sent(symbol, "phase2", source)
+            if now - last_p2 > PHASE2_COOLDOWN:
+                msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
+                                       rsi, raw_atr, atr_ratio, depth, smc_data,
+                                       s_label, s_note, patterns, source_label)
+                send_telegram_msg(msg)
+                mark_sent(symbol, "phase2", source)
+                send_to_portfolio(symbol, price, atr_val, "phase2", source, break_type)
+                scan_stats[f"signal_phase2_{source}"] += 1
+                pat_log = candle_pattern_summary(patterns)
+                print(f"🚀 [{source}] [P2] {symbol} | {break_type} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
+                      + (f" | {pat_log}" if pat_log else ""), flush=True)
+                return True
+            else:
+                scan_stats[f"cooldown_p2_{source}"] += 1
+
+    # AŞAMA 1: Discount zone İÇİNDE + RSI düşük
+    if rsi < PHASE1_RSI:
+        last_p1 = get_last_sent(symbol, "phase1", source)
+        if now - last_p1 > PHASE1_COOLDOWN:
+            msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
+                                   rsi, raw_atr, atr_ratio, depth, smc_data,
+                                   s_label, s_note, trend_bias_str, patterns, source_label)
+            send_telegram_msg(msg)
+            mark_sent(symbol, "phase1", source)
+            send_to_portfolio(symbol, price, atr_val, "phase1", source)
+            scan_stats[f"signal_phase1_{source}"] += 1
+            pat_log = candle_pattern_summary(patterns)
+            print(f"🎯 [{source}] [P1] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
+                  + (f" | {pat_log}" if pat_log else ""), flush=True)
+            return True
+        else:
+            scan_stats[f"cooldown_p1_{source}"] += 1
+
+    return False
+
+
 def analyze(symbol):
     try:
         now = time.time()
-
         btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
-        if btc_trend in ("BEAR", "KARISIK"):
-            scan_stats["btc_filter_skip"] += 1
-            return
+        btc_momentum = btc_trend_cache.get("momentum", "UNKNOWN")
 
         df = bars_cache.get(symbol)
         if df is None or len(df) < 200:
@@ -576,7 +630,6 @@ def analyze(symbol):
         else:
             scan_stats["no_break"] += 1
 
-        # Fiyat discount zone içinde değilse sinyal verme
         if not in_discount:
             scan_stats["not_in_discount"] += 1
             return
@@ -588,42 +641,23 @@ def analyze(symbol):
                           else "BEARISH" if smc_data['swing_trend'] == -1
                           else "NEUTRAL")
 
-        # ── AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI ──
-        if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-            if rsi < PHASE2_RSI:
-                last_p2 = get_last_sent(symbol, "phase2")
-                if now - last_p2 > PHASE2_COOLDOWN:
-                    msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
-                                           rsi, raw_atr, atr_ratio, depth, smc_data,
-                                           s_label, s_note, patterns)
-                    send_telegram_msg(msg)
-                    mark_sent(symbol, "phase2")
-                    send_to_portfolio(symbol, price, atr_val, "phase2", break_type)
-                    scan_stats["signal_phase2"] += 1
-                    pat_log = candle_pattern_summary(patterns)
-                    print(f"🚀 [AŞAMA 2] {symbol} | {break_type} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)} | {len(df)} bar"
-                          + (f" | {pat_log}" if pat_log else ""), flush=True)
-                    return
-                else:
-                    scan_stats["cooldown_p2"] += 1
+        common = dict(symbol=symbol, coin_name=coin_name, price=price, ma200=ma200,
+                      dist_ma=dist_ma, rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
+                      atr_val=atr_val, depth=depth, smc_data=smc_data, s_label=s_label,
+                      s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
+                      break_type=break_type, break_dir=break_dir, now=now)
 
-        # ── AŞAMA 1: Discount zone İÇİNDE + RSI düşük ──
-        if rsi < PHASE1_RSI:
-            last_p1 = get_last_sent(symbol, "phase1")
-            if now - last_p1 > PHASE1_COOLDOWN:
-                msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
-                                       rsi, raw_atr, atr_ratio, depth, smc_data,
-                                       s_label, s_note, trend_bias_str, patterns)
-                send_telegram_msg(msg)
-                mark_sent(symbol, "phase1")
-                send_to_portfolio(symbol, price, atr_val, "phase1")
-                scan_stats["signal_phase1"] += 1
-                pat_log = candle_pattern_summary(patterns)
-                print(f"🎯 [AŞAMA 1] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)} | {len(df)} bar"
-                      + (f" | {pat_log}" if pat_log else ""), flush=True)
-                return
-            else:
-                scan_stats["cooldown_p1"] += 1
+        # ── SMC-TRAILING: BEAR + KARISIK'ta sinyal verme ──
+        if btc_trend not in ("BEAR", "KARISIK"):
+            try_send_signal(**common, source="smc-trailing", source_label="SMC-T (Trailing)")
+        else:
+            scan_stats["trailing_btc_skip"] += 1
+
+        # ── SMC-MOMENTUM: BTC 1H EMA8 < EMA21 ise sinyal verme ──
+        if btc_trend != "BEAR" and btc_momentum != "DOWN":
+            try_send_signal(**common, source="smc-momentum", source_label="SMC-M (Momentum)")
+        else:
+            scan_stats["momentum_btc_skip"] += 1
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}")
@@ -638,19 +672,19 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Trailing v7 — BEAR+KARISIK Filtreli")
+    print("🚀  SMC Combined v7 — Trailing + Momentum")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
+    print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
     print(f"  Aşama 1        : Discount zone İÇİNDE + RSI <{PHASE1_RSI}")
     print(f"  Aşama 2        : Discount zone İÇİNDE + RSI <{PHASE2_RSI} + CHoCH/BOS")
-    print(f"  BTC Filtre     : BEAR + KARISIK'ta sinyal üretilmez")
+    print(f"  SMC-Trailing   : BEAR + KARISIK'ta sinyal üretilmez")
+    print(f"  SMC-Momentum   : BTC 1H EMA8 < EMA21 ise sinyal üretilmez")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
-    print(f"  Source         : smc-trailing")
     print("=" * 50 + "\n")
 
-    # Markets yükle (retry)
     for attempt in range(3):
         try:
             exchange.load_markets()
@@ -675,28 +709,28 @@ def start_scanner():
     while True:
         refresh_btc_trend()
         btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
+        btc_momentum = btc_trend_cache.get("momentum", "UNKNOWN")
 
         scan_stats.clear()
-        print(f"\n🔄 {len(bars_cache)} coin taranıyor... | BTC: {btc_trend}")
+        print(f"\n🔄 {len(bars_cache)} coin taranıyor... | BTC: {btc_trend} | Mom: {btc_momentum}")
 
-        if btc_trend in ("BEAR", "KARISIK"):
-            print(f"⚠️ BTC {btc_trend} — SMC sinyalleri devre dışı.")
-        else:
-            for symbol in list(bars_cache.keys()):
-                analyze(symbol)
-                time.sleep(0.5)
+        for symbol in list(bars_cache.keys()):
+            analyze(symbol)
+            time.sleep(0.5)
 
-        total_signals = scan_stats.get("signal_phase1", 0) + scan_stats.get("signal_phase2", 0)
+        sig_t = scan_stats.get("signal_phase1_smc-trailing", 0) + scan_stats.get("signal_phase2_smc-trailing", 0)
+        sig_m = scan_stats.get("signal_phase1_smc-momentum", 0) + scan_stats.get("signal_phase2_smc-momentum", 0)
+
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Cached coin  : {len(bars_cache)}", flush=True)
-        print(f"BTC Trend    : {btc_trend}", flush=True)
-        if btc_trend != "BEAR":
-            print(f"Discount'ta  : {scan_stats.get('in_discount', 0)}", flush=True)
-            print(f"Zone dışında : {scan_stats.get('not_in_discount', 0)}", flush=True)
-            print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
-            print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
-            print(f"Cooldown P1:{scan_stats.get('cooldown_p1', 0)}  P2:{scan_stats.get('cooldown_p2', 0)}", flush=True)
-        print(f"Sinyal       : {total_signals}  (🎯 P1:{scan_stats.get('signal_phase1', 0)}  🚀 P2:{scan_stats.get('signal_phase2', 0)})", flush=True)
+        print(f"BTC Trend    : {btc_trend} | Momentum: {btc_momentum}", flush=True)
+        print(f"Discount'ta  : {scan_stats.get('in_discount', 0)}", flush=True)
+        print(f"Zone dışında : {scan_stats.get('not_in_discount', 0)}", flush=True)
+        print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
+        print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
+        print(f"SMC-T skip   : {scan_stats.get('trailing_btc_skip', 0)} | Sinyal: {sig_t}", flush=True)
+        print(f"SMC-M skip   : {scan_stats.get('momentum_btc_skip', 0)} | Sinyal: {sig_m}", flush=True)
+        print(f"Toplam sinyal: {sig_t + sig_m}", flush=True)
         print(f"------------------------", flush=True)
 
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
