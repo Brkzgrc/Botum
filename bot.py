@@ -74,7 +74,7 @@ IGNORED_COINS = set([
     'USDE/USDT','UST/USDT','USD/USDT','XUSD/USDT','USD1/USDT','BFUSD/USDT',
     'USTC/USDT','BUSD/USDT','FRAX/USDT','LUSD/USDT','GUSD/USDT','SUSD/USDT',
     'USDS/USDT','USDX/USDT','USDD/USDT','CUSD/USDT','OUSD/USDT','MUSD/USDT',
-    'U/USDT',
+    'U/USDT','RLUSD/USDT',
     # Fiat
     'EUR/USDT','TRY/USDT','GBP/USDT','BRL/USDT','RUB/USDT',
     'AUD/USDT','BIDR/USDT','IDRT/USDT','VAI/USDT',
@@ -728,6 +728,11 @@ TP_SYSTEMS = {
         "conditions": {"atr_pct_tp": (">", 10), "roc12": ("<", -10), "adx": (">", 60)},
         "hit_rate": 87.5, "avg_return": 18.2, "rr": 2.2,
     },
+    "momentum": {
+        "icon": "🚀", "label": "MOMENTUM",
+        "conditions": {"macd_hist_norm": (">", 1.5), "vwap_dev": (">", 5), "adx": (">", 60)},
+        "hit_rate": 68.8, "avg_return": 15.7, "rr": 2.0,
+    },
     "crash": {
         "icon": "💥", "label": "CRASH DİP",
         "conditions": {"ema200_dist": ("<", -30), "vwap_dev": (">", 5)},
@@ -752,7 +757,7 @@ def check_tp_signal(df, symbol):
         return None
 
     # Her alt sistemi kontrol et (öncelik: volatilite > crash > momentum)
-    for sys_key in ["volatilite", "crash"]:
+    for sys_key in ["volatilite", "crash", "momentum"]:
         spec = TP_SYSTEMS[sys_key]
         ok = True
         values = {}
@@ -1320,20 +1325,10 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         hrs = (tr_now.replace(tzinfo=None) - last.replace(tzinfo=None)).total_seconds() / 3600
         return hrs >= TP_COOLDOWN_HOURS
 
-    # BTC trend durumunu belirle
-    btc_trend = btc_4h_cache.get("trend", "?")
-    is_bull = "Güçlü Yükseliş" in btc_trend or "Yükseliş" in btc_trend
-    is_bear = "Düşüş" in btc_trend
+    # Öncelik sırası: DİP > TP > TREND > BİRİKİM
+    # Bir sinyal bulununca diğerleri atlanır (aynı coin'e çift sinyal önleme)
 
-    # Backtest sonuçlarına göre sinyal filtresi:
-    # DIP          → her yerde (veri az ama mantık sağlam)
-    # TP-Volatilite → her yerde (her koşulda kârlı)
-    # TP-Crash     → sadece BEAR (bear'da +3130%, bull'da -51%)
-    # BİRİKİM     → sadece BULL/YUKSELIS (bear'da -469%)
-    # TREND       → KALDIRILDI (her yerde zararlı)
-    # TP-Momentum → KALDIRILDI (her yerde zararlı)
-
-    # DİP — her yerde çalışır
+    # DİP
     if cooldown_ok("dip"):
         result = check_dip_signal(df, symbol)
         if result:
@@ -1343,24 +1338,28 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         else:
             stats["filtered"] += 1
 
-    # TURNING POINT (Volatilite + Crash) — BTC trendine göre filtreli
+    # TURNING POINT
     if tp_cooldown_ok():
         result = check_tp_signal(df, symbol)
         if result:
-            tp_sys = result.get("tp_system", "")
-            # TP-Crash sadece bear'da
-            if tp_sys == "crash" and not is_bear:
-                stats["tp_filtered"] += 1
-            # TP-Volatilite her yerde
-            else:
-                await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
-                                                           tr_time=tr_now, sig_type="tp"))
-                return
+            await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
+                                                       tr_time=tr_now, sig_type="tp"))
+            return
         else:
             stats["tp_filtered"] += 1
 
-    # BİRİKİM — sadece BULL/YUKSELIS
-    if is_bull and cooldown_ok("birikim"):
+    # TREND
+    if cooldown_ok("trend"):
+        result = check_trend_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
+                                                       tr_time=tr_now, sig_type="trend"))
+            return
+        else:
+            stats["trend_filtered"] += 1
+
+    # BİRİKİM
+    if cooldown_ok("birikim"):
         result = check_birikim_signal(df, symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol=symbol, result=result,
