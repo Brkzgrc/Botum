@@ -41,9 +41,11 @@ BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
 PHASE1_RSI       = 35
+PHASE1_DEPTH     = 85
 PHASE1_COOLDOWN  = 86400
 
 PHASE2_RSI       = 48
+PHASE2_DEPTH     = 65
 PHASE2_COOLDOWN  = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
@@ -558,9 +560,9 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     source, source_label, now):
     """Tek bir source için sinyal gönderme mantığı."""
 
-    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI
+    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI + depth
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-        if rsi < PHASE2_RSI:
+        if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
             last_p2 = get_last_sent(symbol, "phase2", source)
             if now - last_p2 > PHASE2_COOLDOWN:
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -577,8 +579,8 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
             else:
                 scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone İÇİNDE + RSI düşük
-    if rsi < PHASE1_RSI:
+    # AŞAMA 1: Discount zone İÇİNDE + depth + RSI düşük
+    if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
         last_p1 = get_last_sent(symbol, "phase1", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
