@@ -232,9 +232,9 @@ def send_to_portfolio(symbol, price, atr_val, phase, source, break_type=""):
     if not PORTFOLIO_URL:
         return
     try:
-        stop = round(price - atr_val * 2.0, 10)
-        tp1  = round(price + atr_val * 2.0, 10)
-        tp2  = round(price + atr_val * 4.0, 10)
+        stop = round(price - atr_val * 4.0, 10)
+        tp1  = round(price + atr_val * 4.0, 10)
+        tp2  = round(price + atr_val * 6.0, 10)
         payload = {
             "symbol": symbol, "entry": price, "stop": stop,
             "tp1": tp1, "tp2": tp2, "sig_type": "smc",
@@ -452,10 +452,21 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 # ============================================================
 def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, trend_bias, patterns, source_label):
+                     strategy_label, strategy_note, trend_bias, patterns, source_label, atr_val=None):
     base = symbol.split("/")[0]
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+    # TP/STOP hesapla
+    if atr_val:
+        stop_val = round(price - atr_val * 4.0, 10)
+        tp1_val  = round(price + atr_val * 4.0, 10)
+        tp2_val  = round(price + atr_val * 6.0, 10)
+        stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
+        tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
+        tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
+        tp_block = f"🎯 <b>TP1:</b> <code>{tp1_str}</code>\n🚀 <b>TP2:</b> <code>{tp2_str}</code>\n🛑 <b>STOP:</b> <code>{stop_str}</code>\n"
+    else:
+        tp_block = ""
     dt = smc_data['discount_top']
     db = smc_data['discount_bottom']
     dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
@@ -472,6 +483,8 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
         f"🏷 <b>KAYNAK:</b> {source_label}\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"{tp_block}"
+        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
         f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
@@ -483,7 +496,7 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
 
 def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, patterns, source_label):
+                     strategy_label, strategy_note, patterns, source_label, atr_val=None):
     base = symbol.split("/")[0]
     bt = smc_data['break_type']
     icon = "✅" if bt == "CHoCH" else "🔄"
@@ -491,6 +504,17 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                 else "💪 <b>ORTA — BOS (Trend Devam)</b>")
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+    # TP/STOP hesapla
+    if atr_val:
+        stop_val = round(price - atr_val * 4.0, 10)
+        tp1_val  = round(price + atr_val * 4.0, 10)
+        tp2_val  = round(price + atr_val * 6.0, 10)
+        stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
+        tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
+        tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
+        tp_block = f"🎯 <b>TP1:</b> <code>{tp1_str}</code>\n🚀 <b>TP2:</b> <code>{tp2_str}</code>\n🛑 <b>STOP:</b> <code>{stop_str}</code>\n"
+    else:
+        tp_block = ""
     dt = smc_data['discount_top']
     db = smc_data['discount_bottom']
     dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
@@ -513,6 +537,8 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"{tp_block}"
+        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
         f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
@@ -539,7 +565,7 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
             if now - last_p2 > PHASE2_COOLDOWN:
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                                        rsi, raw_atr, atr_ratio, depth, smc_data,
-                                       s_label, s_note, patterns, source_label)
+                                       s_label, s_note, patterns, source_label, atr_val=atr_val)
                 send_telegram_msg(msg)
                 mark_sent(symbol, "phase2", source)
                 send_to_portfolio(symbol, price, atr_val, "phase2", source, break_type)
@@ -557,7 +583,7 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                                    rsi, raw_atr, atr_ratio, depth, smc_data,
-                                   s_label, s_note, trend_bias_str, patterns, source_label)
+                                   s_label, s_note, trend_bias_str, patterns, source_label, atr_val=atr_val)
             send_telegram_msg(msg)
             mark_sent(symbol, "phase1", source)
             send_to_portfolio(symbol, price, atr_val, "phase1", source)
