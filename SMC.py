@@ -442,7 +442,6 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
     base = symbol.split("/")[0]
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
-    # TP/STOP hesapla
     if atr_val:
         stop_val = round(price - atr_val * 4.0, 10)
         tp1_val  = round(price + atr_val * 4.0, 10)
@@ -490,7 +489,6 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                 else "💪 <b>ORTA — BOS (Trend Devam)</b>")
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
-    # TP/STOP hesapla
     if atr_val:
         stop_val = round(price - atr_val * 4.0, 10)
         tp1_val  = round(price + atr_val * 4.0, 10)
@@ -536,17 +534,16 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"{pattern_block}\n\n{strategy_note}\n\n{entry_msg}")
 
 # ============================================================
-# 9) ANA ANALİZ MOTORU — İKİ SİSTEM TEK FONKSİYON
+# 9) ANA ANALİZ MOTORU
 # ============================================================
 def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     atr_ratio, atr_val, depth, smc_data, s_label, s_note,
                     patterns, trend_bias_str, break_type, break_dir,
                     source, source_label, now):
-    """Tek bir source için sinyal gönderme mantığı."""
 
-    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI
+    # AŞAMA 2: Discount zone İÇİNDE + depth >= PHASE2_DEPTH + CHoCH/BOS + RSI
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-        if rsi < PHASE2_RSI:
+        if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
             last_p2 = get_last_sent(symbol, "phase2", source)
             if now - last_p2 > PHASE2_COOLDOWN:
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -563,8 +560,8 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
             else:
                 scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone İÇİNDE + RSI düşük
-    if rsi < PHASE1_RSI:
+    # AŞAMA 1: Discount zone İÇİNDE + depth >= PHASE1_DEPTH + RSI düşük
+    if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
         last_p1 = get_last_sent(symbol, "phase1", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
