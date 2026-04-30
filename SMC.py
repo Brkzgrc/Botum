@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Combined v7 — Trailing + Momentum | {boot_status} | {cached} coin cached", 200
+    return f"SMC Original v7 — Filtresiz | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -41,11 +41,9 @@ BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
 PHASE1_RSI       = 35
-PHASE1_DEPTH     = 85
 PHASE1_COOLDOWN  = 86400
 
 PHASE2_RSI       = 48
-PHASE2_DEPTH     = 65
 PHASE2_COOLDOWN  = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
@@ -134,9 +132,9 @@ def update_cache(symbol):
         pass
 
 # ============================================================
-# 1c) BTC TREND + MOMENTUM
+# 1c) BTC TREND
 # ============================================================
-btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "momentum": "UNKNOWN", "updated": 0}
+btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "updated": 0}
 
 def refresh_btc_trend():
     try:
@@ -159,26 +157,10 @@ def refresh_btc_trend():
         else:
             trend = "BEAR"
 
-        # Kısa vadeli momentum: 1H EMA8/EMA21
-        momentum = "UNKNOWN"
-        try:
-            bars_1h = exchange.fetch_ohlcv("BTC/USDT", timeframe="1h", limit=30)
-            if len(bars_1h) >= 25:
-                df_1h = pd.DataFrame(bars_1h, columns=["ts","open","high","low","close","volume"])
-                c_1h = df_1h["close"]
-                ema8 = c_1h.ewm(span=8, adjust=False).mean()
-                ema21 = c_1h.ewm(span=21, adjust=False).mean()
-                last_ema8 = float(ema8.iloc[-1])
-                last_ema21 = float(ema21.iloc[-1])
-                momentum = "UP" if last_ema8 > last_ema21 else "DOWN"
-        except Exception:
-            pass
-
         btc_trend_cache["trend"] = trend
         btc_trend_cache["close"] = last_c
-        btc_trend_cache["momentum"] = momentum
         btc_trend_cache["updated"] = time.time()
-        print(f"BTC 4H: {trend} | 1H Momentum: {momentum} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
+        print(f"BTC 4H: {trend} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
     except Exception as e:
         print(f"BTC trend hata: {e}", flush=True)
 
@@ -560,9 +542,9 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     source, source_label, now):
     """Tek bir source için sinyal gönderme mantığı."""
 
-    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI + depth
+    # AŞAMA 2: Discount zone İÇİNDE + CHoCH/BOS + RSI
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-        if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
+        if rsi < PHASE2_RSI:
             last_p2 = get_last_sent(symbol, "phase2", source)
             if now - last_p2 > PHASE2_COOLDOWN:
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -579,8 +561,8 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
             else:
                 scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone İÇİNDE + depth + RSI düşük
-    if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
+    # AŞAMA 1: Discount zone İÇİNDE + RSI düşük
+    if rsi < PHASE1_RSI:
         last_p1 = get_last_sent(symbol, "phase1", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -603,8 +585,6 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
 def analyze(symbol):
     try:
         now = time.time()
-        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
-        btc_momentum = btc_trend_cache.get("momentum", "UNKNOWN")
 
         df = bars_cache.get(symbol)
         if df is None or len(df) < 200:
@@ -675,17 +655,7 @@ def analyze(symbol):
                       s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
                       break_type=break_type, break_dir=break_dir, now=now)
 
-        # ── SMC-TRAILING: BEAR + KARISIK'ta sinyal verme ──
-        if btc_trend not in ("BEAR", "KARISIK"):
-            try_send_signal(**common, source="smc-trailing", source_label="SMC-T (Trailing)")
-        else:
-            scan_stats["trailing_btc_skip"] += 1
-
-        # ── SMC-MOMENTUM: BTC 1H EMA8 < EMA21 ise sinyal verme ──
-        if btc_trend != "BEAR" and btc_momentum != "DOWN":
-            try_send_signal(**common, source="smc-momentum", source_label="SMC-M (Momentum)")
-        else:
-            scan_stats["momentum_btc_skip"] += 1
+        try_send_signal(**common, source="smc-original", source_label="SMC")
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}")
@@ -700,16 +670,15 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Combined v7 — Trailing + Momentum")
+    print("🚀  SMC Original v7 — Filtresiz")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
-    print(f"  Aşama 1        : Discount zone İÇİNDE + RSI <{PHASE1_RSI}")
-    print(f"  Aşama 2        : Discount zone İÇİNDE + RSI <{PHASE2_RSI} + CHoCH/BOS")
-    print(f"  SMC-Trailing   : BEAR + KARISIK'ta sinyal üretilmez")
-    print(f"  SMC-Momentum   : BTC 1H EMA8 < EMA21 ise sinyal üretilmez")
+    print(f"  Aşama 1        : Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
+    print(f"  Aşama 2        : Depth >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
+    print(f"  BTC Filtre     : Yok — her koşulda çalışır")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
     print("=" * 50 + "\n")
 
@@ -732,33 +701,25 @@ def start_scanner():
         print(f"Tekrar deneme: {len(symbols)} coin bulundu", flush=True)
 
     bootstrap_all(symbols)
-    refresh_btc_trend()
 
     while True:
-        refresh_btc_trend()
-        btc_trend = btc_trend_cache.get("trend", "UNKNOWN")
-        btc_momentum = btc_trend_cache.get("momentum", "UNKNOWN")
-
         scan_stats.clear()
-        print(f"\n🔄 {len(bars_cache)} coin taranıyor... | BTC: {btc_trend} | Mom: {btc_momentum}")
+        print(f"\n🔄 {len(bars_cache)} coin taranıyor...")
 
         for symbol in list(bars_cache.keys()):
             analyze(symbol)
             time.sleep(0.5)
 
-        sig_t = scan_stats.get("signal_phase1_smc-trailing", 0) + scan_stats.get("signal_phase2_smc-trailing", 0)
-        sig_m = scan_stats.get("signal_phase1_smc-momentum", 0) + scan_stats.get("signal_phase2_smc-momentum", 0)
+        total_signals = scan_stats.get("signal_phase1_smc-original", 0) + scan_stats.get("signal_phase2_smc-original", 0)
 
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Cached coin  : {len(bars_cache)}", flush=True)
-        print(f"BTC Trend    : {btc_trend} | Momentum: {btc_momentum}", flush=True)
         print(f"Discount'ta  : {scan_stats.get('in_discount', 0)}", flush=True)
         print(f"Zone dışında : {scan_stats.get('not_in_discount', 0)}", flush=True)
         print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
         print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
-        print(f"SMC-T skip   : {scan_stats.get('trailing_btc_skip', 0)} | Sinyal: {sig_t}", flush=True)
-        print(f"SMC-M skip   : {scan_stats.get('momentum_btc_skip', 0)} | Sinyal: {sig_m}", flush=True)
-        print(f"Toplam sinyal: {sig_t + sig_m}", flush=True)
+        print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
+        print(f"Toplam sinyal: {total_signals}", flush=True)
         print(f"------------------------", flush=True)
 
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
