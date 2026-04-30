@@ -544,17 +544,17 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
     # AŞAMA 2: Discount zone İÇİNDE + depth >= PHASE2_DEPTH + CHoCH/BOS + RSI
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
         if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
-            last_p2 = get_last_sent(symbol, "phase2", source)
+            last_p2 = get_last_sent(symbol, "tetik", source)
             if now - last_p2 > PHASE2_COOLDOWN:
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                                        rsi, raw_atr, atr_ratio, depth, smc_data,
                                        s_label, s_note, patterns, source_label, atr_val=atr_val)
                 send_telegram_msg(msg)
-                mark_sent(symbol, "phase2", source)
-                send_to_portfolio(symbol, price, atr_val, "phase2", source, break_type)
+                mark_sent(symbol, "tetik", source)
+                send_to_portfolio(symbol, price, atr_val, "tetik", source, break_type)
                 scan_stats[f"signal_phase2_{source}"] += 1
                 pat_log = candle_pattern_summary(patterns)
-                print(f"🚀 [{source}] [P2] {symbol} | {break_type} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
+                print(f"🚀 [{source}] [TETİK] {symbol} | {break_type} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
                       + (f" | {pat_log}" if pat_log else ""), flush=True)
                 return True
             else:
@@ -562,17 +562,17 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
 
     # AŞAMA 1: Discount zone İÇİNDE + depth >= PHASE1_DEPTH + RSI düşük
     if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
-        last_p1 = get_last_sent(symbol, "phase1", source)
+        last_p1 = get_last_sent(symbol, "pusu", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                                    rsi, raw_atr, atr_ratio, depth, smc_data,
                                    s_label, s_note, trend_bias_str, patterns, source_label, atr_val=atr_val)
             send_telegram_msg(msg)
-            mark_sent(symbol, "phase1", source)
-            send_to_portfolio(symbol, price, atr_val, "phase1", source)
+            mark_sent(symbol, "pusu", source)
+            send_to_portfolio(symbol, price, atr_val, "pusu", source)
             scan_stats[f"signal_phase1_{source}"] += 1
             pat_log = candle_pattern_summary(patterns)
-            print(f"🎯 [{source}] [P1] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
+            print(f"🎯 [{source}] [PUSU] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
                   + (f" | {pat_log}" if pat_log else ""), flush=True)
             return True
         else:
