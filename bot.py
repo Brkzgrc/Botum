@@ -1045,11 +1045,13 @@ async def periodic_tasks():
         await asyncio.sleep(600)
         tick += 1
         print(
-            f"\n--- ÖZET --- Sembol:{len(tracked_symbols)} 1H:{ws_1h_closes} "
-            f"Sinyal:{stats.get('signal_sent',0)} "
-            f"Filtre(RSI:{stats.get('filtered_rsi',0)} WT:{stats.get('filtered_wt',0)} "
-            f"MACD:{stats.get('filtered_macd',0)} EMA200:{stats.get('filtered_ema200',0)} "
-            f"Mom:{stats.get('filtered_mom24h',0)} Vol:{stats.get('low_liquidity',0)})",
+            f"\n╔══════════════ ÖZET ══════════════╗\n"
+            f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Sinyal: {stats.get('signal_sent',0)}\n"
+            f"  ── Filtre ──\n"
+            f"  RSI:  {stats.get('filtered_rsi',0):<6} WT:     {stats.get('filtered_wt',0)}\n"
+            f"  MACD: {stats.get('filtered_macd',0):<6} EMA200: {stats.get('filtered_ema200',0)}\n"
+            f"  Mom:  {stats.get('filtered_mom24h',0):<6} Vol:    {stats.get('low_liquidity',0)}\n"
+            f"╚══════════════════════════════════╝",
             flush=True,
         )
         if tick % 2 == 0:
