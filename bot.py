@@ -306,18 +306,7 @@ def detect_candle(df, i):
     if is_hammer(df, i):       return "🔨 Hammer"
     return ""
 
-# ============================================================
-# STOP / TP HESAPLAMA (Adaptive ATR — v8'den)
-# ============================================================
-def calc_stops(entry, atr_val):
-    ratio = atr_val / entry
-    if ratio > 0.04:   atr_mult = 2.0
-    elif ratio > 0.02: atr_mult = 1.8
-    else:              atr_mult = 1.4
-    stop = min(max(entry - atr_val * atr_mult, entry * 0.88), entry * 0.97)
-    tp1  = round(entry + atr_val * 2.0, 8)
-    tp2  = round(entry + atr_val * 4.0, 8)
-    return round(stop, 8), tp1, tp2
+
 
 # ============================================================
 # PUMP SİNYAL KONTROLÜ
@@ -383,7 +372,9 @@ def check_pump_signal(df: pd.DataFrame, symbol: str, live_vol: float) -> dict | 
         return None
 
     # ── Tüm koşullar sağlandı → sinyal ──
-    stop, tp1, tp2 = calc_stops(entry, atr_val)
+    stop = round(entry * 0.96, 8)   # -%4
+    tp1  = round(entry * 1.08, 8)   # +%8
+    tp2  = round(entry * 1.20, 8)   # +%20 (shadow referansı)
 
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
