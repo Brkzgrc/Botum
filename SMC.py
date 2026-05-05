@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Original v7 — Filtresiz | {boot_status} | {cached} coin cached", 200
+    return f"SMC Original v8 — BTC Filtreli | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -134,37 +134,36 @@ def update_cache(symbol):
         pass
 
 # ============================================================
-# 1c) BTC TREND
+# 1c) BTC ÇAKILIŞ FİLTRESİ
 # ============================================================
-btc_trend_cache = {"trend": "UNKNOWN", "close": 0, "updated": 0}
+btc_crash_cache = {"crashing": False, "updated": 0}
 
-def refresh_btc_trend():
+BTC_CRASH_PCT   = 3.0   # 4 saatte bu kadar düşerse filtre devreye girer
+BTC_CRASH_TTL   = 1800  # 30 dk cache — her coin için API çağrısı yapmaz
+
+def check_btc_crash():
+    now = time.time()
+    if now - btc_crash_cache["updated"] < BTC_CRASH_TTL:
+        return btc_crash_cache["crashing"]
     try:
-        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=100)
-        if len(bars) < 60:
-            return
-        df = pd.DataFrame(bars, columns=["ts","open","high","low","close","volume"])
-        c = df["close"]
-        e50 = c.ewm(span=50, adjust=False).mean()
-        e200 = c.ewm(span=200, adjust=False).mean()
-        last_c = float(c.iloc[-1])
-        last_e50 = float(e50.iloc[-1])
-        last_e200 = float(e200.iloc[-1])
-        if last_c > last_e50 and last_e50 > last_e200:
-            trend = "BULL"
-        elif last_c > last_e50:
-            trend = "YUKSELIS"
-        elif last_c > last_e200:
-            trend = "KARISIK"
+        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=2)
+        if len(bars) < 2:
+            btc_crash_cache["crashing"] = False
         else:
-            trend = "BEAR"
-
-        btc_trend_cache["trend"] = trend
-        btc_trend_cache["close"] = last_c
-        btc_trend_cache["updated"] = time.time()
-        print(f"BTC 4H: {trend} | Fiyat:{last_c:.0f} EMA50:{last_e50:.0f}", flush=True)
+            prev_close = float(bars[-2][4])
+            curr_close = float(bars[-1][4])
+            change_pct = ((curr_close - prev_close) / prev_close) * 100
+            crashing = change_pct <= -BTC_CRASH_PCT
+            btc_crash_cache["crashing"] = crashing
+            if crashing:
+                print(f"⚠️ BTC ÇAKILIYOR: {change_pct:.1f}% (4h) — yeni sinyaller askıya alındı", flush=True)
+            else:
+                print(f"✅ BTC normal: {change_pct:+.1f}% (4h)", flush=True)
     except Exception as e:
-        print(f"BTC trend hata: {e}", flush=True)
+        print(f"BTC crash check hata: {e}", flush=True)
+        btc_crash_cache["crashing"] = False
+    btc_crash_cache["updated"] = now
+    return btc_crash_cache["crashing"]
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -401,7 +400,7 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 
     top = trailing_top
     bottom = trailing_bottom
-    discount_top    = 0.95 * bottom + 0.05 * top
+    discount_top    = 0.75 * bottom + 0.25 * top  # LuxAlgo: alt %25 bant
     discount_bottom = bottom
     equil = (top + bottom) / 2.0
 
@@ -541,6 +540,11 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     patterns, trend_bias_str, break_type, break_dir,
                     source, source_label, now):
 
+    # BTC aktif çakılıyorsa yeni sinyal verme
+    if check_btc_crash():
+        scan_stats["btc_crash_skip"] += 1
+        return False
+
     # AŞAMA 2: Discount zone İÇİNDE + depth >= PHASE2_DEPTH + CHoCH/BOS + RSI
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
         if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
@@ -669,7 +673,7 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v7 — Filtresiz")
+    print("🚀  SMC Original v8 — BTC Filtreli")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
@@ -677,8 +681,8 @@ def start_scanner():
     print(f"  Swing length   : {SWING_LENGTH}")
     print(f"  Aşama 1        : Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
     print(f"  Aşama 2        : Depth >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
-    print(f"  BTC Filtre     : Yok — her koşulda çalışır")
-    print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
+    print(f"  BTC Filtre     : Aktif — 4h'te %-{BTC_CRASH_PCT} düşüş = sinyaller askıya")
+    print(f"  Discount Zone  : LuxAlgo alt %25 bant")
     print("=" * 50 + "\n")
 
     for attempt in range(3):
@@ -718,6 +722,7 @@ def start_scanner():
         print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
         print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
         print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
+        print(f"BTC çakılış skip: {scan_stats.get('btc_crash_skip', 0)}", flush=True)
         print(f"Toplam sinyal: {total_signals}", flush=True)
         print(f"------------------------", flush=True)
 
