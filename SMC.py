@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Original v8 — BTC Filtreli | {boot_status} | {cached} coin cached", 200
+    return f"SMC Original v9 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -44,9 +44,9 @@ PHASE1_RSI       = 35
 PHASE1_DEPTH     = 85
 PHASE1_COOLDOWN  = 86400
 
-PHASE2_RSI       = 48
-PHASE2_DEPTH     = 65
-PHASE2_COOLDOWN  = 86400
+PHASE2_RSI           = 48
+PHASE2_PUSU_WINDOW   = 72 * 3600  # Discount sinyalinden sonra max 72 saat CHoCH beklenir
+PHASE2_COOLDOWN      = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
 
@@ -138,8 +138,8 @@ def update_cache(symbol):
 # ============================================================
 btc_crash_cache = {"crashing": False, "updated": 0}
 
-BTC_CRASH_PCT   = 3.0   # 4 saatte bu kadar düşerse filtre devreye girer
-BTC_CRASH_TTL   = 1800  # 30 dk cache — her coin için API çağrısı yapmaz
+BTC_CRASH_PCT   = 3.0
+BTC_CRASH_TTL   = 1800
 
 def check_btc_crash():
     now = time.time()
@@ -400,7 +400,7 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
 
     top = trailing_top
     bottom = trailing_bottom
-    discount_top    = 0.75 * bottom + 0.25 * top  # LuxAlgo: alt %25 bant
+    discount_top    = 0.95 * bottom + 0.05 * top  # LuxAlgo birebir: alt %5 bant
     discount_bottom = bottom
     equil = (top + bottom) / 2.0
 
@@ -462,7 +462,7 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
                          f"📊 <b>MUM FORMASYONU</b>\n{pattern_line}\n"
                          f"<i>Alıcı baskısı görülüyor — CHoCH/BOS yakın olabilir.</i>")
     return (
-        f"🎯🎯🎯 <b>PUSU KURULDU</b> 🎯🎯🎯\n<b>#{base}</b>  <i>{coin_name}</i>\n"
+        f"📉📉📉 <b>DİSCOUNT ZONE</b> 📉📉📉\n<b>#{base}</b>  <i>{coin_name}</i>\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n📍 <b>AŞAMA 1 — DİSCOUNT ZONE İÇİNDE</b>\n"
         f"🏷 <b>KAYNAK:</b> {source_label}\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
@@ -476,7 +476,7 @@ def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
         f"📉 <b>ZONE DERİNLİĞİ:</b> %{round(depth, 1)}\n"
         f"📐 <b>MEVCUT TREND:</b> {trend_bias}{pattern_block}\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n{strategy_note}\n\n"
-        f"⏳ <b>CHoCH/BOS bekleniyor — tetik çekilmedi!</b>\n👁 TradingView'da izlemeye al.")
+        f"⏳ <b>CHoCH/BOS bekleniyor — giriş sinyali henüz yok!</b>\n👁 TradingView'da izlemeye al.")
 
 def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
@@ -513,7 +513,7 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
     if pattern_line and bt == "CHoCH":
         entry_msg = "🟢🟢 <b>GÜÇLÜ GİRİŞ SİNYALİ!</b> Formasyon + CHoCH kombinasyonu."
     return (
-        f"🚀🚀🚀 <b>TETİK ÇEKİLDİ</b> 🚀🚀🚀\n<b>#{base}</b>  <i>{coin_name}</i>\n"
+        f"🚀🚀🚀 <b>CHoCH / BOS</b> 🚀🚀🚀\n<b>#{base}</b>  <i>{coin_name}</i>\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n⚡ <b>AŞAMA 2 — YAPISAL KIRILIM</b>\n"
         f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
         f"🏷 <b>KAYNAK:</b> {source_label}\n"
@@ -525,8 +525,7 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
         f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
         f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
-        f"📉 <b>DISCOUNT ZONE:</b> <code>{dt_str}</code> — <code>{db_str}</code>\n"
-        f"📉 <b>ZONE DERİNLİĞİ:</b> %{round(depth, 1)}\n\n"
+        f"📉 <b>DISCOUNT ZONE:</b> <code>{dt_str}</code> — <code>{db_str}</code>\n\n"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"{icon} <b>{bt}:</b> Swing yapısal kırılım ({smc_data['break_direction']})\n"
         f"📐 <b>Swing Trend:</b> {'BULLISH' if smc_data['swing_trend']==1 else 'BEARISH'}"
@@ -538,34 +537,36 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
 def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     atr_ratio, atr_val, depth, smc_data, s_label, s_note,
                     patterns, trend_bias_str, break_type, break_dir,
-                    source, source_label, now):
+                    in_discount, source, source_label, now):
 
     # BTC aktif çakılıyorsa yeni sinyal verme
     if check_btc_crash():
         scan_stats["btc_crash_skip"] += 1
         return False
 
-    # AŞAMA 2: Discount zone İÇİNDE + depth >= PHASE2_DEPTH + CHoCH/BOS + RSI
+    # AŞAMA 2: Son 72 saatte discount sinyali gelmiş + CHoCH/BOS bullish + RSI uygun
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-        if depth >= PHASE2_DEPTH and rsi < PHASE2_RSI:
-            last_p2 = get_last_sent(symbol, "tetik", source)
-            if now - last_p2 > PHASE2_COOLDOWN:
-                msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
-                                       rsi, raw_atr, atr_ratio, depth, smc_data,
-                                       s_label, s_note, patterns, source_label, atr_val=atr_val)
-                send_telegram_msg(msg)
-                mark_sent(symbol, "tetik", source)
-                send_to_portfolio(symbol, price, atr_val, "tetik", source, break_type)
-                scan_stats[f"signal_phase2_{source}"] += 1
-                pat_log = candle_pattern_summary(patterns)
-                print(f"🚀 [{source}] [TETİK] {symbol} | {break_type} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
-                      + (f" | {pat_log}" if pat_log else ""), flush=True)
-                return True
-            else:
-                scan_stats[f"cooldown_p2_{source}"] += 1
+        last_discount = get_last_sent(symbol, "pusu", source)
+        if last_discount > 0 and (now - last_discount) < PHASE2_PUSU_WINDOW:
+            if rsi < PHASE2_RSI:
+                last_p2 = get_last_sent(symbol, "tetik", source)
+                if now - last_p2 > PHASE2_COOLDOWN:
+                    msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
+                                           rsi, raw_atr, atr_ratio, depth, smc_data,
+                                           s_label, s_note, patterns, source_label, atr_val=atr_val)
+                    send_telegram_msg(msg)
+                    mark_sent(symbol, "tetik", source)
+                    send_to_portfolio(symbol, price, atr_val, "tetik", source, break_type)
+                    scan_stats[f"signal_phase2_{source}"] += 1
+                    pat_log = candle_pattern_summary(patterns)
+                    print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
+                          + (f" | {pat_log}" if pat_log else ""), flush=True)
+                    return True
+                else:
+                    scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone İÇİNDE + depth >= PHASE1_DEPTH + RSI düşük
-    if depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
+    # AŞAMA 1: Discount zone içinde + depth yüksek + RSI düşük
+    if in_discount and depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
         last_p1 = get_last_sent(symbol, "pusu", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -576,7 +577,7 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
             send_to_portfolio(symbol, price, atr_val, "pusu", source)
             scan_stats[f"signal_phase1_{source}"] += 1
             pat_log = candle_pattern_summary(patterns)
-            print(f"🎯 [{source}] [PUSU] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
+            print(f"📉 [{source}] [DISCOUNT] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
                   + (f" | {pat_log}" if pat_log else ""), flush=True)
             return True
         else:
@@ -641,11 +642,10 @@ def analyze(symbol):
         else:
             scan_stats["no_break"] += 1
 
-        if not in_discount:
+        if in_discount:
+            scan_stats["in_discount"] += 1
+        else:
             scan_stats["not_in_discount"] += 1
-            return
-
-        scan_stats["in_discount"] += 1
 
         patterns = detect_candle_patterns(df)
         trend_bias_str = ("BULLISH" if smc_data['swing_trend'] == 1
@@ -656,7 +656,8 @@ def analyze(symbol):
                       dist_ma=dist_ma, rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
                       atr_val=atr_val, depth=depth, smc_data=smc_data, s_label=s_label,
                       s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
-                      break_type=break_type, break_dir=break_dir, now=now)
+                      break_type=break_type, break_dir=break_dir,
+                      in_discount=in_discount, now=now)
 
         try_send_signal(**common, source="smc-original", source_label="SMC")
 
@@ -673,16 +674,16 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v8 — BTC Filtreli")
+    print("🚀  SMC Original v9 — Discount + CHoCH")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
-    print(f"  Aşama 1        : Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
-    print(f"  Aşama 2        : Depth >%{PHASE2_DEPTH} + RSI <{PHASE2_RSI} + CHoCH/BOS")
+    print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
+    print(f"  Aşama 1        : Discount zone + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
+    print(f"  Aşama 2        : Son {PHASE2_PUSU_WINDOW//3600}h discount + CHoCH/BOS + RSI <{PHASE2_RSI}")
     print(f"  BTC Filtre     : Aktif — 4h'te %-{BTC_CRASH_PCT} düşüş = sinyaller askıya")
-    print(f"  Discount Zone  : LuxAlgo alt %25 bant")
     print("=" * 50 + "\n")
 
     for attempt in range(3):
