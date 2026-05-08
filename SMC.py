@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Original v9 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
+    return f"SMC Original v10 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -379,19 +379,28 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         if trailing_bottom is not None and lows[i] < trailing_bottom:
             trailing_bottom = lows[i]
         if i == n - 1:
-            c_now = closes[i]; c_prev = closes[i - 1]
-            if (swing_high_level is not None and not swing_high_crossed
-                    and c_now > swing_high_level and c_prev <= swing_high_level):
-                swing_high_crossed = True
-                break_type = "CHoCH" if swing_trend == -1 else "BOS"
-                break_direction = "BULLISH"
-                swing_trend = 1
-            if (swing_low_level is not None and not swing_low_crossed
-                    and c_now < swing_low_level and c_prev >= swing_low_level):
-                swing_low_crossed = True
-                break_type = "CHoCH" if swing_trend == 1 else "BOS"
-                break_direction = "BEARISH"
-                swing_trend = -1
+            # Bullish kırılım: son 3 bar içinde swing high geçildi mi?
+            for lb in range(min(3, i)):
+                c_check      = closes[i - lb]
+                c_check_prev = closes[i - lb - 1]
+                if (swing_high_level is not None and not swing_high_crossed
+                        and c_check > swing_high_level and c_check_prev <= swing_high_level):
+                    swing_high_crossed = True
+                    break_type = "CHoCH" if swing_trend == -1 else "BOS"
+                    break_direction = "BULLISH"
+                    swing_trend = 1
+                    break
+            # Bearish kırılım: son 3 bar içinde swing low geçildi mi?
+            for lb in range(min(3, i)):
+                c_check      = closes[i - lb]
+                c_check_prev = closes[i - lb - 1]
+                if (swing_low_level is not None and not swing_low_crossed
+                        and c_check < swing_low_level and c_check_prev >= swing_low_level):
+                    swing_low_crossed = True
+                    break_type = "CHoCH" if swing_trend == 1 else "BOS"
+                    break_direction = "BEARISH"
+                    swing_trend = -1
+                    break
 
     if trailing_top is None or trailing_bottom is None:
         return None
@@ -674,7 +683,7 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v9 — Discount + CHoCH")
+    print("🚀  SMC Original v10 — Discount + CHoCH (3-bar window)")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
