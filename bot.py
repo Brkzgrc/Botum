@@ -447,10 +447,11 @@ async def refresh_btc_4h():
 def fmt_price(price):
     if price is None: return "?"
     p = float(price)
-    if p >= 100:  return f"{p:.2f}"
-    if p >= 1:    return f"{p:.3f}"
-    if p >= 0.01: return f"{p:.4f}"
-    return f"{p:.6f}"
+    if p >= 100:    return f"{p:.2f}"
+    if p >= 1:      return f"{p:.3f}"
+    if p >= 0.01:   return f"{p:.4f}"
+    if p >= 0.0001: return f"{p:.6f}"
+    return f"{p:.8f}"
 
 def _pct(new, ref):
     if not ref: return "?"
