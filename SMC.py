@@ -563,8 +563,8 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
         scan_stats["btc_crash_skip"] += 1
         return False
 
-    # AŞAMA 2: CHoCH/BOS bullish + RSI uygun (Phase 1'den bağımsız)
-    if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
+    # AŞAMA 2: Sadece CHoCH bullish + RSI uygun (Phase 1'den bağımsız)
+    if break_type == "CHoCH" and break_dir == "BULLISH":
         if rsi < PHASE2_RSI:
             last_p2 = get_last_sent(symbol, "choch", source)
             if now - last_p2 > PHASE2_COOLDOWN:
