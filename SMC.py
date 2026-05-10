@@ -17,7 +17,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Original v10 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
+    return f"SMC Original v11 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -45,7 +45,6 @@ PHASE1_DEPTH     = 85
 PHASE1_COOLDOWN  = 86400
 
 PHASE2_RSI           = 48
-PHASE2_PUSU_WINDOW   = 72 * 3600  # Discount sinyalinden sonra max 72 saat CHoCH beklenir
 PHASE2_COOLDOWN      = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
@@ -378,6 +377,17 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
             trailing_top = highs[i]
         if trailing_bottom is not None and lows[i] < trailing_bottom:
             trailing_bottom = lows[i]
+        # Tarihsel swing_trend takibi (son 3 bar hariç — 3-bar lookback ile çakışmasın)
+        if i < n - 3:
+            c = closes[i]; c_prev = closes[i - 1]
+            if (swing_high_level is not None and not swing_high_crossed
+                    and c > swing_high_level and c_prev <= swing_high_level):
+                swing_high_crossed = True
+                swing_trend = 1
+            if (swing_low_level is not None and not swing_low_crossed
+                    and c < swing_low_level and c_prev >= swing_low_level):
+                swing_low_crossed = True
+                swing_trend = -1
         if i == n - 1:
             # Bullish kırılım: son 3 bar içinde swing high geçildi mi?
             for lb in range(min(3, i)):
@@ -553,26 +563,24 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
         scan_stats["btc_crash_skip"] += 1
         return False
 
-    # AŞAMA 2: Son 72 saatte discount sinyali gelmiş + CHoCH/BOS bullish + RSI uygun
+    # AŞAMA 2: CHoCH/BOS bullish + RSI uygun (Phase 1'den bağımsız)
     if break_type in ("CHoCH", "BOS") and break_dir == "BULLISH":
-        last_discount = get_last_sent(symbol, "discount", source)
-        if last_discount > 0 and (now - last_discount) < PHASE2_PUSU_WINDOW:
-            if rsi < PHASE2_RSI:
-                last_p2 = get_last_sent(symbol, "choch", source)
-                if now - last_p2 > PHASE2_COOLDOWN:
-                    msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
-                                           rsi, raw_atr, atr_ratio, depth, smc_data,
-                                           s_label, s_note, patterns, source_label, atr_val=atr_val)
-                    send_telegram_msg(msg)
-                    mark_sent(symbol, "choch", source)
-                    send_to_portfolio(symbol, price, atr_val, "choch", source, break_type)
-                    scan_stats[f"signal_phase2_{source}"] += 1
-                    pat_log = candle_pattern_summary(patterns)
-                    print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
-                          + (f" | {pat_log}" if pat_log else ""), flush=True)
-                    return True
-                else:
-                    scan_stats[f"cooldown_p2_{source}"] += 1
+        if rsi < PHASE2_RSI:
+            last_p2 = get_last_sent(symbol, "choch", source)
+            if now - last_p2 > PHASE2_COOLDOWN:
+                msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
+                                       rsi, raw_atr, atr_ratio, depth, smc_data,
+                                       s_label, s_note, patterns, source_label, atr_val=atr_val)
+                send_telegram_msg(msg)
+                mark_sent(symbol, "choch", source)
+                send_to_portfolio(symbol, price, atr_val, "choch", source, break_type)
+                scan_stats[f"signal_phase2_{source}"] += 1
+                pat_log = candle_pattern_summary(patterns)
+                print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
+                      + (f" | {pat_log}" if pat_log else ""), flush=True)
+                return True
+            else:
+                scan_stats[f"cooldown_p2_{source}"] += 1
 
     # AŞAMA 1: Discount zone içinde + depth yüksek + RSI düşük
     if in_discount and depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
@@ -683,7 +691,7 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v10 — Discount + CHoCH (3-bar window)")
+    print("🚀  SMC Original v11 — Discount + CHoCH (bağımsız Phase2)")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
@@ -691,7 +699,7 @@ def start_scanner():
     print(f"  Swing length   : {SWING_LENGTH}")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
     print(f"  Aşama 1        : Discount zone + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
-    print(f"  Aşama 2        : Son {PHASE2_PUSU_WINDOW//3600}h discount + CHoCH/BOS + RSI <{PHASE2_RSI}")
+    print(f"  Aşama 2        : CHoCH/BOS bullish + RSI <{PHASE2_RSI} (Phase 1 bağımsız)")
     print(f"  BTC Filtre     : Aktif — 4h'te %-{BTC_CRASH_PCT} düşüş = sinyaller askıya")
     print("=" * 50 + "\n")
 
