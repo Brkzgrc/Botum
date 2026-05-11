@@ -25,6 +25,8 @@ Bulgular:
 v8'den taşınanlar: ApiGate, sembol havuzu, WebSocket altyapısı,
   Telegram/Portfolio gönderim, Flask dashboard, performans log,
   stop/TP (Adaptive ATR), mum formasyonları, BTC 4H trend
+
+20260511 — Sinyal puanlama eklendi (1–5 ⭐)
 """
 
 import asyncio
@@ -466,16 +468,58 @@ def _vol_risk(atr_pct):
 def _sep():
     return "━━━━━━━━━━━━━━━━━━━━"
 
+# ============================================================
+# SİNYAL PUANLAMA (1–5 ⭐)
+# ============================================================
+def calc_signal_score(vol_spike: float, rsi: float, liquidity: float) -> int:
+    """
+    3 faktör → 1-5 puan:
+      VOL_SPIKE  %50 ağırlık  (momentum gücü)
+      RSI        %30 ağırlık  (erken/geç girme riski)
+      Likidite   %20 ağırlık  (coin kalitesi)
+    """
+    # VOL_SPIKE puanı
+    if vol_spike >= 12:   vol_score = 5
+    elif vol_spike >= 9:  vol_score = 4
+    elif vol_spike >= 6:  vol_score = 3
+    elif vol_spike >= 4:  vol_score = 2
+    else:                 vol_score = 1
+
+    # RSI puanı — 55-65 ideal, 70+ geç kalınmış
+    if rsi >= 70:         rsi_score = 1
+    elif rsi >= 65:       rsi_score = 2
+    elif 55 <= rsi < 65:  rsi_score = 5
+    else:                 rsi_score = 3   # 45-55 erken ama kabul
+
+    # Likidite puanı
+    if liquidity >= 15_000_000:  liq_score = 5
+    elif liquidity >= 5_000_000: liq_score = 3
+    else:                        liq_score = 1
+
+    raw = vol_score * 0.5 + rsi_score * 0.3 + liq_score * 0.2
+    return max(1, min(5, round(raw)))
+
+def _stars(score: int) -> str:
+    return "⭐" * score
+
 def build_pump_message(r, tr_time, sig_num):
     sym  = r["symbol"].replace("/USDT", "")
     e    = r["entry"]
     icon = "💰" if r.get("funding_neg") else "🚀"
+
+    # Puan
+    score     = r.get("score", 0)
+    stars_str = _stars(score)
 
     # MACD hist formatı
     hist = r.get("macd_hist", 0)
     if abs(hist) < 0.0001:   hs = f"{hist:.6f}"
     elif abs(hist) < 0.01:   hs = f"{hist:.5f}"
     else:                    hs = f"{hist:.4f}"
+
+    # RSI uyarısı
+    rsi_val = r.get("rsi", 0)
+    rsi_str = f"{rsi_val:.1f}{'  ⚠️' if rsi_val >= 70 else ''}"
 
     # OBV gösterimi
     obv_str = ""
@@ -484,7 +528,9 @@ def build_pump_message(r, tr_time, sig_num):
         obv_str = f"\n<b>OBV_OSC</b>     {r['obv_osc']:.1f}{arrow}"
 
     lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}", "",
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        stars_str,
         f"{icon} <b>#{sym}/USDT  •  PUMP MOMENTUM  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
@@ -493,7 +539,7 @@ def build_pump_message(r, tr_time, sig_num):
         f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  ({_pct(r['tp2'], e)})",
         _sep(),
         "📊 <b>İndikatörler</b>",
-        f"<b>RSI</b>         {r['rsi']:.1f}",
+        f"<b>RSI</b>         {rsi_str}",
         f"<b>WaveTrend</b>  {r['wt']:.2f}",
         f"<b>MACD Hist</b>  {hs}",
         f"<b>24H Mom</b>    +{r['mom_24h']:.1f}%",
@@ -599,6 +645,7 @@ def log_signal(result, tr_time):
         "wt":        result.get("wt"),
         "mom_24h":   result.get("mom_24h"),
         "vol_spike": result.get("vol_spike"),
+        "score":     result.get("score"),
     }
     signal_log.insert(0, entry_rec)
     if len(signal_log) > 500: signal_log.pop()
@@ -708,6 +755,7 @@ async def signal_worker(candidate_queue):
             tr_time = sig.tr_time
 
             # Likidite kontrolü
+            liquidity = 0.0
             try:
                 ticker    = await api_gate.call(exchange_spot.fetch_ticker, symbol)
                 liquidity = float(ticker.get("quoteVolume", 0) or 0)
@@ -716,6 +764,14 @@ async def signal_worker(candidate_queue):
                     continue
             except Exception:
                 pass
+
+            # Puanlama — likidite artık mevcut
+            result["liquidity"] = liquidity
+            result["score"] = calc_signal_score(
+                result.get("vol_spike", 0),
+                result.get("rsi", 50),
+                liquidity,
+            )
 
             # Funding güncelle
             await fetch_funding_rate(symbol)
@@ -742,6 +798,7 @@ async def signal_worker(candidate_queue):
                 f"SİNYAL {icon} [PUMP] {symbol} | giriş:{fmt_price(result['entry'])}"
                 f" | RSI:{result['rsi']} WT:{result['wt']:.1f}"
                 f" | 24H:+{result['mom_24h']:.1f}% vol:{result['vol_spike']:.1f}x"
+                f" | puan:{result['score']}/5"
                 + (f" | {result.get('candle','')}" if result.get("candle") else ""),
                 flush=True,
             )
@@ -880,8 +937,10 @@ def home():
         icon = "💰" if fn else "🚀"
         bc   = "#c8e86a" if fn else "#00f0c0"
         fv   = s.get("funding"); fs = f"{fv:+.4f}%" if fv is not None else "—"
+        score_str = "⭐" * s.get("score", 0) if s.get("score") else "—"
         ind  = (f"RSI:{s.get('rsi',0):.1f}  WT:{s.get('wt',0):.1f}"
-                f"  24H:+{s.get('mom_24h',0):.1f}%  Vol:{s.get('vol_spike',0):.1f}x")
+                f"  24H:+{s.get('mom_24h',0):.1f}%  Vol:{s.get('vol_spike',0):.1f}x"
+                f"  Puan:{score_str}")
         cs   = f"  {c}" if c else ""
         sig_rows += (
             f'<div class="sig" style="border-color:{bc}">'
@@ -969,6 +1028,7 @@ def perf_dashboard():
         rsi_v  = s.get("rsi", "—")
         mom_v  = s.get("mom_24h", "—")
         spike_v= s.get("vol_spike", "—")
+        score_v= "⭐" * s.get("score", 0) if s.get("score") else "—"
         def fmt_ret(r):
             if r is None: return "—"
             col = "#00f080" if float(r) > 0 else "#ff4444"
@@ -980,6 +1040,7 @@ def perf_dashboard():
           <td>{rsi_v}</td>
           <td>{mom_v}%</td>
           <td>{spike_v}x</td>
+          <td>{score_v}</td>
           <td style="color:#00f080">+{peak}%</td>
           <td>{'✅' if s.get('tp1_hit') else '—'}</td>
           <td>{'✅' if s.get('tp2_hit') else '—'}</td>
@@ -1019,7 +1080,7 @@ def perf_dashboard():
 </div>
 <table><thead><tr>
   <th>Zaman</th><th>Sembol</th><th>Giriş</th><th>RSI</th>
-  <th>24H Mom</th><th>Vol Spike</th><th>Peak%</th>
+  <th>24H Mom</th><th>Vol Spike</th><th>Puan</th><th>Peak%</th>
   <th>TP1</th><th>TP2</th><th>Kapanış%</th><th>Kapanış Zamanı</th>
   <th>Formasyon</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
@@ -1053,10 +1114,7 @@ async def main():
     print("Pump Scanner v1.0 başlatılıyor...", flush=True)
     print(f"Sinyal koşulları:", flush=True)
     print(f"  RSI: {RSI_MIN} – {RSI_MAX}", flush=True)
-    # removed WT
     print(f"  MACD hist: pozitif VE büyüyor (ivmelenme)", flush=True)
-    # removed EMA200
-    # removed mom24h
     print(f"  Hacim spike: > {VOL_SPIKE_MIN:.1f}x vol_ma (tetikleyici)", flush=True)
     print(f"  Cooldown: {SIGNAL_COOLDOWN_HOURS}H", flush=True)
 
