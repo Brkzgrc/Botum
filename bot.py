@@ -10,9 +10,9 @@ Sinyal — 🚀 PUMP MOMENTUM:
     ✅ WaveTrend    : > 0      (momentum pozitif)
     ✅ MACD hist    : > 0      (trend yukarı)
     ✅ EMA200       : fiyat üstünde (makro trend)
-    ✅ 24H momentum : > +5%    (zaten hareket var)
+    ✅ 24H momentum : > +2%    (zaten hareket var)
   Tetikleyici (anlık WebSocket mumunda):
-    ✅ Hacim        : > VOL_SPIKE_MIN × vol_ma (varsayılan 5x)
+    ✅ Hacim        : > VOL_SPIKE_MIN × vol_ma (varsayılan 3x)
 
 Bulgular:
   - %97 pumpta 24H momentum > +5%
@@ -27,6 +27,8 @@ v8'den taşınanlar: ApiGate, sembol havuzu, WebSocket altyapısı,
   stop/TP (Adaptive ATR), mum formasyonları, BTC 4H trend
 
 20260511 — Sinyal puanlama eklendi (1–5 ⭐)
+20260513 — XAUT/USDT ignored listesine eklendi
+           24H momentum filtresi yeniden aktif (>+2%)
 """
 
 import asyncio
@@ -58,8 +60,8 @@ PORTFOLIO_TOKEN    = os.getenv("PORTFOLIO_TOKEN",    "")
 # Pump sinyal parametreleri (analiz bulgularına göre)
 RSI_MIN          = float(os.getenv("RSI_MIN",          "45"))    # RSI alt sınır
 RSI_MAX          = float(os.getenv("RSI_MAX",          "80"))    # RSI üst sınır
-MOM_24H_MIN      = float(os.getenv("MOM_24H_MIN",     "5.0"))   # kullanilmiyor (V3)
-VOL_SPIKE_MIN    = float(os.getenv("VOL_SPIKE_MIN",   "2.5"))   # Hacim spike carpani (2.5x)
+MOM_24H_MIN      = float(os.getenv("MOM_24H_MIN",     "2.0"))   # 24H momentum alt sınır (aktif)
+VOL_SPIKE_MIN    = float(os.getenv("VOL_SPIKE_MIN",   "2.5"))   # Hacim spike carpani
 VOL_MA_PERIOD    = int(os.getenv("VOL_MA_PERIOD",     "20"))    # Vol MA periyot
 
 # Genel
@@ -81,7 +83,8 @@ IGNORED_COINS = {
     "U/USDT",
     "EUR/USDT", "TRY/USDT", "GBP/USDT", "BRL/USDT", "RUB/USDT",
     "AUD/USDT", "BIDR/USDT", "IDRT/USDT", "VAI/USDT",
-    "PAXG/USDT", "WBTC/USDT", "WETH/USDT", "WBNB/USDT", "BETH/USDT",
+    "PAXG/USDT", "XAUT/USDT",                          # Altın tokenları
+    "WBTC/USDT", "WETH/USDT", "WBNB/USDT", "BETH/USDT",
     "BTCB/USDT", "HBTC/USDT",
 }
 LEVERAGED_PATTERNS = ["UP", "DOWN", "BULL", "BEAR", "3L", "3S", "2L", "2S", "5L", "5S", "10L", "10S"]
@@ -213,10 +216,6 @@ async def fetch_df(symbol, timeframe, limit):
 # İNDİKATÖRLER
 # ============================================================
 def prepare_bars(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Pump sinyali için gereken indikatörleri hesaplar.
-    RSI, WaveTrend, MACD, EMA200, OBV, ATR, vol_ma, 24H momentum
-    """
     df = df.copy()
     c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
 
@@ -309,19 +308,13 @@ def detect_candle(df, i):
     return ""
 
 
-
 # ============================================================
 # PUMP SİNYAL KONTROLÜ — V3
 # Backtest: 5.80x lift | %85 precision | %25 detection
-# Kriterler: RSI 45-80 + MACD pozitif VE büyüyor + Vol 2.5x
+# Kriterler: RSI 45-80 + MACD pozitif VE büyüyor + Vol spike
+#            + 24H momentum > MOM_24H_MIN (aktif)
 # ============================================================
 def check_pump_signal(df: pd.DataFrame, symbol: str, live_vol: float) -> dict | None:
-    """
-    Pump sinyali V3.
-    live_vol: WebSocket mevcut mumun hacmi.
-    Ön koşullar: son kapalı mum (iloc[-2]) ve bir önceki (iloc[-3]).
-    Tetikleyici: live_vol > VOL_SPIKE_MIN x vol_ma
-    """
     if len(df) < 60:
         return None
 
@@ -364,10 +357,15 @@ def check_pump_signal(df: pd.DataFrame, symbol: str, live_vol: float) -> dict | 
         stats["filtered_macd"] += 1
         return None
 
+    # ── Kriter 3: 24H momentum > MOM_24H_MIN ──
+    if mom_24h is None or mom_24h < MOM_24H_MIN:
+        stats["filtered_mom"] += 1
+        return None
+
     # ── Tüm koşullar sağlandı → sinyal ──
     stop = round(entry * 0.96, 8)   # -%4
     tp1  = round(entry * 1.08, 8)   # +%8
-    tp2  = round(entry * 1.20, 8)   # +%20 (shadow referansı)
+    tp2  = round(entry * 1.20, 8)   # +%20
 
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
@@ -472,26 +470,20 @@ def _sep():
 # SİNYAL PUANLAMA (1–5 ⭐)
 # ============================================================
 def calc_signal_score(vol_spike: float, rsi: float, liquidity: float) -> int:
-    """
-    3 faktör → 1-5 puan:
-      VOL_SPIKE  %50 ağırlık  (momentum gücü)
-      RSI        %30 ağırlık  (erken/geç girme riski)
-      Likidite   %20 ağırlık  (coin kalitesi)
-    """
-    # VOL_SPIKE puanı
+    # VOL_SPIKE puanı — %50 ağırlık
     if vol_spike >= 12:   vol_score = 5
     elif vol_spike >= 9:  vol_score = 4
     elif vol_spike >= 6:  vol_score = 3
     elif vol_spike >= 4:  vol_score = 2
     else:                 vol_score = 1
 
-    # RSI puanı — 55-65 ideal, 70+ geç kalınmış
+    # RSI puanı — %30 ağırlık (55-65 ideal, 70+ geç)
     if rsi >= 70:         rsi_score = 1
     elif rsi >= 65:       rsi_score = 2
     elif 55 <= rsi < 65:  rsi_score = 5
     else:                 rsi_score = 3   # 45-55 erken ama kabul
 
-    # Likidite puanı
+    # Likidite puanı — %20 ağırlık
     if liquidity >= 15_000_000:  liq_score = 5
     elif liquidity >= 5_000_000: liq_score = 3
     else:                        liq_score = 1
@@ -640,7 +632,6 @@ def log_signal(result, tr_time):
         "status":      "open",
         "peak_pct":    0.0, "tp1_hit": False, "tp2_hit": False,
         "close_time":  None, "close_price": None, "close_ret": None,
-        # Sinyal detayları
         "rsi":       result.get("rsi"),
         "wt":        result.get("wt"),
         "mom_24h":   result.get("mom_24h"),
@@ -765,7 +756,7 @@ async def signal_worker(candidate_queue):
             except Exception:
                 pass
 
-            # Puanlama — likidite artık mevcut
+            # Puanlama
             result["liquidity"] = liquidity
             result["score"] = calc_signal_score(
                 result.get("vol_spike", 0),
@@ -815,7 +806,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     global ws_1h_closes
     ws_1h_closes += 1
 
-    # Heartbeat
     now_ts = time.time()
     if now_ts - heartbeat["epoch"] >= 10:
         heartbeat.update({"last": tr_now_str(), "epoch": now_ts, "symbol": symbol})
@@ -827,7 +817,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     if df is None or len(df) < 60:
         stats["data_missing"] += 1; return
 
-    # Bar ekle ve indikatörleri yeniden hesapla
     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
     df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
     df = df.sort_index()
@@ -835,7 +824,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     df = prepare_bars(df)
     bars_1h[symbol] = df
 
-    # Cooldown kontrolü
     tr_time = datetime.now(timezone.utc).astimezone(TR_TZ)
     last    = last_signal_ts.get(symbol)
     if last is not None:
@@ -844,7 +832,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
             stats["cooldown"] += 1
             return
 
-    # Pump sinyali — tetikleyici olarak kapanış hacmini (v) kullan
     result = check_pump_signal(df, symbol, v)
     if result:
         await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
@@ -852,7 +839,7 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         stats["pump_filtered"] += 1
 
 # ============================================================
-# WEBSOCKET (v8'den — değişmedi)
+# WEBSOCKET
 # ============================================================
 def to_ws(symbol):
     return symbol.replace("/", "").lower()
@@ -887,7 +874,7 @@ async def ws_chunk(symbols, candidate_queue):
                             continue
                         data = json.loads(msg)
                         k    = data.get("data", {}).get("k", {})
-                        if not k.get("x", False): continue  # sadece kapalı mumlar
+                        if not k.get("x", False): continue
                         sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
                         try:
                             await on_1h_close(sym,
@@ -983,7 +970,7 @@ h3{{color:#00f0c0;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
 </div>
 <div style="background:#0c1117;border:1px solid #1c2a36;padding:8px 14px;border-radius:4px;margin-bottom:16px;font-size:.72rem;color:#3d5a6a">
-  Filtreler V3: RSI {RSI_MIN}-{RSI_MAX} | MACD pozitif ve büyüyor | Hacim&gt;{VOL_SPIKE_MIN:.1f}x
+  Filtreler V3: RSI {RSI_MIN}-{RSI_MAX} | MACD pozitif ve büyüyor | Hacim&gt;{VOL_SPIKE_MIN:.1f}x | 24H Mom&gt;+{MOM_24H_MIN:.0f}%
   &nbsp;&nbsp;|&nbsp;&nbsp; BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
 <h3>SON SİNYALLER</h3>
@@ -991,7 +978,7 @@ h3{{color:#00f0c0;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <div class="footer">
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
-  Eleme: Cooldown:{stats.get("cooldown",0)} RSI:{stats.get("filtered_rsi",0)} MACD:{stats.get("filtered_macd",0)} Hacim:{stats.get("low_liquidity",0)}
+  Eleme: Cooldown:{stats.get("cooldown",0)} RSI:{stats.get("filtered_rsi",0)} MACD:{stats.get("filtered_macd",0)} Mom:{stats.get("filtered_mom",0)} Hacim:{stats.get("low_liquidity",0)}
 </div>
 </body></html>"""
 
@@ -1099,7 +1086,8 @@ async def periodic_tasks():
             f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Sinyal: {stats.get('signal_sent',0)}\n"
             f"  ── Filtre ──\n"
             f"  RSI:  {stats.get('filtered_rsi',0):<6} MACD: {stats.get('filtered_macd',0)}\n"
-            f"  Vol:  {stats.get('low_liquidity',0):<6} Cooldown: {stats.get('cooldown',0)}\n"
+            f"  Mom:  {stats.get('filtered_mom',0):<6} Vol:  {stats.get('low_liquidity',0)}\n"
+            f"  Cooldown: {stats.get('cooldown',0)}\n"
             f"╚══════════════════════════════════╝",
             flush=True,
         )
@@ -1115,6 +1103,7 @@ async def main():
     print(f"Sinyal koşulları:", flush=True)
     print(f"  RSI: {RSI_MIN} – {RSI_MAX}", flush=True)
     print(f"  MACD hist: pozitif VE büyüyor (ivmelenme)", flush=True)
+    print(f"  24H Momentum: > +{MOM_24H_MIN:.0f}% (aktif)", flush=True)
     print(f"  Hacim spike: > {VOL_SPIKE_MIN:.1f}x vol_ma (tetikleyici)", flush=True)
     print(f"  Cooldown: {SIGNAL_COOLDOWN_HOURS}H", flush=True)
 
