@@ -13,6 +13,8 @@ Sinyal — 🚀 PUMP MOMENTUM:
     ✅ 24H momentum : > +2%    (zaten hareket var)
   Tetikleyici (anlık WebSocket mumunda):
     ✅ Hacim        : > VOL_SPIKE_MIN × vol_ma (varsayılan 3x)
+  Ek filtre (sinyal onayında):
+    ✅ 15m RSI      : < RSI_15M_MAX (varsayılan 60) — pump tepesinde giriş önlenir
 
 Bulgular:
   - %97 pumpta 24H momentum > +5%
@@ -29,6 +31,10 @@ v8'den taşınanlar: ApiGate, sembol havuzu, WebSocket altyapısı,
 20260511 — Sinyal puanlama eklendi (1–5 ⭐)
 20260513 — XAUT/USDT ignored listesine eklendi
            24H momentum filtresi yeniden aktif (>+2%)
+20260514 — 15m RSI filtresi eklendi (< RSI_15M_MAX=60)
+           Backtest: 5/5 manuel test + 66 sinyal backtest ile doğrulandı
+           Bloke edilen sinyaller: -6.94%, -6.62%, -6.10%, -5.56%, -5.43%
+           Filtreden geçen büyük kazanç: COS +32.6%, +21.85%
 """
 
 import asyncio
@@ -60,6 +66,7 @@ PORTFOLIO_TOKEN    = os.getenv("PORTFOLIO_TOKEN",    "")
 # Pump sinyal parametreleri (analiz bulgularına göre)
 RSI_MIN          = float(os.getenv("RSI_MIN",          "45"))    # RSI alt sınır
 RSI_MAX          = float(os.getenv("RSI_MAX",          "80"))    # RSI üst sınır
+RSI_15M_MAX      = float(os.getenv("RSI_15M_MAX",     "60"))    # 15m RSI üst sınır (pump tepesi filtresi)
 MOM_24H_MIN      = float(os.getenv("MOM_24H_MIN",     "2.0"))   # 24H momentum alt sınır (aktif)
 VOL_SPIKE_MIN    = float(os.getenv("VOL_SPIKE_MIN",   "2.5"))   # Hacim spike carpani
 VOL_MA_PERIOD    = int(os.getenv("VOL_MA_PERIOD",     "20"))    # Vol MA periyot
@@ -263,6 +270,27 @@ def prepare_bars(df: pd.DataFrame) -> pd.DataFrame:
     df["ema50"] = c.ewm(span=50, adjust=False).mean()
 
     return df.dropna(subset=["rsi", "wt", "macd_hist", "ema200", "vol_ma", "mom_24h", "atr"])
+
+# ============================================================
+# 15m RSI HESAPLAMA
+# ============================================================
+def calc_rsi_series(close: pd.Series, period: int = 14) -> pd.Series:
+    d    = close.diff()
+    gain = d.clip(lower=0).ewm(com=period - 1, adjust=False).mean()
+    loss = (-d).clip(lower=0).ewm(com=period - 1, adjust=False).mean()
+    return 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+
+async def fetch_15m_rsi(symbol: str) -> float | None:
+    """Sembolün güncel 15m RSI değerini çeker (son kapanan mum)."""
+    try:
+        df = await fetch_df(symbol, "15m", 50)
+        if df is None or len(df) < 16:
+            return None
+        rsi_series = calc_rsi_series(df["close"], 14)
+        val = rsi_series.iloc[-2]   # son kapanan mum (-1 henüz açık)
+        return float(val) if not pd.isna(val) else None
+    except Exception:
+        return None
 
 # ============================================================
 # MUM FORMASYONLARI
@@ -513,6 +541,10 @@ def build_pump_message(r, tr_time, sig_num):
     rsi_val = r.get("rsi", 0)
     rsi_str = f"{rsi_val:.1f}{'  ⚠️' if rsi_val >= 70 else ''}"
 
+    # 15m RSI
+    rsi_15m = r.get("rsi_15m")
+    rsi_15m_str = f"{rsi_15m:.1f}" if rsi_15m is not None else "—"
+
     # OBV gösterimi
     obv_str = ""
     if r.get("obv_osc") is not None:
@@ -531,7 +563,8 @@ def build_pump_message(r, tr_time, sig_num):
         f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  ({_pct(r['tp2'], e)})",
         _sep(),
         "📊 <b>İndikatörler</b>",
-        f"<b>RSI</b>         {rsi_str}",
+        f"<b>RSI 1H</b>      {rsi_str}",
+        f"<b>RSI 15m</b>     {rsi_15m_str}  ✅",
         f"<b>WaveTrend</b>  {r['wt']:.2f}",
         f"<b>MACD Hist</b>  {hs}",
         f"<b>24H Mom</b>    +{r['mom_24h']:.1f}%",
@@ -633,6 +666,7 @@ def log_signal(result, tr_time):
         "peak_pct":    0.0, "tp1_hit": False, "tp2_hit": False,
         "close_time":  None, "close_price": None, "close_ret": None,
         "rsi":       result.get("rsi"),
+        "rsi_15m":   result.get("rsi_15m"),
         "wt":        result.get("wt"),
         "mom_24h":   result.get("mom_24h"),
         "vol_spike": result.get("vol_spike"),
@@ -756,6 +790,20 @@ async def signal_worker(candidate_queue):
             except Exception:
                 pass
 
+            # ── 15m RSI filtresi ──────────────────────────────────────
+            rsi_15m = await fetch_15m_rsi(symbol)
+            result["rsi_15m"] = round(rsi_15m, 1) if rsi_15m is not None else None
+
+            if rsi_15m is not None and rsi_15m >= RSI_15M_MAX:
+                stats["filtered_15m_rsi"] += 1
+                print(
+                    f"[15m RSI FİLTRE] {symbol} | 15m RSI={rsi_15m:.1f} ≥ {RSI_15M_MAX} "
+                    f"→ pump tepesi, atlandı",
+                    flush=True,
+                )
+                continue
+            # ─────────────────────────────────────────────────────────
+
             # Puanlama
             result["liquidity"] = liquidity
             result["score"] = calc_signal_score(
@@ -787,7 +835,7 @@ async def signal_worker(candidate_queue):
 
             print(
                 f"SİNYAL {icon} [PUMP] {symbol} | giriş:{fmt_price(result['entry'])}"
-                f" | RSI:{result['rsi']} WT:{result['wt']:.1f}"
+                f" | RSI 1H:{result['rsi']} 15m:{result.get('rsi_15m','—')}"
                 f" | 24H:+{result['mom_24h']:.1f}% vol:{result['vol_spike']:.1f}x"
                 f" | puan:{result['score']}/5"
                 + (f" | {result.get('candle','')}" if result.get("candle") else ""),
@@ -925,7 +973,9 @@ def home():
         bc   = "#c8e86a" if fn else "#00f0c0"
         fv   = s.get("funding"); fs = f"{fv:+.4f}%" if fv is not None else "—"
         score_str = "⭐" * s.get("score", 0) if s.get("score") else "—"
-        ind  = (f"RSI:{s.get('rsi',0):.1f}  WT:{s.get('wt',0):.1f}"
+        rsi_15m_v = s.get("rsi_15m")
+        rsi_15m_s = f"{rsi_15m_v:.1f}" if rsi_15m_v is not None else "—"
+        ind  = (f"RSI1H:{s.get('rsi',0):.1f}  RSI15m:{rsi_15m_s}  WT:{s.get('wt',0):.1f}"
                 f"  24H:+{s.get('mom_24h',0):.1f}%  Vol:{s.get('vol_spike',0):.1f}x"
                 f"  Puan:{score_str}")
         cs   = f"  {c}" if c else ""
@@ -971,6 +1021,7 @@ h3{{color:#00f0c0;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 </div>
 <div style="background:#0c1117;border:1px solid #1c2a36;padding:8px 14px;border-radius:4px;margin-bottom:16px;font-size:.72rem;color:#3d5a6a">
   Filtreler V3: RSI {RSI_MIN}-{RSI_MAX} | MACD pozitif ve büyüyor | Hacim&gt;{VOL_SPIKE_MIN:.1f}x | 24H Mom&gt;+{MOM_24H_MIN:.0f}%
+  | 15m RSI&lt;{RSI_15M_MAX:.0f}
   &nbsp;&nbsp;|&nbsp;&nbsp; BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
 <h3>SON SİNYALLER</h3>
@@ -978,7 +1029,7 @@ h3{{color:#00f0c0;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <div class="footer">
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
-  Eleme: Cooldown:{stats.get("cooldown",0)} RSI:{stats.get("filtered_rsi",0)} MACD:{stats.get("filtered_macd",0)} Mom:{stats.get("filtered_mom",0)} Hacim:{stats.get("low_liquidity",0)}
+  Eleme: Cooldown:{stats.get("cooldown",0)} RSI:{stats.get("filtered_rsi",0)} MACD:{stats.get("filtered_macd",0)} Mom:{stats.get("filtered_mom",0)} 15mRSI:{stats.get("filtered_15m_rsi",0)} Hacim:{stats.get("low_liquidity",0)}
 </div>
 </body></html>"""
 
@@ -990,6 +1041,7 @@ def api_status():
         "stats": dict(stats), "heartbeat": heartbeat,
         "params": {
             "rsi_min": RSI_MIN, "rsi_max": RSI_MAX,
+            "rsi_15m_max": RSI_15M_MAX,
             "mom_24h_min": MOM_24H_MIN, "vol_spike_min": VOL_SPIKE_MIN,
             "cooldown_h": SIGNAL_COOLDOWN_HOURS,
         }
@@ -1013,6 +1065,7 @@ def perf_dashboard():
         ct     = (s.get("close_time") or "")[:16]
         candle = s.get("candle", "")
         rsi_v  = s.get("rsi", "—")
+        rsi_15m_v = s.get("rsi_15m", "—")
         mom_v  = s.get("mom_24h", "—")
         spike_v= s.get("vol_spike", "—")
         score_v= "⭐" * s.get("score", 0) if s.get("score") else "—"
@@ -1025,6 +1078,7 @@ def perf_dashboard():
           <td><b>🚀 {s.get("symbol","")}</b></td>
           <td>{s.get("entry","")}</td>
           <td>{rsi_v}</td>
+          <td>{rsi_15m_v}</td>
           <td>{mom_v}%</td>
           <td>{spike_v}x</td>
           <td>{score_v}</td>
@@ -1066,7 +1120,7 @@ def perf_dashboard():
   <div class="card"><div class="cv">{ps.get("avg_peak",0)}%</div><div class="cl">Ort. Peak</div></div>
 </div>
 <table><thead><tr>
-  <th>Zaman</th><th>Sembol</th><th>Giriş</th><th>RSI</th>
+  <th>Zaman</th><th>Sembol</th><th>Giriş</th><th>RSI 1H</th><th>RSI 15m</th>
   <th>24H Mom</th><th>Vol Spike</th><th>Puan</th><th>Peak%</th>
   <th>TP1</th><th>TP2</th><th>Kapanış%</th><th>Kapanış Zamanı</th>
   <th>Formasyon</th><th>Durum</th>
@@ -1085,9 +1139,9 @@ async def periodic_tasks():
             f"\n╔══════════════ ÖZET ══════════════╗\n"
             f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Sinyal: {stats.get('signal_sent',0)}\n"
             f"  ── Filtre ──\n"
-            f"  RSI:  {stats.get('filtered_rsi',0):<6} MACD: {stats.get('filtered_macd',0)}\n"
-            f"  Mom:  {stats.get('filtered_mom',0):<6} Vol:  {stats.get('low_liquidity',0)}\n"
-            f"  Cooldown: {stats.get('cooldown',0)}\n"
+            f"  RSI:    {stats.get('filtered_rsi',0):<6} MACD:  {stats.get('filtered_macd',0)}\n"
+            f"  Mom:    {stats.get('filtered_mom',0):<6} Vol:   {stats.get('low_liquidity',0)}\n"
+            f"  15mRSI: {stats.get('filtered_15m_rsi',0):<6} Cooldown: {stats.get('cooldown',0)}\n"
             f"╚══════════════════════════════════╝",
             flush=True,
         )
@@ -1101,7 +1155,8 @@ async def main():
     global tracked_symbols
     print("Pump Scanner v1.0 başlatılıyor...", flush=True)
     print(f"Sinyal koşulları:", flush=True)
-    print(f"  RSI: {RSI_MIN} – {RSI_MAX}", flush=True)
+    print(f"  RSI 1H: {RSI_MIN} – {RSI_MAX}", flush=True)
+    print(f"  RSI 15m: < {RSI_15M_MAX} (pump tepesi filtresi)", flush=True)
     print(f"  MACD hist: pozitif VE büyüyor (ivmelenme)", flush=True)
     print(f"  24H Momentum: > +{MOM_24H_MIN:.0f}% (aktif)", flush=True)
     print(f"  Hacim spike: > {VOL_SPIKE_MIN:.1f}x vol_ma (tetikleyici)", flush=True)
