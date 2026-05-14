@@ -481,7 +481,7 @@ def build_capitulation_message(r, tr_time, sig_num):
     lines = [
         f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
         "",
-        f"{icon} <b>#{sym}/USDT  •  CRASH DİP  •  1H</b>",
+        f"{icon} <b>#{sym}/USDT  •  PANİK PUMP  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
         f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-3%)",
@@ -529,7 +529,7 @@ def send_to_portfolio(result):
             "stop":        result["stop"],
             "tp1":         result.get("tp1"),
             "tp2":         result.get("tp2"),
-            "sig_type":    "capit",
+            "sig_type":    "panik_pump",
             "sub_type":    "",
             "source":      "bot",
             "candle":      result.get("candle", ""),
@@ -580,7 +580,7 @@ def log_signal(result, tr_time):
         "tp1":         result.get("tp1"),
         "tp2":         result.get("tp2"),
         "tp3":         result.get("tp3"),
-        "sig_type":    "capit",
+        "sig_type":    "panik_pump",
         "funding_neg": result.get("funding_neg", False),
         "candle":      result.get("candle", ""),
         "time":        tr_time.isoformat(),
@@ -732,7 +732,7 @@ async def signal_worker(candidate_queue):
 
             last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
             result["time"]     = tr_time.strftime("%Y-%m-%d %H:%M")
-            result["sig_type"] = "capit"
+            result["sig_type"] = "panik_pump"
             all_signals.insert(0, result)
             if len(all_signals) > 200: all_signals.pop()
 
