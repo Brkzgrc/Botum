@@ -256,48 +256,6 @@ def prepare_bars(df: pd.DataFrame) -> pd.DataFrame:
 
     return df.dropna(subset=["vol_ma", "atr", "close_prev"])
 
-# ============================================================
-# MUM FORMASYONLARI
-# ============================================================
-def _ohlc(df, i):
-    row = df.iloc[i]
-    return float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"])
-
-def is_hammer(df, i):
-    if i < 1: return False
-    o, h, l, c = _ohlc(df, i)
-    if c <= o: return False
-    body = c - o; rng = h - l
-    if rng <= 0 or body <= 0: return False
-    return ((o - l) >= body * 2.0
-            and (h - c) <= body * 0.5
-            and (o - l) / rng >= 0.55)
-
-def is_engulfing(df, i):
-    if i < 1: return False
-    o0, _, _, c0 = _ohlc(df, i)
-    o1, _, _, c1 = _ohlc(df, i - 1)
-    b0 = abs(c0 - o0); b1 = abs(c1 - o1)
-    if b1 <= 0: return False
-    return c1 < o1 and c0 > o0 and o0 <= c1 and c0 >= o1 and b0 >= b1 * 0.8
-
-def is_morning_star(df, i):
-    if i < 2: return False
-    o0, _, _, c0 = _ohlc(df, i)
-    o1, _, _, c1 = _ohlc(df, i - 1)
-    o2, _, _, c2 = _ohlc(df, i - 2)
-    b0 = abs(c0-o0); b1 = abs(c1-o1); b2 = abs(c2-o2)
-    avg = (b0+b1+b2)/3 if (b0+b1+b2) > 0 else 1
-    return (c2 < o2 and b2 >= avg
-            and b1 <= avg * 0.5
-            and c0 > o0 and b0 >= avg
-            and c0 >= o2 - b2/2)
-
-def detect_candle(df, i):
-    if is_morning_star(df, i): return "🌅 Morning Star"
-    if is_engulfing(df, i):    return "🟢 Bullish Engulfing"
-    if is_hammer(df, i):       return "🔨 Hammer"
-    return ""
 
 # ============================================================
 # KAPİTÜLASYON SİNYAL KONTROLÜ
@@ -374,7 +332,7 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
         "atr_pct":     round(atr_pct, 2) if atr_pct is not None else None,
         "funding":     round(funding, 6) if funding is not None else None,
         "funding_neg": funding_neg,
-        "candle":      detect_candle(df, len(df) - 1),
+        "candle":      "",
     }
 
 # ============================================================
@@ -474,28 +432,16 @@ def _sep():
     return "━━━━━━━━━━━━━━━━━━━━"
 
 def build_capitulation_message(r, tr_time, sig_num):
-    sym   = r["symbol"].replace("/USDT", "")
-    e     = r["entry"]
-    icon  = "💰" if r.get("funding_neg") else "🔴"
-    score = r.get("score", 0)
-    ret1  = r.get("ret1", 0)
-    vr    = r.get("vol_ratio", 0)
-
-    # WR tahmini crash büyüklüğüne göre
-    abs_ret = abs(ret1)
-    if abs_ret >= 10:  wr_est = "~%88"
-    elif abs_ret >= 8: wr_est = "~%88"
-    else:              wr_est = "~%84"
+    sym  = r["symbol"].replace("/USDT", "")
+    e    = r["entry"]
+    icon = "💰" if r.get("funding_neg") else "🔴"
+    ret1 = r.get("ret1", 0)
+    vr   = r.get("vol_ratio", 0)
 
     lines = [
         f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
         "",
-        _stars(score),
-        f"{icon} <b>#{sym}/USDT  •  KAPİTÜLASYON  •  1H</b>",
-        _sep(),
-        f"📉 <b>Düşüş</b>     {ret1:+.2f}%  (crash barı)",
-        f"📊 <b>Hacim</b>     {vr:.2f}x ortalama  🔥",
-        f"📈 <b>Beklenen WR</b> {wr_est}  (backtest)",
+        f"{icon} <b>#{sym}/USDT  •  CRASH DİP  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
         f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-3%)",
@@ -503,12 +449,16 @@ def build_capitulation_message(r, tr_time, sig_num):
         f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+10%)",
         f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+15%)",
         _sep(),
+        "📊 <b>İndikatörler</b>",
+        f"<b>Düşüş</b>      {ret1:+.2f}%",
+        f"<b>Hacim</b>      {vr:.2f}x ortalama  🔥",
     ]
     if r.get("funding") is not None:
         lines.append(f"<b>Funding</b>    {r['funding']:+.4f}%{'  💰' if r.get('funding_neg') else ''}")
     if r.get("candle"):
         lines.append(f"<b>Formasyon</b>  {r['candle']}  ✅")
     lines += [
+        _sep(),
         f"<b>BTC 4H</b>     {btc_4h_cache.get('trend', '?')}",
         f"<b>Vol.Risk</b>   {_vol_risk(r.get('atr_pct'))}",
         _sep(),
