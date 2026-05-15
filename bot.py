@@ -31,7 +31,7 @@
 ║    TP1: +5%   (geniş kitle için hızlı çıkış)                                ║
 ║    TP2: +10%  (ana hedef)                                                   ║
 ║    TP3: +15%  (uzatmak isteyenler için)                                      ║
-║    SL : -3%   (eğer fiyat daha da düşerse kes)                              ║
+║    SL : -7%   (pump oncesi max drawdown analizinden — %95 pump korunur)     ║
 ║                                                                              ║
 ║  ATLANACAK DURUMLAR:                                                         ║
 ║    - Stablecoin, leveraged token, fiat pariteleri                            ║
@@ -346,8 +346,8 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     # Giriş fiyatı = crash barının kapanışı
     entry = close_now
 
-    # Stop: -3% (backtest SL)
-    stop = round(entry * 0.97, 8)
+    # Stop: -7% (backtest SL — pump oncesi max drawdown analizinden)
+    stop = round(entry * 0.93, 8)
 
     # TP'ler
     tp1 = round(entry * 1.05, 8)   # +5%
@@ -484,7 +484,7 @@ def build_capitulation_message(r, tr_time, sig_num):
         f"{icon} <b>#{sym}/USDT  •  PANİK PUMP  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-3%)",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-7%)",
         f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+5%)",
         f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+10%)",
         f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+15%)",
@@ -916,7 +916,7 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 </style></head><body>
 <h1>KAPİTÜLASYON SCANNER <small style="font-size:.6rem;color:#3d5a6a">v5.0</small></h1>
 <div style="background:#0c1117;border:1px solid #2a1c1c;padding:8px 14px;border-radius:4px;margin-bottom:16px;font-size:.72rem;color:#3d5a6a">
-  🔴 KAPİTÜLASYON: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}%  |  Hacim {VOL_MIN:.1f}x - {VOL_MAX:.1f}x  |  Stop -3%  |  TP +5/10/15%
+  🔴 KAPİTÜLASYON: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}%  |  Hacim {VOL_MIN:.1f}x - {VOL_MAX:.1f}x  |  Stop -7%  |  TP +5/10/15%
   &nbsp;&nbsp;|&nbsp;&nbsp; Backtest WR ~%84  |  BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
 <div class="stats">
@@ -1015,7 +1015,7 @@ def perf_dashboard():
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>
   <div class="card"><div class="cv">{ps.get("open",0)}</div><div class="cl">Açık</div></div>
   <div class="card"><div class="cv" style="color:#00f080">{ps.get("win",0)}</div><div class="cl">Win (TP2)</div></div>
-  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("loss",0)}</div><div class="cl">Stop (-3%)</div></div>
+  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("loss",0)}</div><div class="cl">Stop (-7%)</div></div>
   <div class="card"><div class="cv" style="color:#ffb300">{ps.get("expired",0)}</div><div class="cl">Expired</div></div>
   <div class="card"><div class="cv">{ps.get("win_rate",0)}%</div><div class="cl">Win Rate</div></div>
   <div class="card"><div class="cv">{ps.get("avg_peak",0)}%</div><div class="cl">Ort. Peak</div></div>
@@ -1058,7 +1058,7 @@ async def main():
     print(f"Sinyal koşulları:", flush=True)
     print(f"  Crash barı: ret1 {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% arası", flush=True)
     print(f"  Hacim spike: {VOL_MIN:.1f}x - {VOL_MAX:.1f}x (20-bar ortalama)", flush=True)
-    print(f"  Stop: -3% | TP1: +5% | TP2: +10% | TP3: +15%", flush=True)
+    print(f"  Stop: -7% | TP1: +5% | TP2: +10% | TP3: +15%", flush=True)
     print(f"  Cooldown: {SIGNAL_COOLDOWN_HOURS}H", flush=True)
     print(f"  Beklenen: ~%84 WR | ~61 sinyal/yıl", flush=True)
 
