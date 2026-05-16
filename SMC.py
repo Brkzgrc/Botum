@@ -17,7 +17,8 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    return f"SMC Original v11 — Discount+CHoCH | {boot_status} | {cached} coin cached", 200
+    btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
+    return f"SMC Original v12 — Discount+CHoCH | {boot_status} | {cached} coin cached | {btc_ema}", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -40,12 +41,11 @@ SWING_LENGTH     = 50
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
-PHASE1_RSI       = 35
+PHASE1_RSI       = 30
 PHASE1_DEPTH     = 85
 PHASE1_COOLDOWN  = 86400
 
-PHASE2_RSI           = 48
-PHASE2_COOLDOWN      = 86400
+PHASE2_COOLDOWN  = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
 
@@ -133,12 +133,14 @@ def update_cache(symbol):
         pass
 
 # ============================================================
-# 1c) BTC ÇAKILIŞ FİLTRESİ
+# 1c) BTC FİLTRELERİ — ÇAKILIŞ + EMA21
 # ============================================================
 btc_crash_cache = {"crashing": False, "updated": 0}
+btc_ema21_cache = {"above": False, "updated": 0}
 
-BTC_CRASH_PCT   = 3.0
-BTC_CRASH_TTL   = 1800
+BTC_CRASH_PCT = 3.0
+BTC_CRASH_TTL = 1800
+BTC_EMA21_TTL = 1800
 
 def check_btc_crash():
     now = time.time()
@@ -163,6 +165,33 @@ def check_btc_crash():
         btc_crash_cache["crashing"] = False
     btc_crash_cache["updated"] = now
     return btc_crash_cache["crashing"]
+
+def check_btc_ema21():
+    """BTC 1h fiyatı EMA21 üzerinde mi?"""
+    now = time.time()
+    if now - btc_ema21_cache["updated"] < BTC_EMA21_TTL:
+        return btc_ema21_cache["above"]
+    try:
+        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="1h", limit=30)
+        if len(bars) < 22:
+            btc_ema21_cache["above"] = False
+        else:
+            closes = [float(b[4]) for b in bars]
+            # EMA21 hesapla
+            k = 2 / (21 + 1)
+            ema = closes[0]
+            for c in closes[1:]:
+                ema = c * k + ema * (1 - k)
+            price = closes[-1]
+            above = price > ema
+            btc_ema21_cache["above"] = above
+            status = "üzerinde ✅" if above else "altında ❌"
+            print(f"📊 BTC EMA21: {ema:.1f} | Fiyat: {price:.1f} | {status}", flush=True)
+    except Exception as e:
+        print(f"BTC EMA21 check hata: {e}", flush=True)
+        btc_ema21_cache["above"] = False
+    btc_ema21_cache["updated"] = now
+    return btc_ema21_cache["above"]
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -563,27 +592,29 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
         scan_stats["btc_crash_skip"] += 1
         return False
 
-    # AŞAMA 2: Sadece CHoCH bullish + RSI uygun (Phase 1'den bağımsız)
+    # AŞAMA 2: CHoCH bullish (RSI filtresi yok)
     if break_type == "CHoCH" and break_dir == "BULLISH":
-        if rsi < PHASE2_RSI:
-            last_p2 = get_last_sent(symbol, "choch", source)
-            if now - last_p2 > PHASE2_COOLDOWN:
-                msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
-                                       rsi, raw_atr, atr_ratio, depth, smc_data,
-                                       s_label, s_note, patterns, source_label, atr_val=atr_val)
-                send_telegram_msg(msg)
-                mark_sent(symbol, "choch", source)
-                send_to_portfolio(symbol, price, atr_val, "choch", source, break_type)
-                scan_stats[f"signal_phase2_{source}"] += 1
-                pat_log = candle_pattern_summary(patterns)
-                print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
-                      + (f" | {pat_log}" if pat_log else ""), flush=True)
-                return True
-            else:
-                scan_stats[f"cooldown_p2_{source}"] += 1
+        last_p2 = get_last_sent(symbol, "choch", source)
+        if now - last_p2 > PHASE2_COOLDOWN:
+            msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
+                                   rsi, raw_atr, atr_ratio, depth, smc_data,
+                                   s_label, s_note, patterns, source_label, atr_val=atr_val)
+            send_telegram_msg(msg)
+            mark_sent(symbol, "choch", source)
+            send_to_portfolio(symbol, price, atr_val, "choch", source, break_type)
+            scan_stats[f"signal_phase2_{source}"] += 1
+            pat_log = candle_pattern_summary(patterns)
+            print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
+                  + (f" | {pat_log}" if pat_log else ""), flush=True)
+            return True
+        else:
+            scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone içinde + depth yüksek + RSI düşük
+    # AŞAMA 1: Discount zone + depth + RSI + BTC EMA21 üzerinde
     if in_discount and depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
+        if not check_btc_ema21():
+            scan_stats["btc_ema21_skip"] += 1
+            return False
         last_p1 = get_last_sent(symbol, "discount", source)
         if now - last_p1 > PHASE1_COOLDOWN:
             msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
@@ -691,16 +722,16 @@ def start_scanner():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v11 — Discount + CHoCH (bağımsız Phase2)")
+    print("🚀  SMC Original v12 — Discount+CHoCH")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
-    print(f"  Aşama 1        : Discount zone + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI}")
-    print(f"  Aşama 2        : CHoCH/BOS bullish + RSI <{PHASE2_RSI} (Phase 1 bağımsız)")
-    print(f"  BTC Filtre     : Aktif — 4h'te %-{BTC_CRASH_PCT} düşüş = sinyaller askıya")
+    print(f"  Aşama 1        : Discount + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI} + BTC EMA21 üzeri")
+    print(f"  Aşama 2        : CHoCH bullish (RSI filtresi yok)")
+    print(f"  BTC Filtre     : Crash (4h %-{BTC_CRASH_PCT}) + EMA21 (Phase1)")
     print("=" * 50 + "\n")
 
     for attempt in range(3):
@@ -734,14 +765,15 @@ def start_scanner():
         total_signals = scan_stats.get("signal_phase1_smc-original", 0) + scan_stats.get("signal_phase2_smc-original", 0)
 
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
-        print(f"Cached coin  : {len(bars_cache)}", flush=True)
-        print(f"Discount'ta  : {scan_stats.get('in_discount', 0)}", flush=True)
-        print(f"Zone dışında : {scan_stats.get('not_in_discount', 0)}", flush=True)
-        print(f"Pivot yok    : {scan_stats.get('no_pivots', 0)}", flush=True)
+        print(f"Cached coin      : {len(bars_cache)}", flush=True)
+        print(f"Discount'ta      : {scan_stats.get('in_discount', 0)}", flush=True)
+        print(f"Zone dışında     : {scan_stats.get('not_in_discount', 0)}", flush=True)
+        print(f"Pivot yok        : {scan_stats.get('no_pivots', 0)}", flush=True)
         print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
         print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
-        print(f"BTC çakılış skip: {scan_stats.get('btc_crash_skip', 0)}", flush=True)
-        print(f"Toplam sinyal: {total_signals}", flush=True)
+        print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
+        print(f"BTC EMA21 skip   : {scan_stats.get('btc_ema21_skip', 0)}", flush=True)
+        print(f"Toplam sinyal    : {total_signals}", flush=True)
         print(f"------------------------", flush=True)
 
         print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
