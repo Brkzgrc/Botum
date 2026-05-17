@@ -21,8 +21,9 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
+    active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
-    return f"SMC v13 WS — Discount+CHoCH | {boot_status} | {cached} coin cached | {btc_ema} | {ws_1h_closes} bar kapandı", 200
+    return f"SMC v14 WS — Micro CHoCH | {boot_status} | {cached} coin cached | {active} discount aktif | {btc_ema} | {ws_1h_closes} bar kapandı", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -39,16 +40,17 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 TIMEFRAME        = "1h"
 MIN_VOLUME_24H   = 5_000_000
 
-SWING_LENGTH     = 50
+SWING_LENGTH     = 50   # Discount zone hesabı için (makro)
+CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
 PHASE1_RSI       = 30
 PHASE1_DEPTH     = 85
-PHASE1_COOLDOWN  = 86400
+PHASE1_COOLDOWN  = 86400   # Discount bildirimi tekrar süresi (24 saat)
 
-PHASE2_COOLDOWN  = 86400
+PHASE2_COOLDOWN  = 86400   # CHoCH sinyali tekrar süresi (24 saat)
 
 SIGNALS_FILE     = "sent_signals.json"
 WS_STREAM_CHUNK  = 120
@@ -75,6 +77,10 @@ ws_1h_closes = 0
 # ============================================================
 bars_cache = {}
 bootstrap_done = False
+
+# Discount zone'a girmiş, CHoCH beklenen coinler
+discount_active      = {}
+discount_active_lock = threading.Lock()
 
 def fetch_bars_sync(symbol, limit=BOOTSTRAP_BARS):
     all_bars = []
@@ -116,14 +122,30 @@ async def bootstrap_all(symbols):
     global bootstrap_done
     print(f"📦 Bootstrap başladı: {len(symbols)} coin × {BOOTSTRAP_BARS} bar...", flush=True)
     ok = 0
-    for idx, symbol in enumerate(symbols, 1):
+    tasks = [bootstrap_symbol(s) for s in symbols]
+    for idx, (s, coro) in enumerate(zip(symbols, tasks), 1):
+        result = await coro
+        if result:
+            ok += 1
         if idx % 50 == 0:
             print(f"  → {idx}/{len(symbols)}...", flush=True)
-        if await bootstrap_symbol(symbol):
-            ok += 1
-        await asyncio.sleep(0.5)
-    bootstrap_done = True
     print(f"✅ Bootstrap bitti: {ok}/{len(symbols)} coin yüklendi", flush=True)
+
+    # Bootstrap verisinden mevcut discount_active flagleri tespit et
+    detected = 0
+    for sym, df in bars_cache.items():
+        try:
+            smc = luxalgo_smc(df, SWING_LENGTH)
+            if smc and smc['in_discount']:
+                with discount_active_lock:
+                    discount_active[sym] = True
+                detected += 1
+        except Exception:
+            pass
+    if detected:
+        print(f"📍 Bootstrap: {detected} coin discount zone'da → bayrak set edildi", flush=True)
+
+    bootstrap_done = True
 
 # ============================================================
 # 1c) BTC FİLTRELERİ
@@ -354,7 +376,7 @@ def candle_pattern_summary(patterns):
     return f"{power}: {' + '.join(found)}"
 
 # ============================================================
-# 7) LuxAlgo SMC — 1-bar lookback (WebSocket için düzeltildi)
+# 7a) LuxAlgo SMC — Makro (discount zone hesabı, SWING_LENGTH=50)
 # ============================================================
 def luxalgo_smc(df, swing_length=SWING_LENGTH):
     highs  = df["high"].values
@@ -382,7 +404,6 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
     swing_low_level  = None; swing_low_crossed  = True
     swing_trend = 0
     trailing_top = None; trailing_bottom = None
-    break_type = None; break_direction = None
 
     for i in range(swing_length + 1, n):
         prev_leg = legs[i - 1]; curr_leg = legs[i]
@@ -398,7 +419,6 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         if trailing_top    is not None and highs[i] > trailing_top:    trailing_top    = highs[i]
         if trailing_bottom is not None and lows[i]  < trailing_bottom: trailing_bottom = lows[i]
 
-        # Tarihsel swing_trend takibi — son bar hariç tüm barlar
         if i < n - 1:
             c = closes[i]; c_prev = closes[i - 1]
             if (swing_high_level is not None and not swing_high_crossed
@@ -409,23 +429,6 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
                     and c < swing_low_level and c_prev >= swing_low_level):
                 swing_low_crossed = True
                 swing_trend = -1
-
-        if i == n - 1:
-            # Sadece kapanan bar kontrol edilir (WebSocket ile bar kapanışında tetiklendiğinden)
-            c_check      = closes[i]
-            c_check_prev = closes[i - 1]
-            if (swing_high_level is not None and not swing_high_crossed
-                    and c_check > swing_high_level and c_check_prev <= swing_high_level):
-                swing_high_crossed = True
-                break_type      = "CHoCH" if swing_trend == -1 else "BOS"
-                break_direction = "BULLISH"
-                swing_trend     = 1
-            if (swing_low_level is not None and not swing_low_crossed
-                    and c_check < swing_low_level and c_check_prev >= swing_low_level):
-                swing_low_crossed = True
-                break_type      = "CHoCH" if swing_trend == 1 else "BOS"
-                break_direction = "BEARISH"
-                swing_trend     = -1
 
     if trailing_top is None or trailing_bottom is None:
         return None
@@ -461,56 +464,87 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         'swing_high':      swing_high_level,
         'swing_low':       swing_low_level,
         'swing_trend':     swing_trend,
-        'break_type':      break_type,
-        'break_direction': break_direction,
+        'break_type':      None,
+        'break_direction': None,
     }
+
+# ============================================================
+# 7b) Micro CHoCH tespiti — Kısa swing (CHOCH_SWING=5, LuxAlgo uyumlu)
+# ============================================================
+def detect_micro_choch(df, choch_swing=CHOCH_SWING):
+    """
+    LuxAlgo SMC göstergesindeki micro CHoCH/BOS tespiti.
+    Kısa periyotlu swing (5 bar) ile discount zone yakınındaki
+    erken yapısal kırılımları yakalar.
+    Döner: (break_type, break_direction, swing_trend)
+    """
+    highs  = df["high"].values
+    lows   = df["low"].values
+    closes = df["close"].values
+    n = len(df)
+
+    if n < choch_swing + 10:
+        return None, None, 0
+
+    legs = [0] * n
+    current_leg = 0
+    for i in range(choch_swing, n):
+        pivot_bar_high = highs[i - choch_swing]
+        pivot_bar_low  = lows[i - choch_swing]
+        window_high = max(highs[i - choch_swing + 1 : i + 1])
+        window_low  = min(lows[i - choch_swing + 1 : i + 1])
+        if pivot_bar_high > window_high:
+            current_leg = 0
+        elif pivot_bar_low < window_low:
+            current_leg = 1
+        legs[i] = current_leg
+
+    swing_high_level = None; swing_high_crossed = True
+    swing_low_level  = None; swing_low_crossed  = True
+    swing_trend = 0
+    break_type = None; break_direction = None
+
+    for i in range(choch_swing + 1, n):
+        prev_leg = legs[i - 1]; curr_leg = legs[i]
+        if curr_leg != prev_leg:
+            if curr_leg == 1:
+                swing_low_level   = lows[i - choch_swing]
+                swing_low_crossed = False
+            elif curr_leg == 0:
+                swing_high_level   = highs[i - choch_swing]
+                swing_high_crossed = False
+
+        # Tarihsel swing_trend takibi
+        if i < n - 1:
+            c = closes[i]; c_prev = closes[i - 1]
+            if (swing_high_level is not None and not swing_high_crossed
+                    and c > swing_high_level and c_prev <= swing_high_level):
+                swing_high_crossed = True
+                swing_trend = 1
+            if (swing_low_level is not None and not swing_low_crossed
+                    and c < swing_low_level and c_prev >= swing_low_level):
+                swing_low_crossed = True
+                swing_trend = -1
+
+        # Son bar: sinyal tespiti
+        if i == n - 1:
+            c = closes[i]; c_prev = closes[i - 1]
+            if (swing_high_level is not None and not swing_high_crossed
+                    and c > swing_high_level and c_prev <= swing_high_level):
+                break_type      = "CHoCH" if swing_trend == -1 else "BOS"
+                break_direction = "BULLISH"
+                swing_trend     = 1
+            if (swing_low_level is not None and not swing_low_crossed
+                    and c < swing_low_level and c_prev >= swing_low_level):
+                break_type      = "CHoCH" if swing_trend == 1 else "BOS"
+                break_direction = "BEARISH"
+                swing_trend     = -1
+
+    return break_type, break_direction, swing_trend
 
 # ============================================================
 # 8) MESAJ ŞABLONLARI
 # ============================================================
-def build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
-                     rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, trend_bias, patterns, source_label, atr_val=None):
-    base = symbol.split("/")[0]
-    p_str = f"{price:.10f}".rstrip("0").rstrip(".")
-    m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
-    if atr_val:
-        stop_val = round(price - atr_val * 4.0, 10)
-        tp1_val  = round(price + atr_val * 4.0, 10)
-        tp2_val  = round(price + atr_val * 6.0, 10)
-        stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
-        tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
-        tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
-        tp_block = f"🎯 <b>TP1:</b> <code>{tp1_str}</code>\n🚀 <b>TP2:</b> <code>{tp2_str}</code>\n🛑 <b>STOP:</b> <code>{stop_str}</code>\n"
-    else:
-        tp_block = ""
-    dt = smc_data['discount_top']
-    db = smc_data['discount_bottom']
-    dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
-    db_str = f"{db:.10f}".rstrip("0").rstrip(".")
-    pattern_line = candle_pattern_summary(patterns)
-    pattern_block = ""
-    if pattern_line:
-        pattern_block = (f"\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-                         f"📊 <b>MUM FORMASYONU</b>\n{pattern_line}\n"
-                         f"<i>Alıcı baskısı görülüyor — CHoCH/BOS yakın olabilir.</i>")
-    return (
-        f"📉📉📉 <b>DİSCOUNT ZONE</b> 📉📉📉\n<b>#{base}</b>  <i>{coin_name}</i>\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n📍 <b>AŞAMA 1 — DİSCOUNT ZONE İÇİNDE</b>\n"
-        f"🏷 <b>KAYNAK:</b> {source_label}\n"
-        f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
-        f"{tp_block}"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
-        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
-        f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
-        f"📉 <b>DISCOUNT ZONE:</b> <code>{dt_str}</code> — <code>{db_str}</code>\n"
-        f"📉 <b>ZONE DERİNLİĞİ:</b> %{round(depth, 1)}\n"
-        f"📐 <b>MEVCUT TREND:</b> {trend_bias}{pattern_block}\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n{strategy_note}\n\n"
-        f"⏳ <b>CHoCH/BOS bekleniyor — giriş sinyali henüz yok!</b>\n👁 TradingView'da izlemeye al.")
-
 def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
                      strategy_label, strategy_note, patterns, source_label, atr_val=None):
@@ -564,58 +598,7 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"{pattern_block}\n\n{strategy_note}\n\n{entry_msg}")
 
 # ============================================================
-# 9) SİNYAL GÖNDERME
-# ============================================================
-def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
-                    atr_ratio, atr_val, depth, smc_data, s_label, s_note,
-                    patterns, trend_bias_str, break_type, break_dir, in_discount, now,
-                    source, source_label):
-
-    if check_btc_crash():
-        scan_stats["btc_crash_skip"] += 1
-        return False
-
-    if break_type == "CHoCH" and break_dir == "BULLISH":
-        last_p2 = get_last_sent(symbol, "choch", source)
-        if now - last_p2 > PHASE2_COOLDOWN:
-            msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
-                                   rsi, raw_atr, atr_ratio, depth, smc_data,
-                                   s_label, s_note, patterns, source_label, atr_val=atr_val)
-            send_telegram_msg(msg)
-            mark_sent(symbol, "choch", source)
-            send_to_portfolio(symbol, price, atr_val, "choch", source, break_type)
-            scan_stats[f"signal_phase2_{source}"] += 1
-            pat_log = candle_pattern_summary(patterns)
-            print(f"🚀 [{source}] [CHoCH] {symbol} | {break_type} | RSI:{round(rsi,1)}"
-                  + (f" | {pat_log}" if pat_log else ""), flush=True)
-            return True
-        else:
-            scan_stats[f"cooldown_p2_{source}"] += 1
-
-    if in_discount and depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI:
-        if not check_btc_ema21():
-            scan_stats["btc_ema21_skip"] += 1
-            return False
-        last_p1 = get_last_sent(symbol, "discount", source)
-        if now - last_p1 > PHASE1_COOLDOWN:
-            msg = build_phase1_msg(symbol, coin_name, price, ma200, dist_ma,
-                                   rsi, raw_atr, atr_ratio, depth, smc_data,
-                                   s_label, s_note, trend_bias_str, patterns, source_label, atr_val=atr_val)
-            send_telegram_msg(msg)
-            mark_sent(symbol, "discount", source)
-            send_to_portfolio(symbol, price, atr_val, "discount", source)
-            scan_stats[f"signal_phase1_{source}"] += 1
-            pat_log = candle_pattern_summary(patterns)
-            print(f"📉 [{source}] [DISCOUNT] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}"
-                  + (f" | {pat_log}" if pat_log else ""), flush=True)
-            return True
-        else:
-            scan_stats[f"cooldown_p1_{source}"] += 1
-
-    return False
-
-# ============================================================
-# 10) BAR KAPANIŞINDA ANALİZ (WebSocket tetiklemeli)
+# 9) ANALİZ — Bar kapanışında çalışır
 # ============================================================
 def _analyze_symbol(symbol):
     try:
@@ -656,40 +639,82 @@ def _analyze_symbol(symbol):
 
         depth       = smc_data['depth']
         in_discount = smc_data['in_discount']
-        break_type  = smc_data['break_type']
-        break_dir   = smc_data['break_direction']
+        patterns    = detect_candle_patterns(df)
 
-        if break_type == "CHoCH":
+        # ── AŞAMA 1: Discount Zone Bildirimi ──────────────────────────────
+        if in_discount:
+            scan_stats["in_discount"] += 1
+            if depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI and not check_btc_crash() and check_btc_ema21():
+                # Bayrak her koşulda set edilir (cooldown bağımsız)
+                with discount_active_lock:
+                    discount_active[symbol] = True
+                # Telegram bildirimi cooldown kontrolüyle
+                last_p1 = get_last_sent(symbol, "discount", "smc-original")
+                if now - last_p1 > PHASE1_COOLDOWN:
+                    base = symbol.split("/")[0]
+                    dt_str = f"{smc_data['discount_top']:.10f}".rstrip("0").rstrip(".")
+                    db_str = f"{smc_data['discount_bottom']:.10f}".rstrip("0").rstrip(".")
+                    msg = (f"📉 <b>#{base}</b> — Discount Zone\n"
+                           f"💵 <code>{price:.8g}</code> | "
+                           f"🌀 RSI: <b>{round(rsi, 1)}</b> | "
+                           f"📊 Depth: %<b>{round(depth, 1)}</b>\n"
+                           f"🗺 Zone: <code>{db_str}</code> — <code>{dt_str}</code>")
+                    send_telegram_msg(msg)
+                    mark_sent(symbol, "discount", "smc-original")
+                    scan_stats["signal_phase1_smc-original"] += 1
+                    print(f"📉 [DISCOUNT] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}", flush=True)
+        else:
+            scan_stats["not_in_discount"] += 1
+
+        # ── AŞAMA 2: Micro CHoCH (sadece discount_active olanlar) ─────────
+        with discount_active_lock:
+            is_active = discount_active.get(symbol, False)
+
+        if not is_active:
+            return
+
+        if check_btc_crash():
+            scan_stats["btc_crash_skip"] += 1
+            return
+
+        micro_break, micro_dir, micro_trend = detect_micro_choch(df, CHOCH_SWING)
+
+        if micro_break == "CHoCH" and micro_dir == "BULLISH":
             scan_stats["choch_found"] += 1
-        elif break_type == "BOS":
+            last_p2 = get_last_sent(symbol, "choch", "smc-original")
+            if now - last_p2 > PHASE2_COOLDOWN:
+                # smc_data'ya micro sonuçları yaz (mesaj için)
+                smc_data['break_type']      = micro_break
+                smc_data['break_direction'] = micro_dir
+                smc_data['swing_trend']     = micro_trend
+
+                msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
+                                       rsi, raw_atr, atr_ratio, depth, smc_data,
+                                       s_label, s_note, patterns, "SMC", atr_val=atr_val)
+                send_telegram_msg(msg)
+                mark_sent(symbol, "choch", "smc-original")
+                send_to_portfolio(symbol, price, atr_val, "choch", "smc-original", micro_break)
+                scan_stats["signal_phase2_smc-original"] += 1
+                pat_log = candle_pattern_summary(patterns)
+                print(f"🚀 [CHoCH] {symbol} | Micro CHoCH | RSI:{round(rsi,1)}"
+                      + (f" | {pat_log}" if pat_log else ""), flush=True)
+                # Bayrak temizle
+                with discount_active_lock:
+                    discount_active[symbol] = False
+            else:
+                scan_stats["cooldown_p2_smc-original"] += 1
+
+        elif micro_break == "BOS" and micro_dir == "BULLISH":
             scan_stats["bos_found"] += 1
         else:
             scan_stats["no_break"] += 1
 
-        if in_discount:
-            scan_stats["in_discount"] += 1
-        else:
-            scan_stats["not_in_discount"] += 1
-
-        patterns = detect_candle_patterns(df)
-        trend_bias_str = ("BULLISH" if smc_data['swing_trend'] == 1
-                          else "BEARISH" if smc_data['swing_trend'] == -1
-                          else "NEUTRAL")
-
-        common = dict(
-            symbol=symbol, coin_name=coin_name, price=price, ma200=ma200,
-            dist_ma=dist_ma, rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
-            atr_val=atr_val, depth=depth, smc_data=smc_data, s_label=s_label,
-            s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
-            break_type=break_type, break_dir=break_dir,
-            in_discount=in_discount, now=now,
-        )
-
-        try_send_signal(**common, source="smc-original", source_label="SMC")
-
     except Exception as e:
         print(f"[HATA] {symbol}: {e}", flush=True)
 
+# ============================================================
+# 10) BAR KAPANIŞINDA GÜNCELLEME (WebSocket tetiklemeli)
+# ============================================================
 async def on_1h_close(symbol, o, h, l, c, v, ts_ms):
     global ws_1h_closes
     ws_1h_closes += 1
@@ -699,7 +724,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms):
     if symbol not in bars_cache:
         return
 
-    # Kapanan barı cache'e ekle
     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
     df = bars_cache[symbol]
     df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
@@ -709,7 +733,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms):
         df = df.iloc[-KEEP_BARS:]
     bars_cache[symbol] = df
 
-    # Analizi thread pool'da çalıştır (event loop'u bloklamaz)
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: _analyze_symbol(symbol))
 
@@ -777,13 +800,16 @@ async def periodic_summary():
     global ws_1h_closes
     await asyncio.sleep(3600)
     while True:
+        with discount_active_lock:
+            active_count = len([s for s, v in discount_active.items() if v])
         total_signals = (
-            scan_stats.get(f"signal_phase1_smc-original", 0) +
-            scan_stats.get(f"signal_phase2_smc-original", 0)
+            scan_stats.get("signal_phase1_smc-original", 0) +
+            scan_stats.get("signal_phase2_smc-original", 0)
         )
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Cached coin      : {len(bars_cache)}", flush=True)
         print(f"WS bar kapandı   : {ws_1h_closes}", flush=True)
+        print(f"Discount aktif   : {active_count} (CHoCH bekleniyor)", flush=True)
         print(f"Discount'ta      : {scan_stats.get('in_discount', 0)}", flush=True)
         print(f"Zone dışında     : {scan_stats.get('not_in_discount', 0)}", flush=True)
         print(f"Pivot yok        : {scan_stats.get('no_pivots', 0)}", flush=True)
@@ -807,16 +833,18 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v13 — WebSocket Tetiklemeli")
+    print("🚀  SMC Original v14 — Micro CHoCH (Discount → CHoCH)")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Tetikleyici    : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
-    print(f"  Swing length   : {SWING_LENGTH}")
-    print(f"  CHoCH lookback : 1 bar (sadece kapanan bar — gecikme yok)")
+    print(f"  Swing (Discount): {SWING_LENGTH} bar (makro, discount zone doğruluğu)")
+    print(f"  Swing (CHoCH)  : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
-    print(f"  Aşama 1        : Discount + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI} + BTC EMA21 üzeri")
-    print(f"  Aşama 2        : CHoCH bullish (RSI filtresi yok)")
+    print(f"  Aşama 1        : Discount + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI} + BTC EMA21")
+    print(f"                   → Tek satır Telegram bildirimi (portfolio girişi yok)")
+    print(f"  Aşama 2        : Micro CHoCH — SADECE discount_active coinlerde")
+    print(f"                   → Tam sinyal Telegram + Portfolio")
     print(f"  BTC Filtre     : Crash (4h %-{BTC_CRASH_PCT}) + EMA21 (Phase1)")
     print("=" * 50 + "\n")
 
