@@ -1,50 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-╔══════════════════════════════════════════════════════════════════════════════╗
-║              KAPİTÜLASYON BARSI SİNYAL BOTU  v5.0                         ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║                                                                              ║
-║  SİNYAL KRİTERLERİ (Backtest: 2022-2026, 50 coin, 4 yıl)                  ║
-║  ─────────────────────────────────────────────────────────                  ║
-║                                                                              ║
-║  ZORUNLU KOŞUL 1: CRASH BARSI                                               ║
-║    Son kapanan 1H barda fiyat -7% ile -15% arasında düşmüş olmalı          ║
-║    (-15% altındaki düşüşler genellikle hack/delist = geç)                   ║
-║    (-7% altında WR %83.7, -5% altında WR %67.5)                            ║
-║                                                                              ║
-║  ZORUNLU KOŞUL 2: HACİM SPİKE                                               ║
-║    O barın hacmi 20-bar ortalamasının 1.5x - 3x arasında olmalı            ║
-║    (1.5x altı = normal hacim, gerçek kapitülasyon değil)                    ║
-║    (3x üstü = çok sert çöküş, toparlanma gecikmeli olabilir)               ║
-║                                                                              ║
-║  MANTIK: "Zayıf eller panik satar, güçlü eller alır"                        ║
-║    Büyük hızlı düşüş + ortalamanın üzerinde hacim = kapitülasyon barı      ║
-║    Bu bar kapanınca pozisyon alınır, 24H içerisinde toparlanma beklenir     ║
-║                                                                              ║
-║  BACKTEST SONUÇLARI:                                                         ║
-║    ret1 < -7%  + vol 1.5-3x : 245 sinyal, WR %83.7, ort kazanç +15.9%     ║
-║    ret1 < -8%  + vol 1.5-3x : 131 sinyal, WR %87.8, ort kazanç +17.7%     ║
-║    ret1 < -10% + vol 1.5-3x :  42 sinyal, WR %88.1, ort kazanç +23.2%     ║
-║    Yıl bazında istikrar: 2022=%61.9, 2023=%63.2, 2024=%74.4, 2025=%68.3   ║
-║                                                                              ║
-║  HEDEF VE STOP:                                                              ║
-║    TP1: +5%   (geniş kitle için hızlı çıkış)                                ║
-║    TP2: +10%  (ana hedef)                                                   ║
-║    TP3: +15%  (uzatmak isteyenler için)                                      ║
-║    SL : -7%   (pump oncesi max drawdown analizinden — %95 pump korunur)     ║
-║                                                                              ║
-║  ATLANACAK DURUMLAR:                                                         ║
-║    - Stablecoin, leveraged token, fiat pariteleri                            ║
-║    - Vol > 3x (çok sert çöküş, toparlanma gecikmeli)                        ║
-║    - Aynı coinde 4 saat içinde ikinci sinyal (tekrar sayma)                 ║
-║                                                                              ║
-║  v4'ten taşınanlar: ApiGate, sembol havuzu, WebSocket altyapısı,            ║
-║    Telegram/Portfolio gönderim, Flask dashboard, performans log,             ║
-║    Adaptive ATR stop, mum formasyonları, BTC 4H trend, funding cache        ║
-║                                                                              ║
-║  20260514 — v5: Kapitülasyon sinyaline evrildi                              ║
-║             Pump sinyali (RSI+MACD+24H mom) tamamen kaldırıldı             ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+pump_scanner_v6_20260518.py
+════════════════════════════════════════════════════════
+4 SİSTEM — TEK BOT
+
+SİSTEM 1: PANİK PUMP (Kapitülasyon)
+  Crash barı: -15% ile -7% | Hacim 1.5-3x
+  Stop: -7% | TP: +5/+10/+15% | Backtest WR: ~%84
+
+SİSTEM 2: PUMP SİNYALİ — KISA VADE (T24)
+  dist_ema21>=2.566 & dist_ma50<=-5.045 & bb_width_ch3<=-0.019 & ma200_slope<=-1.933
+  Stop: -3% | TP: +5% | 24 saat | Backtest WR: %65
+
+SİSTEM 3: PUMP SİNYALİ — ORTA VADE (T72)
+  mom5_pct>=2.740 & dist_ema21<=-2.737 & coin_drawdown>=-26.796 & ma200_slope>=1.028
+  Stop: -5% | TP: +10% | 3 gün | Backtest WR: %54
+
+SİSTEM 4: PUMP SİNYALİ — UZUN VADE (T168)
+  dist_ma200>=5.657 & dist_ma50<=-5.045 & mom10_pct>=3.941 & days_since_high<=677
+  Stop: -8% | TP: +25% | 7 gün | Backtest WR: %40
+════════════════════════════════════════════════════════
 """
 
 import asyncio
@@ -73,20 +48,21 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
 PORTFOLIO_URL      = os.getenv("PORTFOLIO_URL",      "")
 PORTFOLIO_TOKEN    = os.getenv("PORTFOLIO_TOKEN",    "")
 
-# Kapitülasyon sinyal parametreleri (backtestten türetildi)
-CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))  # daha sert düşüşleri atla (hack/delist riski)
-CRASH_MAX    = float(os.getenv("CRASH_MAX",    "-7.0"))   # minimum crash büyüklüğü
-VOL_MIN      = float(os.getenv("VOL_MIN",      "1.5"))    # minimum hacim çarpanı
-VOL_MAX      = float(os.getenv("VOL_MAX",      "3.0"))    # maksimum hacim çarpanı
-VOL_PERIOD   = int(os.getenv("VOL_PERIOD",     "20"))     # hacim ortalaması kaç bar üzerinden
+# Sistem 1 — Kapitülasyon parametreleri
+CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
+CRASH_MAX    = float(os.getenv("CRASH_MAX",    "-7.0"))
+VOL_MIN      = float(os.getenv("VOL_MIN",      "1.5"))
+VOL_MAX      = float(os.getenv("VOL_MAX",      "3.0"))
+VOL_PERIOD   = int(os.getenv("VOL_PERIOD",     "20"))
 
 # Genel
 MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",         "1000000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",             "0"))
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS",   "4"))
+PUMP_COOLDOWN_HOURS   = int(os.getenv("PUMP_COOLDOWN_HOURS",     "4"))
 WS_STREAM_CHUNK       = int(os.getenv("WS_STREAM_CHUNK",         "120"))
-BOOTSTRAP_BARS        = int(os.getenv("BOOTSTRAP_BARS",          "500"))
-KEEP_BARS             = int(os.getenv("KEEP_BARS",               "300"))
+BOOTSTRAP_BARS        = int(os.getenv("BOOTSTRAP_BARS",          "750"))
+KEEP_BARS             = int(os.getenv("KEEP_BARS",               "720"))
 
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -102,7 +78,6 @@ IGNORED_COINS = {
     "PAXG/USDT", "XAUT/USDT",
     "WBTC/USDT", "WETH/USDT", "WBNB/USDT", "BETH/USDT",
     "BTCB/USDT", "HBTC/USDT",
-    # BTC kasıtlı çıkarıldı — +7% düşüş çok nadir ve toparlanma yavaş
     "BTC/USDT",
 }
 LEVERAGED_PATTERNS = ["UP", "DOWN", "BULL", "BEAR", "3L", "3S", "2L", "2S", "5L", "5S", "10L", "10S"]
@@ -117,7 +92,8 @@ signal_counter  = 0
 
 bars_1h:        dict = {}
 funding_cache:  dict = {}
-last_signal_ts: dict = {}
+last_signal_ts: dict = {}       # kapitülasyon cooldown: symbol → datetime
+last_pump_ts:   dict = {}       # T24/T72/T168 cooldown: (symbol, sig_type) → datetime
 all_signals:    list = []
 btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
@@ -189,7 +165,6 @@ async def load_symbols_pool():
         and s not in IGNORED_COINS
         and not any(s.replace("/USDT", "").endswith(p) for p in LEVERAGED_PATTERNS)
     ]
-
     volumes = {}
     for i in range(0, len(syms), 100):
         try:
@@ -201,7 +176,6 @@ async def load_symbols_pool():
         except Exception:
             pass
         await asyncio.sleep(0.5)
-
     missing = [s for s in syms if volumes.get(s, 0) == 0]
     for sym in missing[:50]:
         try:
@@ -212,7 +186,6 @@ async def load_symbols_pool():
         except Exception:
             pass
         await asyncio.sleep(0.05)
-
     filtered = sorted(
         [s for s in syms if volumes.get(s, 0) >= MIN_LIQUIDITY],
         key=lambda x: volumes.get(x, 0), reverse=True
@@ -237,22 +210,46 @@ def prepare_bars(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
 
-    # Hacim MA (kapitülasyon için temel)
+    # --- Mevcut göstergeler (Sistem 1) ---
     df["vol_ma"] = v.rolling(VOL_PERIOD).mean()
-
-    # ATR (adaptive stop için)
     tr        = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
     df["atr"] = tr.ewm(alpha=1/14, adjust=False).mean()
-
-    # ATR % (volatilite göstergesi)
-    df["atr_pct"] = df["atr"] / c * 100
-
-    # EMA50 (BTC trend için)
-    df["ema50"]  = c.ewm(span=50,  adjust=False).mean()
-    df["ema200"] = c.ewm(span=200, adjust=False).mean()
-
-    # Bar getirisi (ret1 için önceki kapanış)
+    df["atr_pct"]    = df["atr"] / c * 100
+    df["ema50"]      = c.ewm(span=50,  adjust=False).mean()
+    df["ema200"]     = c.ewm(span=200, adjust=False).mean()
     df["close_prev"] = c.shift(1)
+
+    # --- Yeni göstergeler (Sistem 2-3-4) ---
+    ema21  = c.ewm(span=21,  adjust=False).mean()
+    ma50   = c.rolling(50).mean()
+    ma200  = c.rolling(200).mean()
+
+    df["ema21"]      = ema21
+    df["dist_ema21"] = (c - ema21)  / ema21.replace(0, np.nan)  * 100
+    df["dist_ma50"]  = (c - ma50)   / ma50.replace(0, np.nan)   * 100
+    df["dist_ma200"] = (c - ma200)  / ma200.replace(0, np.nan)  * 100
+    df["ma200_slope"]= (ma200 - ma200.shift(20)) / ma200.shift(20).abs().replace(0, np.nan) * 100
+
+    bb_mid = c.rolling(20).mean()
+    bb_std = c.rolling(20).std()
+    bb_up  = bb_mid + 2 * bb_std
+    bb_dn  = bb_mid - 2 * bb_std
+    bb_w   = (bb_up - bb_dn) / bb_mid.replace(0, np.nan)
+    df["bb_width"]     = bb_w
+    df["bb_width_ch3"] = bb_w.diff(3)
+
+    df["mom5_pct"]  = (c - c.shift(5))  / c.shift(5).abs().replace(0, np.nan)  * 100
+    df["mom10_pct"] = (c - c.shift(10)) / c.shift(10).abs().replace(0, np.nan) * 100
+
+    # Coin drawdown: yüksekten ne kadar uzakta (%)
+    roll_max = c.rolling(KEEP_BARS, min_periods=50).max()
+    df["coin_drawdown"] = (c - roll_max) / roll_max.replace(0, np.nan) * 100
+
+    # Son ATH'dan bu yana kaç bar geçti
+    bar_idx       = pd.Series(np.arange(len(c), dtype=float), index=c.index)
+    is_at_high    = c >= roll_max * (1 - 1e-6)
+    last_high_pos = bar_idx.where(is_at_high).ffill().fillna(0)
+    df["days_since_high"] = bar_idx - last_high_pos
 
     return df.dropna(subset=["vol_ma", "atr", "close_prev"])
 
@@ -269,29 +266,21 @@ def is_hammer(df, i):
     if c <= o: return False
     body = c - o; rng = h - l
     if rng <= 0 or body <= 0: return False
-    return ((o - l) >= body * 2.0
-            and (h - c) <= body * 0.5
-            and (o - l) / rng >= 0.55)
+    return ((o - l) >= body * 2.0 and (h - c) <= body * 0.5 and (o - l) / rng >= 0.55)
 
 def is_engulfing(df, i):
     if i < 1: return False
-    o0, _, _, c0 = _ohlc(df, i)
-    o1, _, _, c1 = _ohlc(df, i - 1)
+    o0, _, _, c0 = _ohlc(df, i); o1, _, _, c1 = _ohlc(df, i - 1)
     b0 = abs(c0 - o0); b1 = abs(c1 - o1)
     if b1 <= 0: return False
     return c1 < o1 and c0 > o0 and o0 <= c1 and c0 >= o1 and b0 >= b1 * 0.8
 
 def is_morning_star(df, i):
     if i < 2: return False
-    o0, _, _, c0 = _ohlc(df, i)
-    o1, _, _, c1 = _ohlc(df, i - 1)
-    o2, _, _, c2 = _ohlc(df, i - 2)
-    b0 = abs(c0-o0); b1 = abs(c1-o1); b2 = abs(c2-o2)
-    avg = (b0+b1+b2)/3 if (b0+b1+b2) > 0 else 1
-    return (c2 < o2 and b2 >= avg
-            and b1 <= avg * 0.5
-            and c0 > o0 and b0 >= avg
-            and c0 >= o2 - b2/2)
+    o0, _, _, c0 = _ohlc(df, i); o1, _, _, c1 = _ohlc(df, i-1); o2, _, _, c2 = _ohlc(df, i-2)
+    b0=abs(c0-o0); b1=abs(c1-o1); b2=abs(c2-o2)
+    avg=(b0+b1+b2)/3 if (b0+b1+b2)>0 else 1
+    return (c2<o2 and b2>=avg and b1<=avg*0.5 and c0>o0 and b0>=avg and c0>=o2-b2/2)
 
 def detect_candle(df, i):
     if is_morning_star(df, i): return "🌅 Morning Star"
@@ -300,105 +289,149 @@ def detect_candle(df, i):
     return ""
 
 # ============================================================
-# KAPİTÜLASYON SİNYAL KONTROLÜ
-# Backtest: 2022-2026, 50 coin
-# ret1 < -7% + vol 1.5-3x → WR %83.7, ort kazanç +15.9%, ~61 sinyal/yıl
+# SİSTEM 1 — KAPİTÜLASYON SİNYALİ (değişmedi)
 # ============================================================
 def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
-    if len(df) < VOL_PERIOD + 5:
-        return None
-
-    # iloc[-1] = az önce kapanan crash barı (on_1h_close içinde eklendi)
+    if len(df) < VOL_PERIOD + 5: return None
     bar = df.iloc[-1]
-
-    def gv(row, col):
-        val = row.get(col, np.nan)
+    def gv(col):
+        val = bar.get(col, np.nan)
         return None if pd.isna(val) else float(val)
-
-    close_now  = gv(bar, "close")
-    close_prev = gv(bar, "close_prev")  # bar'ın bir önceki kapanışı (shift(1))
-    vol_now    = gv(bar, "volume")
-    vol_ma     = gv(bar, "vol_ma")
-    atr_val    = gv(bar, "atr")
-    atr_pct    = gv(bar, "atr_pct")
-
-    if None in (close_now, close_prev, vol_now, vol_ma, atr_val):
-        return None
-    if close_prev == 0 or vol_ma == 0:
-        return None
-
-    # Bar getirisi (%)
-    ret1 = (close_now / close_prev - 1) * 100
-
-    # Hacim çarpanı
+    close_now  = gv("close"); close_prev = gv("close_prev")
+    vol_now    = gv("volume"); vol_ma    = gv("vol_ma")
+    atr_val    = gv("atr");   atr_pct   = gv("atr_pct")
+    if None in (close_now, close_prev, vol_now, vol_ma, atr_val): return None
+    if close_prev == 0 or vol_ma == 0: return None
+    ret1      = (close_now / close_prev - 1) * 100
     vol_ratio = vol_now / vol_ma
-
-    # KOŞUL 1: Crash barı (-15% ile -7% arası)
     if not (CRASH_MIN <= ret1 <= CRASH_MAX):
-        stats["filtered_crash"] += 1
-        return None
-
-    # KOŞUL 2: Hacim spike (1.5x - 3x)
+        stats["filtered_crash"] += 1; return None
     if not (VOL_MIN <= vol_ratio <= VOL_MAX):
-        stats["filtered_vol"] += 1
-        return None
-
-    # Giriş fiyatı = crash barının kapanışı
+        stats["filtered_vol"] += 1; return None
     entry = close_now
-
-    # Stop: -7% (backtest SL — pump oncesi max drawdown analizinden)
-    stop = round(entry * 0.93, 8)
-
-    # TP'ler
-    tp1 = round(entry * 1.05, 8)   # +5%
-    tp2 = round(entry * 1.10, 8)   # +10%
-    tp3 = round(entry * 1.15, 8)   # +15%
-
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
-
     return {
-        "symbol":      symbol,
-        "type":        "capit",
-        "entry":       round(entry, 8),
-        "stop":        stop,
-        "tp1":         tp1,
-        "tp2":         tp2,
-        "tp3":         tp3,
-        "ret1":        round(ret1, 2),
-        "vol_ratio":   round(vol_ratio, 2),
-        "vol_ma":      round(vol_ma, 2),
-        "atr":         round(atr_val, 8),
-        "atr_pct":     round(atr_pct, 2) if atr_pct is not None else None,
-        "funding":     round(funding, 6) if funding is not None else None,
+        "symbol": symbol, "type": "capit",
+        "entry": round(entry, 8), "stop": round(entry * 0.93, 8),
+        "tp1": round(entry * 1.05, 8), "tp2": round(entry * 1.10, 8), "tp3": round(entry * 1.15, 8),
+        "ret1": round(ret1, 2), "vol_ratio": round(vol_ratio, 2), "vol_ma": round(vol_ma, 2),
+        "atr": round(atr_val, 8), "atr_pct": round(atr_pct, 2) if atr_pct else None,
+        "funding": round(funding, 6) if funding is not None else None,
         "funding_neg": funding_neg,
-        "candle":      detect_candle(df, len(df) - 1),
+        "candle": detect_candle(df, len(df) - 1),
     }
 
 # ============================================================
-# SİNYAL PUANLAMA (1–5 ⭐)
-# Crash büyüklüğü ve hacim oranına göre
+# SİSTEM 2 — KISA VADE (T24)
+# ============================================================
+def check_t24_signal(df: pd.DataFrame, symbol: str) -> dict | None:
+    """dist_ema21>=2.566 & dist_ma50<=-5.045 & bb_width_ch3<=-0.019 & ma200_slope<=-1.933"""
+    if len(df) < 50: return None
+    bar = df.iloc[-1]
+    def gv(col):
+        val = bar.get(col, np.nan)
+        return None if pd.isna(val) else float(val)
+    dist_ema21   = gv("dist_ema21")
+    dist_ma50    = gv("dist_ma50")
+    bb_width_ch3 = gv("bb_width_ch3")
+    ma200_slope  = gv("ma200_slope")
+    close        = gv("close")
+    if None in (dist_ema21, dist_ma50, bb_width_ch3, ma200_slope, close): return None
+    if not (dist_ema21 >= 2.566 and dist_ma50 <= -5.045 and
+            bb_width_ch3 <= -0.019 and ma200_slope <= -1.933): return None
+    return {
+        "symbol": symbol, "type": "t24",
+        "entry": round(close, 8),
+        "stop":  round(close * 0.97, 8),
+        "tp1":   round(close * 1.05, 8),
+        "tp2":   round(close * 1.05, 8),
+        "dist_ema21":   round(dist_ema21, 2),
+        "dist_ma50":    round(dist_ma50, 2),
+        "bb_width_ch3": round(bb_width_ch3, 4),
+        "ma200_slope":  round(ma200_slope, 3),
+        "atr_pct":      round(float(bar.get("atr_pct") or 0), 2),
+    }
+
+# ============================================================
+# SİSTEM 3 — ORTA VADE (T72)
+# ============================================================
+def check_t72_signal(df: pd.DataFrame, symbol: str) -> dict | None:
+    """mom5_pct>=2.740 & dist_ema21<=-2.737 & coin_drawdown>=-26.796 & ma200_slope>=1.028"""
+    if len(df) < 50: return None
+    bar = df.iloc[-1]
+    def gv(col):
+        val = bar.get(col, np.nan)
+        return None if pd.isna(val) else float(val)
+    mom5_pct      = gv("mom5_pct")
+    dist_ema21    = gv("dist_ema21")
+    coin_drawdown = gv("coin_drawdown")
+    ma200_slope   = gv("ma200_slope")
+    close         = gv("close")
+    if None in (mom5_pct, dist_ema21, coin_drawdown, ma200_slope, close): return None
+    if not (mom5_pct >= 2.740 and dist_ema21 <= -2.737 and
+            coin_drawdown >= -26.796 and ma200_slope >= 1.028): return None
+    return {
+        "symbol": symbol, "type": "t72",
+        "entry": round(close, 8),
+        "stop":  round(close * 0.95, 8),
+        "tp1":   round(close * 1.10, 8),
+        "tp2":   round(close * 1.10, 8),
+        "mom5_pct":      round(mom5_pct, 2),
+        "dist_ema21":    round(dist_ema21, 2),
+        "coin_drawdown": round(coin_drawdown, 2),
+        "ma200_slope":   round(ma200_slope, 3),
+        "atr_pct":       round(float(bar.get("atr_pct") or 0), 2),
+    }
+
+# ============================================================
+# SİSTEM 4 — UZUN VADE (T168)
+# ============================================================
+def check_t168_signal(df: pd.DataFrame, symbol: str) -> dict | None:
+    """dist_ma200>=5.657 & dist_ma50<=-5.045 & mom10_pct>=3.941 & days_since_high<=677"""
+    if len(df) < 50: return None
+    bar = df.iloc[-1]
+    def gv(col):
+        val = bar.get(col, np.nan)
+        return None if pd.isna(val) else float(val)
+    dist_ma200      = gv("dist_ma200")
+    dist_ma50       = gv("dist_ma50")
+    mom10_pct       = gv("mom10_pct")
+    days_since_high = gv("days_since_high")
+    close           = gv("close")
+    if None in (dist_ma200, dist_ma50, mom10_pct, days_since_high, close): return None
+    if not (dist_ma200 >= 5.657 and dist_ma50 <= -5.045 and
+            mom10_pct >= 3.941 and days_since_high <= 677): return None
+    return {
+        "symbol": symbol, "type": "t168",
+        "entry": round(close, 8),
+        "stop":  round(close * 0.92, 8),
+        "tp1":   round(close * 1.25, 8),
+        "tp2":   round(close * 1.25, 8),
+        "dist_ma200":      round(dist_ma200, 2),
+        "dist_ma50":       round(dist_ma50, 2),
+        "mom10_pct":       round(mom10_pct, 2),
+        "days_since_high": int(days_since_high),
+        "atr_pct":         round(float(bar.get("atr_pct") or 0), 2),
+    }
+
+# ============================================================
+# PUANLAMA (Sistem 1 için)
 # ============================================================
 def calc_signal_score(ret1: float, vol_ratio: float, liquidity: float) -> int:
-    # Crash büyüklüğü — %50 ağırlık (daha sert = daha iyi WR)
     abs_ret = abs(ret1)
     if abs_ret >= 12:   crash_score = 5
     elif abs_ret >= 10: crash_score = 4
     elif abs_ret >= 9:  crash_score = 3
     elif abs_ret >= 8:  crash_score = 2
-    else:               crash_score = 1   # -7% ile -8% arası
-
-    # Hacim oranı — %30 ağırlık (2x civarı ideal)
+    else:               crash_score = 1
     if 1.8 <= vol_ratio <= 2.5:  vol_score = 5
     elif 1.5 <= vol_ratio < 1.8: vol_score = 3
     elif 2.5 < vol_ratio <= 3.0: vol_score = 3
     else:                         vol_score = 1
-
-    # Likidite — %20 ağırlık
     if liquidity >= 15_000_000:  liq_score = 5
     elif liquidity >= 5_000_000: liq_score = 3
     else:                        liq_score = 1
-
     raw = crash_score * 0.5 + vol_score * 0.3 + liq_score * 0.2
     return max(1, min(5, round(raw)))
 
@@ -406,7 +439,7 @@ def _stars(score: int) -> str:
     return "⭐" * score
 
 # ============================================================
-# FUNDING RATE + BTC 4H
+# FUNDING + BTC 4H
 # ============================================================
 async def fetch_funding_rate(symbol):
     sym_fut = symbol.replace("/USDT", "USDT")
@@ -423,8 +456,7 @@ async def refresh_funding_cache(symbols):
     ok = 0
     for sym in symbols:
         await fetch_funding_rate(sym)
-        if funding_cache.get(sym) is not None:
-            ok += 1
+        if funding_cache.get(sym) is not None: ok += 1
         await asyncio.sleep(0.05)
     print(f"  → {ok}/{len(symbols)} sembolde funding rate", flush=True)
 
@@ -433,9 +465,7 @@ async def refresh_btc_4h():
         df = await fetch_df("BTC/USDT", "4h", 100)
         if df is None or len(df) < 50: return
         df = prepare_bars(df)
-        lc    = float(df["close"].iloc[-1])
-        le50  = float(df["ema50"].iloc[-1])
-        le200 = float(df["ema200"].iloc[-1])
+        lc=float(df["close"].iloc[-1]); le50=float(df["ema50"].iloc[-1]); le200=float(df["ema200"].iloc[-1])
         if lc > le50 > le200:   trend = "⬆️ Güçlü Yükseliş"
         elif lc > le50:         trend = "🟢 Yükseliş"
         elif lc > le200:        trend = "🟡 Karışık"
@@ -447,7 +477,7 @@ async def refresh_btc_4h():
         print(f"BTC 4H hata: {e}", flush=True)
 
 # ============================================================
-# TELEGRAM + PORTFOLIO
+# YARDIMCI FONKSİYONLAR
 # ============================================================
 def fmt_price(price):
     if price is None: return "?"
@@ -471,13 +501,14 @@ def _vol_risk(atr_pct):
 def _sep():
     return "━━━━━━━━━━━━━━━━━━━━"
 
+# ============================================================
+# TELEGRAM MESAJ OLUŞTURUCULAR
+# ============================================================
 def build_capitulation_message(r, tr_time, sig_num):
     sym  = r["symbol"].replace("/USDT", "")
     e    = r["entry"]
     icon = "💰" if r.get("funding_neg") else "🔴"
-    ret1 = r.get("ret1", 0)
-    vr   = r.get("vol_ratio", 0)
-
+    ret1 = r.get("ret1", 0); vr = r.get("vol_ratio", 0)
     lines = [
         f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
         "",
@@ -489,8 +520,8 @@ def build_capitulation_message(r, tr_time, sig_num):
         f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+10%)",
         f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+15%)",
         _sep(),
-        "📊 <b>İndikatörler</b>",
-        f"📉 <b>Düşüş</b>     {ret1:+.2f}%  (crash barı)",
+        "📊 <b>Göstergeler</b>",
+        f"📉 <b>Düşüş</b>     {ret1:+.2f}%  (panik satışı)",
         f"📊 <b>Hacim</b>     {vr:.2f}x ortalama  🔥",
     ]
     if r.get("funding") is not None:
@@ -499,13 +530,94 @@ def build_capitulation_message(r, tr_time, sig_num):
         lines.append(f"<b>Formasyon</b>  {r['candle']}  ✅")
     lines += [
         _sep(),
-        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend', '?')}",
-        f"<b>Vol.Risk</b>   {_vol_risk(r.get('atr_pct'))}",
+        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
         _sep(),
-        f"⏱ Cooldown: {SIGNAL_COOLDOWN_HOURS}H  |  #{sig_num} sinyal",
+        f"⏱ Geçmiş başarı: ~%84  |  #{sig_num} sinyal",
     ]
     return "\n".join(lines)
 
+
+def build_t24_message(r, tr_time, sig_num):
+    sym = r["symbol"].replace("/USDT", "")
+    e   = r["entry"]
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"🔴 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  KISA VADE</b>",
+        _sep(),
+        f"💵 <b>Giriş</b>   {fmt_price(e)}",
+        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%3)",
+        f"🎯 <b>Hedef</b>   {fmt_price(r['tp1'])}  (+%5)",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"📈 Fiyat, EMA21'in %{abs(r['dist_ema21']):.1f} üstünde",
+        f"📉 Fiyat, MA50'nin %{abs(r['dist_ma50']):.1f} altında",
+        f"📉 Bollinger Bandı daralıyor ({r['bb_width_ch3']:.4f})",
+        f"📉 MA200 aşağı eğimli (%{r['ma200_slope']:.2f}/20 bar)",
+        _sep(),
+        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
+        _sep(),
+        f"⏱ Geçmiş başarı: %65  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
+
+def build_t72_message(r, tr_time, sig_num):
+    sym = r["symbol"].replace("/USDT", "")
+    e   = r["entry"]
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"🟡 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  ORTA VADE</b>",
+        _sep(),
+        f"💵 <b>Giriş</b>   {fmt_price(e)}",
+        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%5)",
+        f"🎯 <b>Hedef</b>   {fmt_price(r['tp1'])}  (+%10)",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"📈 Kısa vadeli momentum: +%{r['mom5_pct']:.1f}",
+        f"📉 Fiyat, EMA21'in %{abs(r['dist_ema21']):.1f} altında (geri çekilme)",
+        f"✅ Düşüş %{abs(r['coin_drawdown']):.1f} (sağlıklı seviye)",
+        f"📈 MA200 yukarı eğimli (+%{r['ma200_slope']:.2f}/20 bar)",
+        _sep(),
+        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
+        _sep(),
+        f"⏱ Geçmiş başarı: %54  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
+
+def build_t168_message(r, tr_time, sig_num):
+    sym = r["symbol"].replace("/USDT", "")
+    e   = r["entry"]
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"🟢 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  UZUN VADE</b>",
+        _sep(),
+        f"💵 <b>Giriş</b>   {fmt_price(e)}",
+        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%8)",
+        f"🎯 <b>Hedef</b>   {fmt_price(r['tp1'])}  (+%25)",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"📈 Fiyat, MA200'ün %{abs(r['dist_ma200']):.1f} üstünde",
+        f"📉 Fiyat, MA50'nin %{abs(r['dist_ma50']):.1f} altında",
+        f"📈 10 bar momentum: +%{r['mom10_pct']:.1f}",
+        f"⏰ Son zirve: {r['days_since_high']} bar önce",
+        _sep(),
+        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
+        _sep(),
+        f"⏱ Geçmiş başarı: %40  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
+# ============================================================
+# GÖNDERIM
+# ============================================================
 def send_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     try:
@@ -520,16 +632,25 @@ def send_telegram(text):
     except Exception as e:
         print(f"Telegram hata: {e}", flush=True)
 
+# sig_type → portfolio type eşleştirmesi
+_SIG_TYPE_MAP = {
+    "capit": "panik_pump",
+    "t24":   "pump_kisa",
+    "t72":   "pump_orta",
+    "t168":  "pump_uzun",
+}
+
 def send_to_portfolio(result):
     if not PORTFOLIO_URL: return
     try:
+        sig_type = _SIG_TYPE_MAP.get(result.get("type", "capit"), "panik_pump")
         payload = {
             "symbol":      result["symbol"],
             "entry":       result["entry"],
             "stop":        result["stop"],
             "tp1":         result.get("tp1"),
             "tp2":         result.get("tp2"),
-            "sig_type":    "panik_pump",
+            "sig_type":    sig_type,
             "sub_type":    "",
             "source":      "bot",
             "candle":      result.get("candle", ""),
@@ -541,7 +662,7 @@ def send_to_portfolio(result):
         r = requests.post(f"{PORTFOLIO_URL}/api/signal",
                           json=payload, headers=headers, timeout=5)
         if r.status_code == 201:
-            print(f"[PORTFOLIO] Sinyal gönderildi: {result['symbol']}", flush=True)
+            print(f"[PORTFOLIO] Sinyal gönderildi: {result['symbol']} ({sig_type})", flush=True)
         elif r.status_code == 409:
             print(f"[PORTFOLIO] Zaten açık: {result['symbol']}", flush=True)
         else:
@@ -553,6 +674,7 @@ def send_to_portfolio(result):
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
+_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168}
 
 def load_signal_log():
     try:
@@ -572,21 +694,24 @@ signal_log        = load_signal_log()
 pending_by_symbol = {}
 
 def log_signal(result, tr_time):
+    sig_type = result.get("type", "capit")
     entry_rec = {
-        "id":          f"{result['symbol']}_{int(tr_time.timestamp())}",
+        "id":          f"{result['symbol']}_{sig_type}_{int(tr_time.timestamp())}",
         "symbol":      result["symbol"],
+        "sig_type":    _SIG_TYPE_MAP.get(sig_type, "panik_pump"),
+        "raw_type":    sig_type,
         "entry":       result["entry"],
         "stop":        result["stop"],
         "tp1":         result.get("tp1"),
         "tp2":         result.get("tp2"),
         "tp3":         result.get("tp3"),
-        "sig_type":    "panik_pump",
+        "expire_h":    _EXPIRE_H.get(sig_type, 24),
         "funding_neg": result.get("funding_neg", False),
         "candle":      result.get("candle", ""),
         "time":        tr_time.isoformat(),
         "status":      "open",
-        "peak_pct":    0.0, "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
-        "close_time":  None, "close_price": None, "close_ret": None,
+        "peak_pct": 0.0, "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
+        "close_time": None, "close_price": None, "close_ret": None,
         "ret1":      result.get("ret1"),
         "vol_ratio": result.get("vol_ratio"),
         "score":     result.get("score"),
@@ -611,6 +736,7 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         if sig_time.tzinfo is None:
             sig_time = sig_time.replace(tzinfo=timezone.utc)
         elapsed_h = (now - sig_time).total_seconds() / 3600
+        expire_h  = entry.get("expire_h", 24)
 
         cur_ret = (bar_high - e) / e * 100
         if cur_ret > entry["peak_pct"]:
@@ -629,7 +755,7 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
             entry.update({"status": "win", "close_time": bar_time.isoformat(),
                           "close_price": round(tp2, 8), "close_ret": round((tp2-e)/e*100, 2)})
             to_close.append(entry); continue
-        if elapsed_h >= 24:
+        if elapsed_h >= expire_h:
             entry.update({"status": "expired", "close_time": bar_time.isoformat(),
                           "close_price": round(bar_close, 8), "close_ret": round((bar_close-e)/e*100, 2)})
             to_close.append(entry)
@@ -698,6 +824,7 @@ async def signal_worker(candidate_queue):
             symbol  = sig.symbol
             result  = sig.result
             tr_time = sig.tr_time
+            sig_type = result.get("type", "capit")
 
             # Likidite kontrolü
             liquidity = 0.0
@@ -710,44 +837,55 @@ async def signal_worker(candidate_queue):
             except Exception:
                 pass
 
-            # Puanlama
             result["liquidity"] = liquidity
-            result["score"] = calc_signal_score(
-                result.get("ret1", 0),
-                result.get("vol_ratio", 0),
-                liquidity,
-            )
 
-            # Funding güncelle
-            await fetch_funding_rate(symbol)
-            result["funding"]     = funding_cache.get(symbol)
-            result["funding_neg"] = result["funding"] is not None and result["funding"] < 0
+            if sig_type == "capit":
+                result["score"] = calc_signal_score(
+                    result.get("ret1", 0), result.get("vol_ratio", 0), liquidity)
+                await fetch_funding_rate(symbol)
+                result["funding"]     = funding_cache.get(symbol)
+                result["funding_neg"] = result["funding"] is not None and result["funding"] < 0
+                msg = build_capitulation_message(result, tr_time, signal_counter + 1)
+                icon = "💰" if result.get("funding_neg") else "🔴"
+                print(f"SİNYAL {icon} [PANİK PUMP] {symbol}"
+                      f" | düşüş:{result['ret1']:+.2f}% | vol:{result['vol_ratio']:.2f}x"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "t24":
+                msg = build_t24_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🔴 [KISA VADE] {symbol}"
+                      f" | ema21:+%{result['dist_ema21']:.1f}"
+                      f" | ma50:%{result['dist_ma50']:.1f}"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "t72":
+                msg = build_t72_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🟡 [ORTA VADE] {symbol}"
+                      f" | mom5:+%{result['mom5_pct']:.1f}"
+                      f" | ema21:%{result['dist_ema21']:.1f}"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "t168":
+                msg = build_t168_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🟢 [UZUN VADE] {symbol}"
+                      f" | ma200:+%{result['dist_ma200']:.1f}"
+                      f" | mom10:+%{result['mom10_pct']:.1f}"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            else:
+                continue
 
             signal_counter += 1
-            msg  = build_capitulation_message(result, tr_time, signal_counter)
-            icon = "💰" if result.get("funding_neg") else "🔴"
-
             send_telegram(msg)
             send_to_portfolio(result)
 
-            last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
+            # Cooldown güncelle
+            if sig_type == "capit":
+                last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
+            else:
+                last_pump_ts[(symbol, sig_type)] = tr_time.replace(tzinfo=None)
+
             result["time"]     = tr_time.strftime("%Y-%m-%d %H:%M")
-            result["sig_type"] = "panik_pump"
             all_signals.insert(0, result)
             if len(all_signals) > 200: all_signals.pop()
-
             stats["signal_sent"] += 1
             log_signal(result, tr_time)
-
-            print(
-                f"SİNYAL {icon} [KAPİTÜLASYON] {symbol}"
-                f" | düşüş:{result['ret1']:+.2f}%"
-                f" | vol:{result['vol_ratio']:.2f}x"
-                f" | giriş:{fmt_price(result['entry'])}"
-                f" | puan:{result['score']}/5"
-                + (f" | {result.get('candle','')}" if result.get("candle") else ""),
-                flush=True,
-            )
 
         except Exception as e:
             print(f"Worker hata: {str(e)[:100]}", flush=True)
@@ -772,7 +910,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     if df is None or len(df) < VOL_PERIOD + 5:
         stats["data_missing"] += 1; return
 
-    # Kapanan barı df'e ekle
     tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
     df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
     df = df.sort_index()
@@ -780,21 +917,57 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     df = prepare_bars(df)
     bars_1h[symbol] = df
 
-    # Cooldown kontrolü
     tr_time = datetime.now(timezone.utc).astimezone(TR_TZ)
-    last    = last_signal_ts.get(symbol)
-    if last is not None:
-        elapsed = (tr_time.replace(tzinfo=None) - last.replace(tzinfo=None)).total_seconds() / 3600
-        if elapsed < SIGNAL_COOLDOWN_HOURS:
-            stats["cooldown"] += 1
-            return
 
-    # Kapitülasyon sinyali kontrolü
-    result = check_capitulation_signal(df, symbol)
-    if result:
-        await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
-    else:
-        stats["capit_filtered"] += 1
+    # --- Sistem 1: Kapitülasyon ---
+    last_c = last_signal_ts.get(symbol)
+    capit_ok = True
+    if last_c is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_c.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < SIGNAL_COOLDOWN_HOURS:
+            stats["cooldown"] += 1; capit_ok = False
+    if capit_ok:
+        result = check_capitulation_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+        else:
+            stats["capit_filtered"] += 1
+
+    # --- Sistem 2: T24 ---
+    last_t24 = last_pump_ts.get((symbol, "t24"))
+    t24_ok = True
+    if last_t24 is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_t24.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_COOLDOWN_HOURS:
+            t24_ok = False
+    if t24_ok:
+        result = check_t24_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+
+    # --- Sistem 3: T72 ---
+    last_t72 = last_pump_ts.get((symbol, "t72"))
+    t72_ok = True
+    if last_t72 is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_t72.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_COOLDOWN_HOURS:
+            t72_ok = False
+    if t72_ok:
+        result = check_t72_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+
+    # --- Sistem 4: T168 ---
+    last_t168 = last_pump_ts.get((symbol, "t168"))
+    t168_ok = True
+    if last_t168 is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_t168.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_COOLDOWN_HOURS:
+            t168_ok = False
+    if t168_ok:
+        result = check_t168_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
 
 # ============================================================
 # WEBSOCKET
@@ -813,7 +986,6 @@ async def ws_chunk(symbols, candidate_queue):
                                            max_size=10*1024*1024) as ws:
                 retry = 0
                 print(f"WS bağlandı ({len(symbols)} sembol)", flush=True)
-
                 async def keep_alive(ws):
                     while True:
                         await asyncio.sleep(20)
@@ -822,7 +994,6 @@ async def ws_chunk(symbols, candidate_queue):
                             await asyncio.wait_for(pong, timeout=10)
                         except Exception:
                             break
-
                 ping_task = asyncio.create_task(keep_alive(ws))
                 try:
                     while True:
@@ -872,37 +1043,55 @@ def clean_json(obj):
     if hasattr(obj, "item"): return clean_json(obj.item())
     return obj
 
+_TYPE_LABEL = {
+    "capit": ("🔴", "PANİK PUMP",   "#ff4444"),
+    "t24":   ("🔴", "KISA VADE",    "#ff8800"),
+    "t72":   ("🟡", "ORTA VADE",    "#ffcc00"),
+    "t168":  ("🟢", "UZUN VADE",    "#00cc66"),
+}
+
 @flask_app.route("/")
 def home():
     now = tr_now().strftime("%H:%M:%S")
     sig_rows = ""
-    for s in all_signals[:30]:
-        fn    = s.get("funding_neg", False)
-        candle= s.get("candle", "")
-        icon  = "💰" if fn else "🔴"
-        bc    = "#c8e86a" if fn else "#ff4444"
-        fv    = s.get("funding"); fs = f"{fv:+.4f}%" if fv is not None else "—"
-        score_str = "⭐" * s.get("score", 0) if s.get("score") else "—"
-        ret1_v = s.get("ret1", 0); vr_v = s.get("vol_ratio", 0)
-        ind   = (f"Düşüş:{ret1_v:+.2f}%  Vol:{vr_v:.2f}x  Puan:{score_str}")
-        cs    = f"  {candle}" if candle else ""
+    for s in all_signals[:40]:
+        stype = s.get("type", "capit")
+        icon, label, bc = _TYPE_LABEL.get(stype, ("🔴", "SİNYAL", "#ff4444"))
+        e = s.get("entry"); stop = s.get("stop"); tp1 = s.get("tp1"); tp2 = s.get("tp2")
+
+        if stype == "capit":
+            ret1_v = s.get("ret1", 0); vr_v = s.get("vol_ratio", 0)
+            ind = f"Düşüş:{ret1_v:+.2f}%  Hacim:{vr_v:.2f}x"
+            fn = s.get("funding_neg", False)
+            if fn: icon = "💰"; bc = "#c8e86a"
+        elif stype == "t24":
+            ind = f"EMA21:+%{abs(s.get('dist_ema21',0)):.1f}  MA50:%{s.get('dist_ma50',0):.1f}  BB-dar:{s.get('bb_width_ch3',0):.3f}"
+        elif stype == "t72":
+            ind = f"Mom5:+%{s.get('mom5_pct',0):.1f}  EMA21:%{s.get('dist_ema21',0):.1f}  Drawdown:%{s.get('coin_drawdown',0):.1f}"
+        elif stype == "t168":
+            ind = f"MA200:+%{s.get('dist_ma200',0):.1f}  Mom10:+%{s.get('mom10_pct',0):.1f}  Zirve:{s.get('days_since_high',0)} bar"
+        else:
+            ind = ""
+
+        tp_str = f"TP1:{fmt_price(tp1)}"
+        if tp2 and tp2 != tp1: tp_str += f" / TP2:{fmt_price(tp2)}"
         sig_rows += (
             f'<div class="sig" style="border-color:{bc}">'
-            f'<div class="sr"><b>{icon} {s.get("symbol","")} <small>[KAPİTÜLASYON]</small>{cs}</b>'
+            f'<div class="sr"><b>{icon} {s.get("symbol","")} <small>[{label}]</small></b>'
             f'<span class="ts">{s.get("time","")[:16]}</span></div>'
-            f'<div class="sd">💵 {fmt_price(s.get("entry"))}  🛡️ {fmt_price(s.get("stop"))}'
-            f'  🎯 TP1:{fmt_price(s.get("tp1"))} / TP2:{fmt_price(s.get("tp2"))} / TP3:{fmt_price(s.get("tp3"))}</div>'
-            f'<div class="sd">{ind}  Funding:{fs}</div>'
+            f'<div class="sd">💵 {fmt_price(e)}  🛑 {fmt_price(stop)}  🎯 {tp_str}</div>'
+            f'<div class="sd">{ind}</div>'
             f'</div>'
         )
     ps = perf_summary()
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Kapitülasyon Scanner v5.0</title>
+<html><head><meta charset="UTF-8"><title>Pump Scanner v6.0</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#06090d;color:#b8cdd8;font-family:'Courier New',monospace;padding:20px;max-width:960px;margin:0 auto}}
+body{{background:#06090d;color:#b8cdd8;font-family:'Courier New',monospace;padding:20px;max-width:980px;margin:0 auto}}
 h1{{color:#00d4ff;letter-spacing:4px;font-size:1.1rem;margin-bottom:16px}}
+.info{{background:#0c1117;border:1px solid #1c2a36;padding:8px 14px;border-radius:4px;margin-bottom:16px;font-size:.72rem;color:#3d5a6a;line-height:1.8}}
 .stats{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}}
 .stat{{background:#0c1117;border:1px solid #1c2a36;padding:9px 14px;border-radius:4px;min-width:80px}}
 .sv{{font-size:1.1rem;color:#00d4ff;display:block;font-weight:bold}}
@@ -914,10 +1103,13 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 .ts{{color:#3d5a6a;font-size:.65rem}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:20px;border-top:1px solid #1c2a36;padding-top:10px;line-height:2}}
 </style></head><body>
-<h1>KAPİTÜLASYON SCANNER <small style="font-size:.6rem;color:#3d5a6a">v5.0</small></h1>
-<div style="background:#0c1117;border:1px solid #2a1c1c;padding:8px 14px;border-radius:4px;margin-bottom:16px;font-size:.72rem;color:#3d5a6a">
-  🔴 KAPİTÜLASYON: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}%  |  Hacim {VOL_MIN:.1f}x - {VOL_MAX:.1f}x  |  Stop -7%  |  TP +5/10/15%
-  &nbsp;&nbsp;|&nbsp;&nbsp; Backtest WR ~%84  |  BTC 4H: {btc_4h_cache.get("trend","?")}
+<h1>PUMP SCANNER <small style="font-size:.6rem;color:#3d5a6a">v6.0 — 4 SİSTEM</small></h1>
+<div class="info">
+  🔴 PANİK PUMP: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% | Hacim {VOL_MIN:.1f}x-{VOL_MAX:.1f}x | Stop -7% | TP +5/10/15% | WR ~%84<br>
+  🔴 KISA VADE (T24): EMA21 üstü + MA50 altı + BB daralıyor + MA200 aşağı | Stop -3% | TP +5% | WR %65<br>
+  🟡 ORTA VADE (T72): Mom pozitif + EMA21 altı + Sağlıklı drawdown + MA200 yukarı | Stop -5% | TP +10% | WR %54<br>
+  🟢 UZUN VADE (T168): MA200 üstü + MA50 altı + Mom pozitif + Yakın zirve | Stop -8% | TP +25% | WR %40<br>
+  BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
 <div class="stats">
   <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
@@ -930,8 +1122,8 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   <div class="stat"><span class="sv">{bot_status["status"]}</span><span class="sl">Durum</span></div>
   <div class="stat"><span class="sv">{now}</span><span class="sl">Saat TR</span></div>
 </div>
-<h3>SON KAPİTÜLASYON SİNYALLERİ</h3>
-{sig_rows if sig_rows else '<p style="color:#3d5a6a;font-size:.8rem;padding:8px 0">Henüz sinyal yok. (~61 sinyal/yıl beklenir)</p>'}
+<h3>SON SİNYALLER</h3>
+{sig_rows if sig_rows else '<p style="color:#3d5a6a;font-size:.8rem;padding:8px 0">Henüz sinyal yok.</p>'}
 <div class="footer">
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
@@ -945,11 +1137,6 @@ def api_status():
         "status": bot_status["status"], "total_symbols": len(tracked_symbols),
         "ws_1h_closes": ws_1h_closes, "signals": all_signals[:30],
         "stats": dict(stats), "heartbeat": heartbeat,
-        "params": {
-            "crash_min": CRASH_MIN, "crash_max": CRASH_MAX,
-            "vol_min": VOL_MIN, "vol_max": VOL_MAX,
-            "cooldown_h": SIGNAL_COOLDOWN_HOURS,
-        }
     })
     return flask_app.response_class(json.dumps(data, ensure_ascii=False), mimetype="application/json")
 
@@ -962,37 +1149,33 @@ def api_health():
 def perf_dashboard():
     ps   = perf_summary()
     rows = ""
-    for s in signal_log[:50]:
+    for s in signal_log[:60]:
         st     = s.get("status", "open")
-        st_col = "#00f080" if st == "win" else ("#ff4444" if st == "loss" else ("#ffb300" if st == "expired" else "#3d5a6a"))
+        st_col = "#00f080" if st=="win" else ("#ff4444" if st=="loss" else ("#ffb300" if st=="expired" else "#3d5a6a"))
         peak   = s.get("peak_pct", 0)
-        cr     = s.get("close_ret")
-        ct     = (s.get("close_time") or "")[:16]
-        candle = s.get("candle", "")
-        ret1_v = s.get("ret1", "—")
-        vr_v   = s.get("vol_ratio", "—")
-        score_v= "⭐" * s.get("score", 0) if s.get("score") else "—"
+        cr     = s.get("close_ret"); ct = (s.get("close_time") or "")[:16]
+        stype  = s.get("raw_type", s.get("sig_type", "capit"))
+        _, label, tc = _TYPE_LABEL.get(stype, ("🔴", "SİNYAL", "#ff4444"))
         def fmt_ret(r):
             if r is None: return "—"
             col = "#00f080" if float(r) > 0 else "#ff4444"
             return f'<span style="color:{col}">{float(r):+.2f}%</span>'
         rows += f"""<tr>
           <td>{s.get("time","")[:16]}</td>
-          <td><b>🔴 {s.get("symbol","")}</b></td>
-          <td>{ret1_v}%</td>
-          <td>{vr_v}x</td>
-          <td>{score_v}</td>
+          <td><b>{s.get("symbol","")}</b></td>
+          <td style="color:{tc}">{label}</td>
+          <td>{fmt_price(s.get("entry"))}</td>
+          <td>{fmt_price(s.get("stop"))}</td>
+          <td>{fmt_price(s.get("tp1"))}</td>
           <td style="color:#00f080">+{peak}%</td>
           <td>{'✅' if s.get('tp1_hit') else '—'}</td>
           <td>{'✅' if s.get('tp2_hit') else '—'}</td>
-          <td>{'✅' if s.get('tp3_hit') else '—'}</td>
           <td>{fmt_ret(cr)}</td>
           <td>{ct}</td>
-          <td>{candle}</td>
           <td style="color:{st_col}">{st.upper()}</td>
         </tr>"""
     return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>Performans — Kapitülasyon v5</title>
+<meta charset="UTF-8"><title>Performans — Pump Scanner v6</title>
 <meta http-equiv="refresh" content="300">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1009,21 +1192,20 @@ def perf_dashboard():
   tr:hover td{{background:#0c1117}}
   a{{color:#00d4ff;text-decoration:none}}
 </style></head><body>
-<h1>📈 KAPİTÜLASYON SİNYAL PERFORMANSI v5.0</h1>
+<h1>📈 PUMP SCANNER SİNYAL PERFORMANSI v6.0</h1>
 <div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()}</div>
 <div class="cards">
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>
   <div class="card"><div class="cv">{ps.get("open",0)}</div><div class="cl">Açık</div></div>
-  <div class="card"><div class="cv" style="color:#00f080">{ps.get("win",0)}</div><div class="cl">Win (TP2)</div></div>
-  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("loss",0)}</div><div class="cl">Stop (-7%)</div></div>
+  <div class="card"><div class="cv" style="color:#00f080">{ps.get("win",0)}</div><div class="cl">Win</div></div>
+  <div class="card"><div class="cv" style="color:#ff4444">{ps.get("loss",0)}</div><div class="cl">Stop</div></div>
   <div class="card"><div class="cv" style="color:#ffb300">{ps.get("expired",0)}</div><div class="cl">Expired</div></div>
   <div class="card"><div class="cv">{ps.get("win_rate",0)}%</div><div class="cl">Win Rate</div></div>
   <div class="card"><div class="cv">{ps.get("avg_peak",0)}%</div><div class="cl">Ort. Peak</div></div>
 </div>
 <table><thead><tr>
-  <th>Zaman</th><th>Sembol</th><th>Düşüş%</th><th>Vol X</th><th>Puan</th>
-  <th>Peak%</th><th>TP1(+5%)</th><th>TP2(+10%)</th><th>TP3(+15%)</th>
-  <th>Kapanış%</th><th>Kapanış Zamanı</th><th>Formasyon</th><th>Durum</th>
+  <th>Zaman</th><th>Sembol</th><th>Sistem</th><th>Giriş</th><th>Stop</th><th>Hedef</th>
+  <th>Peak%</th><th>TP1</th><th>TP2</th><th>Kapanış%</th><th>Kapanış Zamanı</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
@@ -1035,14 +1217,21 @@ async def periodic_tasks():
     while True:
         await asyncio.sleep(600)
         tick += 1
+        t24_cnt  = sum(1 for s in all_signals if s.get("type") == "t24")
+        t72_cnt  = sum(1 for s in all_signals if s.get("type") == "t72")
+        t168_cnt = sum(1 for s in all_signals if s.get("type") == "t168")
+        cap_cnt  = sum(1 for s in all_signals if s.get("type") == "capit")
         print(
-            f"\n╔══════════════ KAPİTÜLASYON ÖZET ══════════════╗\n"
-            f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Sinyal: {stats.get('signal_sent',0)}\n"
+            f"\n╔══════════════ PUMP SCANNER ÖZET ══════════════╗\n"
+            f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Toplam Sinyal: {stats.get('signal_sent',0)}\n"
+            f"  ── Son Sinyaller ──\n"
+            f"  PANİK PUMP : {cap_cnt}\n"
+            f"  KISA VADE  : {t24_cnt}\n"
+            f"  ORTA VADE  : {t72_cnt}\n"
+            f"  UZUN VADE  : {t168_cnt}\n"
             f"  ── Filtre ──\n"
-            f"  Crash  : {stats.get('filtered_crash',0):<6} (ret1 aralık dışı)\n"
-            f"  Vol    : {stats.get('filtered_vol',0):<6} (hacim aralık dışı)\n"
-            f"  Hacim  : {stats.get('low_liquidity',0):<6} (düşük likidite)\n"
-            f"  Cooldown: {stats.get('cooldown',0)}\n"
+            f"  Crash:{stats.get('filtered_crash',0)}  Vol:{stats.get('filtered_vol',0)}"
+            f"  Hacim:{stats.get('low_liquidity',0)}  Cooldown:{stats.get('cooldown',0)}\n"
             f"╚═══════════════════════════════════════════════╝",
             flush=True,
         )
@@ -1054,13 +1243,11 @@ async def periodic_tasks():
 # ============================================================
 async def main():
     global tracked_symbols
-    print("Kapitülasyon Scanner v5.0 başlatılıyor...", flush=True)
-    print(f"Sinyal koşulları:", flush=True)
-    print(f"  Crash barı: ret1 {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% arası", flush=True)
-    print(f"  Hacim spike: {VOL_MIN:.1f}x - {VOL_MAX:.1f}x (20-bar ortalama)", flush=True)
-    print(f"  Stop: -7% | TP1: +5% | TP2: +10% | TP3: +15%", flush=True)
-    print(f"  Cooldown: {SIGNAL_COOLDOWN_HOURS}H", flush=True)
-    print(f"  Beklenen: ~%84 WR | ~61 sinyal/yıl", flush=True)
+    print("Pump Scanner v6.0 başlatılıyor — 4 Sistem", flush=True)
+    print(f"  [1] PANİK PUMP : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x", flush=True)
+    print(f"  [2] KISA VADE  : T24 | Stop -3% | TP +5%  | WR %65", flush=True)
+    print(f"  [3] ORTA VADE  : T72 | Stop -5% | TP +10% | WR %54", flush=True)
+    print(f"  [4] UZUN VADE  : T168 | Stop -8% | TP +25% | WR %40", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
