@@ -773,6 +773,30 @@ async def ws_all(symbols):
     ]
     await asyncio.gather(*tasks)
 
+async def periodic_summary():
+    global ws_1h_closes
+    await asyncio.sleep(3600)
+    while True:
+        total_signals = (
+            scan_stats.get(f"signal_phase1_smc-original", 0) +
+            scan_stats.get(f"signal_phase2_smc-original", 0)
+        )
+        print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
+        print(f"Cached coin      : {len(bars_cache)}", flush=True)
+        print(f"WS bar kapandı   : {ws_1h_closes}", flush=True)
+        print(f"Discount'ta      : {scan_stats.get('in_discount', 0)}", flush=True)
+        print(f"Zone dışında     : {scan_stats.get('not_in_discount', 0)}", flush=True)
+        print(f"Pivot yok        : {scan_stats.get('no_pivots', 0)}", flush=True)
+        print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
+        print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
+        print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
+        print(f"BTC EMA21 skip   : {scan_stats.get('btc_ema21_skip', 0)}", flush=True)
+        print(f"Toplam sinyal    : {total_signals}", flush=True)
+        print(f"------------------------\n", flush=True)
+        scan_stats.clear()
+        ws_1h_closes = 0
+        await asyncio.sleep(3600)
+
 # ============================================================
 # 12) ANA ÇALIŞTIRICI
 # ============================================================
@@ -817,7 +841,10 @@ async def main():
     await bootstrap_all(symbols)
 
     print(f"\n🔌 WebSocket bağlantıları kuruluyor ({len(symbols)} sembol, {WS_STREAM_CHUNK}'erli gruplar)...", flush=True)
-    await ws_all(symbols)
+    await asyncio.gather(
+        ws_all(symbols),
+        periodic_summary(),
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
