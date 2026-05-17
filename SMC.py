@@ -1,11 +1,15 @@
-import ccxt
-import pandas as pd
-import requests
-import time
+import asyncio
 import json
 import os
 import threading
+import time
 from collections import Counter
+from datetime import datetime, timedelta, timezone
+
+import ccxt
+import pandas as pd
+import requests
+import websockets
 from flask import Flask
 
 app = Flask(__name__)
@@ -18,7 +22,7 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
-    return f"SMC Original v12 — Discount+CHoCH | {boot_status} | {cached} coin cached | {btc_ema}", 200
+    return f"SMC v13 WS — Discount+CHoCH | {boot_status} | {cached} coin cached | {btc_ema} | {ws_1h_closes} bar kapandı", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -34,7 +38,6 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TIMEFRAME        = "1h"
 MIN_VOLUME_24H   = 5_000_000
-SCAN_INTERVAL    = 3600
 
 SWING_LENGTH     = 50
 
@@ -48,6 +51,7 @@ PHASE1_COOLDOWN  = 86400
 PHASE2_COOLDOWN  = 86400
 
 SIGNALS_FILE     = "sent_signals.json"
+WS_STREAM_CHUNK  = 120
 
 IGNORED_COINS = set([
     'UP/USDT','DOWN/USDT','BEAR/USDT','BULL/USDT',
@@ -64,6 +68,7 @@ IGNORED_COINS = set([
 
 exchange = ccxt.binance()
 scan_stats = Counter()
+ws_1h_closes = 0
 
 # ============================================================
 # 1b) VERİ CACHE + BOOTSTRAP
@@ -71,7 +76,7 @@ scan_stats = Counter()
 bars_cache = {}
 bootstrap_done = False
 
-def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
+def fetch_bars_sync(symbol, limit=BOOTSTRAP_BARS):
     all_bars = []
     since_ms = int((time.time() - limit * 3600) * 1000)
     while len(all_bars) < limit:
@@ -96,44 +101,32 @@ def fetch_bars(symbol, limit=BOOTSTRAP_BARS):
     df = df[~df.index.duplicated(keep='first')]
     return df
 
-def bootstrap_all(symbols):
+async def bootstrap_symbol(symbol):
+    loop = asyncio.get_running_loop()
+    try:
+        df = await loop.run_in_executor(None, lambda: fetch_bars_sync(symbol, BOOTSTRAP_BARS))
+        if df is not None and len(df) >= 200:
+            bars_cache[symbol] = df.iloc[-KEEP_BARS:] if len(df) > KEEP_BARS else df
+            return True
+    except Exception as e:
+        print(f"  [Bootstrap hata] {symbol}: {e}", flush=True)
+    return False
+
+async def bootstrap_all(symbols):
     global bootstrap_done
     print(f"📦 Bootstrap başladı: {len(symbols)} coin × {BOOTSTRAP_BARS} bar...", flush=True)
     ok = 0
     for idx, symbol in enumerate(symbols, 1):
         if idx % 50 == 0:
             print(f"  → {idx}/{len(symbols)}...", flush=True)
-        df = fetch_bars(symbol, BOOTSTRAP_BARS)
-        if df is not None and len(df) >= 200:
-            bars_cache[symbol] = df.iloc[-KEEP_BARS:] if len(df) > KEEP_BARS else df
+        if await bootstrap_symbol(symbol):
             ok += 1
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
     bootstrap_done = True
     print(f"✅ Bootstrap bitti: {ok}/{len(symbols)} coin yüklendi", flush=True)
 
-def update_cache(symbol):
-    try:
-        batch = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=5)
-        if not batch:
-            return
-        new_df = pd.DataFrame(batch, columns=["timestamp","open","high","low","close","volume"])
-        new_df["timestamp"] = pd.to_datetime(new_df["timestamp"], unit="ms", utc=True)
-        new_df.set_index("timestamp", inplace=True)
-        if symbol in bars_cache:
-            df = bars_cache[symbol]
-            combined = pd.concat([df, new_df])
-            combined = combined[~combined.index.duplicated(keep='last')]
-            combined = combined.sort_index()
-            if len(combined) > KEEP_BARS:
-                combined = combined.iloc[-KEEP_BARS:]
-            bars_cache[symbol] = combined
-        else:
-            bars_cache[symbol] = new_df
-    except Exception:
-        pass
-
 # ============================================================
-# 1c) BTC FİLTRELERİ — ÇAKILIŞ + EMA21
+# 1c) BTC FİLTRELERİ
 # ============================================================
 btc_crash_cache = {"crashing": False, "updated": 0}
 btc_ema21_cache = {"above": False, "updated": 0}
@@ -157,7 +150,7 @@ def check_btc_crash():
             crashing = change_pct <= -BTC_CRASH_PCT
             btc_crash_cache["crashing"] = crashing
             if crashing:
-                print(f"⚠️ BTC ÇAKILIYOR: {change_pct:.1f}% (4h) — yeni sinyaller askıya alındı", flush=True)
+                print(f"⚠️ BTC ÇAKILIYOR: {change_pct:.1f}% (4h)", flush=True)
             else:
                 print(f"✅ BTC normal: {change_pct:+.1f}% (4h)", flush=True)
     except Exception as e:
@@ -167,7 +160,6 @@ def check_btc_crash():
     return btc_crash_cache["crashing"]
 
 def check_btc_ema21():
-    """BTC 1h fiyatı EMA21 üzerinde mi?"""
     now = time.time()
     if now - btc_ema21_cache["updated"] < BTC_EMA21_TTL:
         return btc_ema21_cache["above"]
@@ -177,7 +169,6 @@ def check_btc_ema21():
             btc_ema21_cache["above"] = False
         else:
             closes = [float(b[4]) for b in bars]
-            # EMA21 hesapla
             k = 2 / (21 + 1)
             ema = closes[0]
             for c in closes[1:]:
@@ -197,6 +188,7 @@ def check_btc_ema21():
 # 2) SİNYAL HAFIZASI
 # ============================================================
 sent_signals = {}
+signals_lock = threading.Lock()
 
 def load_signals():
     if os.path.exists(SIGNALS_FILE):
@@ -220,10 +212,11 @@ def get_last_sent(symbol, phase, source=""):
 
 def mark_sent(symbol, phase, source=""):
     key = f"{symbol}_{source}"
-    if key not in sent_signals:
-        sent_signals[key] = {}
-    sent_signals[key][phase] = time.time()
-    save_signals(sent_signals)
+    with signals_lock:
+        if key not in sent_signals:
+            sent_signals[key] = {}
+        sent_signals[key][phase] = time.time()
+        save_signals(sent_signals)
 
 # ============================================================
 # 3) TELEGRAM + PORTFOLIO
@@ -361,11 +354,11 @@ def candle_pattern_summary(patterns):
     return f"{power}: {' + '.join(found)}"
 
 # ============================================================
-# 7) LuxAlgo SMC — BİREBİR PYTHON ÇEVİRİSİ
+# 7) LuxAlgo SMC — 1-bar lookback (WebSocket için düzeltildi)
 # ============================================================
 def luxalgo_smc(df, swing_length=SWING_LENGTH):
-    highs = df["high"].values
-    lows  = df["low"].values
+    highs  = df["high"].values
+    lows   = df["low"].values
     closes = df["close"].values
     n = len(df)
 
@@ -386,7 +379,7 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         legs[i] = current_leg
 
     swing_high_level = None; swing_high_crossed = True
-    swing_low_level = None; swing_low_crossed = True
+    swing_low_level  = None; swing_low_crossed  = True
     swing_trend = 0
     trailing_top = None; trailing_bottom = None
     break_type = None; break_direction = None
@@ -395,19 +388,18 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
         prev_leg = legs[i - 1]; curr_leg = legs[i]
         if curr_leg != prev_leg:
             if curr_leg == 1:
-                swing_low_level = lows[i - swing_length]
+                swing_low_level   = lows[i - swing_length]
                 swing_low_crossed = False
-                trailing_bottom = swing_low_level
+                trailing_bottom   = swing_low_level
             elif curr_leg == 0:
-                swing_high_level = highs[i - swing_length]
+                swing_high_level   = highs[i - swing_length]
                 swing_high_crossed = False
-                trailing_top = swing_high_level
-        if trailing_top is not None and highs[i] > trailing_top:
-            trailing_top = highs[i]
-        if trailing_bottom is not None and lows[i] < trailing_bottom:
-            trailing_bottom = lows[i]
-        # Tarihsel swing_trend takibi (son 3 bar hariç — 3-bar lookback ile çakışmasın)
-        if i < n - 3:
+                trailing_top       = swing_high_level
+        if trailing_top    is not None and highs[i] > trailing_top:    trailing_top    = highs[i]
+        if trailing_bottom is not None and lows[i]  < trailing_bottom: trailing_bottom = lows[i]
+
+        # Tarihsel swing_trend takibi — son bar hariç tüm barlar
+        if i < n - 1:
             c = closes[i]; c_prev = closes[i - 1]
             if (swing_high_level is not None and not swing_high_crossed
                     and c > swing_high_level and c_prev <= swing_high_level):
@@ -417,67 +409,60 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
                     and c < swing_low_level and c_prev >= swing_low_level):
                 swing_low_crossed = True
                 swing_trend = -1
+
         if i == n - 1:
-            # Bullish kırılım: son 3 bar içinde swing high geçildi mi?
-            for lb in range(min(3, i)):
-                c_check      = closes[i - lb]
-                c_check_prev = closes[i - lb - 1]
-                if (swing_high_level is not None and not swing_high_crossed
-                        and c_check > swing_high_level and c_check_prev <= swing_high_level):
-                    swing_high_crossed = True
-                    break_type = "CHoCH" if swing_trend == -1 else "BOS"
-                    break_direction = "BULLISH"
-                    swing_trend = 1
-                    break
-            # Bearish kırılım: son 3 bar içinde swing low geçildi mi?
-            for lb in range(min(3, i)):
-                c_check      = closes[i - lb]
-                c_check_prev = closes[i - lb - 1]
-                if (swing_low_level is not None and not swing_low_crossed
-                        and c_check < swing_low_level and c_check_prev >= swing_low_level):
-                    swing_low_crossed = True
-                    break_type = "CHoCH" if swing_trend == 1 else "BOS"
-                    break_direction = "BEARISH"
-                    swing_trend = -1
-                    break
+            # Sadece kapanan bar kontrol edilir (WebSocket ile bar kapanışında tetiklendiğinden)
+            c_check      = closes[i]
+            c_check_prev = closes[i - 1]
+            if (swing_high_level is not None and not swing_high_crossed
+                    and c_check > swing_high_level and c_check_prev <= swing_high_level):
+                swing_high_crossed = True
+                break_type      = "CHoCH" if swing_trend == -1 else "BOS"
+                break_direction = "BULLISH"
+                swing_trend     = 1
+            if (swing_low_level is not None and not swing_low_crossed
+                    and c_check < swing_low_level and c_check_prev >= swing_low_level):
+                swing_low_crossed = True
+                break_type      = "CHoCH" if swing_trend == 1 else "BOS"
+                break_direction = "BEARISH"
+                swing_trend     = -1
 
     if trailing_top is None or trailing_bottom is None:
         return None
     if trailing_top <= trailing_bottom:
         return None
 
-    top = trailing_top
+    top    = trailing_top
     bottom = trailing_bottom
-    discount_top    = 0.95 * bottom + 0.05 * top  # LuxAlgo birebir: alt %5 bant
+    discount_top    = 0.95 * bottom + 0.05 * top
     discount_bottom = bottom
     equil = (top + bottom) / 2.0
 
     current_price = closes[-1]
-    in_discount = current_price <= discount_top
+    in_discount   = current_price <= discount_top
 
     if in_discount:
         dz_span = discount_top - discount_bottom
-        if dz_span > 0:
-            depth = (discount_top - current_price) / dz_span * 100
-        else:
-            depth = 100.0
+        depth   = (discount_top - current_price) / dz_span * 100 if dz_span > 0 else 100.0
     else:
         total_range = top - bottom
-        if total_range > 0:
-            depth = -((current_price - discount_top) / total_range * 100)
-        else:
-            depth = -100.0
+        depth       = -((current_price - discount_top) / total_range * 100) if total_range > 0 else -100.0
 
     return {
-        'trailing_top': round(top, 10), 'trailing_bottom': round(bottom, 10),
-        'equilibrium': round(equil, 10),
-        'discount_top': round(discount_top, 10), 'discount_bottom': round(discount_bottom, 10),
-        'premium_top': round(top, 10), 'premium_bottom': round(0.95 * top + 0.05 * bottom, 10),
-        'depth': round(depth, 2),
-        'in_discount': in_discount,
-        'swing_high': swing_high_level, 'swing_low': swing_low_level,
-        'swing_trend': swing_trend,
-        'break_type': break_type, 'break_direction': break_direction,
+        'trailing_top':    round(top, 10),
+        'trailing_bottom': round(bottom, 10),
+        'equilibrium':     round(equil, 10),
+        'discount_top':    round(discount_top, 10),
+        'discount_bottom': round(discount_bottom, 10),
+        'premium_top':     round(top, 10),
+        'premium_bottom':  round(0.95 * top + 0.05 * bottom, 10),
+        'depth':           round(depth, 2),
+        'in_discount':     in_discount,
+        'swing_high':      swing_high_level,
+        'swing_low':       swing_low_level,
+        'swing_trend':     swing_trend,
+        'break_type':      break_type,
+        'break_direction': break_direction,
     }
 
 # ============================================================
@@ -565,8 +550,7 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n⚡ <b>AŞAMA 2 — YAPISAL KIRILIM</b>\n"
         f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
         f"🏷 <b>KAYNAK:</b> {source_label}\n"
-        f"📈 <b>STRATEJİ:</b> {strategy_label}\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
+        f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
         f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
         f"{tp_block}"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
@@ -580,19 +564,17 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"{pattern_block}\n\n{strategy_note}\n\n{entry_msg}")
 
 # ============================================================
-# 9) ANA ANALİZ MOTORU
+# 9) SİNYAL GÖNDERME
 # ============================================================
 def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
                     atr_ratio, atr_val, depth, smc_data, s_label, s_note,
-                    patterns, trend_bias_str, break_type, break_dir,
-                    in_discount, source, source_label, now):
+                    patterns, trend_bias_str, break_type, break_dir, in_discount, now,
+                    source, source_label):
 
-    # BTC aktif çakılıyorsa yeni sinyal verme
     if check_btc_crash():
         scan_stats["btc_crash_skip"] += 1
         return False
 
-    # AŞAMA 2: CHoCH bullish (RSI filtresi yok)
     if break_type == "CHoCH" and break_dir == "BULLISH":
         last_p2 = get_last_sent(symbol, "choch", source)
         if now - last_p2 > PHASE2_COOLDOWN:
@@ -610,8 +592,7 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
         else:
             scan_stats[f"cooldown_p2_{source}"] += 1
 
-    # AŞAMA 1: Discount zone + depth + RSI + BTC EMA21 üzerinde
-    if in_discount and depth >= PHASE1_DEPTH and rsi < PHASE1_RSI:
+    if in_discount and depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI:
         if not check_btc_ema21():
             scan_stats["btc_ema21_skip"] += 1
             return False
@@ -633,25 +614,20 @@ def try_send_signal(symbol, coin_name, price, ma200, dist_ma, rsi, raw_atr,
 
     return False
 
-
-def analyze(symbol):
+# ============================================================
+# 10) BAR KAPANIŞINDA ANALİZ (WebSocket tetiklemeli)
+# ============================================================
+def _analyze_symbol(symbol):
     try:
         now = time.time()
-
-        df = bars_cache.get(symbol)
-        if df is None or len(df) < 200:
-            scan_stats["no_cache"] += 1
-            return
-
-        update_cache(symbol)
-        df = bars_cache.get(symbol)
+        df  = bars_cache.get(symbol)
         if df is None or len(df) < 200:
             return
 
         coin_name = get_coin_name(symbol)
 
-        df["atr"] = calc_atr(df, 14)
-        df["rsi"] = calc_rsi(df, 14)
+        df["atr"]   = calc_atr(df, 14)
+        df["rsi"]   = calc_rsi(df, 14)
         df["ma200"] = df["close"].rolling(200).mean()
 
         price   = float(df["close"].iloc[-1])
@@ -700,34 +676,120 @@ def analyze(symbol):
                           else "BEARISH" if smc_data['swing_trend'] == -1
                           else "NEUTRAL")
 
-        common = dict(symbol=symbol, coin_name=coin_name, price=price, ma200=ma200,
-                      dist_ma=dist_ma, rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
-                      atr_val=atr_val, depth=depth, smc_data=smc_data, s_label=s_label,
-                      s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
-                      break_type=break_type, break_dir=break_dir,
-                      in_discount=in_discount, now=now)
+        common = dict(
+            symbol=symbol, coin_name=coin_name, price=price, ma200=ma200,
+            dist_ma=dist_ma, rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
+            atr_val=atr_val, depth=depth, smc_data=smc_data, s_label=s_label,
+            s_note=s_note, patterns=patterns, trend_bias_str=trend_bias_str,
+            break_type=break_type, break_dir=break_dir,
+            in_discount=in_discount, now=now,
+        )
 
         try_send_signal(**common, source="smc-original", source_label="SMC")
 
     except Exception as e:
-        print(f"[HATA] {symbol}: {e}")
+        print(f"[HATA] {symbol}: {e}", flush=True)
+
+async def on_1h_close(symbol, o, h, l, c, v, ts_ms):
+    global ws_1h_closes
+    ws_1h_closes += 1
+
+    if not bootstrap_done:
+        return
+    if symbol not in bars_cache:
+        return
+
+    # Kapanan barı cache'e ekle
+    tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
+    df = bars_cache[symbol]
+    df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
+    df = df.sort_index()
+    df = df[~df.index.duplicated(keep='last')]
+    if len(df) > KEEP_BARS:
+        df = df.iloc[-KEEP_BARS:]
+    bars_cache[symbol] = df
+
+    # Analizi thread pool'da çalıştır (event loop'u bloklamaz)
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: _analyze_symbol(symbol))
 
 # ============================================================
-# 10) ÇALIŞTIRICI DÖNGÜ
+# 11) WEBSOCKET
 # ============================================================
-def start_scanner():
+def to_ws(symbol):
+    return symbol.replace("/", "").lower()
+
+async def ws_chunk(symbols):
+    streams = "/".join([f"{to_ws(s)}@kline_1h" for s in symbols])
+    url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    retry   = 0
+    while True:
+        try:
+            async with websockets.connect(url, ping_interval=None,
+                                           open_timeout=30, close_timeout=10,
+                                           max_size=10*1024*1024) as ws:
+                retry = 0
+                print(f"WS bağlandı ({len(symbols)} sembol)", flush=True)
+
+                async def keep_alive(ws):
+                    while True:
+                        await asyncio.sleep(20)
+                        try:
+                            pong = await ws.ping()
+                            await asyncio.wait_for(pong, timeout=10)
+                        except Exception:
+                            break
+
+                ping_task = asyncio.create_task(keep_alive(ws))
+                try:
+                    while True:
+                        try:
+                            msg = await asyncio.wait_for(ws.recv(), timeout=60)
+                        except asyncio.TimeoutError:
+                            continue
+                        data = json.loads(msg)
+                        k    = data.get("data", {}).get("k", {})
+                        if not k.get("x", False):
+                            continue
+                        sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
+                        try:
+                            await on_1h_close(sym,
+                                float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]),
+                                float(k["v"]), int(k["t"]))
+                        except Exception as e:
+                            print(f"on_1h_close hata [{sym}]: {str(e)[:80]}", flush=True)
+                finally:
+                    ping_task.cancel()
+        except Exception as e:
+            retry  += 1
+            backoff = min(60, 5 * (2 ** min(retry, 4)))
+            print(f"WS koptu → {backoff}s: {str(e)[:50]}", flush=True)
+            await asyncio.sleep(backoff)
+
+async def ws_all(symbols):
+    tasks = [
+        asyncio.create_task(ws_chunk(symbols[i:i + WS_STREAM_CHUNK]))
+        for i in range(0, len(symbols), WS_STREAM_CHUNK)
+    ]
+    await asyncio.gather(*tasks)
+
+# ============================================================
+# 12) ANA ÇALIŞTIRICI
+# ============================================================
+async def main():
     global sent_signals
     sent_signals = load_signals()
 
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v12 — Discount+CHoCH")
+    print("🚀  SMC Original v13 — WebSocket Tetiklemeli")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
-    print(f"  Scan interval  : {SCAN_INTERVAL}s ({SCAN_INTERVAL//60} dk)")
+    print(f"  Tetikleyici    : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap      : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing length   : {SWING_LENGTH}")
+    print(f"  CHoCH lookback : 1 bar (sadece kapanan bar — gecikme yok)")
     print(f"  Discount Zone  : LuxAlgo birebir (alt %5 bant)")
     print(f"  Aşama 1        : Discount + Depth >%{PHASE1_DEPTH} + RSI <{PHASE1_RSI} + BTC EMA21 üzeri")
     print(f"  Aşama 2        : CHoCH bullish (RSI filtresi yok)")
@@ -741,43 +803,21 @@ def start_scanner():
             break
         except Exception as e:
             print(f"Markets hata (deneme {attempt+1}): {e}", flush=True)
-            time.sleep(5)
+            await asyncio.sleep(5)
 
     symbols = get_clean_symbols()
     print(f"{len(symbols)} coin bulundu", flush=True)
 
     if not symbols:
         print("⚠️ Coin listesi boş! 30 saniye bekleyip tekrar denenecek.", flush=True)
-        time.sleep(30)
+        await asyncio.sleep(30)
         symbols = get_clean_symbols()
         print(f"Tekrar deneme: {len(symbols)} coin bulundu", flush=True)
 
-    bootstrap_all(symbols)
+    await bootstrap_all(symbols)
 
-    while True:
-        scan_stats.clear()
-        print(f"\n🔄 {len(bars_cache)} coin taranıyor...")
-
-        for symbol in list(bars_cache.keys()):
-            analyze(symbol)
-            time.sleep(0.5)
-
-        total_signals = scan_stats.get("signal_phase1_smc-original", 0) + scan_stats.get("signal_phase2_smc-original", 0)
-
-        print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
-        print(f"Cached coin      : {len(bars_cache)}", flush=True)
-        print(f"Discount'ta      : {scan_stats.get('in_discount', 0)}", flush=True)
-        print(f"Zone dışında     : {scan_stats.get('not_in_discount', 0)}", flush=True)
-        print(f"Pivot yok        : {scan_stats.get('no_pivots', 0)}", flush=True)
-        print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
-        print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
-        print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
-        print(f"BTC EMA21 skip   : {scan_stats.get('btc_ema21_skip', 0)}", flush=True)
-        print(f"Toplam sinyal    : {total_signals}", flush=True)
-        print(f"------------------------", flush=True)
-
-        print(f"✅ Tarama bitti. {SCAN_INTERVAL // 60} dakika bekleniyor.\n")
-        time.sleep(SCAN_INTERVAL)
+    print(f"\n🔌 WebSocket bağlantıları kuruluyor ({len(symbols)} sembol, {WS_STREAM_CHUNK}'erli gruplar)...", flush=True)
+    await ws_all(symbols)
 
 if __name__ == "__main__":
-    start_scanner()
+    asyncio.run(main())
