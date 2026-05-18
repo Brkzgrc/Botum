@@ -23,7 +23,7 @@ def health_check():
     cached = len(bars_cache)
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
-    return f"SMC v14 WS — Micro CHoCH | {boot_status} | {cached} coin cached | {active} discount aktif | {btc_ema} | {ws_1h_closes} bar kapandı", 200
+    return f"SMC v15 WS — Micro CHoCH | {boot_status} | {cached} coin cached | {active} discount aktif | {btc_ema} | {ws_1h_closes} bar kapandı", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -405,8 +405,8 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
     swing_trend = 0
     trailing_top = None; trailing_bottom = None
 
-    for i in range(swing_length + 1, n):
-        prev_leg = legs[i - 1]; curr_leg = legs[i]
+    for i in range(swing_length, n):
+        prev_leg = legs[i - 1] if i > 0 else 0; curr_leg = legs[i]
         if curr_leg != prev_leg:
             if curr_leg == 1:
                 swing_low_level   = lows[i - swing_length]
@@ -430,35 +430,28 @@ def luxalgo_smc(df, swing_length=SWING_LENGTH):
                 swing_low_crossed = True
                 swing_trend = -1
 
-    if trailing_top is None or trailing_bottom is None:
-        return None
-    if trailing_top <= trailing_bottom:
+    top    = trailing_top    if trailing_top    is not None else max(highs)
+    bottom = trailing_bottom if trailing_bottom is not None else min(lows)
+
+    if top == bottom:
         return None
 
-    top    = trailing_top
-    bottom = trailing_bottom
-    discount_top    = 0.95 * bottom + 0.05 * top
+    depth = (top - closes[-1]) / (top - bottom) * 100
+    equilibrium   = 0.5  * top + 0.5  * bottom
+    discount_top  = 0.55 * top + 0.45 * bottom
     discount_bottom = bottom
-    equil = (top + bottom) / 2.0
-
-    current_price = closes[-1]
-    in_discount   = current_price <= discount_top
-
-    if in_discount:
-        dz_span = discount_top - discount_bottom
-        depth   = (discount_top - current_price) / dz_span * 100 if dz_span > 0 else 100.0
-    else:
-        total_range = top - bottom
-        depth       = -((current_price - discount_top) / total_range * 100) if total_range > 0 else -100.0
+    premium_top   = top
+    premium_bottom = 0.95 * top + 0.05 * bottom
+    in_discount   = closes[-1] <= discount_top
 
     return {
-        'trailing_top':    round(top, 10),
-        'trailing_bottom': round(bottom, 10),
-        'equilibrium':     round(equil, 10),
+        'top':             top,
+        'bottom':          bottom,
+        'equilibrium':     round(equilibrium, 10),
         'discount_top':    round(discount_top, 10),
         'discount_bottom': round(discount_bottom, 10),
-        'premium_top':     round(top, 10),
-        'premium_bottom':  round(0.95 * top + 0.05 * bottom, 10),
+        'premium_top':     round(premium_top, 10),
+        'premium_bottom':  round(premium_bottom, 10),
         'depth':           round(depth, 2),
         'in_discount':     in_discount,
         'swing_high':      swing_high_level,
@@ -476,7 +469,9 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     LuxAlgo SMC göstergesindeki micro CHoCH/BOS tespiti.
     Kısa periyotlu swing (5 bar) ile discount zone yakınındaki
     erken yapısal kırılımları yakalar.
-    Döner: (break_type, break_direction, swing_trend)
+    Döner: (break_type, break_direction, swing_trend, choch_level)
+      - choch_level: kırılan swing seviyesi (bullish → swing_high, bearish → swing_low)
+        Bu değer LuxAlgo'nun grafike çizdiği CHoCH yatay çizgisine karşılık gelir.
     """
     highs  = df["high"].values
     lows   = df["low"].values
@@ -484,7 +479,7 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     n = len(df)
 
     if n < choch_swing + 10:
-        return None, None, 0
+        return None, None, 0, None
 
     legs = [0] * n
     current_leg = 0
@@ -503,6 +498,7 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     swing_low_level  = None; swing_low_crossed  = True
     swing_trend = 0
     break_type = None; break_direction = None
+    choch_level = None  # Kırılan seviye (LuxAlgo CHoCH çizgisi)
 
     for i in range(choch_swing + 1, n):
         prev_leg = legs[i - 1]; curr_leg = legs[i]
@@ -534,20 +530,23 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
                 break_type      = "CHoCH" if swing_trend == -1 else "BOS"
                 break_direction = "BULLISH"
                 swing_trend     = 1
+                choch_level     = swing_high_level   # ← Kırılan seviye
             if (swing_low_level is not None and not swing_low_crossed
                     and c < swing_low_level and c_prev >= swing_low_level):
                 break_type      = "CHoCH" if swing_trend == 1 else "BOS"
                 break_direction = "BEARISH"
                 swing_trend     = -1
+                choch_level     = swing_low_level    # ← Kırılan seviye
 
-    return break_type, break_direction, swing_trend
+    return break_type, break_direction, swing_trend, choch_level
 
 # ============================================================
 # 8) MESAJ ŞABLONLARI
 # ============================================================
 def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, patterns, source_label, atr_val=None):
+                     strategy_label, strategy_note, patterns, source_label,
+                     atr_val=None, choch_level=None):
     base = symbol.split("/")[0]
     bt = smc_data['break_type']
     icon = "✅" if bt == "CHoCH" else "🔄"
@@ -555,6 +554,13 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                 else "💪 <b>ORTA — BOS (Trend Devam)</b>")
     p_str = f"{price:.10f}".rstrip("0").rstrip(".")
     m_str = f"{ma200:.10f}".rstrip("0").rstrip(".")
+
+    # CHoCH seviyesi (LuxAlgo'daki yatay çizgi — kırılan swing high)
+    choch_level_str = ""
+    if choch_level is not None:
+        cl_str = f"{choch_level:.10f}".rstrip("0").rstrip(".")
+        choch_level_str = f"📍 <b>CHoCH Seviyesi:</b> <code>{cl_str}</code>\n"
+
     if atr_val:
         stop_val = round(price - atr_val * 4.0, 10)
         tp1_val  = round(price + atr_val * 4.0, 10)
@@ -585,7 +591,8 @@ def build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
         f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
         f"🏷 <b>KAYNAK:</b> {source_label}\n"
         f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"💵 <b>FİYAT:</b> <code>{p_str}</code>\n"
+        f"💵 <b>FİYAT (bar kapanış):</b> <code>{p_str}</code>\n"
+        f"{choch_level_str}"
         f"{tp_block}"
         f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
@@ -677,7 +684,7 @@ def _analyze_symbol(symbol):
             scan_stats["btc_crash_skip"] += 1
             return
 
-        micro_break, micro_dir, micro_trend = detect_micro_choch(df, CHOCH_SWING)
+        micro_break, micro_dir, micro_trend, choch_level = detect_micro_choch(df, CHOCH_SWING)
 
         if micro_break == "CHoCH" and micro_dir == "BULLISH":
             scan_stats["choch_found"] += 1
@@ -690,13 +697,16 @@ def _analyze_symbol(symbol):
 
                 msg = build_phase2_msg(symbol, coin_name, price, ma200, dist_ma,
                                        rsi, raw_atr, atr_ratio, depth, smc_data,
-                                       s_label, s_note, patterns, "SMC", atr_val=atr_val)
+                                       s_label, s_note, patterns, "SMC",
+                                       atr_val=atr_val, choch_level=choch_level)
                 send_telegram_msg(msg)
                 mark_sent(symbol, "choch", "smc-original")
                 send_to_portfolio(symbol, price, atr_val, "choch", "smc-original", micro_break)
                 scan_stats["signal_phase2_smc-original"] += 1
+                cl_log = f" | CHoCH Seviyesi: {choch_level:.8g}" if choch_level else ""
                 pat_log = candle_pattern_summary(patterns)
                 print(f"🚀 [CHoCH] {symbol} | Micro CHoCH | RSI:{round(rsi,1)}"
+                      + cl_log
                       + (f" | {pat_log}" if pat_log else ""), flush=True)
                 # Bayrak temizle
                 with discount_active_lock:
@@ -833,7 +843,7 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 50)
-    print("🚀  SMC Original v14 — Micro CHoCH (Discount → CHoCH)")
+    print("🚀  SMC Original v15 — Micro CHoCH + Doğru CHoCH Seviyesi")
     print("=" * 50)
     print(f"  Timeframe      : {TIMEFRAME}")
     print(f"  Tetikleyici    : WebSocket (1H bar kapanışında)")
@@ -845,6 +855,7 @@ async def main():
     print(f"                   → Tek satır Telegram bildirimi (portfolio girişi yok)")
     print(f"  Aşama 2        : Micro CHoCH — SADECE discount_active coinlerde")
     print(f"                   → Tam sinyal Telegram + Portfolio")
+    print(f"                   → CHoCH Seviyesi: kırılan swing high (LuxAlgo çizgisi)")
     print(f"  BTC Filtre     : Crash (4h %-{BTC_CRASH_PCT}) + EMA21 (Phase1)")
     print("=" * 50 + "\n")
 
