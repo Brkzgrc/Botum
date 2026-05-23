@@ -23,7 +23,9 @@ def health_check():
     cached = len(bars_cache)
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
-    return f"SMC v16 WS — Micro CHoCH | {boot_status} | {cached} coin cached | {active} discount aktif | {btc_ema} | {ws_1h_closes} bar kapandı", 200
+    struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
+    return (f"SMC v17 WS — 4H Crash Filter | {boot_status} | {cached} coin cached | "
+            f"{active} discount aktif | {btc_ema} | {struc} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -155,6 +157,18 @@ BTC_CRASH_PCT = 3.0
 BTC_CRASH_TTL = 1800
 BTC_EMA21_TTL = 1800
 
+# ── YENİ: 4H Yapısal Kırılma Cache ──────────────────────────────
+# Level 1 (paused=True):
+#   Son 2 kapanmış 4H mum EMA21 altında (2. daha düşük) +
+#   en son mumun çoğunluğu (>%50) EMA50 altında
+#   → Yeni sinyal üretilmez
+#
+# Level 2 (send_alert=True):
+#   Level 1 + önceki mumun da çoğunluğu EMA50 altında
+#   → Telegram'a bir kez uyarı gönderilir
+btc_4h_structural_cache = {"paused": False, "level2_alerted": False, "updated": 0}
+BTC_4H_STRUCTURAL_TTL = 3600  # Saatte bir kontrol
+
 def check_btc_crash():
     now = time.time()
     if now - btc_crash_cache["updated"] < BTC_CRASH_TTL:
@@ -203,6 +217,99 @@ def check_btc_ema21():
         btc_ema21_cache["above"] = False
     btc_ema21_cache["updated"] = now
     return btc_ema21_cache["above"]
+
+def check_btc_4h_structural():
+    """
+    BTC 4H yapısal kırılma tespiti.
+
+    Döner: (paused: bool, send_alert: bool)
+      paused     = True  → Yeni sinyal üretme (Level 1)
+      send_alert = True  → Telegram uyarısı gönder (Level 2, sadece ilk tespit)
+
+    Level 1 şartları:
+      1. Son 2 kapanmış 4H mum kapanışı EMA21 altında
+      2. 2. (en son) mum 1.'den (önceki) daha düşük kapandı
+      3. En son mumun çoğunluğu (>%50) EMA50 altında
+         Formül: (EMA50 - low) / (high - low) > 0.5
+
+    Level 2 şartları (Level 1 +):
+      4. Önceki mumun da çoğunluğu EMA50 altında (aynı formül)
+    """
+    now = time.time()
+    if now - btc_4h_structural_cache["updated"] < BTC_4H_STRUCTURAL_TTL:
+        # Cached sonuç — alert yeni değil
+        return btc_4h_structural_cache["paused"], False
+
+    paused     = False
+    send_alert = False
+
+    try:
+        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=60)
+        if len(bars) < 55:
+            btc_4h_structural_cache["updated"] = now
+            return False, False
+
+        closes = pd.Series([float(b[4]) for b in bars])
+        ema21  = closes.ewm(span=21, adjust=False).mean()
+        ema50  = closes.ewm(span=50, adjust=False).mean()
+
+        # Son 2 KAPANMIŞ bar:
+        #   bars[-1] → halen açık olabilecek mevcut 4H bar (kullanma)
+        #   bars[-2] → en son kapanmış 4H bar  (c1)
+        #   bars[-3] → 2. en son kapanmış 4H bar (c2)
+        c1_h, c1_l, c1_c = float(bars[-2][2]), float(bars[-2][3]), float(bars[-2][4])
+        c2_h, c2_l, c2_c = float(bars[-3][2]), float(bars[-3][3]), float(bars[-3][4])
+        e21_c1, e21_c2 = float(ema21.iloc[-2]), float(ema21.iloc[-3])
+        e50_c1, e50_c2 = float(ema50.iloc[-2]), float(ema50.iloc[-3])
+
+        # Koşul 1: Her iki kapanış EMA21 altında
+        cond_ema21 = (c1_c < e21_c1) and (c2_c < e21_c2)
+
+        # Koşul 2: En son mum öncekinden daha düşük kapandı
+        cond_lower = c1_c < c2_c
+
+        # Koşul 3: c1 mumunun çoğunluğu EMA50 altında
+        range1 = c1_h - c1_l
+        if range1 > 0:
+            cond_maj_c1 = (e50_c1 - c1_l) / range1 > 0.5
+        else:
+            cond_maj_c1 = c1_c < e50_c1
+
+        # Koşul 4 (Level 2): c2 mumunun da çoğunluğu EMA50 altında
+        range2 = c2_h - c2_l
+        if range2 > 0:
+            cond_maj_c2 = (e50_c2 - c2_l) / range2 > 0.5
+        else:
+            cond_maj_c2 = c2_c < e50_c2
+
+        level1 = cond_ema21 and cond_lower and cond_maj_c1
+        level2 = level1 and cond_maj_c2
+
+        paused = level1
+
+        # Alert mantığı: level2 ilk kez tetiklendiyse gönder
+        was_alerted = btc_4h_structural_cache["level2_alerted"]
+        if level2 and not was_alerted:
+            send_alert = True
+            btc_4h_structural_cache["level2_alerted"] = True
+        elif not level1:
+            # Şart kalktı → sonraki tetiklenme için sıfırla
+            btc_4h_structural_cache["level2_alerted"] = False
+
+        status = f"Level{'2' if level2 else '1'} — PAUSE 🚨" if level1 else "NORMAL ✅"
+        print(
+            f"🔍 BTC 4H Yapısal: {status} | "
+            f"c1={c1_c:.0f} EMA21={e21_c1:.0f} EMA50={e50_c1:.0f} | "
+            f"c2={c2_c:.0f} EMA21={e21_c2:.0f}",
+            flush=True
+        )
+
+    except Exception as e:
+        print(f"BTC 4H structural check hata: {e}", flush=True)
+
+    btc_4h_structural_cache["paused"]  = paused
+    btc_4h_structural_cache["updated"] = now
+    return paused, send_alert
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -617,6 +724,24 @@ def _analyze_symbol(symbol):
 
         coin_name = get_coin_name(symbol)
 
+        # ── 4H Yapısal Kırılma Kontrolü (YENİ v17) ───────────────────────
+        # Sadece 1 saatte bir API çağrısı yapar (TTL ile cache'lenir).
+        # paused_4h  = True → Level 1: yeni sinyal üretme
+        # send_4h_alert = True → Level 2: Telegram uyarısı gönder (ilk tetiklenme)
+        paused_4h, send_4h_alert = check_btc_4h_structural()
+
+        if send_4h_alert:
+            alert_msg = (
+                "🚨 <b>BTC 4H YAPISAL KIRILMA — DİKKAT!</b>\n\n"
+                "⚠️ İki ardışık 4H mum <b>EMA21 altında</b> kapandı (2. daha dip)\n"
+                "⚠️ Her iki mumun <b>çoğunluğu EMA50 altında</b>\n\n"
+                "🔴 Yeni sinyaller <b>duraklatıldı</b>\n"
+                "📌 Açık pozisyonlar için stoplar devrede\n"
+                "👁 Manuel takip önerilir"
+            )
+            send_telegram_msg(alert_msg)
+            print("🚨 BTC 4H Yapısal Kırılma (Level 2) — Telegram uyarısı gönderildi", flush=True)
+
         df["atr"]   = calc_atr(df, 14)
         df["rsi"]   = calc_rsi(df, 14)
         df["ma200"] = df["close"].rolling(200).mean()
@@ -652,7 +777,8 @@ def _analyze_symbol(symbol):
         # ── AŞAMA 1: Discount Zone Bildirimi ──────────────────────────────
         if in_discount:
             scan_stats["in_discount"] += 1
-            if depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI and not check_btc_crash() and check_btc_ema21():
+            # paused_4h = True → 4H yapısal kırılma var, Phase 1 de beklet
+            if depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI and not check_btc_crash() and check_btc_ema21() and not paused_4h:
                 with discount_active_lock:
                     discount_active[symbol] = True
                 last_p1 = get_last_sent(symbol, "discount", "smc-original")
@@ -681,6 +807,11 @@ def _analyze_symbol(symbol):
 
         if check_btc_crash():
             scan_stats["btc_crash_skip"] += 1
+            return
+
+        # 4H yapısal kırılma → Phase 2 sinyali üretme
+        if paused_4h:
+            scan_stats["btc_4h_pause_skip"] += 1
             return
 
         micro_break, micro_dir, micro_trend, choch_level = detect_micro_choch(df, CHOCH_SWING)
@@ -831,6 +962,7 @@ async def periodic_summary():
         print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
         print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
+        print(f"BTC 4H pause skip: {scan_stats.get('btc_4h_pause_skip', 0)}", flush=True)  # YENİ
         print(f"Toplam sinyal    : {total_signals}", flush=True)
         print(f"------------------------\n", flush=True)
         scan_stats.clear()
@@ -846,9 +978,9 @@ async def main():
 
     threading.Thread(target=run_flask, daemon=True).start()
 
-    print("=" * 50)
-    print("🚀  SMC Original v16 — CHoCH Fiyat Düzeltmesi + Hacim Filtresi")
-    print("=" * 50)
+    print("=" * 60)
+    print("🚀  SMC v17 — 4H Yapısal Crash Filter")
+    print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
@@ -859,7 +991,10 @@ async def main():
     print(f"  Bar kapanışı    : Referans olarak mesajda gösterilir")
     print(f"  Aşama 1         : Discount + Depth>%{PHASE1_DEPTH} + RSI<{PHASE1_RSI} + BTC EMA21")
     print(f"  Aşama 2         : Micro CHoCH → Tam sinyal + Portfolio")
-    print("=" * 50 + "\n")
+    print(f"  [YENİ] 4H Filter: 2 kapanmış 4H mum EMA21 altı (2.↓) + çoğunluk EMA50 altı")
+    print(f"           Level 1 : Sinyal dur (paused)")
+    print(f"           Level 2 : Level 1 + önceki mum da EMA50 çoğunluk altı → Telegram uyarı")
+    print("=" * 60 + "\n")
 
     for attempt in range(3):
         try:
