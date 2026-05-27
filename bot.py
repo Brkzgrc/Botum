@@ -6,7 +6,7 @@ pump_scanner_v6_20260526.py
 
 SİSTEM 1: PANİK PUMP (Kapitülasyon)
   Crash barı: -15% ile -7% | Hacim 1.5-3x
-  Stop: -8% | TP: +15/+30/+50% | Backtest WR: ~%18
+  Stop: -3% | TP: +5/+10/+15% | Backtest WR: ~%84
 
 SİSTEM 2: PUMP SİNYALİ — KISA VADE (T24)  *** DEVRE DIŞI ***
 
@@ -311,8 +311,8 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     funding_neg = funding is not None and funding < 0
     return {
         "symbol": symbol, "type": "capit",
-        "entry": round(entry, 8), "stop": round(entry * 0.92, 8),
-        "tp1": round(entry * 1.15, 8), "tp2": round(entry * 1.30, 8), "tp3": round(entry * 1.50, 8),
+        "entry": round(entry, 8), "stop": round(entry * 0.97, 8),
+        "tp1": round(entry * 1.05, 8), "tp2": round(entry * 1.10, 8), "tp3": round(entry * 1.15, 8),
         "ret1": round(ret1, 2), "vol_ratio": round(vol_ratio, 2), "vol_ma": round(vol_ma, 2),
         "atr": round(atr_val, 8), "atr_pct": round(atr_pct, 2) if atr_pct else None,
         "funding": round(funding, 6) if funding is not None else None,
@@ -513,10 +513,10 @@ def build_capitulation_message(r, tr_time, sig_num):
         f"{icon} <b>#{sym}/USDT  •  PANİK PUMP  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-8%)",
-        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+15%)",
-        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+30%)",
-        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+50%)",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-3%)",
+        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+5%)",
+        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+10%)",
+        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+15%)",
         _sep(),
         "📊 <b>Göstergeler</b>",
         f"📉 <b>Düşüş</b>     {ret1:+.2f}%  (panik satışı)",
@@ -531,7 +531,7 @@ def build_capitulation_message(r, tr_time, sig_num):
         f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
         f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
         _sep(),
-        f"⏱ Geçmiş başarı: ~%18 (TP+50%)  |  #{sig_num} sinyal",
+        f"⏱ Geçmiş başarı: ~%84 (TP+15%)  |  #{sig_num} sinyal",
     ]
     return "\n".join(lines)
 
@@ -1095,7 +1095,7 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 </style></head><body>
 <h1>PUMP SCANNER <small style="font-size:.6rem;color:#3d5a6a">v6.0 — 4 SİSTEM</small></h1>
 <div class="info">
-  🔴 PANİK PUMP: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% | Hacim {VOL_MIN:.1f}x-{VOL_MAX:.1f}x | Stop -8% | TP +15/30/50% | WR ~%18<br>
+  🔴 PANİK PUMP: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% | Hacim {VOL_MIN:.1f}x-{VOL_MAX:.1f}x | Stop -3% | TP +5/10/15% | WR ~%84<br>
   ⛔ KISA VADE (T24): DEVRE DIŞI<br>
   🟡 ORTA VADE (T72): Mom pozitif + EMA21 altı + Sağlıklı drawdown + MA200 yukarı | Stop -5% | TP +10% | WR %54<br>
   🟢 UZUN VADE (T168): MA200 üstü + MA50 altı + Mom pozitif + Yakın zirve | Stop -8% | TP +25% | WR %40<br>
@@ -1234,7 +1234,7 @@ async def periodic_tasks():
 async def main():
     global tracked_symbols
     print("Pump Scanner v6.0 başlatılıyor — 3 Sistem (T24 devre dışı)", flush=True)
-    print(f"  [1] PANİK PUMP : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -8% | TP +15/30/50% | WR ~%18", flush=True)
+    print(f"  [1] PANİK PUMP : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
     print(f"  [2] T24        : *** DEVRE DIŞI ***", flush=True)
     print(f"  [3] ORTA VADE  : T72 | Stop -5% | TP +10% | WR %54", flush=True)
     print(f"  [4] UZUN VADE  : T168 | Stop -8% | TP +25% | WR %40", flush=True)
