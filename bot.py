@@ -39,12 +39,14 @@ from flask import Flask
 # ============================================================
 # AYARLAR
 # ============================================================
-BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY",    "")
-BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
-TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
-TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
-PORTFOLIO_URL      = os.getenv("PORTFOLIO_URL",      "")
-PORTFOLIO_TOKEN    = os.getenv("PORTFOLIO_TOKEN",    "")
+BINANCE_API_KEY         = os.getenv("BINANCE_API_KEY",         "")
+BINANCE_API_SECRET      = os.getenv("BINANCE_API_SECRET",      "")
+TELEGRAM_TOKEN          = os.getenv("TELEGRAM_TOKEN",          "")
+TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID",        "")
+PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
+PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
+ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
+CLAUDE_TELEGRAM_CHAT_ID = os.getenv("CLAUDE_TELEGRAM_CHAT_ID", "")
 
 # Sistem 1 — Kapitülasyon parametreleri
 CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
@@ -96,6 +98,7 @@ all_signals:    list = []
 btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
+_recent_signal_times: list = []  # UTC datetimes of signals fired in last 60 min (clustering detection)
 
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -669,6 +672,129 @@ def send_to_portfolio(result):
         print(f"[PORTFOLIO] Hata: {e}", flush=True)
 
 # ============================================================
+# CLAUDE SHADOW MODE
+# ============================================================
+def _recent_signal_count() -> int:
+    """Signals fired in the last 60 minutes (clustering detection)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+    _recent_signal_times[:] = [t for t in _recent_signal_times if t > cutoff]
+    return len(_recent_signal_times)
+
+def _record_signal_time():
+    _recent_signal_times.append(datetime.now(timezone.utc))
+
+def ask_claude_shadow(result: dict, recent_count: int) -> str:
+    if not ANTHROPIC_API_KEY:
+        return ""
+    try:
+        import anthropic
+        sym      = result["symbol"].replace("/USDT", "")
+        sig_type = result.get("type", "capit")
+        btc_trend = btc_4h_cache.get("trend", "?")
+
+        type_names = {
+            "capit": "PANİK PUMP (kapitülasyon mean reversion, Stop -3%, TP +5/10/15%, WR ~%84)",
+            "t72":   "ORTA VADE PUMP T72 (3 gün hedef, Stop -5%, TP +10%, WR %54)",
+            "t168":  "UZUN VADE PUMP T168 (7 gün hedef, Stop -8%, TP +25%, WR %40)",
+        }
+
+        if sig_type == "capit":
+            indicators = (
+                f"Düşüş: {result.get('ret1', 0):+.2f}% (panik satışı)\n"
+                f"Hacim: {result.get('vol_ratio', 0):.2f}x ortalama (beklenen: 1.5-3x)\n"
+                f"ATR volatilite: %{result.get('atr_pct', 0):.2f}\n"
+                f"Funding rate: {result.get('funding', 'bilinmiyor')}"
+            )
+        elif sig_type == "t72":
+            indicators = (
+                f"5 bar momentum: +%{result.get('mom5_pct', 0):.2f}\n"
+                f"EMA21 uzaklık: %{result.get('dist_ema21', 0):.2f} (altında — geri çekilme)\n"
+                f"Coin drawdown: %{result.get('coin_drawdown', 0):.2f}\n"
+                f"MA200 eğimi: +%{result.get('ma200_slope', 0):.3f}/20 bar (yukarı = iyi)"
+            )
+        elif sig_type == "t168":
+            indicators = (
+                f"MA200 uzaklık: +%{result.get('dist_ma200', 0):.2f}\n"
+                f"MA50 uzaklık: %{result.get('dist_ma50', 0):.2f}\n"
+                f"10 bar momentum: +%{result.get('mom10_pct', 0):.2f}\n"
+                f"Son zirve: {result.get('days_since_high', 0)} bar önce"
+            )
+        else:
+            indicators = ""
+
+        clustering_note = ""
+        if recent_count >= 3:
+            clustering_note = f"\n⚠️ DİKKAT: Son 1 saatte {recent_count} farklı coin sinyal verdi — BTC çöküşü riski yüksek!"
+        elif recent_count >= 2:
+            clustering_note = f"\n🟡 NOT: Son 1 saatte {recent_count} sinyal — piyasa genelinde baskı olabilir."
+
+        prompt = f"""Sen bir kripto sinyal değerlendirme asistanısın. Aşağıdaki sinyali analiz et:{clustering_note}
+
+KOİN: #{sym}/USDT
+SİSTEM: {type_names.get(sig_type, sig_type)}
+BTC 4H TREND: {btc_trend}
+SON 1 SAATTEKİ SİNYAL SAYISI: {recent_count}
+
+GÖSTERGELER:
+{indicators}
+
+Değerlendirmeni SADECE şu formatta ver (4-5 satır max):
+KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
+GEREKÇE: (1-2 cümle)
+UYARI: (varsa 1 cümle, yoksa bu satırı yazma)"""
+
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp   = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=180,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        print(f"[CLAUDE] API hata: {e}", flush=True)
+        return ""
+
+def send_claude_telegram(text):
+    if not TELEGRAM_TOKEN or not CLAUDE_TELEGRAM_CHAT_ID:
+        return
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": CLAUDE_TELEGRAM_CHAT_ID, "text": text,
+                "parse_mode": "HTML", "disable_web_page_preview": True,
+            },
+            timeout=10,
+        )
+        if r.status_code != 200:
+            print(f"[CLAUDE TG] {r.status_code}: {r.text[:80]}", flush=True)
+    except Exception as e:
+        print(f"[CLAUDE TG] Hata: {e}", flush=True)
+
+async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
+    try:
+        loop = asyncio.get_running_loop()
+        claude_text = await loop.run_in_executor(
+            None, lambda: ask_claude_shadow(result, recent_count)
+        )
+        if not claude_text:
+            return
+        sym       = result["symbol"].replace("/USDT", "")
+        sig_type  = result.get("type", "capit")
+        type_short = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(sig_type, sig_type)
+        msg = (
+            f"🤖 <b>CLAUDE — #{sym}/USDT [{type_short}] #{sig_num}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{claude_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Gölge mod · sinyal #{sig_num} · girilmedi</i>"
+        )
+        send_claude_telegram(msg)
+        print(f"[CLAUDE] #{sym} değerlendirmesi gönderildi", flush=True)
+    except Exception as e:
+        print(f"[CLAUDE] Shadow task hata: {e}", flush=True)
+
+# ============================================================
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
@@ -872,6 +998,12 @@ async def signal_worker(candidate_queue):
             signal_counter += 1
             send_telegram(msg)
             send_to_portfolio(result)
+
+            # Claude shadow mode
+            if ANTHROPIC_API_KEY and CLAUDE_TELEGRAM_CHAT_ID:
+                recent_cnt = _recent_signal_count()
+                _record_signal_time()
+                asyncio.create_task(_claude_shadow_task(result, recent_cnt, signal_counter))
 
             # Cooldown güncelle
             if sig_type == "capit":
