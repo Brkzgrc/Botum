@@ -90,14 +90,18 @@ tracked_symbols = []
 signal_counter  = 0
 
 bars_1h:        dict = {}
+bars_15m:       dict = {}
+bars_4h:        dict = {}
+bars_1d:        dict = {}
 funding_cache:  dict = {}
-last_signal_ts: dict = {}       # kapitülasyon cooldown: symbol → datetime
-last_pump_ts:   dict = {}       # T24/T72/T168 cooldown: (symbol, sig_type) → datetime
+last_signal_ts: dict = {}
+last_pump_ts:   dict = {}
 all_signals:    list = []
 btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
-_recent_signal_times: list = []  # UTC datetimes of signals fired in last 60 min (clustering detection)
+_recent_signal_times:    list = []
+_secondary_bootstrap_done = False
 
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -991,6 +995,146 @@ async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
         print(f"[CLAUDE] Shadow task hata: {e}", flush=True)
 
 # ============================================================
+# CLAUDE SCAN — PERİYODİK OTONOMİK TARAMA
+# ============================================================
+async def refresh_4h_bars(symbols):
+    ok = 0
+    for sym in symbols:
+        try:
+            df = await fetch_df(sym, "4h", 3)
+            if df is not None and len(df) >= 2:
+                if sym in bars_4h:
+                    combined = pd.concat([bars_4h[sym], df])
+                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-200:]
+                    bars_4h[sym] = combined
+                else:
+                    bars_4h[sym] = df.iloc[-200:]
+                ok += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.05)
+    print(f"[SCAN] 4H güncelleme: {ok}/{len(symbols)}", flush=True)
+
+async def refresh_1d_bars(symbols):
+    ok = 0
+    for sym in symbols:
+        try:
+            df = await fetch_df(sym, "1d", 3)
+            if df is not None and len(df) >= 2:
+                if sym in bars_1d:
+                    combined = pd.concat([bars_1d[sym], df])
+                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-250:]
+                    bars_1d[sym] = combined
+                else:
+                    bars_1d[sym] = df.iloc[-250:]
+                ok += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.05)
+    print(f"[SCAN] 1D güncelleme: {ok}/{len(symbols)}", flush=True)
+
+def _scan_prefilter(top_n=40):
+    candidates = []
+    for sym in tracked_symbols:
+        score = 0
+        df1h = bars_1h.get(sym)
+        if df1h is not None and len(df1h) > 20:
+            rsi = _calc_rsi(df1h["close"].tolist())
+            if rsi is not None:
+                if   rsi < 35: score += 3
+                elif rsi < 45: score += 2
+                elif rsi < 55: score += 1
+            vr = _vol_ratio_tf(df1h["volume"].tolist())
+            if vr:
+                if   vr > 1.5: score += 2
+                elif vr > 1.2: score += 1
+        df4h = bars_4h.get(sym)
+        if df4h is not None and len(df4h) > 20:
+            rsi4 = _calc_rsi(df4h["close"].tolist())
+            if rsi4 is not None:
+                if   rsi4 < 40: score += 2
+                elif rsi4 < 50: score += 1
+        if score > 0:
+            candidates.append((sym, score))
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    return [s for s, _ in candidates[:top_n]]
+
+def _build_scan_line(sym):
+    parts = []
+    for label, d in [("15D", bars_15m.get(sym)), ("1S", bars_1h.get(sym)),
+                     ("4S", bars_4h.get(sym)),   ("1G", bars_1d.get(sym))]:
+        if d is None or len(d) < 20:
+            continue
+        closes  = d["close"].tolist()
+        volumes = d["volume"].tolist()
+        rsi = _calc_rsi(closes)
+        vr  = _vol_ratio_tf(volumes)
+        items = []
+        if rsi is not None: items.append(f"RSI:{rsi}")
+        if vr  is not None: items.append(f"H:{vr}x")
+        parts.append(f"{label}[{' '.join(items)}]")
+    close_price = fmt_price(bars_1h[sym]["close"].iloc[-1]) if sym in bars_1h and len(bars_1h[sym]) > 0 else "?"
+    return f"  {sym.replace('/USDT','')}: {close_price} | {' | '.join(parts)}"
+
+async def claude_scan():
+    if not ANTHROPIC_API_KEY or not _secondary_bootstrap_done:
+        return
+    try:
+        candidates = _scan_prefilter(top_n=40)
+        if not candidates:
+            print("[SCAN] Aday coin yok", flush=True)
+            return
+
+        btc4h = bars_4h.get("BTC/USDT")
+        btc_rsi = _calc_rsi(btc4h["close"].tolist()) if btc4h is not None and len(btc4h) > 20 else "?"
+        btc_str = f"4H RSI:{btc_rsi} | Trend:{btc_4h_cache.get('trend','?')}"
+
+        loop = asyncio.get_running_loop()
+        fg_val, fg_label = await loop.run_in_executor(None, fetch_fear_greed)
+        fg_str = f"{fg_val} ({fg_label})" if fg_val else "bilinmiyor"
+
+        coin_lines = [_build_scan_line(sym) for sym in candidates]
+        scan_time  = tr_now().strftime("%d/%m/%Y %H:%M")
+
+        prompt = f"""Sen bir kripto tarayıcısısın. {len(candidates)} coinin çoklu timeframe verisini incele.
+
+TARAMA: {scan_time}
+BTC: {btc_str}
+Fear & Greed: {fg_str}
+
+KOİN VERİLERİ (15D=15dk | 1S=1saat | 4S=4saat | 1G=günlük | RSI + Hacim çarpanı):
+{chr(10).join(coin_lines)}
+
+RSI, hacim anomalisi ve timeframe uyumuna göre EN FAZLA 5 coin seç — reversal veya güçlü momentum fırsatı olanlar. Fırsat yoksa "Şu an belirgin fırsat yok." yaz.
+
+FORMAT (her satır):
+KOİN: [isim] | NEDEN: [somut veri referansı, 1 cümle] | RİSK: [DÜŞÜK/ORTA/YÜKSEK]"""
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp   = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result_text = resp.content[0].text.strip()
+
+        msg = (
+            f"🔍 <b>CLAUDE TARAMA — {scan_time}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"BTC: {btc_str}\n"
+            f"F&G: {fg_str} | Taranan: {len(candidates)} coin\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{result_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Gölge mod · otonomik tarama · işlem yapılmadı</i>"
+        )
+        send_claude_telegram(msg)
+        print(f"[SCAN] {len(candidates)} coin tarandı, sonuç gönderildi", flush=True)
+    except Exception as e:
+        print(f"[SCAN] Hata: {e}", flush=True)
+
+# ============================================================
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
@@ -1126,6 +1270,31 @@ async def bootstrap_all(symbols):
         if await bootstrap_symbol(sym):
             ok += 1
     print(f"Bootstrap bitti: {ok}/{len(symbols)}", flush=True)
+
+async def bootstrap_secondary_tf(symbols):
+    global _secondary_bootstrap_done
+    print("Secondary bootstrap başlıyor (15m/4h/1d)...", flush=True)
+    ok = 0
+    all_syms = list(symbols) + ["BTC/USDT"]
+    for i, sym in enumerate(all_syms, 1):
+        try:
+            df15 = await fetch_df(sym, "15m", 200)
+            if df15 is not None and len(df15) >= 20:
+                bars_15m[sym] = df15.iloc[-200:]
+            df4h = await fetch_df(sym, "4h", 200)
+            if df4h is not None and len(df4h) >= 20:
+                bars_4h[sym] = df4h.iloc[-200:]
+            df1d = await fetch_df(sym, "1d", 250)
+            if df1d is not None and len(df1d) >= 20:
+                bars_1d[sym] = df1d.iloc[-250:]
+            ok += 1
+        except Exception:
+            pass
+        if i % 50 == 0:
+            print(f"  Secondary: {i}/{len(all_syms)}", flush=True)
+        await asyncio.sleep(0.05)
+    _secondary_bootstrap_done = True
+    print(f"Secondary bootstrap bitti: {ok}/{len(all_syms)}", flush=True)
 
 # ============================================================
 # SİNYAL WORKER
@@ -1287,6 +1456,17 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         if result:
             await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
 
+async def on_15m_close(symbol, o, h, l, c, v, ts_ms):
+    if symbol not in bars_15m:
+        return
+    tstamp = pd.to_datetime(ts_ms, unit="ms", utc=True)
+    df = bars_15m[symbol]
+    df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
+    df = df.sort_index()
+    if len(df) > 200:
+        df = df.iloc[-200:]
+    bars_15m[symbol] = df
+
 # ============================================================
 # WEBSOCKET
 # ============================================================
@@ -1294,7 +1474,12 @@ def to_ws(symbol):
     return symbol.replace("/", "").lower()
 
 async def ws_chunk(symbols, candidate_queue):
-    streams = "/".join([f"{to_ws(s)}@kline_1h" for s in symbols])
+    stream_list = []
+    for s in symbols:
+        ws_sym = to_ws(s)
+        stream_list.append(f"{ws_sym}@kline_1h")
+        stream_list.append(f"{ws_sym}@kline_15m")
+    streams = "/".join(stream_list)
     url     = f"wss://stream.binance.com:9443/stream?streams={streams}"
     retry   = 0
     while True:
@@ -1322,13 +1507,19 @@ async def ws_chunk(symbols, candidate_queue):
                         data = json.loads(msg)
                         k    = data.get("data", {}).get("k", {})
                         if not k.get("x", False): continue
-                        sym = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
+                        sym      = data.get("data", {}).get("s", "").upper().replace("USDT", "/USDT")
+                        interval = k.get("i", "")
                         try:
-                            await on_1h_close(sym,
-                                float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]),
-                                float(k["v"]), int(k["t"]), candidate_queue)
+                            if interval == "1h":
+                                await on_1h_close(sym,
+                                    float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]),
+                                    float(k["v"]), int(k["t"]), candidate_queue)
+                            elif interval == "15m":
+                                await on_15m_close(sym,
+                                    float(k["o"]), float(k["h"]), float(k["l"]), float(k["c"]),
+                                    float(k["v"]), int(k["t"]))
                         except Exception as e:
-                            print(f"on_1h_close hata [{sym}]: {str(e)[:80]}", flush=True)
+                            print(f"ws_handler hata [{sym}/{interval}]: {str(e)[:80]}", flush=True)
                 finally:
                     ping_task.cancel()
         except Exception as e:
@@ -1532,6 +1723,9 @@ def perf_dashboard():
 # ============================================================
 async def periodic_tasks():
     tick = 0
+    last_4h_tick  = 0
+    last_1d_tick  = 0
+    last_scan_tick = -24  # ilk scan 4 saat sonra (secondary bootstrap bitmesini bekle)
     while True:
         await asyncio.sleep(600)
         tick += 1
@@ -1542,6 +1736,7 @@ async def periodic_tasks():
         print(
             f"\n╔══════════════ PUMP SCANNER ÖZET ══════════════╗\n"
             f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Toplam Sinyal: {stats.get('signal_sent',0)}\n"
+            f"  15m bar: {len(bars_15m):<5} 4H bar: {len(bars_4h):<5} 1D bar: {len(bars_1d)}\n"
             f"  ── Son Sinyaller ──\n"
             f"  PANİK PUMP : {cap_cnt}\n"
             f"  KISA VADE  : {t24_cnt}\n"
@@ -1555,6 +1750,18 @@ async def periodic_tasks():
         )
         if tick % 2 == 0:
             await refresh_btc_4h()
+        # 4H bar güncelleme — her 4 saatte (24 tick × 10 dk = 240 dk)
+        if tick - last_4h_tick >= 24:
+            last_4h_tick = tick
+            asyncio.create_task(refresh_4h_bars(tracked_symbols + ["BTC/USDT"]))
+        # 1D bar güncelleme — her 24 saatte (144 tick)
+        if tick - last_1d_tick >= 144:
+            last_1d_tick = tick
+            asyncio.create_task(refresh_1d_bars(tracked_symbols + ["BTC/USDT"]))
+        # Claude tarama — her 4 saatte
+        if tick - last_scan_tick >= 24 and _secondary_bootstrap_done:
+            last_scan_tick = tick
+            asyncio.create_task(claude_scan())
 
 # ============================================================
 # MAIN
@@ -1584,6 +1791,7 @@ async def main():
     candidate_queue = asyncio.Queue()
     asyncio.create_task(signal_worker(candidate_queue))
     asyncio.create_task(periodic_tasks())
+    asyncio.create_task(bootstrap_secondary_tf(symbols))
 
     bot_status["status"] = "LIVE"
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
