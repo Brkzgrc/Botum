@@ -682,13 +682,70 @@ def _recent_signal_count() -> int:
 def _record_signal_time():
     _recent_signal_times.append(datetime.now(timezone.utc))
 
+_SIG_TYPE_PORTFOLIO = {
+    "capit": "panik_pump",
+    "t72":   "pump_orta",
+    "t168":  "pump_uzun",
+}
+
+def fetch_coin_history(symbol: str, sig_type: str) -> str:
+    """Portfolio tracker'dan bu coin'in geçmiş sinyal sonuçlarını çeker."""
+    if not PORTFOLIO_URL:
+        return ""
+    try:
+        headers = {}
+        if PORTFOLIO_TOKEN:
+            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+        r = requests.get(
+            f"{PORTFOLIO_URL}/api/signals",
+            params={"limit": 200},
+            headers=headers,
+            timeout=5,
+        )
+        if r.status_code != 200:
+            return ""
+        signals = r.json()
+        if not isinstance(signals, list):
+            signals = signals.get("signals", signals.get("data", []))
+
+        pt = _SIG_TYPE_PORTFOLIO.get(sig_type, "panik_pump")
+        coin_signals = [
+            s for s in signals
+            if s.get("symbol", "").upper() == symbol.upper()
+            and s.get("sig_type", "") == pt
+            and s.get("status") in ("win", "loss", "expired")
+        ]
+        if not coin_signals:
+            return ""
+
+        wins    = [s for s in coin_signals if s.get("status") == "win"]
+        losses  = [s for s in coin_signals if s.get("status") == "loss"]
+        expired = [s for s in coin_signals if s.get("status") == "expired"]
+        total   = len(coin_signals)
+        wr      = round(len(wins) / total * 100) if total else 0
+
+        def avg_ret(lst):
+            rets = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
+            return round(sum(rets) / len(rets), 1) if rets else None
+
+        win_avg  = avg_ret(wins)
+        loss_avg = avg_ret(losses)
+
+        lines = [f"Bu coin bu sistemde geçmişte {total} sinyal: {len(wins)} WIN / {len(losses)} LOSS / {len(expired)} süresi doldu | Win rate: %{wr}"]
+        if win_avg  is not None: lines.append(f"Ortalama kazanç: +%{win_avg}")
+        if loss_avg is not None: lines.append(f"Ortalama kayıp: %{loss_avg}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[CLAUDE] Geçmiş çekme hata: {e}", flush=True)
+        return ""
+
 def ask_claude_shadow(result: dict, recent_count: int) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
     try:
         import anthropic
-        sym      = result["symbol"].replace("/USDT", "")
-        sig_type = result.get("type", "capit")
+        sym       = result["symbol"].replace("/USDT", "")
+        sig_type  = result.get("type", "capit")
         btc_trend = btc_4h_cache.get("trend", "?")
 
         type_names = {
@@ -721,6 +778,9 @@ def ask_claude_shadow(result: dict, recent_count: int) -> str:
         else:
             indicators = ""
 
+        history = fetch_coin_history(result["symbol"], sig_type)
+        history_block = f"\nGEÇMİŞ SİNYAL PERFORMANSI:\n{history}" if history else "\nGEÇMİŞ: Bu coin için henüz geçmiş sinyal verisi yok."
+
         clustering_note = ""
         if recent_count >= 3:
             clustering_note = f"\n⚠️ DİKKAT: Son 1 saatte {recent_count} farklı coin sinyal verdi — BTC çöküşü riski yüksek!"
@@ -736,16 +796,17 @@ SON 1 SAATTEKİ SİNYAL SAYISI: {recent_count}
 
 GÖSTERGELER:
 {indicators}
+{history_block}
 
 Değerlendirmeni SADECE şu formatta ver (4-5 satır max):
 KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
-GEREKÇE: (1-2 cümle)
+GEREKÇE: (1-2 cümle, geçmiş varsa ona da değin)
 UYARI: (varsa 1 cümle, yoksa bu satırı yazma)"""
 
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=180,
+            max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
