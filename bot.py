@@ -46,7 +46,6 @@ TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID",        "")
 PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
 PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
-CLAUDE_TELEGRAM_CHAT_ID = os.getenv("CLAUDE_TELEGRAM_CHAT_ID", "")
 
 # Sistem 1 — Kapitülasyon parametreleri
 CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
@@ -755,13 +754,13 @@ UYARI: (varsa 1 cümle, yoksa bu satırı yazma)"""
         return ""
 
 def send_claude_telegram(text):
-    if not TELEGRAM_TOKEN or not CLAUDE_TELEGRAM_CHAT_ID:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             json={
-                "chat_id": CLAUDE_TELEGRAM_CHAT_ID, "text": text,
+                "chat_id": TELEGRAM_CHAT_ID, "text": text,
                 "parse_mode": "HTML", "disable_web_page_preview": True,
             },
             timeout=10,
@@ -1000,7 +999,7 @@ async def signal_worker(candidate_queue):
             send_to_portfolio(result)
 
             # Claude shadow mode
-            if ANTHROPIC_API_KEY and CLAUDE_TELEGRAM_CHAT_ID:
+            if ANTHROPIC_API_KEY and TELEGRAM_CHAT_ID:
                 recent_cnt = _recent_signal_count()
                 _record_signal_time()
                 asyncio.create_task(_claude_shadow_task(result, recent_cnt, signal_counter))
