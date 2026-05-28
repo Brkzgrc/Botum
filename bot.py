@@ -674,7 +674,6 @@ def send_to_portfolio(result):
 # CLAUDE SHADOW MODE
 # ============================================================
 def _recent_signal_count() -> int:
-    """Signals fired in the last 60 minutes (clustering detection)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
     _recent_signal_times[:] = [t for t in _recent_signal_times if t > cutoff]
     return len(_recent_signal_times)
@@ -682,131 +681,226 @@ def _recent_signal_count() -> int:
 def _record_signal_time():
     _recent_signal_times.append(datetime.now(timezone.utc))
 
-_SIG_TYPE_PORTFOLIO = {
-    "capit": "panik_pump",
-    "t72":   "pump_orta",
-    "t168":  "pump_uzun",
-}
+# --- Teknik hesaplamalar ---
+def _calc_rsi(closes, period=14):
+    if len(closes) < period + 1:
+        return None
+    a  = np.array(closes[-(period * 3):], dtype=float)
+    d  = np.diff(a)
+    g  = np.where(d > 0, d, 0.0)
+    l  = np.where(d < 0, -d, 0.0)
+    ag = np.mean(g[-period:])
+    al = np.mean(l[-period:])
+    if al == 0:
+        return 100.0
+    return round(100 - 100 / (1 + ag / al), 1)
+
+def _calc_ema_val(closes, span):
+    if len(closes) < span // 2:
+        return None
+    s = pd.Series(closes)
+    return round(float(s.ewm(span=span, adjust=False).mean().iloc[-1]), 8)
+
+def _vol_ratio_tf(volumes, period=20):
+    if len(volumes) < period + 1:
+        return None
+    avg = np.mean(volumes[-period - 1:-1])
+    return round(float(volumes[-1]) / avg, 2) if avg > 0 else None
+
+# --- Tek timeframe özet ---
+async def _fetch_tf_summary(symbol, timeframe, limit=120):
+    try:
+        df = await fetch_df(symbol, timeframe, limit)
+        if df is None or len(df) < 20:
+            return None
+        closes  = df["close"].tolist()
+        volumes = df["volume"].tolist()
+        return {
+            "close":     round(float(closes[-1]), 8),
+            "rsi":       _calc_rsi(closes),
+            "ema50":     _calc_ema_val(closes, 50),
+            "ema200":    _calc_ema_val(closes, 200),
+            "vol_ratio": _vol_ratio_tf(volumes),
+        }
+    except Exception:
+        return None
+
+# --- Çoklu timeframe veri ---
+async def fetch_multi_tf_data(symbol):
+    coin_tfs = [("15m", 80), ("4h", 120), ("1d", 220)]
+    btc_tfs  = [("15m", 80), ("1h", 120), ("4h", 120), ("1d", 220)]
+    tasks = {}
+    for tf, lim in coin_tfs:
+        tasks[f"coin_{tf}"] = asyncio.create_task(_fetch_tf_summary(symbol,      tf, lim))
+    for tf, lim in btc_tfs:
+        tasks[f"btc_{tf}"]  = asyncio.create_task(_fetch_tf_summary("BTC/USDT", tf, lim))
+    out = {}
+    for key, task in tasks.items():
+        try:
+            out[key] = await task
+        except Exception:
+            out[key] = None
+    return {
+        "coin": {tf: out.get(f"coin_{tf}") for tf, _ in coin_tfs},
+        "btc":  {tf: out.get(f"btc_{tf}")  for tf, _ in btc_tfs},
+    }
+
+# --- Fear & Greed ---
+def fetch_fear_greed():
+    try:
+        r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5)
+        if r.status_code == 200:
+            d = r.json()["data"][0]
+            return int(d["value"]), d["value_classification"]
+    except Exception:
+        pass
+    return None, None
+
+# --- Geçmiş sinyal performansı ---
+_SIG_TYPE_PORTFOLIO = {"capit": "panik_pump", "t72": "pump_orta", "t168": "pump_uzun"}
 
 def fetch_coin_history(symbol: str, sig_type: str) -> str:
-    """Portfolio tracker'dan bu coin'in geçmiş sinyal sonuçlarını çeker."""
     if not PORTFOLIO_URL:
         return ""
     try:
-        headers = {}
-        if PORTFOLIO_TOKEN:
-            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
-        r = requests.get(
-            f"{PORTFOLIO_URL}/api/signals",
-            params={"limit": 200},
-            headers=headers,
-            timeout=5,
-        )
+        headers = {"Authorization": f"Bearer {PORTFOLIO_TOKEN}"} if PORTFOLIO_TOKEN else {}
+        r = requests.get(f"{PORTFOLIO_URL}/api/signals", params={"limit": 200},
+                         headers=headers, timeout=5)
         if r.status_code != 200:
             return ""
         signals = r.json()
         if not isinstance(signals, list):
             signals = signals.get("signals", signals.get("data", []))
-
         pt = _SIG_TYPE_PORTFOLIO.get(sig_type, "panik_pump")
-        coin_signals = [
-            s for s in signals
-            if s.get("symbol", "").upper() == symbol.upper()
-            and s.get("sig_type", "") == pt
-            and s.get("status") in ("win", "loss", "expired")
-        ]
-        if not coin_signals:
+        cs = [s for s in signals
+              if s.get("symbol", "").upper() == symbol.upper()
+              and s.get("sig_type", "") == pt
+              and s.get("status") in ("win", "loss", "expired")]
+        if not cs:
             return ""
-
-        wins    = [s for s in coin_signals if s.get("status") == "win"]
-        losses  = [s for s in coin_signals if s.get("status") == "loss"]
-        expired = [s for s in coin_signals if s.get("status") == "expired"]
-        total   = len(coin_signals)
-        wr      = round(len(wins) / total * 100) if total else 0
-
-        def avg_ret(lst):
-            rets = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
-            return round(sum(rets) / len(rets), 1) if rets else None
-
-        win_avg  = avg_ret(wins)
-        loss_avg = avg_ret(losses)
-
-        lines = [f"Bu coin bu sistemde geçmişte {total} sinyal: {len(wins)} WIN / {len(losses)} LOSS / {len(expired)} süresi doldu | Win rate: %{wr}"]
-        if win_avg  is not None: lines.append(f"Ortalama kazanç: +%{win_avg}")
-        if loss_avg is not None: lines.append(f"Ortalama kayıp: %{loss_avg}")
+        wins   = [s for s in cs if s.get("status") == "win"]
+        losses = [s for s in cs if s.get("status") == "loss"]
+        exp    = [s for s in cs if s.get("status") == "expired"]
+        total  = len(cs)
+        wr     = round(len(wins) / total * 100) if total else 0
+        def avg_r(lst):
+            v = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
+            return round(sum(v) / len(v), 1) if v else None
+        lines = [f"{total} geçmiş sinyal → {len(wins)} WIN / {len(losses)} LOSS / {len(exp)} expired | WR %{wr}"]
+        wa = avg_r(wins);  la = avg_r(losses)
+        if wa is not None: lines.append(f"Ort. kazanç: +%{wa}")
+        if la is not None: lines.append(f"Ort. kayıp: %{la}")
         return "\n".join(lines)
     except Exception as e:
-        print(f"[CLAUDE] Geçmiş çekme hata: {e}", flush=True)
+        print(f"[CLAUDE] Geçmiş hata: {e}", flush=True)
         return ""
 
-def ask_claude_shadow(result: dict, recent_count: int) -> str:
+# --- Timeframe satır formatı ---
+def _tf_line(label, d):
+    if not d:
+        return f"  {label}: —"
+    parts = []
+    if d.get("rsi")       is not None: parts.append(f"RSI {d['rsi']}")
+    if d.get("ema50")     is not None: parts.append(f"EMA50 {d['ema50']}")
+    if d.get("ema200")    is not None: parts.append(f"EMA200 {d['ema200']}")
+    if d.get("vol_ratio") is not None: parts.append(f"Hacim {d['vol_ratio']}x")
+    close_str = f"Fiyat {d['close']}"
+    return f"  {label}: {close_str} | {' | '.join(parts)}"
+
+# --- Claude API çağrısı ---
+def ask_claude_shadow(result: dict, recent_count: int,
+                      tf_data: dict, fg_val, fg_label) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
     try:
         import anthropic
-        sym       = result["symbol"].replace("/USDT", "")
-        sig_type  = result.get("type", "capit")
-        btc_trend = btc_4h_cache.get("trend", "?")
+        sym      = result["symbol"].replace("/USDT", "")
+        sig_type = result.get("type", "capit")
 
         type_names = {
-            "capit": "PANİK PUMP (kapitülasyon mean reversion, Stop -3%, TP +5/10/15%, WR ~%84)",
-            "t72":   "ORTA VADE PUMP T72 (3 gün hedef, Stop -5%, TP +10%, WR %54)",
-            "t168":  "UZUN VADE PUMP T168 (7 gün hedef, Stop -8%, TP +25%, WR %40)",
+            "capit": "PANİK PUMP — kapitülasyon mean reversion | Stop -3% | TP +5/10/15% | Backtest WR ~%84",
+            "t72":   "ORTA VADE T72 — 3 gün hedef | Stop -5% | TP +10% | Backtest WR %54",
+            "t168":  "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | Backtest WR %40",
         }
 
         if sig_type == "capit":
-            indicators = (
-                f"Düşüş: {result.get('ret1', 0):+.2f}% (panik satışı)\n"
-                f"Hacim: {result.get('vol_ratio', 0):.2f}x ortalama (beklenen: 1.5-3x)\n"
-                f"ATR volatilite: %{result.get('atr_pct', 0):.2f}\n"
-                f"Funding rate: {result.get('funding', 'bilinmiyor')}"
+            sig_data = (
+                f"Düşüş: {result.get('ret1', 0):+.2f}% | "
+                f"Hacim: {result.get('vol_ratio', 0):.2f}x | "
+                f"ATR: %{result.get('atr_pct', 0):.2f} | "
+                f"Funding: {result.get('funding', '?')}"
             )
         elif sig_type == "t72":
-            indicators = (
-                f"5 bar momentum: +%{result.get('mom5_pct', 0):.2f}\n"
-                f"EMA21 uzaklık: %{result.get('dist_ema21', 0):.2f} (altında — geri çekilme)\n"
-                f"Coin drawdown: %{result.get('coin_drawdown', 0):.2f}\n"
-                f"MA200 eğimi: +%{result.get('ma200_slope', 0):.3f}/20 bar (yukarı = iyi)"
-            )
-        elif sig_type == "t168":
-            indicators = (
-                f"MA200 uzaklık: +%{result.get('dist_ma200', 0):.2f}\n"
-                f"MA50 uzaklık: %{result.get('dist_ma50', 0):.2f}\n"
-                f"10 bar momentum: +%{result.get('mom10_pct', 0):.2f}\n"
-                f"Son zirve: {result.get('days_since_high', 0)} bar önce"
+            sig_data = (
+                f"Mom5: +%{result.get('mom5_pct', 0):.2f} | "
+                f"EMA21 uzaklık: %{result.get('dist_ema21', 0):.2f} | "
+                f"Drawdown: %{result.get('coin_drawdown', 0):.2f} | "
+                f"MA200 eğim: +%{result.get('ma200_slope', 0):.3f}"
             )
         else:
-            indicators = ""
+            sig_data = (
+                f"MA200 uzaklık: +%{result.get('dist_ma200', 0):.2f} | "
+                f"Mom10: +%{result.get('mom10_pct', 0):.2f} | "
+                f"Son zirve: {result.get('days_since_high', 0)} bar"
+            )
+
+        coin_tf = tf_data.get("coin", {})
+        btc_tf  = tf_data.get("btc",  {})
+
+        coin_block = "\n".join([
+            _tf_line("15D", coin_tf.get("15m")),
+            _tf_line("4S",  coin_tf.get("4h")),
+            _tf_line("1G",  coin_tf.get("1d")),
+        ])
+        btc_block = "\n".join([
+            _tf_line("15D", btc_tf.get("15m")),
+            _tf_line("1S",  btc_tf.get("1h")),
+            _tf_line("4S",  btc_tf.get("4h")),
+            _tf_line("1G",  btc_tf.get("1d")),
+        ])
+
+        fg_str = f"{fg_val} ({fg_label})" if fg_val is not None else "bilinmiyor"
+
+        cluster_str = ""
+        if recent_count >= 3:
+            cluster_str = f"⚠️ Son 1 saatte {recent_count} coin sinyal verdi — piyasa geneli baskı!"
+        elif recent_count >= 2:
+            cluster_str = f"🟡 Son 1 saatte {recent_count} sinyal — dikkatli ol."
+        else:
+            cluster_str = "Normal (tek sinyal)"
 
         history = fetch_coin_history(result["symbol"], sig_type)
-        history_block = f"\nGEÇMİŞ SİNYAL PERFORMANSI:\n{history}" if history else "\nGEÇMİŞ: Bu coin için henüz geçmiş sinyal verisi yok."
+        history_str = history if history else "Bu coin için henüz geçmiş veri yok."
 
-        clustering_note = ""
-        if recent_count >= 3:
-            clustering_note = f"\n⚠️ DİKKAT: Son 1 saatte {recent_count} farklı coin sinyal verdi — BTC çöküşü riski yüksek!"
-        elif recent_count >= 2:
-            clustering_note = f"\n🟡 NOT: Son 1 saatte {recent_count} sinyal — piyasa genelinde baskı olabilir."
+        prompt = f"""Sen deneyimli bir kripto teknik analistisisin. Ham verileri kendin yorumla, etiketlere güvenme.
 
-        prompt = f"""Sen bir kripto sinyal değerlendirme asistanısın. Aşağıdaki sinyali analiz et:{clustering_note}
+[SİNYAL]
+Coin: #{sym}/USDT | {type_names.get(sig_type, sig_type)}
+{sig_data}
 
-KOİN: #{sym}/USDT
-SİSTEM: {type_names.get(sig_type, sig_type)}
-BTC 4H TREND: {btc_trend}
-SON 1 SAATTEKİ SİNYAL SAYISI: {recent_count}
+[KOİN — ÇOKLU ZAMAN DİLİMİ]
+{coin_block}
 
-GÖSTERGELER:
-{indicators}
-{history_block}
+[BTC — ÇOKLU ZAMAN DİLİMİ]
+{btc_block}
 
-Değerlendirmeni SADECE şu formatta ver (4-5 satır max):
+[MARKET]
+Fear & Greed: {fg_str}
+Sinyal clustering: {cluster_str}
+
+[GEÇMİŞ PERFORMANS]
+{history_str}
+
+RSI, EMA, hacim, trend uyumu, momentum ve geçmişi birlikte değerlendirerek karar ver.
+
 KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
-GEREKÇE: (1-2 cümle, geçmiş varsa ona da değin)
-UYARI: (varsa 1 cümle, yoksa bu satırı yazma)"""
+GEREKÇE: (2-3 cümle — somut veri referansı ver)
+UYARI: (varsa 1 cümle, yoksa yazma)"""
 
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=200,
+            max_tokens=250,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
@@ -814,16 +908,15 @@ UYARI: (varsa 1 cümle, yoksa bu satırı yazma)"""
         print(f"[CLAUDE] API hata: {e}", flush=True)
         return ""
 
+# --- Telegram gönderim ---
 def send_claude_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={
-                "chat_id": TELEGRAM_CHAT_ID, "text": text,
-                "parse_mode": "HTML", "disable_web_page_preview": True,
-            },
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
+                  "parse_mode": "HTML", "disable_web_page_preview": True},
             timeout=10,
         )
         if r.status_code != 200:
@@ -831,23 +924,28 @@ def send_claude_telegram(text):
     except Exception as e:
         print(f"[CLAUDE TG] Hata: {e}", flush=True)
 
+# --- Ana async görev ---
 async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
     try:
         loop = asyncio.get_running_loop()
+        tf_data, (fg_val, fg_label) = await asyncio.gather(
+            fetch_multi_tf_data(result["symbol"]),
+            loop.run_in_executor(None, fetch_fear_greed),
+        )
         claude_text = await loop.run_in_executor(
-            None, lambda: ask_claude_shadow(result, recent_count)
+            None, lambda: ask_claude_shadow(result, recent_count, tf_data, fg_val, fg_label)
         )
         if not claude_text:
             return
-        sym       = result["symbol"].replace("/USDT", "")
-        sig_type  = result.get("type", "capit")
+        sym        = result["symbol"].replace("/USDT", "")
+        sig_type   = result.get("type", "capit")
         type_short = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(sig_type, sig_type)
         msg = (
             f"🤖 <b>CLAUDE — #{sym}/USDT [{type_short}] #{sig_num}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{claude_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Gölge mod · sinyal #{sig_num} · girilmedi</i>"
+            f"<i>Gölge mod · sinyal #{sig_num}</i>"
         )
         send_claude_telegram(msg)
         print(f"[CLAUDE] #{sym} değerlendirmesi gönderildi", flush=True)
