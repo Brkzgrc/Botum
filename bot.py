@@ -759,41 +759,77 @@ def fetch_fear_greed():
 # --- Geçmiş sinyal performansı ---
 _SIG_TYPE_PORTFOLIO = {"capit": "panik_pump", "t72": "pump_orta", "t168": "pump_uzun"}
 
-def fetch_coin_history(symbol: str, sig_type: str) -> str:
+def fetch_portfolio_context(symbol: str, sig_type: str) -> tuple[str, str]:
+    """Portfolio'dan tek çağrıyla coin geçmişi + sistem genel istatistiği döndürür."""
     if not PORTFOLIO_URL:
-        return ""
+        return "", ""
     try:
         headers = {"Authorization": f"Bearer {PORTFOLIO_TOKEN}"} if PORTFOLIO_TOKEN else {}
-        r = requests.get(f"{PORTFOLIO_URL}/api/signals", params={"limit": 200},
+        r = requests.get(f"{PORTFOLIO_URL}/api/signals", params={"limit": 500},
                          headers=headers, timeout=5)
         if r.status_code != 200:
-            return ""
+            return "", ""
         signals = r.json()
         if not isinstance(signals, list):
             signals = signals.get("signals", signals.get("data", []))
+
+        closed = [s for s in signals if s.get("status") in ("win", "loss", "expired")]
+
+        # --- Coin geçmişi ---
         pt = _SIG_TYPE_PORTFOLIO.get(sig_type, "panik_pump")
-        cs = [s for s in signals
+        cs = [s for s in closed
               if s.get("symbol", "").upper() == symbol.upper()
-              and s.get("sig_type", "") == pt
-              and s.get("status") in ("win", "loss", "expired")]
-        if not cs:
-            return ""
-        wins   = [s for s in cs if s.get("status") == "win"]
-        losses = [s for s in cs if s.get("status") == "loss"]
-        exp    = [s for s in cs if s.get("status") == "expired"]
-        total  = len(cs)
-        wr     = round(len(wins) / total * 100) if total else 0
-        def avg_r(lst):
-            v = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
-            return round(sum(v) / len(v), 1) if v else None
-        lines = [f"{total} geçmiş sinyal → {len(wins)} WIN / {len(losses)} LOSS / {len(exp)} expired | WR %{wr}"]
-        wa = avg_r(wins);  la = avg_r(losses)
-        if wa is not None: lines.append(f"Ort. kazanç: +%{wa}")
-        if la is not None: lines.append(f"Ort. kayıp: %{la}")
-        return "\n".join(lines)
+              and s.get("sig_type", "") == pt]
+        if cs:
+            wins  = [s for s in cs if s.get("status") == "win"]
+            loss_ = [s for s in cs if s.get("status") == "loss"]
+            exp   = [s for s in cs if s.get("status") == "expired"]
+            wr    = round(len(wins) / len(cs) * 100)
+            def avg_r(lst):
+                v = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
+                return round(sum(v) / len(v), 1) if v else None
+            coin_lines = [f"{len(cs)} geçmiş sinyal → {len(wins)} WIN / {len(loss_)} LOSS / {len(exp)} expired | WR %{wr}"]
+            wa = avg_r(wins); la = avg_r(loss_)
+            if wa is not None: coin_lines.append(f"Ort. kazanç: +%{wa}")
+            if la is not None: coin_lines.append(f"Ort. kayıp: %{la}")
+            coin_hist = "\n".join(coin_lines)
+        else:
+            coin_hist = "Bu coin için henüz geçmiş veri yok."
+
+        # --- Sistem genel (SMC hariç) ---
+        non_smc = [s for s in closed if "smc" not in s.get("sig_type", "").lower()]
+        recent30 = non_smc[:30]
+        if recent30:
+            w30 = sum(1 for s in recent30 if s.get("status") == "win")
+            l30 = sum(1 for s in recent30 if s.get("status") == "loss")
+            wr30 = round(w30 / len(recent30) * 100)
+            sys_lines = [f"Son 30 sinyal (SMC hariç): {w30} WIN / {l30} LOSS | WR %{wr30}"]
+        else:
+            sys_lines = ["Henüz yeterli sistem verisi yok."]
+
+        cutoff7 = datetime.now(timezone.utc) - timedelta(days=7)
+        last7 = []
+        for s in non_smc:
+            try:
+                t = s.get("close_time") or s.get("time", "")
+                if t:
+                    dt = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt > cutoff7:
+                        last7.append(s)
+            except Exception:
+                pass
+        if last7:
+            w7 = sum(1 for s in last7 if s.get("status") == "win")
+            l7 = sum(1 for s in last7 if s.get("status") == "loss")
+            sys_lines.append(f"Son 7 gün: {w7} WIN / {l7} LOSS")
+
+        sys_hist = "\n".join(sys_lines)
+        return coin_hist, sys_hist
     except Exception as e:
-        print(f"[CLAUDE] Geçmiş hata: {e}", flush=True)
-        return ""
+        print(f"[CLAUDE] Portfolio hata: {e}", flush=True)
+        return "", ""
 
 # --- Timeframe satır formatı ---
 def _tf_line(label, d):
@@ -869,8 +905,7 @@ def ask_claude_shadow(result: dict, recent_count: int,
         else:
             cluster_str = "Normal (tek sinyal)"
 
-        history = fetch_coin_history(result["symbol"], sig_type)
-        history_str = history if history else "Bu coin için henüz geçmiş veri yok."
+        coin_hist, sys_hist = fetch_portfolio_context(result["symbol"], sig_type)
 
         prompt = f"""Sen deneyimli bir kripto teknik analistisisin. Ham verileri kendin yorumla, etiketlere güvenme.
 
@@ -888,10 +923,13 @@ Coin: #{sym}/USDT | {type_names.get(sig_type, sig_type)}
 Fear & Greed: {fg_str}
 Sinyal clustering: {cluster_str}
 
-[GEÇMİŞ PERFORMANS]
-{history_str}
+[BU COİN GEÇMİŞİ]
+{coin_hist}
 
-RSI, EMA, hacim, trend uyumu, momentum ve geçmişi birlikte değerlendirerek karar ver.
+[SİSTEM GENEL PERFORMANS — SMC HARİCİ]
+{sys_hist}
+
+RSI, EMA, hacim, trend uyumu ve momentum verilerini birlikte değerlendir. Geçmiş istatistikler sadece bağlamdır — her sinyali anlık verilere göre bağımsız değerlendir, geçmiş tek başına karar kriteri değildir.
 
 KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
 GEREKÇE: (2-3 cümle — somut veri referansı ver)
