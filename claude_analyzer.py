@@ -45,7 +45,7 @@ def send_decision(text: str):
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
                   "parse_mode": "HTML", "disable_web_page_preview": True,
-                  "message_thread_id": 31},
+                  "message_thread_id": 38},
             timeout=10,
         )
         if r.status_code != 200:
