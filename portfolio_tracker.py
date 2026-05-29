@@ -403,6 +403,12 @@ def calc_performance():
                 elif tp2_shadow == "missed": result["tp2_shadow_missed"] += 1
                 elif tp2_shadow == "stopped":
                     result["tp2_shadow_stopped"] += 1; ts["tp2_stopped"] += 1
+                    stop = sig.get("stop"); entry = sig.get("entry")
+                    tp1_pct = sig.get("close_pct", 0) or 0
+                    if stop and entry and entry > 0:
+                        extra = (stop - entry) / entry * 100 - tp1_pct
+                        result["tp2_potential_extra_pnl"] += extra
+                        ts["tp2_extra_pnl"] += extra
                 elif tp2_shadow == "watching": result["tp2_shadow_watching"] += 1
 
             trail = sig.get("trailing_shadow", "n/a")
