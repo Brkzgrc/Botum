@@ -2,7 +2,7 @@
 """
 pump_scanner_v6_20260526.py
 ════════════════════════════════════════════════════════
-3 SİSTEM — TEK BOT  (T24 devre dışı)
+4 SİSTEM — TEK BOT  (T24 devre dışı)
 
 SİSTEM 1: PANİK PUMP (Kapitülasyon)
   Crash barı: -15% ile -7% | Hacim 1.5-3x
@@ -17,6 +17,10 @@ SİSTEM 3: PUMP SİNYALİ — ORTA VADE (T72)
 SİSTEM 4: PUMP SİNYALİ — UZUN VADE (T168)
   dist_ma200>=5.657 & dist_ma50<=-5.045 & mom10_pct>=3.941 & days_since_high<=677
   Stop: -8% | TP: +25% | 7 gün | Backtest WR: %40
+
+SİSTEM 5: PUMP PROBABILITY (Kırılım Tespiti)
+  BB Sıkışma + ADX(7) Yükseliş + OBV Birikim + Direnç Kırılımı + BTC Sakin
+  Stop: ~-5% | TP: +8/+15/+25% | Ayrı Telegram: @PUMP_PROBABILITY_BOT
 ════════════════════════════════════════════════════════
 """
 
@@ -46,6 +50,7 @@ TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID",        "")
 PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
 PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
+PUMP_PROBABILITY_TOKEN  = os.getenv("PUMP_PROBABILITY_TOKEN",  "")
 
 # Sistem 1 — Kapitülasyon parametreleri
 CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
@@ -420,6 +425,75 @@ def check_t168_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     }
 
 # ============================================================
+# SİSTEM 5 — PUMP PROBABILITY (Kırılım Tespiti)
+# ============================================================
+def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
+    if len(df) < 60: return None
+
+    # --- BB Sıkışma (son 50 barda alt %25'te mi?) ---
+    bb_w = df["bb_width"].dropna()
+    if len(bb_w) < 50: return None
+    bb_w_cur = float(bb_w.iloc[-1])
+    squeeze_thr = float(bb_w.rolling(50).quantile(0.25).iloc[-1])
+    if pd.isna(squeeze_thr) or bb_w_cur > squeeze_thr:
+        return None
+
+    # --- ADX(7) yükseliyor + DI+ > DI- ---
+    adx_now, adx_prev3, di_plus, di_minus = _calc_adx_di(df, period=7)
+    if adx_now is None: return None
+    if adx_now < 15:         return None  # momentum başlamamış
+    if di_plus <= di_minus:  return None  # yön yukarı değil
+    if adx_now <= adx_prev3: return None  # ADX düşüyor
+
+    # --- OBV birikim trendi ---
+    if not _calc_obv_trend(df):
+        return None
+
+    # --- Direnç kırılımı + hacim 1.5x+ ---
+    _, res = calc_sr_levels(df)
+    if not res: return None
+    nearest_res = res[0]
+
+    bar     = df.iloc[-1]
+    close   = float(bar["close"])
+    vol_now = float(bar["volume"])
+    vol_ma  = float(bar["vol_ma"]) if not pd.isna(bar.get("vol_ma", np.nan)) else None
+
+    if close <= nearest_res:                           return None
+    if vol_ma is None or vol_now < vol_ma * 1.5:       return None
+
+    # --- BTC sakin (tam düşüş trendinde sinyal verme) ---
+    if btc_4h_cache.get("trend", "?") == "🔴 Düşüş":
+        return None
+
+    # --- Engulfing (opsiyonel güç belirteci) ---
+    engulfing = is_engulfing(df, len(df) - 1)
+
+    vol_ratio = round(vol_now / vol_ma, 2) if vol_ma else 0.0
+    atr_pct   = float(bar.get("atr_pct") or 0)
+    bar_low   = float(bar["low"])
+    stop      = max(bar_low * 0.995, close * 0.95)
+
+    return {
+        "symbol":     symbol,
+        "type":       "pump_prob",
+        "entry":      round(close, 8),
+        "stop":       round(stop, 8),
+        "tp1":        round(close * 1.08, 8),
+        "tp2":        round(close * 1.15, 8),
+        "tp3":        round(close * 1.25, 8),
+        "bb_width":   round(bb_w_cur, 4),
+        "adx":        round(adx_now, 1),
+        "di_plus":    round(di_plus, 1),
+        "di_minus":   round(di_minus, 1),
+        "resistance": round(nearest_res, 8),
+        "vol_ratio":  vol_ratio,
+        "engulfing":  engulfing,
+        "strength":   "GÜÇLÜ" if engulfing else "NORMAL",
+        "atr_pct":    round(atr_pct, 2),
+    }
+
+# ============================================================
 # PUANLAMA (Sistem 1 için)
 # ============================================================
 def calc_signal_score(ret1: float, vol_ratio: float, liquidity: float) -> int:
@@ -619,6 +693,40 @@ def build_t168_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
+def build_pump_probability_message(r, tr_time, sig_num):
+    sym    = r["symbol"].replace("/USDT", "")
+    e      = r["entry"]
+    strong = r.get("engulfing", False)
+    icon   = "💥" if strong else "🔵"
+    stop_pct = round((r["stop"] / e - 1) * 100, 1)
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"{icon} <b>#{sym}/USDT  •  PUMP PROBABILITY  •  {r.get('strength','NORMAL')}  •  1H</b>",
+        _sep(),
+        f"💵 <b>Giriş</b>    {fmt_price(e)}",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  ({stop_pct:+.1f}%)",
+        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+8%)",
+        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+15%)",
+        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+25%)",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"📉 BB Sıkışma: {r['bb_width']:.4f}  (dar bant ✅)",
+        f"📈 ADX(7): {r['adx']:.1f} ↑  |  DI+: {r['di_plus']:.1f}  DI-: {r['di_minus']:.1f}",
+        f"📈 OBV: Birikim trendi ✅",
+        f"💥 Direnç kırıldı: {fmt_price(r['resistance'])}  •  Hacim {r['vol_ratio']:.2f}x ✅",
+    ]
+    if strong:
+        lines.append(f"🕯️ <b>Formasyon</b>  🟢 Bullish Engulfing  ✅")
+    lines += [
+        _sep(),
+        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
+        _sep(),
+        f"⏱ Yeni sistem — geçmiş veri yok  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
 # ============================================================
 # GÖNDERIM
 # ============================================================
@@ -638,10 +746,11 @@ def send_telegram(text):
 
 # sig_type → portfolio type eşleştirmesi
 _SIG_TYPE_MAP = {
-    "capit": "panik_pump",
-    "t24":   "pump_kisa",
-    "t72":   "pump_orta",
-    "t168":  "pump_uzun",
+    "capit":     "panik_pump",
+    "t24":       "pump_kisa",
+    "t72":       "pump_orta",
+    "t168":      "pump_uzun",
+    "pump_prob": "pump_probability",
 }
 
 def send_to_portfolio(result):
@@ -743,6 +852,62 @@ def _vol_ratio_tf(volumes, period=20):
         return None
     avg = np.mean(volumes[-period - 1:-1])
     return round(float(volumes[-1]) / avg, 2) if avg > 0 else None
+
+def _calc_adx_di(df, period=7):
+    """Wilder's ADX + DI+/DI- hesapla. (adx_now, adx_prev3, di_plus, di_minus) döndürür."""
+    min_len = period * 4
+    if len(df) < min_len:
+        return None, None, None, None
+    h = df["high"].values.astype(float)
+    l = df["low"].values.astype(float)
+    c = df["close"].values.astype(float)
+    n = len(c)
+    tr_arr  = np.zeros(n)
+    dm_plus = np.zeros(n)
+    dm_min  = np.zeros(n)
+    for i in range(1, n):
+        tr_arr[i]  = max(h[i] - l[i], abs(h[i] - c[i-1]), abs(l[i] - c[i-1]))
+        up   = h[i] - h[i-1]
+        down = l[i-1] - l[i]
+        dm_plus[i] = up   if (up > down and up > 0)   else 0.0
+        dm_min[i]  = down if (down > up and down > 0) else 0.0
+
+    def wilder(arr, p):
+        s = np.zeros(len(arr))
+        s[p] = np.sum(arr[1:p+1])
+        for i in range(p + 1, len(arr)):
+            s[i] = s[i-1] - s[i-1] / p + arr[i]
+        return s
+
+    atr_s  = wilder(tr_arr,  period)
+    dmp_s  = wilder(dm_plus, period)
+    dmm_s  = wilder(dm_min,  period)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        di_p = np.where(atr_s > 0, dmp_s / atr_s * 100, 0.0)
+        di_m = np.where(atr_s > 0, dmm_s / atr_s * 100, 0.0)
+        dx   = np.where((di_p + di_m) > 0,
+                        np.abs(di_p - di_m) / (di_p + di_m) * 100, 0.0)
+    adx = wilder(dx, period)
+    adx_prev = float(adx[-4]) if len(adx) >= 4 else float(adx[-1])
+    return float(adx[-1]), adx_prev, float(di_p[-1]), float(di_m[-1])
+
+def _calc_obv_trend(df, ema_period=20):
+    """OBV EMA tabanlı birikim tespiti; True = birikim trendi var."""
+    if len(df) < ema_period + 5:
+        return False
+    c = df["close"].values.astype(float)
+    v = df["volume"].values.astype(float)
+    obv = np.zeros(len(c))
+    for i in range(1, len(c)):
+        if c[i] > c[i-1]:
+            obv[i] = obv[i-1] + v[i]
+        elif c[i] < c[i-1]:
+            obv[i] = obv[i-1] - v[i]
+        else:
+            obv[i] = obv[i-1]
+    s   = pd.Series(obv)
+    ema = s.ewm(span=ema_period, adjust=False).mean()
+    return bool(obv[-1] > float(ema.iloc[-1]) and float(ema.diff().iloc[-1]) > 0)
 
 # --- Tek timeframe özet ---
 async def _fetch_tf_summary(symbol, timeframe, limit=120):
@@ -989,6 +1154,23 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
         print(f"[CLAUDE] API hata: {e}", flush=True)
         return ""
 
+# --- Pump Probability Telegram ---
+def send_pump_telegram(text):
+    token   = PUMP_PROBABILITY_TOKEN or TELEGRAM_TOKEN
+    chat_id = TELEGRAM_CHAT_ID
+    if not token or not chat_id: return
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text,
+                  "parse_mode": "HTML", "disable_web_page_preview": True},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            print(f"[PUMP TG] {r.status_code}: {r.text[:80]}", flush=True)
+    except Exception as e:
+        print(f"[PUMP TG] Hata: {e}", flush=True)
+
 # --- Telegram gönderim ---
 def send_claude_telegram(text):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -1180,7 +1362,7 @@ KOİN: [isim] | NEDEN: [somut veri referansı, 1 cümle] | RİSK: [DÜŞÜK/ORTA
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
-_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168}
+_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "pump_prob": 72}
 
 def load_signal_log():
     try:
@@ -1399,15 +1581,25 @@ async def signal_worker(candidate_queue):
                       f" | ma200:+%{result['dist_ma200']:.1f}"
                       f" | mom10:+%{result['mom10_pct']:.1f}"
                       f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "pump_prob":
+                msg = build_pump_probability_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🔵 [PUMP PROB] {symbol}"
+                      f" | ADX:{result['adx']:.0f}"
+                      f" | vol:{result['vol_ratio']:.2f}x"
+                      f" | {result.get('strength','NORMAL')}"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
             else:
                 continue
 
             signal_counter += 1
-            send_telegram(msg)
+            if sig_type == "pump_prob":
+                send_pump_telegram(msg)
+            else:
+                send_telegram(msg)
             send_to_portfolio(result)
 
-            # Claude shadow mode
-            if ANTHROPIC_API_KEY and TELEGRAM_CHAT_ID:
+            # Claude shadow mode (pump_prob hariç)
+            if ANTHROPIC_API_KEY and TELEGRAM_CHAT_ID and sig_type != "pump_prob":
                 recent_cnt = _recent_signal_count()
                 _record_signal_time()
                 asyncio.create_task(_claude_shadow_task(result, recent_cnt, signal_counter))
@@ -1495,6 +1687,18 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
             t168_ok = False
     if t168_ok:
         result = check_t168_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+
+    # --- Sistem 5: Pump Probability ---
+    last_pp = last_pump_ts.get((symbol, "pump_prob"))
+    pp_ok = True
+    if last_pp is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_pp.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_COOLDOWN_HOURS:
+            pp_ok = False
+    if pp_ok:
+        result = check_pump_probability_signal(df, symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
 
@@ -1595,10 +1799,11 @@ def clean_json(obj):
     return obj
 
 _TYPE_LABEL = {
-    "capit": ("🔴", "PANİK PUMP",   "#ff4444"),
-    "t24":   ("🔴", "KISA VADE",    "#ff8800"),
-    "t72":   ("🟡", "ORTA VADE",    "#ffcc00"),
-    "t168":  ("🟢", "UZUN VADE",    "#00cc66"),
+    "capit":     ("🔴", "PANİK PUMP",        "#ff4444"),
+    "t24":       ("🔴", "KISA VADE",         "#ff8800"),
+    "t72":       ("🟡", "ORTA VADE",         "#ffcc00"),
+    "t168":      ("🟢", "UZUN VADE",         "#00cc66"),
+    "pump_prob": ("🔵", "PUMP PROBABILITY",  "#0088ff"),
 }
 
 @flask_app.route("/")
@@ -1621,6 +1826,8 @@ def home():
             ind = f"Mom5:+%{s.get('mom5_pct',0):.1f}  EMA21:%{s.get('dist_ema21',0):.1f}  Drawdown:%{s.get('coin_drawdown',0):.1f}"
         elif stype == "t168":
             ind = f"MA200:+%{s.get('dist_ma200',0):.1f}  Mom10:+%{s.get('mom10_pct',0):.1f}  Zirve:{s.get('days_since_high',0)} bar"
+        elif stype == "pump_prob":
+            ind = f"ADX:{s.get('adx',0):.0f}  DI+:{s.get('di_plus',0):.0f}/DI-:{s.get('di_minus',0):.0f}  Hacim:{s.get('vol_ratio',0):.2f}x  {s.get('strength','')}"
         else:
             ind = ""
 
@@ -1660,6 +1867,7 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
   ⛔ KISA VADE (T24): DEVRE DIŞI<br>
   🟡 ORTA VADE (T72): Mom pozitif + EMA21 altı + Sağlıklı drawdown + MA200 yukarı | Stop -5% | TP +10% | WR %54<br>
   🟢 UZUN VADE (T168): MA200 üstü + MA50 altı + Mom pozitif + Yakın zirve | Stop -8% | TP +25% | WR %40<br>
+  🔵 PUMP PROBABILITY: BB Sıkışma + ADX(7) Yükseliş + OBV Birikim + Direnç Kırılımı | Stop ~-5% | TP +8/15/25%<br>
   BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
 <div class="stats">
@@ -1775,15 +1983,17 @@ async def periodic_tasks():
         t72_cnt  = sum(1 for s in all_signals if s.get("type") == "t72")
         t168_cnt = sum(1 for s in all_signals if s.get("type") == "t168")
         cap_cnt  = sum(1 for s in all_signals if s.get("type") == "capit")
+        pp_cnt   = sum(1 for s in all_signals if s.get("type") == "pump_prob")
         print(
             f"\n╔══════════════ PUMP SCANNER ÖZET ══════════════╗\n"
             f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Toplam Sinyal: {stats.get('signal_sent',0)}\n"
             f"  15m bar: {len(bars_15m):<5} 4H bar: {len(bars_4h):<5} 1D bar: {len(bars_1d)}\n"
             f"  ── Son Sinyaller ──\n"
-            f"  PANİK PUMP : {cap_cnt}\n"
-            f"  KISA VADE  : {t24_cnt}\n"
-            f"  ORTA VADE  : {t72_cnt}\n"
-            f"  UZUN VADE  : {t168_cnt}\n"
+            f"  PANİK PUMP    : {cap_cnt}\n"
+            f"  KISA VADE     : {t24_cnt}\n"
+            f"  ORTA VADE     : {t72_cnt}\n"
+            f"  UZUN VADE     : {t168_cnt}\n"
+            f"  PUMP PROB     : {pp_cnt}\n"
             f"  ── Filtre ──\n"
             f"  Crash:{stats.get('filtered_crash',0)}  Vol:{stats.get('filtered_vol',0)}"
             f"  Hacim:{stats.get('low_liquidity',0)}  Cooldown:{stats.get('cooldown',0)}\n"
@@ -1810,11 +2020,14 @@ async def periodic_tasks():
 # ============================================================
 async def main():
     global tracked_symbols
-    print("Pump Scanner v6.0 başlatılıyor — 3 Sistem (T24 devre dışı)", flush=True)
-    print(f"  [1] PANİK PUMP : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
-    print(f"  [2] T24        : *** DEVRE DIŞI ***", flush=True)
-    print(f"  [3] ORTA VADE  : T72 | Stop -5% | TP +10% | WR %54", flush=True)
-    print(f"  [4] UZUN VADE  : T168 | Stop -8% | TP +25% | WR %40", flush=True)
+    print("Pump Scanner v6.0 başlatılıyor — 4 Sistem (T24 devre dışı)", flush=True)
+    print(f"  [1] PANİK PUMP  : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
+    print(f"  [2] T24         : *** DEVRE DIŞI ***", flush=True)
+    print(f"  [3] ORTA VADE   : T72 | Stop -5% | TP +10% | WR %54", flush=True)
+    print(f"  [4] UZUN VADE   : T168 | Stop -8% | TP +25% | WR %40", flush=True)
+    print(f"  [5] PUMP PROB   : BB Sıkışma + ADX(7) + OBV + Direnç | Stop ~-5% | TP +8/15/25%", flush=True)
+    pp_tok = "VAR" if PUMP_PROBABILITY_TOKEN else "YOK (fallback: ana bot)"
+    print(f"       → PUMP_PROBABILITY_TOKEN: {pp_tok}", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
