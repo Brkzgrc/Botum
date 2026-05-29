@@ -10,6 +10,7 @@ Yeni bir sistem eklemek için: signals = {...}; process_and_send(signals)
 """
 
 import os
+import threading
 import time
 import requests
 import numpy as np
@@ -597,3 +598,165 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0):
 
     send_decision(msg)
     print(f"[ANALYZER] #{symbol} kararı gönderildi ({source})", flush=True)
+
+
+# ============================================================
+# PERİYODİK PİYASA İZLEME
+# ============================================================
+_watcher_state: dict = {
+    "last_daily": None,  # date nesnesi — günlük rapor için
+    "last_4h_ts": 0,     # son 4h kontrolünün unix timestamp'i
+    "last_fg":    None,  # son gönderilen F&G değeri
+    "last_dom":   None,  # son gönderilen dominans %
+    "last_btc":   None,  # son gönderilen BTC fiyatı
+}
+
+def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h) -> str:
+    if not ANTHROPIC_API_KEY:
+        return ""
+    import anthropic
+
+    btc_price  = (btc_4h or {}).get("close")
+    btc_rsi    = (btc_4h or {}).get("rsi")
+    btc_ema50  = (btc_4h or {}).get("ema50")
+    btc_ema200 = (btc_4h or {}).get("ema200")
+    fg_str     = f"{fg_val} ({fg_label})" if fg_val is not None else "bilinmiyor"
+    macro_str  = _btc_macro_str(macro, btc_price) if macro else "veri yok"
+
+    if report_type == "daily":
+        gorev = ("Günlük kapanış özeti. BTC'nin makro konumunu, F&G ve dominans trendini değerlendir. "
+                 "Bu hafta için beklenti ne? 3-4 cümle, somut seviyeler ver.")
+    else:
+        gorev = ("Piyasada önemli bir değişim tespit edildi. "
+                 "Ne değişti, ne anlama geliyor, nelere dikkat edilmeli? 2-3 cümle.")
+
+    prompt = f"""Sen deneyimli bir kripto piyasa analistisisin.
+
+[BTC — 4 SAATLİK]
+Fiyat: {btc_price} | RSI: {btc_rsi} | EMA50: {btc_ema50} | EMA200: {btc_ema200}
+
+[BTC MAKRO — UZUN VADE]
+{macro_str}
+
+[MARKET]
+Fear & Greed: {fg_str}
+{_dom_str(dom)}
+
+GÖREV: {gorev}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp   = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        print(f"[WATCHER CLAUDE] {e}", flush=True)
+        return ""
+
+def _should_alert(fg_val, dom, btc_price) -> str | None:
+    """Anlamlı değişim varsa açıklama döndürür, yoksa None."""
+    st      = _watcher_state
+    reasons = []
+
+    if fg_val is not None and st["last_fg"] is not None:
+        if abs(fg_val - st["last_fg"]) >= 10:
+            reasons.append(f"F&G {st['last_fg']}→{fg_val}")
+
+    if dom and st["last_dom"] is not None:
+        cur_dom = dom.get("current", 0)
+        if abs(cur_dom - st["last_dom"]) >= 1.5:
+            reasons.append(f"Dominans %{st['last_dom']:.1f}→%{cur_dom:.1f}")
+
+    if btc_price and st["last_btc"]:
+        chg = (btc_price - st["last_btc"]) / st["last_btc"] * 100
+        if abs(chg) >= 5:
+            reasons.append(f"BTC %{chg:+.1f} ({st['last_btc']:,.0f}→{btc_price:,.0f})")
+
+    return ", ".join(reasons) if reasons else None
+
+def _run_market_check(report_type: str):
+    try:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            fut_fg    = ex.submit(_fear_greed)
+            fut_dom   = ex.submit(_dominance)
+            fut_macro = ex.submit(_fetch_btc_macro)
+        fg_val, fg_label = fut_fg.result()
+        dom              = fut_dom.result()
+        macro            = fut_macro.result()
+        btc_4h           = _tf_summary("BTC/USDT", "4h", 100)
+        btc_price        = (btc_4h or {}).get("close")
+
+        st = _watcher_state
+
+        if report_type == "4h":
+            change = _should_alert(fg_val, dom, btc_price)
+            if not change:
+                if fg_val    is not None: st["last_fg"]  = fg_val
+                if dom:                   st["last_dom"] = dom.get("current")
+                if btc_price:             st["last_btc"] = btc_price
+                return
+            change_label = f"⚡ Değişim: {change}"
+        else:
+            change_label = "📅 Günlük Özet"
+
+        text = _market_report_text(report_type, fg_val, fg_label, dom, macro, btc_4h)
+        if not text:
+            return
+
+        tr_time = _tr_now()
+        title   = "📊 <b>GÜNLÜK PİYASA RAPORU</b>" if report_type == "daily" else "⚡ <b>PİYASA UYARISI</b>"
+        msg = (
+            f"{title}\n"
+            f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{change_label}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Claude Analyzer · Piyasa İzleme</i>"
+        )
+        send_decision(msg)
+        print(f"[WATCHER] {report_type} raporu gönderildi", flush=True)
+
+        if fg_val    is not None: st["last_fg"]  = fg_val
+        if dom:                   st["last_dom"] = dom.get("current")
+        if btc_price:             st["last_btc"] = btc_price
+
+    except Exception as e:
+        print(f"[WATCHER CHECK] {e}", flush=True)
+
+def _market_watcher_loop():
+    print("[WATCHER] Başlatıldı — 4h değişim kontrolü + 03:00 günlük rapor.", flush=True)
+    while True:
+        try:
+            now_tr = _tr_now()
+            now_ts = time.time()
+            st     = _watcher_state
+
+            # Günlük rapor: her gün 03:00-03:04 TR arası
+            if now_tr.hour == 3 and now_tr.minute < 5:
+                today = now_tr.date()
+                if st["last_daily"] != today:
+                    st["last_daily"] = today
+                    _run_market_check("daily")
+
+            # 4 saatlik değişim kontrolü
+            if now_ts - st["last_4h_ts"] >= 14400:
+                st["last_4h_ts"] = now_ts
+                _run_market_check("4h")
+
+        except Exception as e:
+            print(f"[WATCHER LOOP] {e}", flush=True)
+
+        time.sleep(60)
+
+def start_market_watcher():
+    """bot.py başlangıcında çağrılır."""
+    if not ANTHROPIC_API_KEY or not ANALYZER_TELEGRAM_TOKEN:
+        print("[WATCHER] API key veya token eksik — izleme başlatılmadı.", flush=True)
+        return
+    t = threading.Thread(target=_market_watcher_loop, daemon=True, name="market-watcher")
+    t.start()
