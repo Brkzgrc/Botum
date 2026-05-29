@@ -578,9 +578,26 @@ def type_badge(sig):
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
         src_label = "SMC-T" if source == "smc-trailing" else ("SMC-M" if source == "smc-momentum" else "SMC")
         return f'<span style="background:#e67e2222;color:#e67e22;padding:2px 6px;border-radius:3px;font-size:.65rem">{src_label} {phase_label}</span>'
-    colors = {"dip": "#2ecc71", "trend": "#3498db", "birikim": "#9b59b6", "tp": "#e67e22"}
+    colors = {
+        "dip":              "#2ecc71",
+        "trend":            "#3498db",
+        "birikim":          "#9b59b6",
+        "tp":               "#e67e22",
+        "panik_pump":       "#ff4444",
+        "pump_kisa":        "#ff8800",
+        "pump_orta":        "#ffcc00",
+        "pump_uzun":        "#00cc66",
+        "pump_probability": "#0088ff",
+    }
+    labels = {
+        "panik_pump":       "PANİK PUMP",
+        "pump_kisa":        "KISA VADE",
+        "pump_orta":        "ORTA VADE",
+        "pump_uzun":        "UZUN VADE",
+        "pump_probability": "PUMP PROB",
+    }
     c = colors.get(sig_type, "#8a9bb0")
-    label = sig_type.upper() + (f" {sub}" if sub else "")
+    label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
     return f'<span style="background:{c}22;color:{c};padding:2px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
 
 @app.route("/")
