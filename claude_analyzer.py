@@ -236,6 +236,124 @@ def _dom_str(dom: dict | None) -> str:
     return line
 
 # ============================================================
+# BTC MAKRO ANALİZ — 200-Haftalık MA + Fibonacci + Haftalık S/R
+# ============================================================
+_macro_cache: dict = {"data": None, "ts": 0}
+
+def _fetch_btc_macro() -> dict | None:
+    """210 haftalık BTC verisi: 200W MA, Fibonacci (ATH→dip), haftalık pivot S/R. 12 saatlik cache."""
+    now = time.time()
+    if _macro_cache["data"] and now - _macro_cache["ts"] < 43200:
+        return _macro_cache["data"]
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": "BTCUSDT", "interval": "1w", "limit": 210},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return _macro_cache["data"]
+        raw      = r.json()
+        w_closes = [float(k[4]) for k in raw]
+        w_highs  = [float(k[2]) for k in raw]
+        w_lows   = [float(k[3]) for k in raw]
+
+        result: dict = {}
+
+        # 200-haftalık MA
+        if len(w_closes) >= 200:
+            result["ma200w"] = round(float(np.mean(w_closes[-200:])), 0)
+
+        # Fibonacci: son 3 yıldaki ATH → ATH sonrası döngü dibi
+        lookback = min(156, len(w_highs))
+        rel_idx  = int(np.argmax(w_highs[-lookback:]))
+        ath_idx  = len(w_highs) - lookback + rel_idx
+        ath      = float(w_highs[ath_idx])
+        if ath_idx < len(w_lows) - 1:
+            cycle_low = float(np.min(w_lows[ath_idx:]))
+        else:
+            cycle_low = float(np.min(w_lows[-52:]))
+        fib_range = ath - cycle_low
+        result["fib"] = {
+            "ath":       round(ath, 0),
+            "cycle_low": round(cycle_low, 0),
+            "0.236":     round(ath - fib_range * 0.236, 0),
+            "0.382":     round(ath - fib_range * 0.382, 0),
+            "0.500":     round(ath - fib_range * 0.500, 0),
+            "0.618":     round(ath - fib_range * 0.618, 0),
+            "0.786":     round(ath - fib_range * 0.786, 0),
+        }
+
+        # Haftalık pivot S/R (son 52 hafta, ±2 bar pencere)
+        pivots: list[float] = []
+        start = max(2, len(w_highs) - 52)
+        for i in range(start, len(w_highs) - 2):
+            if (w_highs[i] > w_highs[i-1] and w_highs[i] > w_highs[i-2] and
+                    w_highs[i] > w_highs[i+1] and w_highs[i] > w_highs[i+2]):
+                pivots.append(w_highs[i])
+            if (w_lows[i] < w_lows[i-1] and w_lows[i] < w_lows[i-2] and
+                    w_lows[i] < w_lows[i+1] and w_lows[i] < w_lows[i+2]):
+                pivots.append(w_lows[i])
+        pivots.sort()
+        clustered: list[float] = []
+        for p in pivots:
+            if not clustered or p > clustered[-1] * 1.03:
+                clustered.append(p)
+            else:
+                clustered[-1] = round((clustered[-1] + p) / 2, 0)
+        result["weekly_sr"] = [round(p, 0) for p in clustered]
+
+        _macro_cache["data"] = result
+        _macro_cache["ts"]   = now
+        return result
+    except Exception as e:
+        print(f"[ANALYZER MACRO] {e}", flush=True)
+        return _macro_cache["data"]
+
+def _btc_macro_str(macro: dict | None, btc_price: float | None = None) -> str:
+    if not macro:
+        return ""
+    lines: list[str] = []
+
+    if "ma200w" in macro:
+        ma = macro["ma200w"]
+        if btc_price:
+            dist = (btc_price - ma) / ma * 100
+            pos  = "üstünde" if dist > 0 else "altında"
+            lines.append(f"BTC 200-Haftalık MA: ${ma:,.0f}  (şu an %{abs(dist):.1f} {pos})")
+        else:
+            lines.append(f"BTC 200-Haftalık MA: ${ma:,.0f}")
+
+    if "fib" in macro:
+        fib = macro["fib"]
+        ath, low = fib["ath"], fib["cycle_low"]
+        lines.append(f"BTC Fibonacci (ATH ${ath:,.0f} → Dip ${low:,.0f}):")
+        for key, label in [("0.236","23.6%"),("0.382","38.2%"),("0.500","50.0%"),
+                            ("0.618","61.8% [altın]"),("0.786","78.6%")]:
+            val    = fib[key]
+            marker = ""
+            if btc_price:
+                diff = (btc_price - val) / val * 100
+                if abs(diff) < 3:
+                    marker = " ◀ YAKINDA"
+                elif diff < 0:
+                    marker = " (fiyat altında)"
+            lines.append(f"  Fib {label}: ${val:,.0f}{marker}")
+
+    if "weekly_sr" in macro and btc_price:
+        sr   = macro["weekly_sr"]
+        sups = [p for p in sr if p <= btc_price * 1.005][-2:]
+        ress = [p for p in sr if p >  btc_price * 0.995][:2]
+        if sups or ress:
+            lines.append("Haftalık S/R:")
+            for s in sups:
+                lines.append(f"  Destek: ${s:,.0f}  (-%{(btc_price-s)/btc_price*100:.1f})")
+            for rv in ress:
+                lines.append(f"  Direnç: ${rv:,.0f}  (+%{(rv-btc_price)/btc_price*100:.1f})")
+
+    return "\n".join(lines)
+
+# ============================================================
 # PORTFOLIO BAĞLAMI
 # ============================================================
 _SIG_TYPE_MAP = {
@@ -353,13 +471,15 @@ def evaluate(signal: dict, recent_count: int = 0) -> str:
     source   = signal.get("source", "bot")
 
     # Tüm verileri paralel çek
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        fut_tf   = ex.submit(_fetch_all_tf, symbol)
-        fut_fg   = ex.submit(_fear_greed)
-        fut_dom  = ex.submit(_dominance)
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        fut_tf    = ex.submit(_fetch_all_tf, symbol)
+        fut_fg    = ex.submit(_fear_greed)
+        fut_dom   = ex.submit(_dominance)
+        fut_macro = ex.submit(_fetch_btc_macro)
     tf_data          = fut_tf.result()
     fg_val, fg_label = fut_fg.result()
     dom              = fut_dom.result()
+    macro            = fut_macro.result()
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
 
     coin_block = "\n".join([
@@ -371,6 +491,8 @@ def evaluate(signal: dict, recent_count: int = 0) -> str:
         _tf_line("1S",  tf_data.get("btc_1h")),
         _tf_line("4S",  tf_data.get("btc_4h")),
     ])
+    btc_price = (tf_data.get("btc_4h") or {}).get("close") or (tf_data.get("btc_1h") or {}).get("close")
+    macro_block = _btc_macro_str(macro, btc_price)
 
     fg_str = f"{fg_val} ({fg_label})" if fg_val is not None else "bilinmiyor"
 
@@ -395,6 +517,9 @@ Giriş: {_fmt(signal.get('entry'))} | Stop: {_fmt(signal.get('stop'))} | TP1: {_
 [BTC — ÇOKLU ZAMAN DİLİMİ]
 {btc_block}
 
+[BTC MAKRO — UZUN VADE]
+{macro_block if macro_block else "veri yok"}
+
 [MARKET]
 Fear & Greed: {fg_str}
 {_dom_str(dom)}
@@ -417,7 +542,7 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            max_tokens=350,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
