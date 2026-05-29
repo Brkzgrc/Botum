@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import ccxt
+from claude_analyzer import process_and_send as _analyzer_process
 import numpy as np
 import pandas as pd
 import requests
@@ -51,6 +52,7 @@ PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
 PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 PUMP_PROBABILITY_TOKEN  = os.getenv("PUMP_PROBABILITY_TOKEN",  "")
+ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 
 # Sistem 1 — Kapitülasyon parametreleri
 CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
@@ -1704,11 +1706,20 @@ async def signal_worker(candidate_queue):
                 send_telegram(msg)
             send_to_portfolio(result)
 
-            # Claude shadow mode (pump_prob hariç)
-            if ANTHROPIC_API_KEY and TELEGRAM_CHAT_ID and sig_type != "pump_prob":
+            # Claude Analyzer
+            if ANTHROPIC_API_KEY and ANALYZER_TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
                 recent_cnt = _recent_signal_count()
                 _record_signal_time()
-                asyncio.create_task(_claude_shadow_task(result, recent_cnt, signal_counter))
+                sig_snap   = dict(result)
+                sig_num    = signal_counter
+                loop       = asyncio.get_running_loop()
+                asyncio.create_task(
+                    loop.run_in_executor(
+                        None,
+                        lambda s=sig_snap, r=recent_cnt, n=sig_num:
+                            _analyzer_process(s, r, n)
+                    )
+                )
 
             # Cooldown güncelle
             if sig_type == "capit":
