@@ -739,7 +739,8 @@ def send_telegram(text):
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
+                  "parse_mode": "HTML", "disable_web_page_preview": True,
+                  "message_thread_id": 5},
             timeout=10,
         )
         if r.status_code != 200:
@@ -1264,7 +1265,8 @@ def send_pump_telegram(text):
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
+                  "parse_mode": "HTML", "disable_web_page_preview": True,
+                  "message_thread_id": 4},
             timeout=10,
         )
         if r.status_code != 200:
@@ -1280,7 +1282,8 @@ def send_claude_telegram(text):
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True},
+                  "parse_mode": "HTML", "disable_web_page_preview": True,
+                  "message_thread_id": 5},
             timeout=10,
         )
         if r.status_code != 200:
