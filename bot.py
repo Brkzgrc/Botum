@@ -705,6 +705,39 @@ def _calc_ema_val(closes, span):
     s = pd.Series(closes)
     return round(float(s.ewm(span=span, adjust=False).mean().iloc[-1]), 8)
 
+def calc_sr_levels(df, n_pivot=5, max_levels=3):
+    """Pivot high/low tabanlı destek ve direnç seviyeleri."""
+    if len(df) < n_pivot * 2 + 5:
+        return [], []
+    highs  = df["high"].values  if "high"  in df.columns else df["close"].values
+    lows   = df["low"].values   if "low"   in df.columns else df["close"].values
+    closes = df["close"].values
+    cur    = float(closes[-1])
+
+    pivot_highs, pivot_lows = [], []
+    for i in range(n_pivot, len(df) - n_pivot):
+        if highs[i] == max(highs[i - n_pivot: i + n_pivot + 1]):
+            pivot_highs.append(float(highs[i]))
+        if lows[i]  == min(lows[i  - n_pivot: i + n_pivot + 1]):
+            pivot_lows.append(float(lows[i]))
+
+    def cluster(levels, pct=0.015):
+        if not levels: return []
+        levels = sorted(levels)
+        grps = [[levels[0]]]
+        for v in levels[1:]:
+            if (v - grps[-1][-1]) / max(grps[-1][-1], 1e-12) < pct:
+                grps[-1].append(v)
+            else:
+                grps.append([v])
+        return [round(sum(g) / len(g), 10) for g in grps]
+
+    ch = cluster(pivot_highs)
+    cl = cluster(pivot_lows)
+    supports    = sorted([v for v in cl if v < cur * 0.999], reverse=True)[:max_levels]
+    resistances = sorted([v for v in ch if v > cur * 1.001])[:max_levels]
+    return supports, resistances
+
 def _vol_ratio_tf(volumes, period=20):
     if len(volumes) < period + 1:
         return None
@@ -719,12 +752,15 @@ async def _fetch_tf_summary(symbol, timeframe, limit=120):
             return None
         closes  = df["close"].tolist()
         volumes = df["volume"].tolist()
+        sup, res = calc_sr_levels(df)
         return {
-            "close":     round(float(closes[-1]), 8),
-            "rsi":       _calc_rsi(closes),
-            "ema50":     _calc_ema_val(closes, 50),
-            "ema200":    _calc_ema_val(closes, 200),
-            "vol_ratio": _vol_ratio_tf(volumes),
+            "close":       round(float(closes[-1]), 8),
+            "rsi":         _calc_rsi(closes),
+            "ema50":       _calc_ema_val(closes, 50),
+            "ema200":      _calc_ema_val(closes, 200),
+            "vol_ratio":   _vol_ratio_tf(volumes),
+            "supports":    sup,
+            "resistances": res,
         }
     except Exception:
         return None
@@ -844,8 +880,11 @@ def _tf_line(label, d):
     if d.get("ema50")     is not None: parts.append(f"EMA50 {d['ema50']}")
     if d.get("ema200")    is not None: parts.append(f"EMA200 {d['ema200']}")
     if d.get("vol_ratio") is not None: parts.append(f"Hacim {d['vol_ratio']}x")
-    close_str = f"Fiyat {d['close']}"
-    return f"  {label}: {close_str} | {' | '.join(parts)}"
+    if d.get("supports"):
+        parts.append(f"Des:{'/'.join(fmt_price(s) for s in d['supports'][:2])}")
+    if d.get("resistances"):
+        parts.append(f"Dir:{'/'.join(fmt_price(r) for r in d['resistances'][:2])}")
+    return f"  {label}: Fiyat {d['close']} | {' | '.join(parts)}"
 
 # --- Claude API çağrısı ---
 def ask_claude_shadow(result: dict, recent_count: int,
@@ -1069,9 +1108,12 @@ def _build_scan_line(sym):
         volumes = d["volume"].tolist()
         rsi = _calc_rsi(closes)
         vr  = _vol_ratio_tf(volumes)
+        sup, res = calc_sr_levels(d)
         items = []
         if rsi is not None: items.append(f"RSI:{rsi}")
         if vr  is not None: items.append(f"H:{vr}x")
+        if sup:             items.append(f"Des:{fmt_price(sup[0])}")
+        if res:             items.append(f"Dir:{fmt_price(res[0])}")
         parts.append(f"{label}[{' '.join(items)}]")
     close_price = fmt_price(bars_1h[sym]["close"].iloc[-1]) if sym in bars_1h and len(bars_1h[sym]) > 0 else "?"
     return f"  {sym.replace('/USDT','')}: {close_price} | {' | '.join(parts)}"
