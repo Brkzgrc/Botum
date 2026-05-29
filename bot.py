@@ -107,6 +107,7 @@ heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
 _recent_signal_times:    list = []
 _secondary_bootstrap_done = False
+_dominance_cache: dict = {"data": None, "updated": 0}
 
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -961,6 +962,103 @@ def fetch_fear_greed():
         pass
     return None, None
 
+# --- BTC Dominans Trend ---
+def fetch_btc_dominance_trend() -> dict | None:
+    """BTC dominansı + 30 günlük trend analizi. 4 saatte bir yenilenir."""
+    now = time.time()
+    cached = _dominance_cache["data"]
+    if cached and (now - _dominance_cache["updated"]) < 14400:
+        return cached
+    try:
+        r_global = requests.get(
+            "https://api.coingecko.com/api/v3/global",
+            timeout=10, headers={"Accept": "application/json"}
+        )
+        if r_global.status_code != 200:
+            return cached
+        global_data = r_global.json().get("data", {})
+        current_dom = float(global_data.get("market_cap_percentage", {}).get("btc", 0))
+
+        # BTC + toplam market cap geçmişi (son 30 gün)
+        r_btc = requests.get(
+            "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+            params={"vs_currency": "usd", "days": "30", "interval": "daily"},
+            timeout=15
+        )
+        r_total = requests.get(
+            "https://api.coingecko.com/api/v3/global/market_cap_chart",
+            params={"days": "30"},
+            timeout=15
+        )
+
+        dominance_series = []
+        if r_btc.status_code == 200 and r_total.status_code == 200:
+            btc_caps   = r_btc.json().get("market_caps", [])
+            total_raw  = r_total.json()
+            total_caps = (total_raw.get("market_cap_chart", {}).get("market_cap")
+                          or total_raw.get("market_cap") or [])
+            min_len = min(len(btc_caps), len(total_caps))
+            for i in range(min_len):
+                btc_mc   = float(btc_caps[i][1])
+                total_mc = float(total_caps[i][1])
+                if total_mc > 0:
+                    dominance_series.append(btc_mc / total_mc * 100)
+
+        result = {"current": round(current_dom, 2), "trend_dir": None,
+                  "slope_30d": None, "distance": None, "trend_val": None}
+
+        if len(dominance_series) >= 14:
+            x = np.arange(len(dominance_series), dtype=float)
+            y = np.array(dominance_series)
+            slope, intercept = np.polyfit(x, y, 1)
+            trend_val = slope * (len(dominance_series) - 1) + intercept
+            slope_30d = slope * len(dominance_series)
+            distance  = current_dom - trend_val
+
+            if slope_30d > 1.0:    trend_dir = "yükseliş"
+            elif slope_30d < -1.0: trend_dir = "düşüş"
+            else:                  trend_dir = "yatay"
+
+            result.update({
+                "trend_dir": trend_dir,
+                "slope_30d": round(slope_30d, 2),
+                "distance":  round(distance, 2),
+                "trend_val": round(trend_val, 2),
+            })
+
+        _dominance_cache["data"]    = result
+        _dominance_cache["updated"] = now
+        print(f"[DOMINANS] %{current_dom:.1f} | trend: {result['trend_dir']} | "
+              f"mesafe: {result['distance']}", flush=True)
+        return result
+    except Exception as e:
+        print(f"[DOMINANS] Hata: {e}", flush=True)
+        return cached
+
+def _dominance_str(dom: dict | None) -> str:
+    if not dom:
+        return "BTC Dominans: veri yok"
+    cur       = dom["current"]
+    trend_dir = dom.get("trend_dir")
+    slope     = dom.get("slope_30d")
+    distance  = dom.get("distance")
+
+    if trend_dir is None:
+        return f"BTC Dominans: %{cur} (tarihsel trend verisi yok)"
+
+    line = f"BTC Dominans: %{cur} | 30G Trend: {trend_dir} ({slope:+.1f}pp)"
+    if distance is not None:
+        if abs(distance) < 0.5:
+            if trend_dir == "yükseliş":
+                line += "\n  ⚠️ Yükselen trend çizgisine yakın — kırılırsa altcoin sezonu başlayabilir"
+            elif trend_dir == "düşüş":
+                line += "\n  ⚠️ Düşen trend çizgisine yakın — kırılırsa BTC baskısı azalabilir"
+        elif distance > 1.5:
+            line += "\n  📈 Trend üstünde — BTC güçlü, altcoinler baskı altında"
+        elif distance < -1.5:
+            line += "\n  📉 Trend altında — altcoinlere para akıyor"
+    return line
+
 # --- Geçmiş sinyal performansı ---
 _SIG_TYPE_PORTFOLIO = {"capit": "panik_pump", "t72": "pump_orta", "t168": "pump_uzun"}
 
@@ -1053,7 +1151,7 @@ def _tf_line(label, d):
 
 # --- Claude API çağrısı ---
 def ask_claude_shadow(result: dict, recent_count: int,
-                      tf_data: dict, fg_val, fg_label) -> str:
+                      tf_data: dict, fg_val, fg_label, dom: dict | None = None) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
     try:
@@ -1129,6 +1227,7 @@ Coin: #{sym}/USDT | {type_names.get(sig_type, sig_type)}
 
 [MARKET]
 Fear & Greed: {fg_str}
+{_dominance_str(dom)}
 Sinyal clustering: {cluster_str}
 
 [BU COİN GEÇMİŞİ]
@@ -1191,12 +1290,13 @@ def send_claude_telegram(text):
 async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
     try:
         loop = asyncio.get_running_loop()
-        tf_data, (fg_val, fg_label) = await asyncio.gather(
+        tf_data, (fg_val, fg_label), dom = await asyncio.gather(
             fetch_multi_tf_data(result["symbol"]),
             loop.run_in_executor(None, fetch_fear_greed),
+            loop.run_in_executor(None, fetch_btc_dominance_trend),
         )
         claude_text = await loop.run_in_executor(
-            None, lambda: ask_claude_shadow(result, recent_count, tf_data, fg_val, fg_label)
+            None, lambda: ask_claude_shadow(result, recent_count, tf_data, fg_val, fg_label, dom)
         )
         if not claude_text:
             return
@@ -1314,8 +1414,12 @@ async def claude_scan():
         btc_str = f"4H RSI:{btc_rsi} | Trend:{btc_4h_cache.get('trend','?')}"
 
         loop = asyncio.get_running_loop()
-        fg_val, fg_label = await loop.run_in_executor(None, fetch_fear_greed)
-        fg_str = f"{fg_val} ({fg_label})" if fg_val else "bilinmiyor"
+        (fg_val, fg_label), dom = await asyncio.gather(
+            loop.run_in_executor(None, fetch_fear_greed),
+            loop.run_in_executor(None, fetch_btc_dominance_trend),
+        )
+        fg_str  = f"{fg_val} ({fg_label})" if fg_val else "bilinmiyor"
+        dom_str = _dominance_str(dom)
 
         coin_lines = [_build_scan_line(sym) for sym in candidates]
         scan_time  = tr_now().strftime("%d/%m/%Y %H:%M")
@@ -1325,11 +1429,12 @@ async def claude_scan():
 TARAMA: {scan_time}
 BTC: {btc_str}
 Fear & Greed: {fg_str}
+{dom_str}
 
 KOİN VERİLERİ (15D=15dk | 1S=1saat | 4S=4saat | 1G=günlük | RSI + Hacim çarpanı):
 {chr(10).join(coin_lines)}
 
-RSI, hacim anomalisi ve timeframe uyumuna göre EN FAZLA 5 coin seç — reversal veya güçlü momentum fırsatı olanlar. Fırsat yoksa "Şu an belirgin fırsat yok." yaz.
+Makro bağlamı (dominans trendi, Fear & Greed) dikkate alarak RSI, hacim anomalisi ve timeframe uyumuna göre EN FAZLA 5 coin seç — reversal veya güçlü momentum fırsatı olanlar. Fırsat yoksa "Şu an belirgin fırsat yok." yaz.
 
 FORMAT (her satır):
 KOİN: [isim] | NEDEN: [somut veri referansı, 1 cümle] | RİSK: [DÜŞÜK/ORTA/YÜKSEK]"""
@@ -1348,6 +1453,7 @@ KOİN: [isim] | NEDEN: [somut veri referansı, 1 cümle] | RİSK: [DÜŞÜK/ORTA
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"BTC: {btc_str}\n"
             f"F&G: {fg_str} | Taranan: {len(candidates)} coin\n"
+            f"{dom_str}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{result_text}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
