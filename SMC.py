@@ -354,7 +354,8 @@ def send_telegram_msg(text):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML",
+                  "message_thread_id": 2},
             timeout=10)
         if r.status_code != 200:
             print(f"[TELEGRAM] HTTP {r.status_code}: {r.text[:120]}")
