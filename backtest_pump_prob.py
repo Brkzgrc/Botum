@@ -310,14 +310,11 @@ if __name__ == "__main__":
     print("Coin evreni çekiliyor...")
 
     # Top coins
-    markets = exchange.load_markets()
-    tickers = exchange.fetch_tickers(
-        [s for s in markets if s.endswith("/USDT") and s not in IGNORED
-         and markets[s].get("spot", True)]
-    )
+    tickers = exchange.fetch_tickers()
     candidates = sorted(
         [(s, float(t.get("quoteVolume") or 0)) for s, t in tickers.items()
-         if float(t.get("quoteVolume") or 0) >= 5_000_000],
+         if s.endswith("/USDT") and s not in IGNORED
+         and float(t.get("quoteVolume") or 0) >= 5_000_000],
         key=lambda x: -x[1]
     )[:TOP_N]
     symbols = [s for s, _ in candidates]
