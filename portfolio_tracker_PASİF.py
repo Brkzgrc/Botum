@@ -598,8 +598,8 @@ def type_badge(sig):
     labels = {
         "panik_pump":       "PANİK PUMP",
         "pump_kisa":        "KISA VADE",
-        "pump_orta":        "ORTA VADE",
-        "pump_uzun":        "UZUN VADE",
+        "pump_orta":        "ORTA VADE (72s)",
+        "pump_uzun":        "UZUN VADE (168s)",
         "pump_probability": "PUMP PROB",
     }
     c = colors.get(sig_type, "#8a9bb0")
@@ -631,10 +631,18 @@ def dashboard():
         stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 1) if sig["entry"] > 0 else 0
 
         exp_trail_cell = ""
+        sure_cell = '<span style="font-size:.7rem;color:#7f8c8d">—</span>'
         try:
             ot = datetime.fromisoformat(sig["open_time"])
             if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
-            elapsed_r = (now_dt - ot).total_seconds() / 3600 / EXPIRE_HOURS
+            elapsed_h = int((now_dt - ot).total_seconds() / 3600)
+            elapsed_r = elapsed_h / EXPIRE_HOURS
+            _max_h = {"pump_orta": 72, "pump_uzun": 168}.get(sig.get("sig_type", ""))
+            if _max_h:
+                _sc = "#f39c12" if elapsed_h >= _max_h * 0.8 else "#7f8c8d"
+                sure_cell = f'<span style="font-size:.7rem;color:{_sc}">{elapsed_h}s / {_max_h}s</span>'
+            else:
+                sure_cell = f'<span style="font-size:.7rem;color:#7f8c8d">+{elapsed_h}s</span>'
             if sig.get("expire_trailing_active"):
                 ep = sig.get("expire_trailing_peak", 0)
                 trail_pct_v = sig.get("expire_trailing_stop_pct", EXPIRE_TRAIL_PCT)
@@ -653,7 +661,7 @@ def dashboard():
             <td style="color:{peak_c}">{peak_s}</td><td style="color:{low_c}">{low_s}</td>
             <td>{fmt_price(sig['stop'])} ({stop_pct:+.1f}%)</td><td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
-            <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
+            <td>{sure_cell}</td>
             <td>{exp_trail_cell}</td></tr>"""
 
     closed_rows = ""
@@ -893,7 +901,7 @@ tr:hover td{{background:var(--card);}}
     <p class="note">TP1'e ulaşınca otomatik kapanır. {expire_trail_threshold_h}s sonra kârlıysa %{EXPIRE_TRAIL_PCT} trailing aktif olur.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
-        <th>Stop</th><th>TP1</th><th>TP2</th><th>Açılış</th><th>Exp.Trail</th>
+        <th>Stop</th><th>TP1</th><th>TP2</th><th>Süre</th><th>Exp.Trail</th>
     </tr></thead><tbody>
         {open_rows if open_rows else '<tr><td colspan="11" class="empty">Açık pozisyon yok</td></tr>'}
     </tbody></table></div>
