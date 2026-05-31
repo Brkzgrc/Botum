@@ -759,15 +759,6 @@ def start_market_watcher():
     if not ANALYZER_TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("[WATCHER] ANALYZER_TELEGRAM_TOKEN veya CHAT_ID eksik.", flush=True)
         return
-    tr_time = _tr_now()
-    api_status = "✅ Claude API bağlı" if ANTHROPIC_API_KEY else "❌ ANTHROPIC_API_KEY eksik"
-    send_decision(
-        f"✅ <b>ANALYZER AKTİF</b>\n"
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{api_status}\n"
-        f"Günlük rapor: 03:00 TR | 4h değişim kontrolü: aktif"
-    )
     if not ANTHROPIC_API_KEY:
         print("[WATCHER] ANTHROPIC_API_KEY eksik — Claude analizi devre dışı.", flush=True)
         return
