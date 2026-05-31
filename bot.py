@@ -2098,8 +2098,17 @@ def backtest_endpoint():
     def _run():
         _backtest_state["running"] = True
         try:
-            import subprocess, sys
-            subprocess.run([sys.executable, "backtest_pump_prob.py"], check=False)
+            import subprocess, sys, os
+            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_pump_prob.py")
+            print(f"[BACKTEST] Başlatıldı — script: {script}", flush=True)
+            proc = subprocess.Popen(
+                [sys.executable, "-u", script],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            )
+            for line in proc.stdout:
+                print(f"[BACKTEST] {line}", end="", flush=True)
+            proc.wait()
+            print(f"[BACKTEST] Tamamlandı (exit {proc.returncode})", flush=True)
         except Exception as e:
             print(f"[BACKTEST] Hata: {e}", flush=True)
         finally:
