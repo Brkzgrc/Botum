@@ -2089,6 +2089,24 @@ def perf_dashboard():
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
+_backtest_state = {"running": False}
+
+@flask_app.route("/backtest")
+def backtest_endpoint():
+    if _backtest_state["running"]:
+        return "⏳ Backtest zaten çalışıyor — Render loglarını takip et.", 200
+    def _run():
+        _backtest_state["running"] = True
+        try:
+            import subprocess, sys
+            subprocess.run([sys.executable, "backtest_pump_prob.py"], check=False)
+        except Exception as e:
+            print(f"[BACKTEST] Hata: {e}", flush=True)
+        finally:
+            _backtest_state["running"] = False
+    threading.Thread(target=_run, daemon=True, name="backtest").start()
+    return "✅ Backtest başlatıldı — Render loglarını takip et (10-15 dk sürer)", 200
+
 # ============================================================
 # PERİYODİK GÖREVLER
 # ============================================================
