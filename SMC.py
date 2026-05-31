@@ -238,10 +238,11 @@ def check_btc_4h_structural():
     now = time.time()
     if now - btc_4h_structural_cache["updated"] < BTC_4H_STRUCTURAL_TTL:
         # Cached sonuç — alert yeni değil
-        return btc_4h_structural_cache["paused"], False
+        return btc_4h_structural_cache["paused"], False, None
 
     paused     = False
     send_alert = False
+    levels     = None
 
     try:
         bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=60)
@@ -261,6 +262,7 @@ def check_btc_4h_structural():
         c2_h, c2_l, c2_c = float(bars[-3][2]), float(bars[-3][3]), float(bars[-3][4])
         e21_c1, e21_c2 = float(ema21.iloc[-2]), float(ema21.iloc[-3])
         e50_c1, e50_c2 = float(ema50.iloc[-2]), float(ema50.iloc[-3])
+        levels = {"btc": c1_c, "ema21": e21_c1, "ema50": e50_c1}
 
         # Koşul 1: Her iki kapanış EMA21 altında
         cond_ema21 = (c1_c < e21_c1) and (c2_c < e21_c2)
@@ -309,7 +311,7 @@ def check_btc_4h_structural():
 
     btc_4h_structural_cache["paused"]  = paused
     btc_4h_structural_cache["updated"] = now
-    return paused, send_alert
+    return paused, send_alert, levels
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -729,11 +731,19 @@ def _analyze_symbol(symbol):
         # Sadece 1 saatte bir API çağrısı yapar (TTL ile cache'lenir).
         # paused_4h  = True → Level 1: yeni sinyal üretme
         # send_4h_alert = True → Level 2: Telegram uyarısı gönder (ilk tetiklenme)
-        paused_4h, send_4h_alert = check_btc_4h_structural()
+        paused_4h, send_4h_alert, levels_4h = check_btc_4h_structural()
 
         if send_4h_alert:
+            lvl_str = ""
+            if levels_4h:
+                lvl_str = (
+                    f"📊 BTC: <b>${levels_4h['btc']:,.0f}</b> | "
+                    f"EMA21: ${levels_4h['ema21']:,.0f} | "
+                    f"EMA50: ${levels_4h['ema50']:,.0f}\n\n"
+                )
             alert_msg = (
                 "🚨 <b>BTC 4H YAPISAL KIRILMA — DİKKAT!</b>\n\n"
+                + lvl_str +
                 "⚠️ İki ardışık 4H mum <b>EMA21 altında</b> kapandı (2. daha dip)\n"
                 "⚠️ Her iki mumun <b>çoğunluğu EMA50 altında</b>\n\n"
                 "🔴 Yeni sinyaller <b>duraklatıldı</b>\n"
