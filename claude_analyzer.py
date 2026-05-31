@@ -759,5 +759,13 @@ def start_market_watcher():
     if not ANTHROPIC_API_KEY or not ANALYZER_TELEGRAM_TOKEN:
         print("[WATCHER] API key veya token eksik — izleme başlatılmadı.", flush=True)
         return
+    tr_time = _tr_now()
+    send_decision(
+        f"✅ <b>ANALYZER AKTİF</b>\n"
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"Sistem başlatıldı. Sinyal izleme ve piyasa takibi aktif.\n"
+        f"Günlük rapor: 03:00 TR | 4h değişim kontrolü: aktif"
+    )
     t = threading.Thread(target=_market_watcher_loop, daemon=True, name="market-watcher")
     t.start()
