@@ -525,6 +525,14 @@ def clear_all_signals():
         save_signals()
     return jsonify({"ok": True, "removed": count})
 
+@app.route("/api/signals/clear-all-ui", methods=["POST"])
+def clear_all_signals_ui():
+    with _lock:
+        count = len(signals_db)
+        signals_db.clear()
+        save_signals()
+    return jsonify({"ok": True, "removed": count})
+
 # ============================================================
 # HTML DASHBOARD
 # ============================================================
@@ -834,7 +842,7 @@ tr:hover td{{background:var(--card);}}
     <span class="time">
         {now} | v2.5
         <button class="btn-clear"
-            onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
+            onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
         >🗑 Sıfırla</button>
     </span>
 </div>
