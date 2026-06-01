@@ -67,11 +67,21 @@ BREAK_KEYWORDS = [
 
 SCHEDULE_HOURS_TR = {9, 12, 15, 19, 23}
 
+_STOP_WORDS = {
+    "the", "and", "for", "with", "that", "from", "this", "has", "are",
+    "was", "will", "have", "been", "its", "also", "but", "not", "after",
+    "before", "about", "their", "they", "more", "over", "into", "than",
+    "then", "some", "when", "what", "says", "said", "amid", "first",
+    "time", "since", "just", "year", "could", "would", "week", "month",
+    "report", "data", "shows", "news", "update",
+}
+
 _state = {
-    "last_run_key":     None,
-    "last_break_ts":    0,
-    "sent_hashes":      set(),
-    "sent_hashes_date": None,
+    "last_run_key":      None,
+    "last_break_ts":     0,
+    "sent_hashes":       set(),
+    "sent_fingerprints": [],   # list[frozenset] — başlık benzerliği dedup
+    "sent_hashes_date":  None,
 }
 _lock = threading.Lock()
 
@@ -82,6 +92,22 @@ def _tr_now():
 
 def _item_hash(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:16]
+
+
+def _title_fp(title: str) -> frozenset:
+    words = re.sub(r"[^\w\s]", " ", title.lower()).split()
+    return frozenset(w for w in words if len(w) > 3 and w not in _STOP_WORDS)
+
+
+def _is_topic_duplicate(title: str) -> bool:
+    fp = _title_fp(title)
+    if len(fp) < 2:
+        return False
+    with _lock:
+        for sent_fp in _state["sent_fingerprints"]:
+            if len(fp & sent_fp) >= 2:
+                return True
+    return False
 
 
 def _parse_pub(entry) -> datetime | None:
@@ -127,6 +153,9 @@ def _fetch_rss(source_name: str, url: str, cutoff: datetime, keywords: list) -> 
             with _lock:
                 if h in _state["sent_hashes"]:
                     continue
+
+            if _is_topic_duplicate(title):
+                continue
 
             hours_ago = None
             if pub:
@@ -280,6 +309,7 @@ def _fetch_and_send(hours_back: int):
         with _lock:
             for item in items:
                 _state["sent_hashes"].add(item["hash"])
+                _state["sent_fingerprints"].append(_title_fp(item["title"]))
         print(f"[NEWS] {len(parts)} haber gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
     except Exception as e:
@@ -360,6 +390,7 @@ def _check_breaking_news():
         with _lock:
             for item in items:
                 _state["sent_hashes"].add(item["hash"])
+                _state["sent_fingerprints"].append(_title_fp(item["title"]))
         print(f"[NEWS BREAK] Kritik haber alarmı gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
     except Exception as e:
@@ -383,6 +414,7 @@ def _news_watcher_loop():
                 if _state["sent_hashes_date"] != today:
                     _state["sent_hashes_date"] = today
                     _state["sent_hashes"].clear()
+                    _state["sent_fingerprints"].clear()
 
             # Scheduled haber özeti
             if now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 5:
