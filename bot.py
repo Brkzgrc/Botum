@@ -1406,69 +1406,6 @@ def _build_scan_line(sym):
     close_price = fmt_price(bars_1h[sym]["close"].iloc[-1]) if sym in bars_1h and len(bars_1h[sym]) > 0 else "?"
     return f"  {sym.replace('/USDT','')}: {close_price} | {' | '.join(parts)}"
 
-async def claude_scan():
-    if not ANTHROPIC_API_KEY or not _secondary_bootstrap_done:
-        return
-    try:
-        candidates = _scan_prefilter(top_n=40)
-        if not candidates:
-            print("[SCAN] Aday coin yok", flush=True)
-            return
-
-        btc4h = bars_4h.get("BTC/USDT")
-        btc_rsi = _calc_rsi(btc4h["close"].tolist()) if btc4h is not None and len(btc4h) > 20 else "?"
-        btc_str = f"4H RSI:{btc_rsi} | Trend:{btc_4h_cache.get('trend','?')}"
-
-        loop = asyncio.get_running_loop()
-        (fg_val, fg_label), dom = await asyncio.gather(
-            loop.run_in_executor(None, fetch_fear_greed),
-            loop.run_in_executor(None, fetch_btc_dominance_trend),
-        )
-        fg_str  = f"{fg_val} ({fg_label})" if fg_val else "bilinmiyor"
-        dom_str = _dominance_str(dom)
-
-        coin_lines = [_build_scan_line(sym) for sym in candidates]
-        scan_time  = tr_now().strftime("%d/%m/%Y %H:%M")
-
-        prompt = f"""Sen bir kripto tarayıcısısın. {len(candidates)} coinin çoklu timeframe verisini incele.
-
-TARAMA: {scan_time}
-BTC: {btc_str}
-Fear & Greed: {fg_str}
-{dom_str}
-
-KOİN VERİLERİ (15D=15dk | 1S=1saat | 4S=4saat | 1G=günlük | RSI + Hacim çarpanı):
-{chr(10).join(coin_lines)}
-
-Makro bağlamı (dominans trendi, Fear & Greed) dikkate alarak RSI, hacim anomalisi ve timeframe uyumuna göre EN FAZLA 5 coin seç — reversal veya güçlü momentum fırsatı olanlar. Fırsat yoksa "Şu an belirgin fırsat yok." yaz.
-
-FORMAT (her satır):
-KOİN: [isim] | NEDEN: [somut veri referansı, 1 cümle] | RİSK: [DÜŞÜK/ORTA/YÜKSEK]"""
-
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        resp   = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        result_text = resp.content[0].text.strip()
-
-        msg = (
-            f"🔍 <b>CLAUDE TARAMA — {scan_time}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"BTC: {btc_str}\n"
-            f"F&G: {fg_str} | Taranan: {len(candidates)} coin\n"
-            f"{dom_str}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{result_text}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Gölge mod · otonomik tarama · işlem yapılmadı</i>"
-        )
-        send_claude_telegram(msg)
-        print(f"[SCAN] {len(candidates)} coin tarandı, sonuç gönderildi", flush=True)
-    except Exception as e:
-        print(f"[SCAN] Hata: {e}", flush=True)
 
 # ============================================================
 # PERFORMANS TAKİP
@@ -2096,7 +2033,6 @@ async def periodic_tasks():
     tick = 0
     last_4h_tick  = 0
     last_1d_tick  = 0
-    last_scan_tick = -24  # ilk scan 4 saat sonra (secondary bootstrap bitmesini bekle)
     while True:
         await asyncio.sleep(600)
         tick += 1
@@ -2131,10 +2067,7 @@ async def periodic_tasks():
         if tick - last_1d_tick >= 144:
             last_1d_tick = tick
             asyncio.create_task(refresh_1d_bars(tracked_symbols + ["BTC/USDT"]))
-        # Claude tarama — her 4 saatte
-        if tick - last_scan_tick >= 24 and _secondary_bootstrap_done:
-            last_scan_tick = tick
-            asyncio.create_task(claude_scan())
+
 
 # ============================================================
 # MAIN
