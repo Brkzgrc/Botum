@@ -5,7 +5,8 @@ Kripto Haber İzleme Modülü
 RSS kaynaklarından haber çeker, Claude ile Türkçe özetler,
 Telegram News sohbetine (thread 64) gönderir.
 
-Zamanlama (TR saatiyle): 09:00 / 12:00 / 15:00 / 19:00 / 23:00
+Scheduled (TR): 09:00 / 12:00 / 15:00 / 19:00 / 23:00  — her haber ayrı mesaj
+Breaking:       saatte bir kontrol — gerçekten kritikse tek alert
 """
 
 import os
@@ -44,10 +45,24 @@ KEYWORDS = [
     "treasury", "inflation", "interest rate",
 ]
 
+BREAK_KEYWORDS = [
+    "ban", "banned", "bans", "hack", "hacked", "breach", "exploit",
+    "crash", "collapse", "bankrupt", "insolvent", "seized", "arrest",
+    "charges", "sues", "indicted", "doj", "emergency",
+    "rate cut", "rate hike", "rate increase", "rate decrease",
+    "etf approved", "etf rejected", "etf denied",
+    "all-time high", "record high", "ath",
+    "$1 billion", "$2 billion", "$500 million",
+    "liquidated", "halted", "suspended",
+    "executive order", "trump signs", "sanction",
+    "war", "default", "crisis",
+]
+
 SCHEDULE_HOURS_TR = {9, 12, 15, 19, 23}
 
 _state = {
     "last_run_key":     None,
+    "last_break_ts":    0,
     "sent_hashes":      set(),
     "sent_hashes_date": None,
 }
@@ -75,7 +90,7 @@ def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
-def _fetch_rss(source_name: str, url: str, cutoff: datetime) -> list[dict]:
+def _fetch_rss(source_name: str, url: str, cutoff: datetime, keywords: list) -> list[dict]:
     items = []
     try:
         resp = requests.get(
@@ -98,7 +113,7 @@ def _fetch_rss(source_name: str, url: str, cutoff: datetime) -> list[dict]:
                 continue
 
             title_lower = title.lower()
-            if not any(kw in title_lower for kw in KEYWORDS):
+            if not any(kw in title_lower for kw in keywords):
                 continue
 
             h = _item_hash(link)
@@ -124,21 +139,21 @@ def _fetch_rss(source_name: str, url: str, cutoff: datetime) -> list[dict]:
     return items
 
 
-def _fetch_all(hours_back: int) -> list[dict]:
+def _fetch_all(hours_back: int, keywords: list = None) -> list[dict]:
+    if keywords is None:
+        keywords = KEYWORDS
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
     raw = []
     with ThreadPoolExecutor(max_workers=5) as ex:
-        futures = [ex.submit(_fetch_rss, name, url, cutoff) for name, url in RSS_FEEDS]
+        futures = [ex.submit(_fetch_rss, name, url, cutoff, keywords) for name, url in RSS_FEEDS]
         for f in futures:
             try:
                 raw.extend(f.result())
             except Exception:
                 pass
 
-    # Sort: yeni → eski
     raw.sort(key=lambda x: x.get("hours_ago") if x.get("hours_ago") is not None else 999)
 
-    # Başlık benzerliği ile tekrar temizle
     seen_norm = []
     unique = []
     for item in raw:
@@ -149,6 +164,10 @@ def _fetch_all(hours_back: int) -> list[dict]:
 
     return unique[:20]
 
+
+# ============================================================
+# SCHEDULED — ayrı mesajlar
+# ============================================================
 
 def _summarize_with_claude(items: list[dict]) -> str:
     if not ANTHROPIC_API_KEY or not items:
@@ -170,13 +189,19 @@ Aşağıdaki haberleri incele. En önemli 4-5 haberi seç ve Türkçeye çevirer
 
 Seçim kriterleri:
 - Bitcoin/kripto piyasalarını doğrudan etkileyen haberler öncelikli
-- Kurumsal hareketler (BlackRock, JPMorgan vb.), düzenleyici gelişmeler, makro ekonomik haberler (Fed, S&P vb.)
+- Kurumsal hareketler (BlackRock, JPMorgan vb.), düzenleyici gelişmeler, makro haberler (Fed, S&P vb.)
 - Tekrarlayan veya benzer haberler yerine farklı konular seç
 
-Her haber için TAM OLARAK bu formatı kullan, fazladan açıklama ekleme:
+Her haber için TAM OLARAK bu formatı kullan. Haberler arasına sadece "---" koy, başka hiçbir şey ekleme:
+
 🔸 <b>[Türkçe başlık]</b>
 <i>[Kaynak adı]</i>
 [2-3 cümle Türkçe özet — kripto piyasasına olası etkisini belirt]
+---
+🔸 <b>[Türkçe başlık]</b>
+...
+
+Son haberden sonra --- koyma.
 
 HABERLER:
 {items_text}"""
@@ -185,7 +210,7 @@ HABERLER:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=900,
+            max_tokens=1000,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
@@ -228,30 +253,122 @@ def _fetch_and_send(hours_back: int):
             return
 
         tr_time = _tr_now()
+        header = (
+            f"📰 <b>KRİPTO HABER ÖZETİ — {tr_time.strftime('%H:%M')}</b>  "
+            f"🗓 {tr_time.strftime('%d/%m/%Y')}"
+        )
+        _send_telegram(header)
+        time.sleep(0.5)
+
+        parts = [p.strip() for p in summary.split("---") if p.strip()]
+        for part in parts:
+            msg = (
+                f"{part}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>Claude Analyzer · Haber İzleme</i>"
+            )
+            _send_telegram(msg)
+            time.sleep(0.8)
+
+        with _lock:
+            for item in items:
+                _state["sent_hashes"].add(item["hash"])
+        print(f"[NEWS] {len(parts)} haber gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
+
+    except Exception as e:
+        print(f"[NEWS FETCH] {e}", flush=True)
+
+
+# ============================================================
+# BREAKING NEWS — saatlik kontrol
+# ============================================================
+
+def _breaking_check_claude(items: list[dict]) -> str:
+    if not ANTHROPIC_API_KEY or not items:
+        return ""
+    import anthropic
+
+    items_text = ""
+    for i, item in enumerate(items, 1):
+        age = f" · {item['hours_ago']}s önce" if item.get("hours_ago") is not None else ""
+        items_text += f"{i}. [{item['source']}]{age}\n"
+        items_text += f"   {item['title']}\n"
+        if item.get("desc"):
+            items_text += f"   {item['desc'][:200]}\n"
+        items_text += "\n"
+
+    prompt = f"""Sen kripto piyasalarını takip eden bir analistsin.
+
+Aşağıdaki haberleri incele. Bunlar arasında kripto piyasalarını GERÇEKTEN önemli ölçüde etkileyebilecek, anlık dikkat gerektiren bir haber var mı?
+
+Kritik sayılan haberler: büyük borsalarda hack/çöküş, SEC/DOJ büyük davası, ülke yasağı, Fed acil faiz kararı, büyük kurumsal satış/alış hareketi, ETF onay/red, borsa iflası gibi gelişmeler.
+
+Eğer kritik haber YOKSA sadece "YOK" yaz, başka hiçbir şey yazma.
+
+Eğer kritik haber VARSA TAM OLARAK şu formatı kullan:
+🔴 <b>[Türkçe başlık]</b>
+<i>[Kaynak adı]</i>
+[3-4 net Türkçe cümle: ne oldu, neden önemli, kripto piyasasına olası etkisi nasıl olabilir]
+
+HABERLER:
+{items_text}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = resp.content[0].text.strip()
+        if result.upper().startswith("YOK"):
+            return ""
+        return result
+    except Exception as e:
+        print(f"[NEWS BREAK CLAUDE] {e}", flush=True)
+        return ""
+
+
+def _check_breaking_news():
+    try:
+        items = _fetch_all(hours_back=2, keywords=BREAK_KEYWORDS)
+        if not items:
+            return
+
+        result = _breaking_check_claude(items)
+        if not result:
+            return
+
+        tr_time = _tr_now()
         msg = (
-            f"📰 <b>KRİPTO HABER ÖZETİ — {tr_time.strftime('%H:%M')}</b>\n"
-            f"🗓 {tr_time.strftime('%d/%m/%Y')}\n"
+            f"⚡ <b>ÖNEMLİ HABER</b>\n"
+            f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{summary}\n"
+            f"{result}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Claude Analyzer · Haber İzleme</i>"
+            f"<i>Claude Analyzer · Anlık İzleme</i>"
         )
         _send_telegram(msg)
 
         with _lock:
             for item in items:
                 _state["sent_hashes"].add(item["hash"])
-        print(f"[NEWS] {len(items)} haberden özet gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
+        print(f"[NEWS BREAK] Kritik haber alarmı gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
     except Exception as e:
-        print(f"[NEWS FETCH] {e}", flush=True)
+        print(f"[NEWS BREAK] {e}", flush=True)
 
+
+# ============================================================
+# ANA DÖNGÜ
+# ============================================================
 
 def _news_watcher_loop():
-    print("[NEWS] Başlatıldı — 09:00/12:00/15:00/19:00/23:00 TR saatlerinde çalışır.", flush=True)
+    print("[NEWS] Başlatıldı — scheduled 09/12/15/19/23 TR + saatlik breaking kontrol.", flush=True)
     while True:
         try:
             now_tr = _tr_now()
+            now_ts = time.time()
             today  = now_tr.date()
 
             # Gece geçişinde sent_hashes temizle
@@ -260,12 +377,25 @@ def _news_watcher_loop():
                     _state["sent_hashes_date"] = today
                     _state["sent_hashes"].clear()
 
+            # Scheduled haber özeti
             if now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 5:
                 run_key = f"{today}_{now_tr.hour}"
                 if _state["last_run_key"] != run_key:
                     _state["last_run_key"] = run_key
                     hours_back = 10 if now_tr.hour == 9 else 4
-                    _fetch_and_send(hours_back)
+                    threading.Thread(
+                        target=_fetch_and_send, args=(hours_back,),
+                        daemon=True, name="news-scheduled"
+                    ).start()
+
+            # Saatlik breaking news kontrolü — scheduled saatlerle çakışmayı önle
+            if now_ts - _state["last_break_ts"] >= 3600:
+                _state["last_break_ts"] = now_ts
+                if not (now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 10):
+                    threading.Thread(
+                        target=_check_breaking_news,
+                        daemon=True, name="news-break-check"
+                    ).start()
 
         except Exception as e:
             print(f"[NEWS LOOP] {e}", flush=True)
