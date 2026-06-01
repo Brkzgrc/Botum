@@ -799,7 +799,7 @@ def dashboard():
 <meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
 <meta property="og:description" content="Kripto sinyal takip sistemi">
-<meta property="og:image" content="https://raw.githubusercontent.com/Brkzgrc/Botum/main/IMG_0014.jpeg">
+<meta property="og:image" content="https://raw.githubusercontent.com/Brkzgrc/Botum/main/portfolio_logo.jpg">
 <meta property="og:url" content="https://portfolio-tracker-xzvw.onrender.com">
 <style>
 :root {{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--text-dim:#5a6a7a;
