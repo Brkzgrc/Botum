@@ -705,7 +705,11 @@ def _run_market_check(report_type: str):
 
         text = _market_report_text(report_type, fg_val, fg_label, dom, macro, btc_4h)
         if not text:
-            return
+            fg_str = f"{fg_val} ({fg_label})" if fg_val is not None else "—"
+            dom_cur = dom.get("current", "—") if dom else "—"
+            text = (f"BTC: {btc_price or '—'} | F&G: {fg_str} | Dominans: {dom_cur}%\n"
+                    f"<i>(Claude API yanıt vermedi — ham veri)</i>")
+            print(f"[WATCHER] Claude API boş döndü, ham veriyle gönderiliyor", flush=True)
 
         tr_time = _tr_now()
         title   = "📊 <b>GÜNLÜK PİYASA RAPORU</b>" if report_type == "daily" else "⚡ <b>PİYASA UYARISI</b>"
