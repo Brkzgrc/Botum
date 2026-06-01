@@ -81,7 +81,7 @@ _state = {
     "last_break_ts":     0,
     "sent_hashes":       set(),
     "sent_fingerprints": [],   # list[frozenset] — başlık benzerliği dedup
-    "sent_hashes_date":  None,
+    "sent_reset_ts":     0,    # 24 saatlik rolling reset
 }
 _lock = threading.Lock()
 
@@ -221,7 +221,7 @@ def _summarize_with_claude(items: list[dict]) -> str:
 
     prompt = f"""Sen kripto para piyasalarını takip eden bir haber analistisisin.
 
-Aşağıdaki haberleri incele. En önemli 4-5 haberi seç ve Türkçeye çevirerek özetle.
+Aşağıdaki haberleri incele. En önemli 5-6 haberi seç ve Türkçeye çevirerek özetle.
 
 Seçim kriterleri:
 - Bitcoin/kripto piyasalarını doğrudan etkileyen haberler öncelikli
@@ -246,7 +246,7 @@ HABERLER:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1000,
+            max_tokens=1400,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
@@ -289,20 +289,23 @@ def _fetch_and_send(hours_back: int):
             return
 
         tr_time = _tr_now()
-        header = (
-            f"📰 <b>KRİPTO HABER ÖZETİ — {tr_time.strftime('%H:%M')}</b>  "
-            f"🗓 {tr_time.strftime('%d/%m/%Y')}"
-        )
-        _send_telegram(header)
-        time.sleep(0.5)
-
         parts = [p.strip() for p in summary.split("---") if p.strip()]
-        for part in parts:
-            msg = (
-                f"{part}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"<i>Claude Analyzer · Haber İzleme</i>"
-            )
+        for i, part in enumerate(parts):
+            if i == 0:
+                msg = (
+                    f"📰 <b>KRİPTO HABER ÖZETİ — {tr_time.strftime('%H:%M')}</b>  "
+                    f"🗓 {tr_time.strftime('%d/%m/%Y')}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{part}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>Claude Analyzer · Haber İzleme</i>"
+                )
+            else:
+                msg = (
+                    f"{part}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"<i>Claude Analyzer · Haber İzleme</i>"
+                )
             _send_telegram(msg)
             time.sleep(0.8)
 
@@ -409,10 +412,10 @@ def _news_watcher_loop():
             now_ts = time.time()
             today  = now_tr.date()
 
-            # Gece geçişinde sent_hashes temizle
+            # 24 saatlik rolling reset (gece yarısı değil, son resetden itibaren)
             with _lock:
-                if _state["sent_hashes_date"] != today:
-                    _state["sent_hashes_date"] = today
+                if now_ts - _state["sent_reset_ts"] >= 86400:
+                    _state["sent_reset_ts"] = now_ts
                     _state["sent_hashes"].clear()
                     _state["sent_fingerprints"].clear()
 
