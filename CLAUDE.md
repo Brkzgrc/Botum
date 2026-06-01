@@ -59,6 +59,11 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 4. **UZUN VADE T168** — Stop -8% | TP +25% | WR %40
 5. **PUMP PROBABILITY** — BB sıkışma + ADX(7) + OBV + Direnç kırılımı | Stop ~-5% | TP +8/15/25%
 
+## Bekleyen Fikirler (İleride Değerlendir)
+
+- **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
+- **PUMP PROBABILITY Backtest** — Script hazır (bilgisayarda çalıştırılacak): filtresiz vs BTC filtreli karşılaştırma, Jan-May 2026 dönemi.
+
 ## Claude Analyzer (claude_analyzer.py)
 
 - Bağımsız modül — bot.py'nin iç yapısına bağlı değil
