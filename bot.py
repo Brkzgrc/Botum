@@ -35,6 +35,7 @@ from datetime import datetime, timedelta, timezone
 
 import ccxt
 from claude_analyzer import process_and_send as _analyzer_process, start_market_watcher as _start_market_watcher
+from news_watcher import start_news_watcher as _start_news_watcher
 import numpy as np
 import pandas as pd
 import requests
@@ -2105,6 +2106,7 @@ async def main():
     bot_status["status"] = "LIVE"
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
     _start_market_watcher()
+    _start_news_watcher()
 
     await ws_all(symbols, candidate_queue)
 
