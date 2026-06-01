@@ -2089,6 +2089,18 @@ def perf_dashboard():
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
+@flask_app.route("/test-analyzer")
+def test_analyzer():
+    threading.Thread(target=_analyzer_run_market_check, daemon=True).start()
+    return "✅ Rapor tetiklendi — Telegram'ı kontrol et", 200
+
+def _analyzer_run_market_check():
+    try:
+        from claude_analyzer import _run_market_check
+        _run_market_check("daily")
+    except Exception as e:
+        print(f"[TEST-ANALYZER] {e}", flush=True)
+
 # ============================================================
 # PERİYODİK GÖREVLER
 # ============================================================
