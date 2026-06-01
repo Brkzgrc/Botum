@@ -797,6 +797,10 @@ def dashboard():
 <meta charset="UTF-8"><title>Portföy Takip v2.5</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
+<meta property="og:title" content="Portfolio Tracker">
+<meta property="og:description" content="Kripto sinyal takip sistemi">
+<meta property="og:image" content="https://raw.githubusercontent.com/Brkzgrc/Botum/main/IMG_0014.jpeg">
+<meta property="og:url" content="https://portfolio-tracker-xzvw.onrender.com">
 <style>
 :root {{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--text-dim:#5a6a7a;
   --accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#f39c12;--purple:#9b59b6;}}
