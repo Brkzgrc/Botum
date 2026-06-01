@@ -1589,6 +1589,13 @@ async def signal_worker(candidate_queue):
             tr_time = sig.tr_time
             sig_type = result.get("type", "capit")
 
+            # Açık pozisyon tekrar kontrolü — aynı coin + aynı sistem zaten açıksa atla
+            pt = _SIG_TYPE_MAP.get(sig_type, "panik_pump")
+            if any(s["status"] == "open" and s["symbol"] == symbol and s["sig_type"] == pt
+                   for s in signal_log):
+                print(f"[SKIP] {symbol} {sig_type} — açık pozisyon mevcut, sinyal atlandı", flush=True)
+                continue
+
             # Likidite kontrolü
             liquidity = 0.0
             try:
