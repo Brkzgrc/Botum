@@ -46,16 +46,23 @@ KEYWORDS = [
 ]
 
 BREAK_KEYWORDS = [
+    # Güvenlik / çöküş
     "ban", "banned", "bans", "hack", "hacked", "breach", "exploit",
     "crash", "collapse", "bankrupt", "insolvent", "seized", "arrest",
     "charges", "sues", "indicted", "doj", "emergency",
+    # Makro
     "rate cut", "rate hike", "rate increase", "rate decrease",
     "etf approved", "etf rejected", "etf denied",
     "all-time high", "record high", "ath",
-    "$1 billion", "$2 billion", "$500 million",
     "liquidated", "halted", "suspended",
     "executive order", "trump signs", "sanction",
     "war", "default", "crisis",
+    # Kurumsal BTC hareketleri
+    "microstrategy", "strategy buys", "strategy sells",
+    "buys bitcoin", "sells bitcoin", "buys btc", "sells btc",
+    "purchases bitcoin", "acquires bitcoin",
+    "blackrock buys", "blackrock sells", "fidelity buys",
+    "$100 million", "$200 million", "$500 million", "$1 billion", "$2 billion",
 ]
 
 SCHEDULE_HOURS_TR = {9, 12, 15, 19, 23}
@@ -364,7 +371,7 @@ def _check_breaking_news():
 # ============================================================
 
 def _news_watcher_loop():
-    print("[NEWS] Başlatıldı — scheduled 09/12/15/19/23 TR + saatlik breaking kontrol.", flush=True)
+    print("[NEWS] Başlatıldı — scheduled 09/12/15/19/23 TR + 30 dakikalık breaking kontrol.", flush=True)
     while True:
         try:
             now_tr = _tr_now()
@@ -389,7 +396,7 @@ def _news_watcher_loop():
                     ).start()
 
             # Saatlik breaking news kontrolü — scheduled saatlerle çakışmayı önle
-            if now_ts - _state["last_break_ts"] >= 3600:
+            if now_ts - _state["last_break_ts"] >= 1800:
                 _state["last_break_ts"] = now_ts
                 if not (now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 10):
                     threading.Thread(
