@@ -77,23 +77,32 @@ _STOP_WORDS = {
     "report", "data", "shows", "news", "update",
 }
 
+_CACHE_TTL    = 48 * 3600   # 48 saat — bu süreden eski girişler silinir
 _state = {
     "last_run_key":      None,
     "last_break_ts":     0,
-    "sent_hashes":       set(),
-    "sent_fingerprints": [],   # list[frozenset] — başlık benzerliği dedup
-    "sent_reset_ts":     0,    # 24 saatlik rolling reset
+    "sent_hashes":       {},   # hash → timestamp (float)
+    "sent_fingerprints": [],   # list[{"words": list, "ts": float}]
 }
 _lock = threading.Lock()
 _SENT_CACHE_FILE = "/tmp/news_sent_cache.json"
 
 
+def _prune_sent_cache():
+    """48 saatten eski girişleri temizle — lock dışından çağrılmalı."""
+    cutoff = time.time() - _CACHE_TTL
+    with _lock:
+        _state["sent_hashes"]       = {k: v for k, v in _state["sent_hashes"].items() if v > cutoff}
+        _state["sent_fingerprints"] = [e for e in _state["sent_fingerprints"] if e.get("ts", 0) > cutoff]
+
+
 def _save_sent_cache():
+    _prune_sent_cache()
     try:
         with open(_SENT_CACHE_FILE, "w") as f:
             json.dump({
-                "hashes": list(_state["sent_hashes"]),
-                "fps":    [list(fp) for fp in _state["sent_fingerprints"][-200:]],
+                "hashes": _state["sent_hashes"],
+                "fps":    _state["sent_fingerprints"],
             }, f)
     except Exception:
         pass
@@ -104,8 +113,9 @@ def _load_sent_cache():
         if os.path.exists(_SENT_CACHE_FILE):
             with open(_SENT_CACHE_FILE) as f:
                 data = json.load(f)
-            _state["sent_hashes"]       = set(data.get("hashes", []))
-            _state["sent_fingerprints"] = [frozenset(fp) for fp in data.get("fps", [])]
+            _state["sent_hashes"]       = {k: float(v) for k, v in data.get("hashes", {}).items()}
+            _state["sent_fingerprints"] = data.get("fps", [])
+            _prune_sent_cache()
             print(f"[NEWS] Sent cache yüklendi: {len(_state['sent_hashes'])} hash, "
                   f"{len(_state['sent_fingerprints'])} fingerprint", flush=True)
     except Exception as e:
@@ -130,7 +140,8 @@ def _is_topic_duplicate(title: str) -> bool:
     if len(fp) < 2:
         return False
     with _lock:
-        for sent_fp in _state["sent_fingerprints"]:
+        for entry in _state["sent_fingerprints"]:
+            sent_fp = frozenset(entry["words"]) if isinstance(entry, dict) else entry
             if len(fp & sent_fp) >= 2:
                 return True
     return False
@@ -337,8 +348,8 @@ def _fetch_and_send(hours_back: int):
 
         with _lock:
             for item in items:
-                _state["sent_hashes"].add(item["hash"])
-                _state["sent_fingerprints"].append(_title_fp(item["title"]))
+                _state["sent_hashes"][item["hash"]] = time.time()
+                _state["sent_fingerprints"].append({"words": list(_title_fp(item["title"])), "ts": time.time()})
         _save_sent_cache()
         print(f"[NEWS] {len(parts)} haber gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
@@ -419,8 +430,8 @@ def _check_breaking_news():
 
         with _lock:
             for item in items:
-                _state["sent_hashes"].add(item["hash"])
-                _state["sent_fingerprints"].append(_title_fp(item["title"]))
+                _state["sent_hashes"][item["hash"]] = time.time()
+                _state["sent_fingerprints"].append({"words": list(_title_fp(item["title"])), "ts": time.time()})
         _save_sent_cache()
         print(f"[NEWS BREAK] Kritik haber alarmı gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
@@ -440,12 +451,9 @@ def _news_watcher_loop():
             now_ts = time.time()
             today  = now_tr.date()
 
-            # 24 saatlik rolling reset (gece yarısı değil, son resetden itibaren)
-            with _lock:
-                if now_ts - _state["sent_reset_ts"] >= 86400:
-                    _state["sent_reset_ts"] = now_ts
-                    _state["sent_hashes"].clear()
-                    _state["sent_fingerprints"].clear()
+            # 6 saatte bir eski girişleri temizle (48h TTL)
+            if now_ts % 21600 < 60:
+                _prune_sent_cache()
 
             # Scheduled haber özeti
             if now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 5:
