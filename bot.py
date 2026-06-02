@@ -1534,7 +1534,7 @@ def _build_scan_line(sym):
 # ============================================================
 # PERFORMANS TAKİP
 # ============================================================
-SIGNAL_LOG_PATH = "/tmp/signal_log.json"
+SIGNAL_LOG_PATH = os.path.join(os.getenv("DATA_DIR", "/tmp"), "signal_log.json")
 _EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "pump_prob": 72, "gainers": 48}
 
 def load_signal_log():

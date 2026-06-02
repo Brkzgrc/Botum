@@ -85,7 +85,8 @@ _state = {
     "sent_fingerprints": [],   # list[{"words": list, "ts": float}]
 }
 _lock = threading.Lock()
-_SENT_CACHE_FILE = "/tmp/news_sent_cache.json"
+_DATA_DIR        = os.getenv("DATA_DIR", "/tmp")
+_SENT_CACHE_FILE = os.path.join(_DATA_DIR, "news_sent_cache.json")
 
 
 def _prune_sent_cache():
