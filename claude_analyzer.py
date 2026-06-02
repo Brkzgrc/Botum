@@ -625,11 +625,14 @@ def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h) 
     macro_str  = _btc_macro_str(macro, btc_price) if macro else "veri yok"
 
     if report_type == "daily":
-        gorev = ("Günlük kapanış özeti. BTC'nin makro konumunu, F&G ve dominans trendini değerlendir. "
-                 "Bu hafta için beklenti ne? 3-4 cümle, somut seviyeler ver.")
+        gorev = ("Günlük kapanış özeti yaz. BTC'nin genel durumunu ve bu hafta için beklentiyi anlat. "
+                 "Sade, anlaşılır Türkçe kullan — teknik jargon yok, markdown başlık yok. "
+                 "Makro Konum ve Bu Hafta Beklentisi olmak üzere 2 kısa paragraf. Her paragraf 2-3 cümle. "
+                 "Cümleleri mutlaka tamamla, yarıda bırakma.")
     else:
         gorev = ("Piyasada önemli bir değişim tespit edildi. "
-                 "Ne değişti, ne anlama geliyor, nelere dikkat edilmeli? 2-3 cümle.")
+                 "Ne değişti, ne anlama geliyor, nelere dikkat edilmeli? "
+                 "Sade Türkçe, 2-3 cümle, teknik jargon kullanma.")
 
     prompt = f"""Sen deneyimli bir kripto piyasa analistisisin.
 
@@ -649,7 +652,7 @@ GÖREV: {gorev}"""
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp   = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=300,
+            max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
         return resp.content[0].text.strip()
