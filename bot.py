@@ -67,6 +67,8 @@ MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",         "1000000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",             "0"))
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS",   "4"))
 PUMP_COOLDOWN_HOURS   = int(os.getenv("PUMP_COOLDOWN_HOURS",     "4"))
+TRAILING_PCT          = float(os.getenv("TRAILING_PCT",          "0.03"))  # %3 trailing stop
+TRAILING_MIN_GAIN     = float(os.getenv("TRAILING_MIN_GAIN",     "5.0"))   # %5 kârdan itibaren aktif
 WS_STREAM_CHUNK       = int(os.getenv("WS_STREAM_CHUNK",         "120"))
 BOOTSTRAP_BARS        = int(os.getenv("BOOTSTRAP_BARS",          "750"))
 KEEP_BARS             = int(os.getenv("KEEP_BARS",               "720"))
@@ -749,6 +751,46 @@ def send_telegram(text):
             print(f"Telegram {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
         print(f"Telegram hata: {e}", flush=True)
+
+def _notify_trailing_activated(entry, old_stop):
+    try:
+        sym  = entry["symbol"].replace("/USDT", "")
+        raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
+        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE",
+                "pump_prob": "PUMP PROB"}.get(raw, raw)
+        e        = entry["entry"]
+        old_pct  = round((old_stop / e - 1) * 100, 1)
+        new_pct  = round((entry["stop"] / e - 1) * 100, 1)
+        peak_pct = entry["peak_pct"]
+        msg = (
+            f"🔄 <b>Trailing Stop Devreye Girdi</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"#{sym}/USDT  [{lbl}]\n"
+            f"Peak: <b>+{peak_pct:.1f}%</b>\n"
+            f"Eski Stop: {old_pct:+.1f}%  →  Yeni Stop: <b>{new_pct:+.1f}%</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        send_telegram(msg)
+    except Exception as ex:
+        print(f"[TRAILING] Bildirim hata: {ex}", flush=True)
+
+def _notify_trailing_close(entry, close_price, close_ret):
+    try:
+        sym  = entry["symbol"].replace("/USDT", "")
+        raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
+        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE",
+                "pump_prob": "PUMP PROB"}.get(raw, raw)
+        msg = (
+            f"✅ <b>Trailing Stop — Kâr Kapatıldı</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"#{sym}/USDT  [{lbl}]\n"
+            f"Giriş: {fmt_price(entry['entry'])}  →  Çıkış: {fmt_price(close_price)}\n"
+            f"Kâr: <b>+{close_ret:.1f}%</b>  |  Peak: +{entry.get('peak_pct', 0):.1f}%\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        send_telegram(msg)
+    except Exception as ex:
+        print(f"[TRAILING CLOSE] Bildirim hata: {ex}", flush=True)
 
 # sig_type → portfolio type eşleştirmesi
 _SIG_TYPE_MAP = {
@@ -1449,6 +1491,7 @@ def log_signal(result, tr_time):
         "time":        tr_time.isoformat(),
         "status":      "open",
         "peak_pct": 0.0, "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
+        "trailing_active": False, "trailing_stop": None,
         "close_time": None, "close_price": None, "close_ret": None,
         "ret1":      result.get("ret1"),
         "vol_ratio": result.get("vol_ratio"),
@@ -1480,14 +1523,32 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         if cur_ret > entry["peak_pct"]:
             entry["peak_pct"] = round(cur_ret, 2)
 
+        # Trailing stop güncelleme — peak %5'i geçince devreye girer
+        if entry.get("trailing_active") or entry["peak_pct"] >= TRAILING_MIN_GAIN:
+            peak_price    = e * (1 + entry["peak_pct"] / 100)
+            new_trailing  = round(peak_price * (1 - TRAILING_PCT), 8)
+            if new_trailing > entry["stop"]:
+                was_active = entry.get("trailing_active", False)
+                old_stop   = entry["stop"]
+                entry["stop"]           = new_trailing
+                entry["trailing_stop"]  = new_trailing
+                entry["trailing_active"] = True
+                stp = new_trailing
+                if not was_active:
+                    _notify_trailing_activated(entry, old_stop)
+
         tp1 = entry.get("tp1"); tp2 = entry.get("tp2"); tp3 = entry.get("tp3")
         if tp3 and bar_high >= tp3 and not entry.get("tp3_hit"): entry["tp3_hit"] = True
         if tp2 and bar_high >= tp2 and not entry.get("tp2_hit"): entry["tp2_hit"] = True
         if tp1 and bar_high >= tp1 and not entry.get("tp1_hit"): entry["tp1_hit"] = True
 
         if bar_low <= stp:
-            entry.update({"status": "loss", "close_time": bar_time.isoformat(),
-                          "close_price": round(stp, 8), "close_ret": round((stp-e)/e*100, 2)})
+            close_ret_val = round((stp - e) / e * 100, 2)
+            status = "win" if close_ret_val > 0 else "loss"
+            entry.update({"status": status, "close_time": bar_time.isoformat(),
+                          "close_price": round(stp, 8), "close_ret": close_ret_val})
+            if status == "win" and entry.get("trailing_active"):
+                _notify_trailing_close(entry, round(stp, 8), close_ret_val)
             to_close.append(entry); continue
         if tp2 and bar_high >= tp2:
             entry.update({"status": "win", "close_time": bar_time.isoformat(),
