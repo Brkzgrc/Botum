@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Portföy Takip Sistemi v2.5
+Portföy Takip Sistemi v2.6
 ===========================
-v2.4 + expire trailing: pozisyon %80 süreye ulaşıp kârlıysa
-      trailing stop aktif olur, TP1 önceliği korunur.
+v2.5 + SMC yarı çıkış: SMC sinyallerinde TP1'de %50 kapatılır,
+      kalan %50 TP2'ye veya stop'a kadar takip edilir.
 
 NOT: Bu dosya geliştirme referansı içindir.
      Değişiklikleri gerçek portfolio-tracker reposuna manuel kopyala.
@@ -162,11 +162,11 @@ def check_open_positions():
     now = tr_now()
     with _lock:
         active = [s for s in signals_db
-                  if s["status"] == "open" or s.get("tp2_shadow") == "watching"]
+                  if s["status"] in ("open", "half_open") or s.get("tp2_shadow") == "watching"]
     if not active:
         return
 
-    open_count = sum(1 for s in active if s["status"] == "open")
+    open_count = sum(1 for s in active if s["status"] in ("open", "half_open"))
     shadow_count = sum(1 for s in active if s["status"] != "open" and s.get("tp2_shadow") == "watching")
     print(f"[CHECK] {open_count} açık + {shadow_count} shadow takip...", flush=True)
 
@@ -201,10 +201,23 @@ def check_open_positions():
                 sig["status"] = "loss"; sig["tp2_shadow"] = "n/a"
             elif high >= tp1:
                 close_reason = "tp1"; close_price = tp1
-                sig["status"] = "win_tp1"; sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                sig["tp2_shadow"] = "watching" if tp2 else "n/a"
-                sig["trailing_shadow"] = "watching"
-                sig["trailing_peak"] = float(tp1)
+                is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+                if is_smc and tp2:
+                    tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
+                    sig["status"] = "half_open"
+                    sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                    sig["tp1_exit_price"] = round(tp1, 8)
+                    sig["tp1_exit_pct"] = tp1_pct_v
+                    sig["tp2_shadow"] = "n/a"
+                    sig["trailing_shadow"] = "n/a"
+                    close_reason = None  # pozisyon kapanmıyor, half_open'a geçiyor
+                    need_save = True
+                    print(f"  🎯 TP1 YARI ÇIKIŞ: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 takipte", flush=True)
+                else:
+                    sig["status"] = "win_tp1"; sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                    sig["tp2_shadow"] = "watching" if tp2 else "n/a"
+                    sig["trailing_shadow"] = "watching"
+                    sig["trailing_peak"] = float(tp1)
             else:
                 open_time = datetime.fromisoformat(sig["open_time"])
                 if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
@@ -261,6 +274,65 @@ def check_open_positions():
                     emoji = "⏰"
                 print(f"  {emoji} KAPANDI: {symbol} | {close_reason.upper()} | "
                       f"{sig['close_pct']:+.2f}% | Peak: {sig['peak_pct']:+.2f}%", flush=True)
+
+        elif sig["status"] == "half_open":
+            # SMC yarı çıkış — TP1'de %50 kapatıldı, TP2 veya stop'a kadar takip
+            tp2 = sig.get("tp2"); stop = sig["stop"]
+            tp1_exit_pct = sig.get("tp1_exit_pct", 0)
+            if high > sig["peak_price"]:
+                sig["peak_price"] = high
+                sig["peak_pct"] = round((high - entry) / entry * 100, 2)
+            if low < sig["low_price"]:
+                sig["low_price"] = low
+                sig["low_pct"] = round((low - entry) / entry * 100, 2)
+            sig["current_price"] = close
+            sig["current_pct"] = round((close - entry) / entry * 100, 2)
+            sig["last_check"] = now.isoformat()
+            sig["checks"] = sig.get("checks", 0) + 1
+
+            if tp2 and high >= tp2:
+                tp2_pct = round((tp2 - entry) / entry * 100, 2)
+                combined_pct = round((tp1_exit_pct + tp2_pct) / 2, 2)
+                sig["status"] = "win_tp2"
+                sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
+                sig["tp2_shadow"] = "hit"
+                sig["close_time"] = now.isoformat()
+                sig["close_price"] = round(tp2, 8)
+                sig["close_reason"] = "tp2"
+                sig["close_pct"] = combined_pct
+                need_save = True; closed_count += 1
+                print(f"  🎯🎯 TP2 KAPANDI: {symbol.replace('/USDT','')} | TP2:+{tp2_pct}% | Ort:+{combined_pct}%", flush=True)
+            elif low <= stop:
+                stop_pct = round((stop - entry) / entry * 100, 2)
+                combined_pct = round((tp1_exit_pct + stop_pct) / 2, 2)
+                sig["status"] = "half_stopped"
+                sig["close_time"] = now.isoformat()
+                sig["close_price"] = round(stop, 8)
+                sig["close_reason"] = "stop_after_tp1"
+                sig["close_pct"] = combined_pct
+                sig["tp2_shadow"] = "stopped"
+                need_save = True; closed_count += 1
+                emoji2 = "💰" if combined_pct > 0 else "🔴"
+                print(f"  {emoji2} YARIM STOP: {symbol.replace('/USDT','')} | TP1:+{tp1_exit_pct}% Stop:{stop_pct:+.2f}% | Ort:{combined_pct:+.2f}%", flush=True)
+            else:
+                tp1_time_str = sig.get("tp1_time", sig["open_time"])
+                try:
+                    tp1_dt = datetime.fromisoformat(tp1_time_str)
+                    if tp1_dt.tzinfo is None: tp1_dt = tp1_dt.replace(tzinfo=TR_TZ)
+                    elapsed_since_tp1 = (now - tp1_dt).total_seconds() / 3600
+                except Exception:
+                    elapsed_since_tp1 = 0
+                if elapsed_since_tp1 >= SHADOW_EXPIRE_HOURS:
+                    close_pct_now = round((close - entry) / entry * 100, 2)
+                    combined_pct = round((tp1_exit_pct + close_pct_now) / 2, 2)
+                    sig["status"] = "half_expired"
+                    sig["close_time"] = now.isoformat()
+                    sig["close_price"] = round(close, 8)
+                    sig["close_reason"] = "expired_after_tp1"
+                    sig["close_pct"] = combined_pct
+                    sig["tp2_shadow"] = "missed"
+                    need_save = True; closed_count += 1
+                    print(f"  ⏰ YARIM EXPİRE: {symbol.replace('/USDT','')} | Ort:{combined_pct:+.2f}%", flush=True)
 
         elif sig.get("tp2_shadow") == "watching" and sig.get("tp2"):
             tp2 = sig["tp2"]; stop = sig["stop"]
@@ -372,7 +444,7 @@ def calc_performance():
         ts = type_stats[type_key]
         ts["total"] += 1
 
-        if status == "open":
+        if status in ("open", "half_open"):
             result["open"] += 1; ts["open"] += 1
         else:
             result["closed"] += 1
@@ -383,9 +455,18 @@ def calc_performance():
             closed_peaks.append(peak); ts["peaks"].append(peak)
             if status == "win_tp1":
                 result["wins"] += 1; ts["wins"] += 1
+            elif status == "win_tp2":
+                result["wins"] += 1; ts["wins"] += 1
             elif status == "win_partial":
                 result["wins"] += 1; result["win_partial"] += 1
                 ts["wins"] += 1; ts["win_partial"] += 1
+            elif status == "half_stopped":
+                if sig.get("close_pct", 0) > 0:
+                    result["wins"] += 1; ts["wins"] += 1
+                else:
+                    result["losses"] += 1; ts["losses"] += 1
+            elif status == "half_expired":
+                result["expired"] += 1; ts["expired"] += 1
             elif status == "loss": result["losses"] += 1; ts["losses"] += 1
             elif status == "expired": result["expired"] += 1; ts["expired"] += 1
 
@@ -553,11 +634,15 @@ def pct_color(pct):
 
 def status_badge(status):
     colors = {
-        "open":        ("#3498db", "AÇIK"),
-        "win_tp1":     ("#2ecc71", "WIN (TP1)"),
-        "win_partial": ("#27ae60", "WIN (TRAIL)"),
-        "loss":        ("#e74c3c", "LOSS"),
-        "expired":     ("#f39c12", "EXPIRED"),
+        "open":         ("#3498db", "AÇIK"),
+        "half_open":    ("#f39c12", "YARI AÇIK"),
+        "win_tp1":      ("#2ecc71", "WIN (TP1)"),
+        "win_tp2":      ("#27ae60", "WIN (TP2)"),
+        "win_partial":  ("#27ae60", "WIN (TRAIL)"),
+        "half_stopped": ("#e67e22", "YARIM STOP"),
+        "half_expired": ("#e67e22", "YARIM EXP"),
+        "loss":         ("#e74c3c", "LOSS"),
+        "expired":      ("#f39c12", "EXPIRED"),
     }
     c, label = colors.get(status, ("#8a9bb0", status.upper()))
     return f'<span style="background:{c}22;color:{c};padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold">{label}</span>'
@@ -623,9 +708,9 @@ def dashboard():
     with _lock:
         all_sigs = list(signals_db)
 
-    open_sigs = [s for s in all_sigs if s.get("status") == "open"]
-    closed_sigs = [s for s in all_sigs if s.get("status") != "open"]
-    shadow_watching = [s for s in all_sigs if s.get("tp2_shadow") == "watching" and s.get("status") != "open"]
+    open_sigs = [s for s in all_sigs if s.get("status") in ("open", "half_open")]
+    closed_sigs = [s for s in all_sigs if s.get("status") not in ("open", "half_open")]
+    shadow_watching = [s for s in all_sigs if s.get("tp2_shadow") == "watching" and s.get("status") not in ("open", "half_open")]
 
     open_rows = ""
     for sig in open_sigs[:50]:
@@ -662,12 +747,15 @@ def dashboard():
         except Exception:
             pass
 
+        is_half = sig.get("status") == "half_open"
+        tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;font-size:.6rem">✅ +{sig.get("tp1_exit_pct",tp1_pct)}% → TP2</span>'
+                    if is_half else f"{fmt_price(sig['tp1'])} (+{tp1_pct}%)")
         open_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
             <td>{fmt_price(sig['entry'])}</td>
             <td style="color:{cur_c};font-weight:bold">{fmt_price(sig.get('current_price'))} ({cur_s})</td>
             <td style="color:{peak_c}">{peak_s}</td><td style="color:{low_c}">{low_s}</td>
-            <td>{fmt_price(sig['stop'])} ({stop_pct:+.1f}%)</td><td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
+            <td>{fmt_price(sig['stop'])} ({stop_pct:+.1f}%)</td><td>{tp1_cell}</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
             <td>{sure_cell}</td>
             <td>{exp_trail_cell}</td></tr>"""
@@ -794,7 +882,7 @@ def dashboard():
 
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
-<meta charset="UTF-8"><title>Portföy Takip v2.5</title>
+<meta charset="UTF-8"><title>Portföy Takip v2.6</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
@@ -844,7 +932,7 @@ tr:hover td{{background:var(--card);}}
 <div class="header">
     <h1>📊 PORTFÖY TAKİP</h1>
     <span class="time">
-        {now} | v2.5
+        {now} | v2.6
         <button class="btn-clear"
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
         >🗑 Sıfırla</button>
@@ -941,7 +1029,7 @@ tr:hover td{{background:var(--card);}}
 </div>
 
 <div class="footer">
-    Portföy Takip v2.5 | Expire Trailing: %{EXPIRE_TRAIL_THRESHOLD*100:.0f} eşiği ({expire_trail_threshold_h}s) + %{EXPIRE_TRAIL_PCT} trailing |
+    Portföy Takip v2.6 | SMC: %50 TP1 + %50 TP2 | Expire Trailing: %{EXPIRE_TRAIL_THRESHOLD*100:.0f} eşiği ({expire_trail_threshold_h}s) + %{EXPIRE_TRAIL_PCT} trailing |
     Kontrol: {CHECK_INTERVAL//60}dk | Expire: {EXPIRE_HOURS}s | Shadow: {SHADOW_EXPIRE_HOURS}s | {now}
 </div>
 </body></html>"""
@@ -952,8 +1040,8 @@ tr:hover td{{background:var(--card);}}
 # ============================================================
 if __name__ == "__main__":
     print("=" * 50, flush=True)
-    print("📊 Portföy Takip Sistemi v2.5", flush=True)
-    print("   Expire Trailing eklendi", flush=True)
+    print("📊 Portföy Takip Sistemi v2.6", flush=True)
+    print("   SMC yarı çıkış: %50 TP1 + %50 TP2", flush=True)
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
     print(f"  Expire süresi        : {EXPIRE_HOURS} saat", flush=True)
