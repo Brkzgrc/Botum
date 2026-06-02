@@ -1795,7 +1795,7 @@ async def signal_worker(candidate_queue):
                 continue
 
             signal_counter += 1
-            if sig_type == "pump_prob":
+            if sig_type in ("pump_prob", "gainers"):
                 send_pump_telegram(msg)
             else:
                 send_telegram(msg)
