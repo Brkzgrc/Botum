@@ -11,6 +11,7 @@ Breaking:       saatte bir kontrol — gerçekten kritikse tek alert
 
 import os
 import re
+import json
 import threading
 import time
 import calendar
@@ -84,6 +85,31 @@ _state = {
     "sent_reset_ts":     0,    # 24 saatlik rolling reset
 }
 _lock = threading.Lock()
+_SENT_CACHE_FILE = "/tmp/news_sent_cache.json"
+
+
+def _save_sent_cache():
+    try:
+        with open(_SENT_CACHE_FILE, "w") as f:
+            json.dump({
+                "hashes": list(_state["sent_hashes"]),
+                "fps":    [list(fp) for fp in _state["sent_fingerprints"][-200:]],
+            }, f)
+    except Exception:
+        pass
+
+
+def _load_sent_cache():
+    try:
+        if os.path.exists(_SENT_CACHE_FILE):
+            with open(_SENT_CACHE_FILE) as f:
+                data = json.load(f)
+            _state["sent_hashes"]       = set(data.get("hashes", []))
+            _state["sent_fingerprints"] = [frozenset(fp) for fp in data.get("fps", [])]
+            print(f"[NEWS] Sent cache yüklendi: {len(_state['sent_hashes'])} hash, "
+                  f"{len(_state['sent_fingerprints'])} fingerprint", flush=True)
+    except Exception as e:
+        print(f"[NEWS] Sent cache yüklenemedi: {e}", flush=True)
 
 
 def _tr_now():
@@ -313,6 +339,7 @@ def _fetch_and_send(hours_back: int):
             for item in items:
                 _state["sent_hashes"].add(item["hash"])
                 _state["sent_fingerprints"].append(_title_fp(item["title"]))
+        _save_sent_cache()
         print(f"[NEWS] {len(parts)} haber gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
     except Exception as e:
@@ -394,6 +421,7 @@ def _check_breaking_news():
             for item in items:
                 _state["sent_hashes"].add(item["hash"])
                 _state["sent_fingerprints"].append(_title_fp(item["title"]))
+        _save_sent_cache()
         print(f"[NEWS BREAK] Kritik haber alarmı gönderildi ({tr_time.strftime('%H:%M')})", flush=True)
 
     except Exception as e:
@@ -452,5 +480,6 @@ def start_news_watcher():
     if not ANTHROPIC_API_KEY:
         print("[NEWS] ANTHROPIC_API_KEY eksik.", flush=True)
         return
+    _load_sent_cache()
     t = threading.Thread(target=_news_watcher_loop, daemon=True, name="news-watcher")
     t.start()
