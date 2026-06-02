@@ -104,9 +104,10 @@ bars_15m:       dict = {}
 bars_4h:        dict = {}
 bars_1d:        dict = {}
 funding_cache:  dict = {}
-last_signal_ts: dict = {}
-last_pump_ts:   dict = {}
-all_signals:    list = []
+last_signal_ts:  dict = {}
+last_pump_ts:    dict = {}
+last_gainers_ts: dict = {}
+all_signals:     list = []
 btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
@@ -500,6 +501,54 @@ def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     }
 
 # ============================================================
+# SİSTEM 6 — GAINERS MOMENTUM DEVAM
+# ============================================================
+def check_gainers_signal(symbol: str) -> dict | None:
+    df = bars_1h.get(symbol)
+    if df is None or len(df) < 26:
+        return None
+
+    close_now  = float(df["close"].iloc[-1])
+    close_24h  = float(df["close"].iloc[-25])
+    if close_24h <= 0:
+        return None
+    change_24h = (close_now / close_24h - 1) * 100
+    if change_24h < 10.0:
+        return None
+
+    # Hacim: son 1H barı, 20-bar ortalamasının 1.2x üstünde mi?
+    vol_now = float(df["volume"].iloc[-1])
+    vol_avg = float(df["volume"].iloc[-21:-1].mean())
+    if vol_avg <= 0 or vol_now < vol_avg * 1.2:
+        return None
+
+    # ADX(14) + DI+ > DI-
+    adx_now, _, di_plus, di_minus = _calc_adx_di(df, period=14)
+    if adx_now is None or adx_now < 25 or di_plus <= di_minus:
+        return None
+
+    # BTC düşüş trendinde sinyal verme
+    if btc_4h_cache.get("trend", "?") == "🔴 Düşüş":
+        return None
+
+    atr_pct = float(df.iloc[-1].get("atr_pct") or 0)
+    return {
+        "symbol":     symbol,
+        "type":       "gainers",
+        "entry":      round(close_now, 8),
+        "stop":       round(close_now * 0.95, 8),
+        "tp1":        round(close_now * 1.08, 8),
+        "tp2":        round(close_now * 1.15, 8),
+        "tp3":        round(close_now * 1.25, 8),
+        "change_24h": round(change_24h, 2),
+        "vol_ratio":  round(vol_now / vol_avg, 2),
+        "adx":        round(adx_now, 1),
+        "di_plus":    round(di_plus, 1),
+        "di_minus":   round(di_minus, 1),
+        "atr_pct":    round(atr_pct, 2),
+    }
+
+# ============================================================
 # PUANLAMA (Sistem 1 için)
 # ============================================================
 def calc_signal_score(ret1: float, vol_ratio: float, liquidity: float) -> int:
@@ -734,6 +783,34 @@ def build_pump_probability_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
+
+def build_gainers_message(r, tr_time, sig_num):
+    sym      = r["symbol"].replace("/USDT", "")
+    e        = r["entry"]
+    stop_pct = round((r["stop"] / e - 1) * 100, 1)
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"🚀 <b>#{sym}/USDT  •  ROCKET  •  1H</b>",
+        _sep(),
+        f"💵 <b>Giriş</b>    {fmt_price(e)}",
+        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  ({stop_pct:+.1f}%)",
+        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+8%)",
+        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+15%)",
+        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+25%)",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"🚀 24s değişim: <b>+{r['change_24h']:.1f}%</b>  (momentum aktif)",
+        f"📊 Hacim: {r['vol_ratio']:.2f}x ortalama",
+        f"📈 ADX(14): {r['adx']:.1f}  |  DI+: {r['di_plus']:.1f}  DI-: {r['di_minus']:.1f}",
+        _sep(),
+        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
+        f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
+        _sep(),
+        f"⏱ Yeni sistem — veri biriktiriliyor  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
 # ============================================================
 # GÖNDERIM
 # ============================================================
@@ -799,6 +876,7 @@ _SIG_TYPE_MAP = {
     "t72":       "pump_orta",
     "t168":      "pump_uzun",
     "pump_prob": "pump_probability",
+    "gainers":   "momentum_devam",
 }
 
 def send_to_portfolio(result):
@@ -1454,7 +1532,7 @@ def _build_scan_line(sym):
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = "/tmp/signal_log.json"
-_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "pump_prob": 72}
+_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "pump_prob": 72, "gainers": 48}
 
 def load_signal_log():
     try:
@@ -1706,6 +1784,13 @@ async def signal_worker(candidate_queue):
                       f" | vol:{result['vol_ratio']:.2f}x"
                       f" | {result.get('strength','NORMAL')}"
                       f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "gainers":
+                msg = build_gainers_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🚀 [ROCKET] {symbol}"
+                      f" | 24s:+{result['change_24h']:.1f}%"
+                      f" | ADX:{result['adx']:.0f}"
+                      f" | vol:{result['vol_ratio']:.2f}x"
+                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
             else:
                 continue
 
@@ -1931,6 +2016,7 @@ _TYPE_LABEL = {
     "t72":       ("🟡", "ORTA VADE",         "#ffcc00"),
     "t168":      ("🟢", "UZUN VADE",         "#00cc66"),
     "pump_prob": ("🔵", "PUMP PROBABILITY",  "#0088ff"),
+    "gainers":   ("📈", "MOMENTUM DEVAM",    "#00ccaa"),
 }
 
 @flask_app.route("/")
@@ -2139,6 +2225,40 @@ async def periodic_tasks():
 
 
 # ============================================================
+# ROCKET — GAINERS TARAMA DÖNGÜSÜ
+# ============================================================
+GAINERS_INTERVAL_S  = int(os.getenv("GAINERS_INTERVAL_S",  "1800"))  # 30 dakika
+GAINERS_COOLDOWN_H  = int(os.getenv("GAINERS_COOLDOWN_H",  "12"))    # aynı coin 12s cooldown
+
+async def gainers_scan_loop(candidate_queue):
+    await asyncio.sleep(300)  # bootstrap bitmesini bekle
+    while True:
+        try:
+            now_tr = datetime.now(timezone.utc).astimezone(TR_TZ)
+            hits   = 0
+            for sym in list(tracked_symbols):
+                result = check_gainers_signal(sym)
+                if result is None:
+                    continue
+                last_g = last_gainers_ts.get(sym)
+                if last_g is not None:
+                    elapsed = (now_tr.replace(tzinfo=None) - last_g.replace(tzinfo=None)).total_seconds() / 3600
+                    if elapsed < GAINERS_COOLDOWN_H:
+                        continue
+                # Açık pozisyon varsa atla
+                if any(s["status"] == "open" and s["symbol"] == sym and s["sig_type"] == "momentum_devam"
+                       for s in signal_log):
+                    continue
+                await candidate_queue.put(SignalCandidate(sym, result, now_tr))
+                last_gainers_ts[sym] = now_tr
+                hits += 1
+            if hits:
+                print(f"[ROCKET] Tarama tamamlandı: {hits} sinyal üretildi", flush=True)
+        except Exception as e:
+            print(f"[ROCKET] Tarama hata: {e}", flush=True)
+        await asyncio.sleep(GAINERS_INTERVAL_S)
+
+# ============================================================
 # MAIN
 # ============================================================
 async def main():
@@ -2170,6 +2290,7 @@ async def main():
     asyncio.create_task(signal_worker(candidate_queue))
     asyncio.create_task(periodic_tasks())
     asyncio.create_task(bootstrap_secondary_tf(symbols))
+    asyncio.create_task(gainers_scan_loop(candidate_queue))
 
     bot_status["status"] = "LIVE"
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
