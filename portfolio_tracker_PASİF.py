@@ -122,6 +122,8 @@ def receive_signal():
         "expire_trailing_stop_pct": EXPIRE_TRAIL_PCT,
         "expire_trailing_exit_price": None,
         "expire_trailing_exit_pct": None,
+        # analyzer
+        "analyzer_decision": None, "analyzer_time": None,
         "last_check": now.isoformat(), "checks": 0,
         "extra": {k: v for k, v in data.items() if k not in required + [
             "sig_type", "type", "sub_type", "subtype", "tp_system",
@@ -407,6 +409,11 @@ def calc_performance():
         "tp2_potential_extra_pnl": 0.0,
         "trailing_shadow_total": 0, "trailing_shadow_stopped": 0,
         "trailing_shadow_watching": 0, "trailing_total_pnl": 0.0,
+        "analyzer": {
+            "gir":     {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
+            "dikkat":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
+            "riskli":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
+        },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
     }
 
@@ -502,6 +509,19 @@ def calc_performance():
                 elif trail == "watching":
                     result["trailing_shadow_watching"] += 1
 
+            # analyzer istatistikleri (sadece kapanmış sinyaller)
+            ad = sig.get("analyzer_decision", "")
+            if ad and status not in ("open", "half_open"):
+                if "✅" in ad:   bucket_key = "gir"
+                elif "⚠️" in ad: bucket_key = "dikkat"
+                elif "🚫" in ad: bucket_key = "riskli"
+                else:            bucket_key = None
+                if bucket_key:
+                    ab = result["analyzer"][bucket_key]
+                    ab["total"] += 1; ab["pnl"] += pct
+                    if status in ("win_tp1", "win_tp2", "win_partial"): ab["wins"] += 1
+                    elif status in ("loss", "half_stopped"):             ab["losses"] += 1
+
             open_time_str = sig.get("open_time", "")
             if open_time_str:
                 try:
@@ -526,6 +546,10 @@ def calc_performance():
     result["total_pnl"] = round(result["total_pnl"], 2)
     result["tp2_potential_extra_pnl"] = round(result["tp2_potential_extra_pnl"], 2)
     result["trailing_total_pnl"] = round(result["trailing_total_pnl"], 2)
+    for bk, bv in result["analyzer"].items():
+        dec = bv["wins"] + bv["losses"]
+        bv["wr"]  = round(bv["wins"] / dec * 100, 1) if dec > 0 else 0
+        bv["pnl"] = round(bv["pnl"], 2)
 
     for tk, ts in type_stats.items():
         closed = ts["wins"] + ts["losses"] + ts["expired"]
@@ -567,6 +591,21 @@ def api_signals():
 def api_open():
     with _lock:
         return jsonify([s for s in signals_db if s.get("status") == "open"])
+
+@app.route("/api/signal/<signal_id>/analyzer", methods=["PATCH"])
+def update_analyzer(signal_id):
+    data = request.get_json(force=True, silent=True)
+    if not data or "analyzer_decision" not in data:
+        return jsonify({"error": "missing analyzer_decision"}), 400
+    with _lock:
+        for s in signals_db:
+            if s.get("id") == signal_id:
+                s["analyzer_decision"] = data["analyzer_decision"]
+                s["analyzer_time"]     = tr_now().isoformat()
+                save_signals()
+                print(f"[ANALYZER] {s['symbol']} → {data['analyzer_decision']}", flush=True)
+                return jsonify({"ok": True})
+    return jsonify({"error": "not found"}), 404
 
 @app.route("/api/signal/<signal_id>", methods=["DELETE"])
 def delete_signal(signal_id):
@@ -699,6 +738,16 @@ def type_badge(sig):
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
     return f'<span style="background:{c}22;color:{c};padding:2px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
 
+def analyzer_badge(sig):
+    d = sig.get("analyzer_decision") or ""
+    if not d:
+        return '<span style="color:#5a6a7a;font-size:.6rem">—</span>'
+    if "✅" in d:   c, l = "#2ecc71", "✅ GİR"
+    elif "⚠️" in d: c, l = "#f39c12", "⚠️ DİKKAT"
+    elif "🚫" in d: c, l = "#e74c3c", "🚫 RİSKLİ"
+    else:            c, l = "#8a9bb0", d[:12]
+    return f'<span style="background:{c}22;color:{c};padding:1px 6px;border-radius:3px;font-size:.6rem">{l}</span>'
+
 @app.route("/")
 def dashboard():
     perf = calc_performance()
@@ -758,7 +807,7 @@ def dashboard():
             <td>{fmt_price(sig['stop'])} ({stop_pct:+.1f}%)</td><td>{tp1_cell}</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
             <td>{sure_cell}</td>
-            <td>{exp_trail_cell}</td></tr>"""
+            <td>{exp_trail_cell}</td><td>{analyzer_badge(sig)}</td></tr>"""
 
     closed_rows = ""
     for sig in closed_sigs[:100]:
@@ -791,7 +840,7 @@ def dashboard():
             <td>{fmt_price(sig['entry'])}</td>
             <td style="color:{close_c};font-weight:bold">{close_s}</td>
             <td style="color:{peak_c}">{peak_s}</td><td>{tp2_shadow_badge(sig)}</td>
-            <td>{trail_cell}</td>
+            <td>{trail_cell}</td><td>{analyzer_badge(sig)}</td>
             <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
             <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('close_time') or '')[:16]}</td></tr>"""
 
@@ -866,6 +915,24 @@ def dashboard():
     trail_pnl = perf.get("trailing_total_pnl", 0)
     trail_pnl_color = "#2ecc71" if trail_pnl > 0 else ("#e74c3c" if trail_pnl < 0 else "#8a9bb0")
     win_partial_count = perf.get("win_partial", 0)
+
+    az = perf.get("analyzer", {})
+    def _az_row(key, label, color):
+        b = az.get(key, {}); t = b.get("total", 0)
+        if t == 0:
+            return f'<div class="tp2-stat"><span class="v" style="color:{color}">{label}</span><span class="l">— veri yok —</span></div>'
+        wr_c = "#2ecc71" if b.get("wr",0) >= 55 else ("#f39c12" if b.get("wr",0) >= 40 else "#e74c3c")
+        pc = "#2ecc71" if b.get("pnl",0) > 0 else ("#e74c3c" if b.get("pnl",0) < 0 else "#8a9bb0")
+        return (f'<div class="tp2-stat"><span class="v" style="color:{color}">{label}</span>'
+                f'<span class="l">{t} sinyal | WR <b style="color:{wr_c}">%{b.get("wr",0)}</b> | P&L <b style="color:{pc}">{b.get("pnl",0):+.2f}%</b></span></div>')
+    _analyzer_section = f"""<div class="tp2-box">
+    <h3>🤖 CLAUDE ANALYZER PERFORMANSI — "Karar kalitesi ne?"</h3>
+    <div class="tp2-stats">
+        {_az_row("gir",    "✅ GİR",     "#2ecc71")}
+        {_az_row("dikkat", "⚠️ DİKKAT",  "#f39c12")}
+        {_az_row("riskli", "🚫 RİSKLİ",  "#e74c3c")}
+    </div>
+</div>"""
 
     shadow_section = ""
     if shadow_rows:
@@ -986,6 +1053,8 @@ tr:hover td{{background:var(--card);}}
     </div>
 </div>
 
+{_analyzer_section}
+
 <div class="section">
     <h2>📈 SİNYAL TÜRÜ BAZLI KIRILIM</h2>
     <div class="table-wrap"><table><thead><tr>
@@ -1001,7 +1070,7 @@ tr:hover td{{background:var(--card);}}
     <p class="note">TP1'e ulaşınca otomatik kapanır. {expire_trail_threshold_h}s sonra kârlıysa %{EXPIRE_TRAIL_PCT} trailing aktif olur.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
-        <th>Stop</th><th>TP1</th><th>TP2</th><th>Süre</th><th>Exp.Trail</th>
+        <th>Stop</th><th>TP1</th><th>TP2</th><th>Süre</th><th>Exp.Trail</th><th>Analiz</th>
     </tr></thead><tbody>
         {open_rows if open_rows else '<tr><td colspan="11" class="empty">Açık pozisyon yok</td></tr>'}
     </tbody></table></div>
@@ -1013,7 +1082,7 @@ tr:hover td{{background:var(--card);}}
     <h2>📋 KAPANMIŞ İŞLEMLER (son 100)</h2>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Getiri</th><th>Peak</th>
-        <th>TP2</th><th>Trailing</th><th>Açılış</th><th>Kapanış</th>
+        <th>TP2</th><th>Trailing</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
         {closed_rows if closed_rows else '<tr><td colspan="10" class="empty">Henüz kapanmış işlem yok</td></tr>'}
     </tbody></table></div>

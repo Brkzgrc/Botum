@@ -901,13 +901,16 @@ def send_to_portfolio(result):
         r = requests.post(f"{PORTFOLIO_URL}/api/signal",
                           json=payload, headers=headers, timeout=5)
         if r.status_code == 201:
-            print(f"[PORTFOLIO] Sinyal gönderildi: {result['symbol']} ({sig_type})", flush=True)
+            sig_id = r.json().get("id", "")
+            print(f"[PORTFOLIO] Sinyal gönderildi: {result['symbol']} ({sig_type}) id={sig_id}", flush=True)
+            return sig_id
         elif r.status_code == 409:
             print(f"[PORTFOLIO] Zaten açık: {result['symbol']}", flush=True)
         else:
             print(f"[PORTFOLIO] HTTP {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
         print(f"[PORTFOLIO] Hata: {e}", flush=True)
+    return ""
 
 # ============================================================
 # CLAUDE SHADOW MODE
@@ -1799,7 +1802,7 @@ async def signal_worker(candidate_queue):
                 send_pump_telegram(msg)
             else:
                 send_telegram(msg)
-            send_to_portfolio(result)
+            portfolio_id = send_to_portfolio(result)
 
             # Claude Analyzer
             if ANTHROPIC_API_KEY and ANALYZER_TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
@@ -1811,8 +1814,8 @@ async def signal_worker(candidate_queue):
                 asyncio.create_task(
                     loop.run_in_executor(
                         None,
-                        lambda s=sig_snap, r=recent_cnt, n=sig_num:
-                            _analyzer_process(s, r, n)
+                        lambda s=sig_snap, r=recent_cnt, n=sig_num, pid=portfolio_id:
+                            _analyzer_process(s, r, n, pid)
                     )
                 )
 

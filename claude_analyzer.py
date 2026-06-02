@@ -555,13 +555,34 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
 # ============================================================
 # ANA GİRİŞ NOKTASI
 # ============================================================
-def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0):
+def _extract_verdict(decision: str) -> str:
+    if "✅" in decision: return "✅ GİR"
+    if "⚠️" in decision: return "⚠️ DİKKAT"
+    if "🚫" in decision: return "🚫 RİSKLİ"
+    return ""
+
+def _update_portfolio_analyzer(portfolio_id: str, verdict: str):
+    if not portfolio_id or not PORTFOLIO_URL or not verdict:
+        return
+    try:
+        headers = {"Content-Type": "application/json"}
+        if PORTFOLIO_TOKEN:
+            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+        requests.patch(
+            f"{PORTFOLIO_URL}/api/signal/{portfolio_id}/analyzer",
+            json={"analyzer_decision": verdict},
+            headers=headers, timeout=5,
+        )
+    except Exception as e:
+        print(f"[ANALYZER] Portfolio güncelleme hatası: {e}", flush=True)
+
+def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, portfolio_id: str = ""):
     """
     Sinyali değerlendir ve kararı Analyzer Telegram botuna gönder.
 
     Herhangi bir sistemden çağrılabilir:
         from claude_analyzer import process_and_send
-        process_and_send(signal_dict, recent_count=1, sig_num=42)
+        process_and_send(signal_dict, recent_count=1, sig_num=42, portfolio_id="SYM_123")
 
     signal dict zorunlu alanlar: symbol, type, entry, stop, tp1
     Opsiyonel: source ("bot" veya "smc"), tp2, tp3, sistem-spesifik metrikler
@@ -598,7 +619,9 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0):
     )
 
     send_decision(msg)
-    print(f"[ANALYZER] #{symbol} kararı gönderildi ({source})", flush=True)
+    verdict = _extract_verdict(decision)
+    _update_portfolio_analyzer(portfolio_id, verdict)
+    print(f"[ANALYZER] #{symbol} kararı gönderildi ({source}){f' → {verdict}' if verdict else ''}", flush=True)
 
 
 # ============================================================
