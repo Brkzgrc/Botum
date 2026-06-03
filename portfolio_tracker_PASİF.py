@@ -1039,6 +1039,21 @@ def dashboard():
 
     expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
 
+    _smc_section_block = ""
+    if _smc_alt_section:
+        _note_smc = "TP1'de %50 çıkış (half_open) → kalan %50 TP2 veya stop'a kadar takip edilir"
+        _smc_section_block = (
+            f'<div class="section"><h2>🟠 SMC SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</h2>'
+            f'<p class="note">{_note_smc}</p>{_smc_alt_section}</div>'
+        )
+    _bot_section_block = ""
+    if _bot_alt_section:
+        _note_bot = "Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır"
+        _bot_section_block = (
+            f'<div class="section"><h2>🔵 BOT SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</h2>'
+            f'<p class="note">{_note_bot}</p>{_bot_alt_section}</div>'
+        )
+
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip v2.7</title>
@@ -1121,29 +1136,9 @@ tr:hover td{{background:var(--card);}}
     </tbody></table></div>
 </div>
 
-<div class="section">
-    <h2>🟠 SMC SİNYALLERİ</h2>
-    <p class="note">TP1'de %50 çıkış (half_open) → kalan %50 TP2 veya stop'a kadar takip edilir</p>
-    <div class="table-wrap"><table><thead><tr>
-        <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
-        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
-    </tr></thead><tbody>
-        {smc_type_rows if smc_type_rows else '<tr><td colspan="9" class="empty">Henüz SMC sinyali yok</td></tr>'}
-    </tbody></table></div>
-    {_smc_alt_section}
-</div>
+{_smc_section_block}
 
-<div class="section">
-    <h2>🔵 BOT SİNYALLERİ</h2>
-    <p class="note">Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır</p>
-    <div class="table-wrap"><table><thead><tr>
-        <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
-        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
-    </tr></thead><tbody>
-        {bot_type_rows if bot_type_rows else '<tr><td colspan="9" class="empty">Henüz bot sinyali yok</td></tr>'}
-    </tbody></table></div>
-    {_bot_alt_section}
-</div>
+{_bot_section_block}
 
 {_sim_section}
 
