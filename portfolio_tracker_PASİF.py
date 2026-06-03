@@ -349,6 +349,15 @@ def calc_performance():
         },
         "sim_bot":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0},
         "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0},
+        "smc_alt": {
+            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+        },
+        "bot_alt": {
+            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+        },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
     }
 
@@ -423,37 +432,97 @@ def calc_performance():
                     if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"): ab["wins"] += 1
                     elif status in ("loss", "half_stopped"):                          ab["losses"] += 1
 
-        # Hayali senaryo hesabı (tüm sinyaller üzerinde)
-        for sig in all_sigs:
-            is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
-            bucket = result["sim_smc"] if is_smc else result["sim_bot"]
-            pk = sig.get("peak_pct", 0) or 0
-            dp = sig.get("low_pct", 0) or 0
-            if pk >= SIM_TP2:
-                bucket["tp2"] += 1; bucket["pnl"] += SIM_TP2
-            elif pk >= SIM_TP1 and dp > SIM_STOP:
-                bucket["tp1"] += 1; bucket["pnl"] += SIM_TP1
-            elif dp <= SIM_STOP:
-                bucket["stop"] += 1; bucket["pnl"] += SIM_STOP
-            else:
-                bucket["open"] += 1
+        # Günlük / haftalık / aylık istatistikleri
+        _pct_for_time = (sig.get("close_pct", 0) or 0) if status not in ("open", "half_open") else 0
+        open_time_str = sig.get("open_time", "")
+        if open_time_str:
+            try:
+                dt = datetime.fromisoformat(open_time_str)
+                day_key = dt.strftime("%Y-%m-%d")
+                week_key = dt.strftime("%Y-W%W")
+                month_key = dt.strftime("%Y-%m")
+                for _tb, _tk in [(result["daily"], day_key),
+                                  (result["weekly"], week_key),
+                                  (result["monthly"], month_key)]:
+                    if _tk not in _tb:
+                        _tb[_tk] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
+                    _tb[_tk]["trades"] += 1; _tb[_tk]["pnl"] += _pct_for_time
+                    if status in ("win_tp1", "win_partial"): _tb[_tk]["wins"] += 1
+                    elif status == "loss": _tb[_tk]["losses"] += 1
+            except Exception: pass
 
-            open_time_str = sig.get("open_time", "")
-            if open_time_str:
-                try:
-                    dt = datetime.fromisoformat(open_time_str)
-                    day_key = dt.strftime("%Y-%m-%d")
-                    week_key = dt.strftime("%Y-W%W")
-                    month_key = dt.strftime("%Y-%m")
-                    for bucket, key in [(result["daily"], day_key),
-                                        (result["weekly"], week_key),
-                                        (result["monthly"], month_key)]:
-                        if key not in bucket:
-                            bucket[key] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
-                        bucket[key]["trades"] += 1; bucket[key]["pnl"] += pct
-                        if status in ("win_tp1", "win_partial"): bucket[key]["wins"] += 1
-                        elif status == "loss": bucket[key]["losses"] += 1
-                except Exception: pass
+        # Alternatif senaryo hesabı (sadece kapanmış sinyaller)
+        if status not in ("open", "half_open"):
+            _is_smc = source in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+            _entry = sig.get("entry", 0) or 0
+            _tp1p = sig.get("tp1"); _tp2p = sig.get("tp2"); _stopp = sig.get("stop")
+            _tp1_pct = round((_tp1p - _entry) / _entry * 100, 2) if _tp1p and _entry else 0
+            _tp2_pct = round((_tp2p - _entry) / _entry * 100, 2) if _tp2p and _entry else 0
+            _stop_pct = round((_stopp - _entry) / _entry * 100, 2) if _stopp and _entry else 0
+            _pk = sig.get("peak_pct", 0) or 0
+            _dp = sig.get("low_pct", 0) or 0
+            _closed_pct = sig.get("close_pct", 0) or 0
+
+            if _is_smc:
+                sa = result["smc_alt"]
+                sa["actual"]["total"] += 1
+                if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
+                    sa["actual"]["wins"] += 1; sa["actual"]["pnl"] += _closed_pct
+                elif status in ("loss", "half_stopped"):
+                    if _closed_pct > 0: sa["actual"]["wins"] += 1
+                    else: sa["actual"]["losses"] += 1
+                    sa["actual"]["pnl"] += _closed_pct
+                else:
+                    sa["actual"]["expired"] += 1
+
+                sa["tp1_only"]["total"] += 1
+                if _tp1_pct > 0 and _pk >= _tp1_pct:
+                    sa["tp1_only"]["wins"] += 1; sa["tp1_only"]["pnl"] += _tp1_pct
+                elif _stop_pct < 0 and _dp <= _stop_pct:
+                    sa["tp1_only"]["losses"] += 1; sa["tp1_only"]["pnl"] += _stop_pct
+                else:
+                    sa["tp1_only"]["expired"] += 1
+
+                if _tp2_pct > 0:
+                    sa["tp2_only"]["total"] += 1
+                    if _pk >= _tp2_pct:
+                        sa["tp2_only"]["wins"] += 1; sa["tp2_only"]["pnl"] += _tp2_pct
+                    elif _stop_pct < 0 and _dp <= _stop_pct:
+                        sa["tp2_only"]["losses"] += 1; sa["tp2_only"]["pnl"] += _stop_pct
+                    else:
+                        sa["tp2_only"]["expired"] += 1
+            else:
+                ba = result["bot_alt"]
+                ba["actual"]["total"] += 1
+                if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
+                    ba["actual"]["wins"] += 1; ba["actual"]["pnl"] += _closed_pct
+                elif status == "loss":
+                    ba["actual"]["losses"] += 1; ba["actual"]["pnl"] += _closed_pct
+                else:
+                    ba["actual"]["expired"] += 1
+
+                ba["tp1_only"]["total"] += 1
+                if _tp1_pct > 0 and _pk >= _tp1_pct:
+                    ba["tp1_only"]["wins"] += 1; ba["tp1_only"]["pnl"] += _tp1_pct
+                elif _stop_pct < 0 and _dp <= _stop_pct:
+                    ba["tp1_only"]["losses"] += 1; ba["tp1_only"]["pnl"] += _stop_pct
+                else:
+                    ba["tp1_only"]["expired"] += 1
+
+    # Hayali senaryo hesabı (tüm sinyaller üzerinde — ayrı döngü)
+    for sig in all_sigs:
+        is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        bucket = result["sim_smc"] if is_smc else result["sim_bot"]
+        pk = sig.get("peak_pct", 0) or 0
+        dp = sig.get("low_pct", 0) or 0
+        if pk >= SIM_TP2:
+            bucket["tp2"] += 1; bucket["pnl"] += SIM_TP2
+        elif pk >= SIM_TP1 and dp > SIM_STOP:
+            bucket["tp1"] += 1; bucket["pnl"] += SIM_TP1
+        elif dp <= SIM_STOP:
+            bucket["stop"] += 1; bucket["pnl"] += SIM_STOP
+        else:
+            bucket["open"] += 1
 
     if closed_peaks:
         result["avg_peak"] = round(sum(closed_peaks) / len(closed_peaks), 2)
@@ -469,6 +538,13 @@ def calc_performance():
         decided = b["tp2"] + b["tp1"] + b["stop"]
         b["wr"]  = round((b["tp2"] + b["tp1"]) / decided * 100, 1) if decided > 0 else 0
         b["pnl"] = round(b["pnl"], 2)
+
+    for ak in ("smc_alt", "bot_alt"):
+        for sk in result[ak]:
+            s = result[ak][sk]
+            dec = s["wins"] + s["losses"]
+            s["wr"] = round(s["wins"] / dec * 100, 1) if dec > 0 else 0
+            s["pnl"] = round(s["pnl"], 2)
 
     for tk, ts in type_stats.items():
         closed = ts["wins"] + ts["losses"] + ts["expired"]
@@ -771,6 +847,16 @@ def dashboard():
         else:
             bot_type_rows += row
 
+    # Hayali senaryo verileri
+    def _sim_row(b):
+        decided = b["tp2"] + b["tp1"] + b["stop"]
+        wr_c = "#2ecc71" if b["wr"] >= 55 else ("#f39c12" if b["wr"] >= 40 else "#e74c3c")
+        pnl_c = "#2ecc71" if b["pnl"] > 0 else ("#e74c3c" if b["pnl"] < 0 else "#8a9bb0")
+        return (b["tp2"], b["tp1"], b["stop"], b["open"], decided, b["wr"], wr_c, b["pnl"], pnl_c)
+    sb = perf.get("sim_bot", {}); ss = perf.get("sim_smc", {})
+    sbt = _sim_row(sb) if sb else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
+    sst = _sim_row(ss) if ss else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
+
     # Hayali senaryo — TOPLAM kolonu
     st_tp2  = sbt[0] + sst[0]; st_tp1 = sbt[1] + sst[1]
     st_stop = sbt[2] + sst[2]; st_open = sbt[3] + sst[3]
@@ -844,16 +930,6 @@ def dashboard():
     pnl_color_val = "#2ecc71" if total_pnl > 0 else ("#e74c3c" if total_pnl < 0 else "#8a9bb0")
     win_partial_count = perf.get("win_partial", 0)
 
-    # Hayali senaryo verileri
-    def _sim_row(b):
-        decided = b["tp2"] + b["tp1"] + b["stop"]
-        wr_c = "#2ecc71" if b["wr"] >= 55 else ("#f39c12" if b["wr"] >= 40 else "#e74c3c")
-        pnl_c = "#2ecc71" if b["pnl"] > 0 else ("#e74c3c" if b["pnl"] < 0 else "#8a9bb0")
-        return (b["tp2"], b["tp1"], b["stop"], b["open"], decided, b["wr"], wr_c, b["pnl"], pnl_c)
-    sb = perf.get("sim_bot", {}); ss = perf.get("sim_smc", {})
-    sbt = _sim_row(sb) if sb else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
-    sst = _sim_row(ss) if ss else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
-
     az = perf.get("analyzer", {})
     def _az_row(key, label, color):
         b = az.get(key, {}); t = b.get("total", 0)
@@ -871,6 +947,57 @@ def dashboard():
         {_az_row("riskli", "🚫 RİSKLİ",  "#e74c3c")}
     </div>
 </div>"""
+
+    # Alternatif senaryo bölümleri (SMC ve Bot altına eklenecek)
+    smc_a = perf.get("smc_alt", {})
+    bot_a = perf.get("bot_alt", {})
+
+    def _alt_col(label, color, data):
+        if not data or data.get("total", 0) == 0:
+            return (f'<div style="min-width:110px"><div style="color:{color};font-size:.6rem;'
+                    f'letter-spacing:1px;margin-bottom:6px">{label}</div>'
+                    f'<div style="color:#5a6a7a;font-size:.65rem">— veri yok —</div></div>')
+        wr_c  = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
+        pnl_c = "#2ecc71" if data.get("pnl",0) > 0 else ("#e74c3c" if data.get("pnl",0) < 0 else "#8a9bb0")
+        return (f'<div style="min-width:110px">'
+                f'<div style="color:{color};font-size:.6rem;letter-spacing:1px;margin-bottom:6px">{label}</div>'
+                f'<div style="display:flex;flex-direction:column;gap:3px;font-size:.68rem">'
+                f'<div>Win <span style="color:#2ecc71;float:right">{data.get("wins",0)}</span></div>'
+                f'<div>Loss <span style="color:#e74c3c;float:right">{data.get("losses",0)}</span></div>'
+                f'<div>Exp <span style="color:#f39c12;float:right">{data.get("expired",0)}</span></div>'
+                f'<div style="border-top:1px solid #1a2030;padding-top:3px">'
+                f'WR <span style="color:{wr_c};font-weight:bold;float:right">%{data.get("wr",0)}</span></div>'
+                f'<div>P&amp;L <span style="color:{pnl_c};font-weight:bold;float:right">{data.get("pnl",0):+.1f}%</span></div>'
+                f'</div></div>')
+
+    _smc_alt_section = ""
+    if smc_a and smc_a.get("actual", {}).get("total", 0) > 0:
+        _smc_alt_section = (
+            f'<div style="margin-top:12px;padding:10px 12px;background:#0a1018;border:1px solid #1a2030;border-radius:4px">'
+            f'<div style="font-size:.58rem;color:#5a6a7a;letter-spacing:1px;margin-bottom:8px">ACABA — FARKLI ÇIKIŞ STRATEJİSİ OLSAYDI?</div>'
+            f'<div style="display:flex;gap:24px;flex-wrap:wrap">'
+            f'{_alt_col("GERÇEK (½ TP1 + ½ TP2)", "#e67e22", smc_a.get("actual",{}))}'
+            f'{_alt_col("TAM TP1 (tamamı)", "#f39c12", smc_a.get("tp1_only",{}))}'
+            f'{_alt_col("TAM TP2 (tamamı)", "#2ecc71", smc_a.get("tp2_only",{}))}'
+            f'</div>'
+            f'<div style="font-size:.57rem;color:#3a4a5a;margin-top:6px">'
+            f'Peak/dip verisi üzerinden hesaplanır. Gerçek fiyat hareketi farklılık gösterebilir.</div>'
+            f'</div>'
+        )
+
+    _bot_alt_section = ""
+    if bot_a and bot_a.get("actual", {}).get("total", 0) > 0:
+        _bot_alt_section = (
+            f'<div style="margin-top:12px;padding:10px 12px;background:#0a1018;border:1px solid #1a2030;border-radius:4px">'
+            f'<div style="font-size:.58rem;color:#5a6a7a;letter-spacing:1px;margin-bottom:8px">ACABA — FARKLI ÇIKIŞ STRATEJİSİ OLSAYDI?</div>'
+            f'<div style="display:flex;gap:24px;flex-wrap:wrap">'
+            f'{_alt_col("GERÇEK (Trailing %3)", "#3498db", bot_a.get("actual",{}))}'
+            f'{_alt_col("TAM TP1 (tamamı)", "#f39c12", bot_a.get("tp1_only",{}))}'
+            f'</div>'
+            f'<div style="font-size:.57rem;color:#3a4a5a;margin-top:6px">'
+            f'TP1 sabit hedef varsayımı — trailing çıkış gerçek peak/dip üzerinden hesaplanır.</div>'
+            f'</div>'
+        )
 
     shadow_section = ""
     if shadow_rows:
@@ -976,6 +1103,7 @@ tr:hover td{{background:var(--card);}}
     </tr></thead><tbody>
         {smc_type_rows if smc_type_rows else '<tr><td colspan="9" class="empty">Henüz SMC sinyali yok</td></tr>'}
     </tbody></table></div>
+    {_smc_alt_section}
 </div>
 
 <div class="section">
@@ -987,6 +1115,7 @@ tr:hover td{{background:var(--card);}}
     </tr></thead><tbody>
         {bot_type_rows if bot_type_rows else '<tr><td colspan="9" class="empty">Henüz bot sinyali yok</td></tr>'}
     </tbody></table></div>
+    {_bot_alt_section}
 </div>
 
 {_sim_section}
