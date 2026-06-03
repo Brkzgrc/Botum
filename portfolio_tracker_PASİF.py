@@ -775,10 +775,10 @@ def dashboard():
             trail_ret_v  = round((trail_stop_v - sig["entry"]) / sig["entry"] * 100, 1)
             tc = "#f39c12" if trail_ret_v >= 0 else "#e74c3c"
             stop_cell = (f'<span style="background:{tc}22;color:{tc};padding:1px 5px;border-radius:3px;'
-                         f'font-size:.6rem;white-space:nowrap">⚡ {fmt_price(trail_stop_v)} ({trail_ret_v:+.1f}%)</span>')
+                         f'font-size:.6rem;white-space:nowrap">⚡ {fmt_price(trail_stop_v)} ({trail_ret_v:+.2f}%)</span>')
         else:
-            stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 1) if sig["entry"] > 0 else 0
-            stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.1f}%)"
+            stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
+            stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
 
         sure_cell = '<span style="font-size:.7rem;color:#7f8c8d">—</span>'
         try:
@@ -886,7 +886,7 @@ def dashboard():
             <td style="text-align:center;color:#e74c3c">{sbt[2]}</td>
             <td style="text-align:center;color:#8a9bb0">{sbt[3]}</td>
             <td style="text-align:center"><span style="color:{sbt[6]}">%{sbt[5]}</span></td>
-            <td style="text-align:center"><span style="color:{sbt[8]}">{sbt[7]:+.1f}%</span></td>
+            <td style="text-align:center"><span style="color:{sbt[8]}">{sbt[7]:+.2f}%</span></td>
         </tr>
         <tr>
             <td style="color:#e67e22">SMC Sinyalleri</td>
@@ -895,7 +895,7 @@ def dashboard():
             <td style="text-align:center;color:#e74c3c">{sst[2]}</td>
             <td style="text-align:center;color:#8a9bb0">{sst[3]}</td>
             <td style="text-align:center"><span style="color:{sst[6]}">%{sst[5]}</span></td>
-            <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.1f}%</span></td>
+            <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.2f}%</span></td>
         </tr>
         <tr style="border-top:2px solid #1a3050">
             <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
@@ -904,7 +904,7 @@ def dashboard():
             <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
             <td style="text-align:center;color:#8a9bb0">{st_open}</td>
             <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
-            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.1f}%</span></td>
+            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.2f}%</span></td>
         </tr>
     </tbody></table></div>
 </div>"""
@@ -979,7 +979,7 @@ def dashboard():
                 f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
                 f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
-                f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{data.get("pnl",0):+.1f}%</span></td>')
+                f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{data.get("pnl",0):+.2f}%</span></td>')
 
     _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
                '<th style="text-align:center;color:#2ecc71">Win</th>'
