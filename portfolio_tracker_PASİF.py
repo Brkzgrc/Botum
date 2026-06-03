@@ -880,15 +880,6 @@ def dashboard():
         <th style="text-align:center;color:#8a9bb0">P&amp;L</th>
     </tr></thead><tbody>
         <tr>
-            <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
-            <td style="text-align:center;color:#27ae60;font-weight:bold">{st_tp2}</td>
-            <td style="text-align:center;color:#2ecc71;font-weight:bold">{st_tp1}</td>
-            <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
-            <td style="text-align:center;color:#8a9bb0">{st_open}</td>
-            <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
-            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.1f}%</span></td>
-        </tr>
-        <tr>
             <td style="color:#3498db">Bot Sinyalleri</td>
             <td style="text-align:center;color:#27ae60">{sbt[0]}</td>
             <td style="text-align:center;color:#2ecc71">{sbt[1]}</td>
@@ -905,6 +896,15 @@ def dashboard():
             <td style="text-align:center;color:#8a9bb0">{sst[3]}</td>
             <td style="text-align:center"><span style="color:{sst[6]}">%{sst[5]}</span></td>
             <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.1f}%</span></td>
+        </tr>
+        <tr style="border-top:2px solid #1a3050">
+            <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
+            <td style="text-align:center;color:#27ae60;font-weight:bold">{st_tp2}</td>
+            <td style="text-align:center;color:#2ecc71;font-weight:bold">{st_tp1}</td>
+            <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
+            <td style="text-align:center;color:#8a9bb0">{st_open}</td>
+            <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
+            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.1f}%</span></td>
         </tr>
     </tbody></table></div>
 </div>"""
