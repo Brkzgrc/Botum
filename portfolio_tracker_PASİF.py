@@ -684,7 +684,7 @@ def status_badge(status):
         "expired":      ("#f39c12", "EXPIRED"),
     }
     c, label = colors.get(status, ("#8a9bb0", status.upper()))
-    return f'<span style="background:{c}22;color:{c};padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold">{label}</span>'
+    return f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold">{label}</span>'
 
 def tp2_shadow_badge(sig):
     shadow = sig.get("tp2_shadow", "n/a")
@@ -715,7 +715,7 @@ def type_badge(sig):
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
         src_label = "SMC-T" if source == "smc-trailing" else ("SMC-M" if source == "smc-momentum" else "SMC")
-        return f'<span style="background:#e67e2222;color:#e67e22;padding:2px 6px;border-radius:3px;font-size:.65rem">{src_label} {phase_label}</span>'
+        return f'<span style="border:1px solid #e67e22;color:#e67e22;padding:1px 6px;border-radius:3px;font-size:.65rem">{src_label} {phase_label}</span>'
     colors = {
         "dip":              "#2ecc71",
         "trend":            "#3498db",
@@ -726,6 +726,7 @@ def type_badge(sig):
         "pump_orta":        "#ffcc00",
         "pump_uzun":        "#00cc66",
         "pump_probability": "#0088ff",
+        "momentum_devam":   "#00ccaa",
     }
     labels = {
         "panik_pump":       "PANİK PUMP",
@@ -733,10 +734,11 @@ def type_badge(sig):
         "pump_orta":        "ORTA VADE (72s)",
         "pump_uzun":        "UZUN VADE (168s)",
         "pump_probability": "PUMP PROB",
+        "momentum_devam":   "ROCKET",
     }
     c = colors.get(sig_type, "#8a9bb0")
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
-    return f'<span style="background:{c}22;color:{c};padding:2px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
+    return f'<span style="border:1px solid {c};color:{c};padding:1px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
 
 def analyzer_badge(sig):
     d = sig.get("analyzer_decision") or ""
