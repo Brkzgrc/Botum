@@ -715,7 +715,7 @@ def type_badge(sig):
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
         src_label = "SMC-T" if source == "smc-trailing" else ("SMC-M" if source == "smc-momentum" else "SMC")
-        return f'<span style="border:1px solid #e67e22;color:#e67e22;padding:1px 6px;border-radius:3px;font-size:.65rem">{src_label} {phase_label}</span>'
+        return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem">{src_label} {phase_label}</span>'
     colors = {
         "dip":              "#2ecc71",
         "trend":            "#3498db",
@@ -738,7 +738,7 @@ def type_badge(sig):
     }
     c = colors.get(sig_type, "#8a9bb0")
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
-    return f'<span style="border:1px solid {c};color:{c};padding:1px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
+    return f'<span style="border:1px solid {c};color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem">{label}</span>'
 
 def analyzer_badge(sig):
     d = sig.get("analyzer_decision") or ""
