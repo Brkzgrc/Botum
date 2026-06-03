@@ -866,29 +866,47 @@ def dashboard():
     st_wrc  = "#2ecc71" if st_wr >= 55 else ("#f39c12" if st_wr >= 40 else "#e74c3c")
     st_pnlc = "#2ecc71" if st_pnl > 0 else ("#e74c3c" if st_pnl < 0 else "#8a9bb0")
 
-    def _sim_col(label, color, tp2, tp1, stop, open_, wr, wrc, pnl, pnlc):
-        return f"""<div style="min-width:140px">
-            <div style="color:{color};font-size:.65rem;letter-spacing:1px;margin-bottom:8px">{label}</div>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:.72rem">
-                <div>TP2 (+10%) <span style="color:#27ae60;font-weight:bold;float:right">{tp2}</span></div>
-                <div>TP1 (+5%)  <span style="color:#2ecc71;font-weight:bold;float:right">{tp1}</span></div>
-                <div>Stop (-2.5%) <span style="color:#e74c3c;font-weight:bold;float:right">{stop}</span></div>
-                <div>Devam/Açık <span style="color:#8a9bb0;font-weight:bold;float:right">{open_}</span></div>
-                <div style="border-top:1px solid var(--border);padding-top:4px">
-                    Win Rate <span style="color:{wrc};font-weight:bold;float:right">%{wr}</span></div>
-                <div>P&L <span style="color:{pnlc};font-weight:bold;float:right">{pnl:+.1f}%</span></div>
-            </div>
-        </div>"""
-
     _sim_section = f"""<div class="tp2-box">
     <h3>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</h3>
     <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
         Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
-    <div class="tp2-stats" style="gap:28px">
-        {_sim_col("TOPLAM", "#c0cdd8", st_tp2, st_tp1, st_stop, st_open, st_wr, st_wrc, st_pnl, st_pnlc)}
-        {_sim_col("BOT SİNYALLERİ", "#3498db", sbt[0], sbt[1], sbt[2], sbt[3], sbt[5], sbt[6], sbt[7], sbt[8])}
-        {_sim_col("SMC SİNYALLERİ", "#e67e22", sst[0], sst[1], sst[2], sst[3], sst[5], sst[6], sst[7], sst[8])}
-    </div>
+    <div class="table-wrap"><table style="font-size:.72rem"><thead><tr>
+        <th></th>
+        <th style="text-align:center;color:#27ae60">TP2 (+10%)</th>
+        <th style="text-align:center;color:#2ecc71">TP1 (+5%)</th>
+        <th style="text-align:center;color:#e74c3c">Stop (-2.5%)</th>
+        <th style="text-align:center;color:#8a9bb0">Devam/Açık</th>
+        <th style="text-align:center;color:#8a9bb0">Win Rate</th>
+        <th style="text-align:center;color:#8a9bb0">P&amp;L</th>
+    </tr></thead><tbody>
+        <tr>
+            <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
+            <td style="text-align:center;color:#27ae60;font-weight:bold">{st_tp2}</td>
+            <td style="text-align:center;color:#2ecc71;font-weight:bold">{st_tp1}</td>
+            <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
+            <td style="text-align:center;color:#8a9bb0">{st_open}</td>
+            <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
+            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.1f}%</span></td>
+        </tr>
+        <tr>
+            <td style="color:#3498db">Bot Sinyalleri</td>
+            <td style="text-align:center;color:#27ae60">{sbt[0]}</td>
+            <td style="text-align:center;color:#2ecc71">{sbt[1]}</td>
+            <td style="text-align:center;color:#e74c3c">{sbt[2]}</td>
+            <td style="text-align:center;color:#8a9bb0">{sbt[3]}</td>
+            <td style="text-align:center"><span style="color:{sbt[6]}">%{sbt[5]}</span></td>
+            <td style="text-align:center"><span style="color:{sbt[8]}">{sbt[7]:+.1f}%</span></td>
+        </tr>
+        <tr>
+            <td style="color:#e67e22">SMC Sinyalleri</td>
+            <td style="text-align:center;color:#27ae60">{sst[0]}</td>
+            <td style="text-align:center;color:#2ecc71">{sst[1]}</td>
+            <td style="text-align:center;color:#e74c3c">{sst[2]}</td>
+            <td style="text-align:center;color:#8a9bb0">{sst[3]}</td>
+            <td style="text-align:center"><span style="color:{sst[6]}">%{sst[5]}</span></td>
+            <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.1f}%</span></td>
+        </tr>
+    </tbody></table></div>
 </div>"""
     type_rows = smc_type_rows + bot_type_rows
 
@@ -952,50 +970,59 @@ def dashboard():
     smc_a = perf.get("smc_alt", {})
     bot_a = perf.get("bot_alt", {})
 
-    def _alt_col(label, color, data):
+    def _alt_cell(data, color):
         if not data or data.get("total", 0) == 0:
-            return (f'<div style="min-width:110px"><div style="color:{color};font-size:.6rem;'
-                    f'letter-spacing:1px;margin-bottom:6px">{label}</div>'
-                    f'<div style="color:#5a6a7a;font-size:.65rem">— veri yok —</div></div>')
+            return '<td style="color:#3a4a5a;text-align:center" colspan="1">—</td>'
         wr_c  = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
         pnl_c = "#2ecc71" if data.get("pnl",0) > 0 else ("#e74c3c" if data.get("pnl",0) < 0 else "#8a9bb0")
-        return (f'<div style="min-width:110px">'
-                f'<div style="color:{color};font-size:.6rem;letter-spacing:1px;margin-bottom:6px">{label}</div>'
-                f'<div style="display:flex;flex-direction:column;gap:3px;font-size:.68rem">'
-                f'<div>Win <span style="color:#2ecc71;float:right">{data.get("wins",0)}</span></div>'
-                f'<div>Loss <span style="color:#e74c3c;float:right">{data.get("losses",0)}</span></div>'
-                f'<div>Exp <span style="color:#f39c12;float:right">{data.get("expired",0)}</span></div>'
-                f'<div style="border-top:1px solid #1a2030;padding-top:3px">'
-                f'WR <span style="color:{wr_c};font-weight:bold;float:right">%{data.get("wr",0)}</span></div>'
-                f'<div>P&amp;L <span style="color:{pnl_c};font-weight:bold;float:right">{data.get("pnl",0):+.1f}%</span></div>'
-                f'</div></div>')
+        return (f'<td style="text-align:center"><span style="color:#2ecc71">{data.get("wins",0)}</span></td>'
+                f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
+                f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
+                f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
+                f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{data.get("pnl",0):+.1f}%</span></td>')
+
+    _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
+               '<th style="text-align:center;color:#2ecc71">Win</th>'
+               '<th style="text-align:center;color:#e74c3c">Loss</th>'
+               '<th style="text-align:center;color:#f39c12">Exp</th>'
+               '<th style="text-align:center;color:#8a9bb0">WR</th>'
+               '<th style="text-align:center;color:#8a9bb0">P&amp;L</th>')
 
     _smc_alt_section = ""
     if smc_a and smc_a.get("actual", {}).get("total", 0) > 0:
         _smc_alt_section = (
-            f'<div style="margin-top:12px;padding:10px 12px;background:#0a1018;border:1px solid #1a2030;border-radius:4px">'
-            f'<div style="font-size:.58rem;color:#5a6a7a;letter-spacing:1px;margin-bottom:8px">ACABA — FARKLI ÇIKIŞ STRATEJİSİ OLSAYDI?</div>'
-            f'<div style="display:flex;gap:24px;flex-wrap:wrap">'
-            f'{_alt_col("GERÇEK (½ TP1 + ½ TP2)", "#e67e22", smc_a.get("actual",{}))}'
-            f'{_alt_col("TAM TP1 (tamamı)", "#f39c12", smc_a.get("tp1_only",{}))}'
-            f'{_alt_col("TAM TP2 (tamamı)", "#2ecc71", smc_a.get("tp2_only",{}))}'
-            f'</div>'
-            f'<div style="font-size:.57rem;color:#3a4a5a;margin-top:6px">'
-            f'Peak/dip verisi üzerinden hesaplanır. Gerçek fiyat hareketi farklılık gösterebilir.</div>'
+            f'<div style="margin-top:10px;padding:10px 14px;background:#070d14;'
+            f'border:1px solid #1a2535;border-radius:4px">'
+            f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
+            f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
+            f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
+            f'<tr><td style="color:#e67e22;white-space:nowrap">½ TP1 + ½ TP2 (gerçek)</td>'
+            f'{_alt_cell(smc_a.get("actual",{}), "#e67e22")}</tr>'
+            f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
+            f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
+            f'<tr><td style="color:#2ecc71;white-space:nowrap">Tam TP2 (%100)</td>'
+            f'{_alt_cell(smc_a.get("tp2_only",{}), "#2ecc71")}</tr>'
+            f'</tbody></table></div>'
+            f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
+            f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
             f'</div>'
         )
 
     _bot_alt_section = ""
     if bot_a and bot_a.get("actual", {}).get("total", 0) > 0:
         _bot_alt_section = (
-            f'<div style="margin-top:12px;padding:10px 12px;background:#0a1018;border:1px solid #1a2030;border-radius:4px">'
-            f'<div style="font-size:.58rem;color:#5a6a7a;letter-spacing:1px;margin-bottom:8px">ACABA — FARKLI ÇIKIŞ STRATEJİSİ OLSAYDI?</div>'
-            f'<div style="display:flex;gap:24px;flex-wrap:wrap">'
-            f'{_alt_col("GERÇEK (Trailing %3)", "#3498db", bot_a.get("actual",{}))}'
-            f'{_alt_col("TAM TP1 (tamamı)", "#f39c12", bot_a.get("tp1_only",{}))}'
-            f'</div>'
-            f'<div style="font-size:.57rem;color:#3a4a5a;margin-top:6px">'
-            f'TP1 sabit hedef varsayımı — trailing çıkış gerçek peak/dip üzerinden hesaplanır.</div>'
+            f'<div style="margin-top:10px;padding:10px 14px;background:#070d14;'
+            f'border:1px solid #1a2535;border-radius:4px">'
+            f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
+            f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
+            f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
+            f'<tr><td style="color:#3498db;white-space:nowrap">Trailing %3 (gerçek)</td>'
+            f'{_alt_cell(bot_a.get("actual",{}), "#3498db")}</tr>'
+            f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
+            f'{_alt_cell(bot_a.get("tp1_only",{}), "#f39c12")}</tr>'
+            f'</tbody></table></div>'
+            f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
+            f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
             f'</div>'
         )
 
