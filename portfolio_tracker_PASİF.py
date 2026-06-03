@@ -751,20 +751,60 @@ def dashboard():
             <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
             <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('close_time') or '')[:16]}</td></tr>"""
 
-    type_rows = ""
+    # Sinyal türü tabloları — SMC vs Bot ayrımı
+    smc_type_rows = ""
+    bot_type_rows = ""
     for tk, ts in sorted(perf.get("by_type", {}).items()):
         wr = ts.get("win_rate", 0)
         wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
         pnl = ts.get("total_pnl", 0)
         pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
-        type_rows += f"""<tr>
-            <td style="color:#ecf0f1;font-weight:bold">{tk}</td>
-            <td>{ts.get('total',0)}</td><td style="color:#3498db">{ts.get('open',0)}</td>
-            <td style="color:#2ecc71">{ts.get('wins',0)}</td><td style="color:#e74c3c">{ts.get('losses',0)}</td>
-            <td style="color:#f39c12">{ts.get('expired',0)}</td>
-            <td style="color:{wr_c};font-weight:bold">%{wr}</td>
-            <td style="color:{pnl_c};font-weight:bold">{pnl:+.2f}%</td>
-            <td>{ts.get('avg_peak',0)}%</td></tr>"""
+        row = (f'<tr><td style="color:#ecf0f1;font-weight:bold">{tk}</td>'
+               f'<td>{ts.get("total",0)}</td><td style="color:#3498db">{ts.get("open",0)}</td>'
+               f'<td style="color:#2ecc71">{ts.get("wins",0)}</td><td style="color:#e74c3c">{ts.get("losses",0)}</td>'
+               f'<td style="color:#f39c12">{ts.get("expired",0)}</td>'
+               f'<td style="color:{wr_c};font-weight:bold">%{wr}</td>'
+               f'<td style="color:{pnl_c};font-weight:bold">{pnl:+.2f}%</td>'
+               f'<td>{ts.get("avg_peak",0)}%</td></tr>')
+        if tk.startswith("SMC"):
+            smc_type_rows += row
+        else:
+            bot_type_rows += row
+
+    # Hayali senaryo — TOPLAM kolonu
+    st_tp2  = sbt[0] + sst[0]; st_tp1 = sbt[1] + sst[1]
+    st_stop = sbt[2] + sst[2]; st_open = sbt[3] + sst[3]
+    st_dec  = st_tp2 + st_tp1 + st_stop
+    st_wr   = round((st_tp2 + st_tp1) / st_dec * 100, 1) if st_dec > 0 else 0
+    st_pnl  = round(sbt[7] + sst[7], 1)
+    st_wrc  = "#2ecc71" if st_wr >= 55 else ("#f39c12" if st_wr >= 40 else "#e74c3c")
+    st_pnlc = "#2ecc71" if st_pnl > 0 else ("#e74c3c" if st_pnl < 0 else "#8a9bb0")
+
+    def _sim_col(label, color, tp2, tp1, stop, open_, wr, wrc, pnl, pnlc):
+        return f"""<div style="min-width:140px">
+            <div style="color:{color};font-size:.65rem;letter-spacing:1px;margin-bottom:8px">{label}</div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:.72rem">
+                <div>TP2 (+10%) <span style="color:#27ae60;font-weight:bold;float:right">{tp2}</span></div>
+                <div>TP1 (+5%)  <span style="color:#2ecc71;font-weight:bold;float:right">{tp1}</span></div>
+                <div>Stop (-2.5%) <span style="color:#e74c3c;font-weight:bold;float:right">{stop}</span></div>
+                <div>Devam/Açık <span style="color:#8a9bb0;font-weight:bold;float:right">{open_}</span></div>
+                <div style="border-top:1px solid var(--border);padding-top:4px">
+                    Win Rate <span style="color:{wrc};font-weight:bold;float:right">%{wr}</span></div>
+                <div>P&L <span style="color:{pnlc};font-weight:bold;float:right">{pnl:+.1f}%</span></div>
+            </div>
+        </div>"""
+
+    _sim_section = f"""<div class="tp2-box">
+    <h3>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</h3>
+    <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
+        Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
+    <div class="tp2-stats" style="gap:28px">
+        {_sim_col("TOPLAM", "#c0cdd8", st_tp2, st_tp1, st_stop, st_open, st_wr, st_wrc, st_pnl, st_pnlc)}
+        {_sim_col("BOT SİNYALLERİ", "#3498db", sbt[0], sbt[1], sbt[2], sbt[3], sbt[5], sbt[6], sbt[7], sbt[8])}
+        {_sim_col("SMC SİNYALLERİ", "#e67e22", sst[0], sst[1], sst[2], sst[3], sst[5], sst[6], sst[7], sst[8])}
+    </div>
+</div>"""
+    type_rows = smc_type_rows + bot_type_rows
 
     shadow_rows = ""
     for sig in shadow_watching[:30]:
@@ -917,8 +957,6 @@ tr:hover td{{background:var(--card);}}
     <div class="card"><span class="val">{perf.get('avg_peak',0)}%</span><span class="lbl">Ort. Peak</span></div>
 </div>
 
-{_analyzer_section}
-
 <div class="section">
     <h2>📈 SİNYAL TÜRÜ BAZLI KIRILIM</h2>
     <div class="table-wrap"><table><thead><tr>
@@ -926,9 +964,34 @@ tr:hover td{{background:var(--card);}}
         <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
     </tr></thead><tbody>
         {type_rows if type_rows else '<tr><td colspan="9" class="empty">Henüz veri yok</td></tr>'}
-
     </tbody></table></div>
 </div>
+
+<div class="section">
+    <h2>🟠 SMC SİNYALLERİ</h2>
+    <p class="note">TP1'de %50 çıkış (half_open) → kalan %50 TP2 veya stop'a kadar takip edilir</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
+        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
+    </tr></thead><tbody>
+        {smc_type_rows if smc_type_rows else '<tr><td colspan="9" class="empty">Henüz SMC sinyali yok</td></tr>'}
+    </tbody></table></div>
+</div>
+
+<div class="section">
+    <h2>🔵 BOT SİNYALLERİ</h2>
+    <p class="note">Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
+        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
+    </tr></thead><tbody>
+        {bot_type_rows if bot_type_rows else '<tr><td colspan="9" class="empty">Henüz bot sinyali yok</td></tr>'}
+    </tbody></table></div>
+</div>
+
+{_sim_section}
+
+{_analyzer_section}
 
 <div class="section">
     <h2>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</h2>
@@ -960,38 +1023,6 @@ tr:hover td{{background:var(--card);}}
     </tr></thead><tbody>
         {daily_rows if daily_rows else '<tr><td colspan="5" class="empty">Henüz veri yok</td></tr>'}
     </tbody></table></div>
-</div>
-
-<div class="tp2-box">
-    <h3>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</h3>
-    <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
-        Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
-    <div class="tp2-stats" style="gap:30px">
-        <div style="min-width:160px">
-            <div style="color:#3498db;font-size:.65rem;letter-spacing:1px;margin-bottom:8px">BOT SİNYALLERİ</div>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:.72rem">
-                <div>TP2 (+10%) <span style="color:#27ae60;font-weight:bold;float:right">{sbt[0]}</span></div>
-                <div>TP1 (+5%)  <span style="color:#2ecc71;font-weight:bold;float:right">{sbt[1]}</span></div>
-                <div>Stop (-2.5%) <span style="color:#e74c3c;font-weight:bold;float:right">{sbt[2]}</span></div>
-                <div>Devam/Açık <span style="color:#8a9bb0;font-weight:bold;float:right">{sbt[3]}</span></div>
-                <div style="border-top:1px solid var(--border);padding-top:4px">
-                    Win Rate <span style="color:{sbt[6]};font-weight:bold;float:right">%{sbt[5]}</span></div>
-                <div>Toplam P&L <span style="color:{sbt[8]};font-weight:bold;float:right">{sbt[7]:+.1f}%</span></div>
-            </div>
-        </div>
-        <div style="min-width:160px">
-            <div style="color:#e67e22;font-size:.65rem;letter-spacing:1px;margin-bottom:8px">SMC SİNYALLERİ</div>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:.72rem">
-                <div>TP2 (+10%) <span style="color:#27ae60;font-weight:bold;float:right">{sst[0]}</span></div>
-                <div>TP1 (+5%)  <span style="color:#2ecc71;font-weight:bold;float:right">{sst[1]}</span></div>
-                <div>Stop (-2.5%) <span style="color:#e74c3c;font-weight:bold;float:right">{sst[2]}</span></div>
-                <div>Devam/Açık <span style="color:#8a9bb0;font-weight:bold;float:right">{sst[3]}</span></div>
-                <div style="border-top:1px solid var(--border);padding-top:4px">
-                    Win Rate <span style="color:{sst[6]};font-weight:bold;float:right">%{sst[5]}</span></div>
-                <div>Toplam P&L <span style="color:{sst[8]};font-weight:bold;float:right">{sst[7]:+.1f}%</span></div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div class="footer">
