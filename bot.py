@@ -1553,6 +1553,7 @@ def save_signal_log(log):
 
 signal_log        = load_signal_log()
 pending_by_symbol = {}
+_last_periodic_save = 0.0  # restart sonrası peak_pct/trailing kaybını önlemek için
 
 def log_signal(result, tr_time):
     sig_type = result.get("type", "capit")
@@ -1646,6 +1647,12 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         if not pending_by_symbol[symbol]:
             del pending_by_symbol[symbol]
         save_signal_log(signal_log)
+    else:
+        global _last_periodic_save
+        now_ts = time.time()
+        if now_ts - _last_periodic_save >= 300:  # 5 dakikada bir peak_pct / trailing_active kaydet
+            _last_periodic_save = now_ts
+            save_signal_log(signal_log)
 
 def perf_summary():
     closed = [s for s in signal_log if s["status"] in ("loss", "win", "expired")]
