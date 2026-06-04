@@ -1170,7 +1170,7 @@ function toggleType(key, btn) {{
 </script>
 
 <div class="filter-bar">
-  {' '.join(f'<button class="filter-btn active" onclick="toggleType({json.dumps(k)},this)">{k}</button>' for k in sorted(perf.get('by_type', {})))}
+  {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{k}</button>' for k in sorted(perf.get('by_type', {})))}
 </div>
 
 <div class="cards">
