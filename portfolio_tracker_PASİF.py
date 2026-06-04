@@ -930,7 +930,7 @@ def dashboard():
         except Exception: pass
         shadow_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
-            <td style="color:#2ecc71">+{tp1_pct:.2f}%</td>
+            <td style="color:{'#2ecc71' if tp1_pct >= 0 else '#e74c3c'}">{tp1_pct:+.2f}%</td>
             <td style="color:{cur_c}">{fmt_price(cur_price)} ({cur_pct:+.2f}%)</td>
             <td>{fmt_price(tp2)} (+{tp2_pct}%)</td>
             <td style="color:{pa_c}">+{pa:.2f}%</td>
