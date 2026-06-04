@@ -364,14 +364,21 @@ def send_telegram_msg(text):
     except Exception as e:
         print(f"[TELEGRAM] Hata: {e}")
 
-def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""):
+def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type="", stop_price=None):
     """entry_price = choch_level (CHoCH seviyesi, LuxAlgo çizgisi)"""
     if not PORTFOLIO_URL:
         return
     try:
-        stop = round(entry_price - atr_val * 4.0, 10)
-        tp1  = round(entry_price + atr_val * 4.0, 10)
-        tp2  = round(entry_price + atr_val * 6.0, 10)
+        if stop_price is not None:
+            stop = round(stop_price, 10)
+            risk = entry_price - stop
+            tp1  = round(entry_price + risk * 1.5, 10)
+            tp2  = round(entry_price + risk * 2.5, 10)
+        else:
+            # ESKİ: stop = entry - ATR×4, TP = entry + ATR×4/6
+            stop = round(entry_price - atr_val * 4.0, 10)
+            tp1  = round(entry_price + atr_val * 4.0, 10)
+            tp2  = round(entry_price + atr_val * 6.0, 10)
         payload = {
             "symbol": symbol, "entry": entry_price, "stop": stop,
             "tp1": tp1, "tp2": tp2, "sig_type": "smc",
@@ -646,14 +653,14 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
                 swing_trend     = -1
                 choch_level     = swing_low_level
 
-    return break_type, break_direction, swing_trend, choch_level
+    return break_type, break_direction, swing_trend, choch_level, swing_low_level
 
 # ============================================================
 # 8) MESAJ ŞABLONLARI
 # ============================================================
 def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
                      rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, patterns, source_label, atr_val=None):
+                     strategy_label, strategy_note, patterns, source_label, atr_val=None, **kwargs):
     """
     choch_price : CHoCH seviyesi (kırılan swing high = LuxAlgo çizgisi) — GİRİŞ FİYATI
     bar_close   : CHoCH barının kapanışı — bilgi amaçlı
@@ -669,9 +676,17 @@ def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
     m_str   = f"{ma200:.10f}".rstrip("0").rstrip(".")
 
     if atr_val:
-        stop_val = round(choch_price - atr_val * 4.0, 10)
-        tp1_val  = round(choch_price + atr_val * 4.0, 10)
-        tp2_val  = round(choch_price + atr_val * 6.0, 10)
+        # ESKİ: stop_val = round(choch_price - atr_val * 4.0, 10)
+        _stop_arg = kwargs.get("stop_val") if kwargs else None
+        if _stop_arg is not None:
+            stop_val = round(_stop_arg, 10)
+            _risk    = choch_price - stop_val
+            tp1_val  = round(choch_price + _risk * 1.5, 10)
+            tp2_val  = round(choch_price + _risk * 2.5, 10)
+        else:
+            stop_val = round(choch_price - atr_val * 4.0, 10)
+            tp1_val  = round(choch_price + atr_val * 4.0, 10)
+            tp2_val  = round(choch_price + atr_val * 6.0, 10)
         stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
         tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
         tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
@@ -825,7 +840,7 @@ def _analyze_symbol(symbol):
             scan_stats["btc_4h_pause_skip"] += 1
             return
 
-        micro_break, micro_dir, micro_trend, choch_level = detect_micro_choch(df, CHOCH_SWING)
+        micro_break, micro_dir, micro_trend, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
 
         if micro_break == "CHoCH" and micro_dir == "BULLISH":
             scan_stats["choch_found"] += 1
@@ -834,24 +849,28 @@ def _analyze_symbol(symbol):
                 # choch_level yoksa (beklenmedik durum) bar kapanışını kullan
                 entry_price = choch_level if choch_level is not None else price
 
+                # Stop: swing low'un %0.5 altı. Swing low yoksa eski ATR×4 yöntemi (fallback)
+                stop_price = round(swing_low * 0.995, 10) if swing_low is not None else None
+
                 smc_data['break_type']      = micro_break
                 smc_data['break_direction'] = micro_dir
                 smc_data['swing_trend']     = micro_trend
 
                 msg = build_phase2_msg(
                     symbol, coin_name,
-                    choch_price=entry_price,   # CHoCH seviyesi = giriş fiyatı
-                    bar_close=price,           # Bar kapanışı = referans
+                    choch_price=entry_price,
+                    bar_close=price,
                     ma200=ma200, dist_ma=dist_ma,
                     rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
                     depth=depth, smc_data=smc_data,
                     strategy_label=s_label, strategy_note=s_note,
-                    patterns=patterns, source_label="SMC", atr_val=atr_val)
+                    patterns=patterns, source_label="SMC", atr_val=atr_val,
+                    stop_val=stop_price)
 
                 send_telegram_msg(msg)
                 mark_sent(symbol, "choch", "smc-original")
-                # Portfolio: choch_level baz alınarak TP/SL hesaplanır
-                send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break)
+                send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
+                                  stop_price=stop_price)
                 scan_stats["signal_phase2_smc-original"] += 1
                 pat_log = candle_pattern_summary(patterns)
                 print(f"🚀 [CHoCH] {symbol} | CHoCH:{entry_price:.8g} | Close:{price:.8g} | RSI:{round(rsi,1)}"
