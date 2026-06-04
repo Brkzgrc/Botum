@@ -1,16 +1,23 @@
+import time
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-BINANCE_BASE = "https://api.binance.com"
+BINANCE_BASE   = "https://api.binance.com"
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 
 NITTER_INSTANCES = [
+    "https://nitter.net",
     "https://nitter.privacydev.net",
     "https://nitter.cz",
     "https://nitter.1d4.us",
-    "https://nitter.net",
 ]
+
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 def fetch_binance_ohlcv(symbol, timeframes, limit=100):
@@ -40,33 +47,41 @@ def fetch_binance_ohlcv(symbol, timeframes, limit=100):
 
 
 def fetch_coingecko_global():
-    try:
-        resp = requests.get(f"{COINGECKO_BASE}/global", timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("data", {})
-
-        mcap_pct  = data.get("market_cap_percentage", {})
-        total_mcap = data.get("total_market_cap", {}).get("usd", 0)
-
-        btc_d  = mcap_pct.get("btc", 0)
-        eth_d  = mcap_pct.get("eth", 0)
-        usdt_d = mcap_pct.get("usdt", 0)
-
-        btc_mcap = total_mcap * btc_d  / 100
-        eth_mcap = total_mcap * eth_d  / 100
-
-        return {
-            "total":            total_mcap,
-            "total2":           total_mcap - btc_mcap,
-            "total3":           total_mcap - btc_mcap - eth_mcap,
-            "btc_dominance":    round(btc_d,  2),
-            "eth_dominance":    round(eth_d,  2),
-            "usdt_dominance":   round(usdt_d, 2),
-            "mcap_change_24h":  data.get("market_cap_change_percentage_24h_usd", 0),
-        }
-    except Exception as e:
-        print(f"[MARKET_WATCH] CoinGecko hata: {e}", flush=True)
-        return None
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                f"{COINGECKO_BASE}/global",
+                timeout=10,
+                headers={"User-Agent": _BROWSER_UA, "Accept": "application/json"},
+            )
+            if resp.status_code == 429:
+                wait = 2 ** attempt * 5
+                print(f"[MARKET_WATCH] CoinGecko rate limit, {wait}s bekleniyor...", flush=True)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data       = resp.json().get("data", {})
+            mcap_pct   = data.get("market_cap_percentage", {})
+            total_mcap = data.get("total_market_cap", {}).get("usd", 0)
+            btc_d      = mcap_pct.get("btc", 0)
+            eth_d      = mcap_pct.get("eth", 0)
+            usdt_d     = mcap_pct.get("usdt", 0)
+            btc_mcap   = total_mcap * btc_d  / 100
+            eth_mcap   = total_mcap * eth_d  / 100
+            return {
+                "total":           total_mcap,
+                "total2":          total_mcap - btc_mcap,
+                "total3":          total_mcap - btc_mcap - eth_mcap,
+                "btc_dominance":   round(btc_d,  2),
+                "eth_dominance":   round(eth_d,  2),
+                "usdt_dominance":  round(usdt_d, 2),
+                "mcap_change_24h": data.get("market_cap_change_percentage_24h_usd", 0),
+            }
+        except Exception as e:
+            print(f"[MARKET_WATCH] CoinGecko hata (deneme {attempt+1}): {e}", flush=True)
+            if attempt < 2:
+                time.sleep(2 ** attempt * 3)
+    return None
 
 
 def fetch_analizcoin_tweets(username="AnalizCoin1", count=5):
@@ -75,7 +90,7 @@ def fetch_analizcoin_tweets(username="AnalizCoin1", count=5):
             resp = requests.get(
                 f"{instance}/{username}/rss",
                 timeout=8,
-                headers={"User-Agent": "Mozilla/5.0"},
+                headers={"User-Agent": _BROWSER_UA},
             )
             if resp.status_code != 200:
                 continue
