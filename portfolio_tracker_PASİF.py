@@ -673,6 +673,7 @@ def status_badge(status):
         "win_tp1":      ("#2ecc71", "WIN (TP1)"),
         "win_tp2":      ("#27ae60", "WIN (TP2)"),
         "win_partial":  ("#27ae60", "WIN (TRAIL)"),
+        "win_trail":    ("#27ae60", "WIN_TRAIL"),
         "half_stopped": ("#e67e22", "YARIM STOP"),
         "half_expired": ("#e67e22", "YARIM EXP"),
         "loss":         ("#e74c3c", "LOSS"),
