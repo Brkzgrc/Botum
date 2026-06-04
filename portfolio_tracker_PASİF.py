@@ -1100,6 +1100,11 @@ tr:hover td{{background:var(--card);}}
 .tp2-stat .l{{font-size:.55rem;color:var(--text-dim);margin-top:2px;}}
 .footer{{color:var(--text-dim);font-size:.6rem;margin-top:20px;padding-top:12px;
   border-top:1px solid var(--border);text-align:center;}}
+.filter-bar{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}}
+.filter-btn{{background:#0f1319;border:1px solid #1a2030;border-radius:4px;
+  color:#5a6a7a;font-size:.62rem;padding:5px 12px;cursor:pointer;font-family:inherit;
+  letter-spacing:.5px;transition:all .15s;}}
+.filter-btn.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
 @media(max-width:768px){{body{{padding:10px;}}.cards{{grid-template-columns:repeat(3,1fr);}}
   table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}}}
 </style></head><body>
@@ -1114,17 +1119,67 @@ tr:hover td{{background:var(--card);}}
     </span>
 </div>
 
+<script>
+const BY_TYPE = {json.dumps(perf.get('by_type', {}), ensure_ascii=False)};
+const ACTIVE = new Set(Object.keys(BY_TYPE));
+
+function recalc() {{
+  let total=0, open=0, wins=0, win_partial=0, losses=0, expired=0, pnl=0, peaks=[];
+  for (const [k, v] of Object.entries(BY_TYPE)) {{
+    if (!ACTIVE.has(k)) continue;
+    total      += v.total      || 0;
+    open       += v.open       || 0;
+    wins       += v.wins       || 0;
+    win_partial+= v.win_partial|| 0;
+    losses     += v.losses     || 0;
+    expired    += v.expired    || 0;
+    pnl        += v.total_pnl  || 0;
+    if (v.avg_peak && v.total > 0) peaks.push([v.avg_peak, v.total]);
+  }}
+  const closed = wins + losses + expired;
+  const wr = closed > 0 ? (wins / closed * 100).toFixed(1) : 0;
+  const avgPeak = peaks.length
+    ? (peaks.reduce((s,[p,n])=>s+p*n,0) / peaks.reduce((s,[,n])=>s+n,0)).toFixed(2)
+    : 0;
+  const pnlFmt = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+
+  document.getElementById('c-total').textContent   = total;
+  document.getElementById('c-open').textContent    = open;
+  document.getElementById('c-wins').textContent    = wins;
+  document.getElementById('c-trail').textContent   = win_partial;
+  document.getElementById('c-loss').textContent    = losses;
+  document.getElementById('c-exp').textContent     = expired;
+  const wrEl = document.getElementById('c-wr');
+  wrEl.textContent = '%' + wr;
+  wrEl.style.color = wr >= 50 ? 'var(--green)' : 'var(--red)';
+  const pnlEl = document.getElementById('c-pnl');
+  pnlEl.textContent = pnlFmt;
+  pnlEl.style.color = pnl > 0 ? 'var(--green)' : (pnl < 0 ? 'var(--red)' : '#8a9bb0');
+  document.getElementById('c-peak').textContent = avgPeak + '%';
+}}
+
+function toggleType(key, btn) {{
+  if (ACTIVE.has(key)) {{ ACTIVE.delete(key); btn.classList.remove('active'); }}
+  else                  {{ ACTIVE.add(key);    btn.classList.add('active');    }}
+  recalc();
+}}
+</script>
+
+<div class="filter-bar">
+  {' '.join(f'<button class="filter-btn active" onclick="toggleType({json.dumps(k)},this)">{k}</button>' for k in sorted(perf.get('by_type', {})))}
+</div>
+
 <div class="cards">
-    <div class="card"><span class="val">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
-    <div class="card"><span class="val" style="color:#3498db">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
-    <div class="card"><span class="val" style="color:var(--green)">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
-    <div class="card"><span class="val" style="color:#27ae60;font-size:.9rem">{win_partial_count}</span><span class="lbl">Win (Trail)</span></div>
-    <div class="card"><span class="val" style="color:var(--red)">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
-    <div class="card"><span class="val" style="color:var(--orange)">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
-    <div class="card"><span class="val" style="color:{'var(--green)' if perf.get('win_rate',0)>=50 else 'var(--red)'}"
+    <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
+    <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
+    <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
+    <div class="card"><span class="val" style="color:#27ae60;font-size:.9rem" id="c-trail">{win_partial_count}</span><span class="lbl">Win (Trail)</span></div>
+    <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
+    <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
+    <div class="card"><span class="val" id="c-wr" style="color:{'var(--green)' if perf.get('win_rate',0)>=50 else 'var(--red)'}"
         >%{perf.get('win_rate',0)}</span><span class="lbl">Win Rate</span></div>
-    <div class="card"><span class="val" style="color:{pnl_color_val}">{total_pnl:+.2f}%</span><span class="lbl">Net P&L</span></div>
-    <div class="card"><span class="val">{perf.get('avg_peak',0)}%</span><span class="lbl">Ort. Peak</span></div>
+    <div class="card"><span class="val" id="c-pnl" style="color:{pnl_color_val}">{total_pnl:+.2f}%</span><span class="lbl">Net P&L</span></div>
+    <div class="card"><span class="val" id="c-peak">{perf.get('avg_peak',0)}%</span><span class="lbl">Ort. Peak</span></div>
 </div>
 
 <div class="section">
