@@ -914,6 +914,22 @@ def send_to_portfolio(result):
     return ""
 
 # ============================================================
+# CLAUDE ANALYZER — RETRY WRAPPER
+# ============================================================
+def _analyzer_safe(signal: dict, recent_count: int, sig_num: int, portfolio_id: str):
+    sym = signal.get("symbol", "?")
+    for attempt in range(2):
+        try:
+            _analyzer_process(signal, recent_count, sig_num, portfolio_id)
+            return
+        except Exception as e:
+            if attempt == 0:
+                print(f"[ANALYZER] #{sym} hata (deneme 1), 5s sonra tekrar: {e}", flush=True)
+                time.sleep(5)
+            else:
+                print(f"[ANALYZER] #{sym} başarısız (2 deneme): {e}", flush=True)
+
+# ============================================================
 # CLAUDE SHADOW MODE
 # ============================================================
 def _recent_signal_count() -> int:
@@ -1823,7 +1839,7 @@ async def signal_worker(candidate_queue):
                     loop.run_in_executor(
                         None,
                         lambda s=sig_snap, r=recent_cnt, n=sig_num, pid=portfolio_id:
-                            _analyzer_process(s, r, n, pid)
+                            _analyzer_safe(s, r, n, pid)
                     )
                 )
 
