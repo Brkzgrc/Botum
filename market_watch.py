@@ -1,10 +1,12 @@
+import os
 import time
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-BINANCE_BASE   = "https://api.binance.com"
-COINGECKO_BASE = "https://api.coingecko.com/api/v3"
+BINANCE_BASE      = "https://api.binance.com"
+COINGECKO_BASE    = "https://api.coingecko.com/api/v3"
+COINGECKO_API_KEY = os.environ.get("COINGECKO_API_KEY", "")
 
 NITTER_INSTANCES = [
     "https://nitter.net",
@@ -49,10 +51,13 @@ def fetch_binance_ohlcv(symbol, timeframes, limit=100):
 def fetch_coingecko_global():
     for attempt in range(3):
         try:
+            headers = {"User-Agent": _BROWSER_UA, "Accept": "application/json"}
+            if COINGECKO_API_KEY:
+                headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
             resp = requests.get(
                 f"{COINGECKO_BASE}/global",
                 timeout=10,
-                headers={"User-Agent": _BROWSER_UA, "Accept": "application/json"},
+                headers=headers,
             )
             if resp.status_code == 429:
                 wait = 2 ** attempt * 5
