@@ -2,11 +2,14 @@ import os
 import json
 import re
 import time
+import threading
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from anthropic import Anthropic
 
 from market_watch import fetch_all
+
+TR_TZ = timezone(timedelta(hours=3))
 
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 ANALYZER_TOKEN     = os.environ.get("ANALYZER_TELEGRAM_TOKEN", "")
@@ -235,6 +238,37 @@ def check_price_proximity():
                         f"(Multi-TF confluence seviyesi)"
                     )
                     break  # bu seviye için sadece en yakın eşiği tetikle
+
+
+def _daily_loop():
+    while True:
+        now    = datetime.now(TR_TZ)
+        target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        sleep_secs = (target - now).total_seconds()
+        print(f"[MARKET_ANALYZER] Sonraki günlük analiz: {target.strftime('%d.%m %H:%M')} TR ({sleep_secs/3600:.1f}s)", flush=True)
+        time.sleep(sleep_secs)
+        try:
+            run_daily_analysis()
+        except Exception as e:
+            print(f"[MARKET_ANALYZER] Daily loop hata: {e}", flush=True)
+
+
+def _proximity_loop():
+    time.sleep(60)  # bot başlarken bir dakika bekle
+    while True:
+        try:
+            check_price_proximity()
+        except Exception as e:
+            print(f"[MARKET_ANALYZER] Proximity loop hata: {e}", flush=True)
+        time.sleep(30 * 60)
+
+
+def start_market_analyzer():
+    threading.Thread(target=_daily_loop,     daemon=True, name="market_daily").start()
+    threading.Thread(target=_proximity_loop, daemon=True, name="market_proximity").start()
+    print("[MARKET_ANALYZER] Başlatıldı — daily@08:00TR + proximity@30dk", flush=True)
 
 
 if __name__ == "__main__":
