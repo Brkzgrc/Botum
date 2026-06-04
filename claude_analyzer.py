@@ -568,11 +568,14 @@ def _update_portfolio_analyzer(portfolio_id: str, verdict: str):
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
             headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
-        requests.patch(
-            f"{PORTFOLIO_URL}/api/signal/{portfolio_id}/analyzer",
+        safe_id = portfolio_id.replace("/", "_")
+        r = requests.patch(
+            f"{PORTFOLIO_URL}/api/signal/{safe_id}/analyzer",
             json={"analyzer_decision": verdict},
             headers=headers, timeout=5,
         )
+        if r.status_code != 200:
+            print(f"[ANALYZER] Portfolio güncelleme başarısız: {r.status_code} {r.text[:80]}", flush=True)
     except Exception as e:
         print(f"[ANALYZER] Portfolio güncelleme hatası: {e}", flush=True)
 

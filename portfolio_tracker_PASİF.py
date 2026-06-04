@@ -96,7 +96,7 @@ def receive_signal():
 
     now = tr_now()
     signal = {
-        "id": f"{data['symbol']}_{int(now.timestamp())}",
+        "id": f"{data['symbol'].replace('/', '_')}_{int(now.timestamp())}",
         "symbol": data["symbol"],
         "entry": float(data["entry"]),
         "stop": float(data["stop"]),
