@@ -18,14 +18,19 @@ _client  = None
 _alerted = {}  # (symbol_key, level, threshold) -> last_alert_timestamp
 
 
-def _tg(msg):
+def _tg(msg, thread_id=1):
     if not ANALYZER_TOKEN or not TELEGRAM_CHAT_ID:
         print(f"[MARKET_ANALYZER] TG eksik: {msg[:80]}", flush=True)
         return
     try:
         requests.post(
             f"https://api.telegram.org/bot{ANALYZER_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"},
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": msg,
+                "parse_mode": "HTML",
+                "message_thread_id": thread_id,
+            },
             timeout=10,
         )
     except Exception as e:
