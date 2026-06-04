@@ -873,6 +873,7 @@ def dashboard():
         Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
     <div class="table-wrap"><table style="font-size:.72rem"><thead><tr>
         <th></th>
+        <th style="text-align:center;color:#8a9bb0">Sinyal</th>
         <th style="text-align:center;color:#27ae60">TP2 (+10%)</th>
         <th style="text-align:center;color:#2ecc71">TP1 (+5%)</th>
         <th style="text-align:center;color:#e74c3c">Stop (-2.5%)</th>
@@ -882,6 +883,7 @@ def dashboard():
     </tr></thead><tbody>
         <tr>
             <td style="color:#3498db">Bot Sinyalleri</td>
+            <td style="text-align:center;color:#8a9bb0">{sbt[0]+sbt[1]+sbt[2]+sbt[3]}</td>
             <td style="text-align:center;color:#27ae60">{sbt[0]}</td>
             <td style="text-align:center;color:#2ecc71">{sbt[1]}</td>
             <td style="text-align:center;color:#e74c3c">{sbt[2]}</td>
@@ -891,6 +893,7 @@ def dashboard():
         </tr>
         <tr>
             <td style="color:#e67e22">SMC Sinyalleri</td>
+            <td style="text-align:center;color:#8a9bb0">{sst[0]+sst[1]+sst[2]+sst[3]}</td>
             <td style="text-align:center;color:#27ae60">{sst[0]}</td>
             <td style="text-align:center;color:#2ecc71">{sst[1]}</td>
             <td style="text-align:center;color:#e74c3c">{sst[2]}</td>
@@ -900,6 +903,7 @@ def dashboard():
         </tr>
         <tr style="border-top:2px solid #1a3050">
             <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
+            <td style="text-align:center;color:#8a9bb0;font-weight:bold">{st_tp2+st_tp1+st_stop+st_open}</td>
             <td style="text-align:center;color:#27ae60;font-weight:bold">{st_tp2}</td>
             <td style="text-align:center;color:#2ecc71;font-weight:bold">{st_tp1}</td>
             <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
