@@ -437,12 +437,13 @@ def check_t168_signal(df: pd.DataFrame, symbol: str) -> dict | None:
 def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     if len(df) < 60: return None
 
-    # --- BB Sıkışma (son 50 barda alt %25'te mi?) ---
+    # --- BB Sıkışma (son 5 barda sıkışma vardı mı?) ---
     bb_w = df["bb_width"].dropna()
     if len(bb_w) < 50: return None
-    bb_w_cur = float(bb_w.iloc[-1])
     squeeze_thr = float(bb_w.rolling(50).quantile(0.25).iloc[-1])
-    if pd.isna(squeeze_thr) or bb_w_cur > squeeze_thr:
+    if pd.isna(squeeze_thr): return None
+    recent_squeeze = any(float(v) <= squeeze_thr for v in bb_w.iloc[-6:-1])
+    if not recent_squeeze:
         return None
 
     # --- ADX(7) yükseliyor + DI+ > DI- ---
