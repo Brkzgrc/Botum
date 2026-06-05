@@ -22,7 +22,7 @@ _BROWSER_UA = (
 )
 
 
-_TF_LIMITS = {"4h": 200, "1d": 90, "3d": 60, "1w": 52}
+_TF_LIMITS = {"4h": 200, "1d": 210, "3d": 60, "1w": 210}
 
 def fetch_binance_ohlcv(symbol, timeframes, limit=None):
     binance_symbol = symbol.replace("/", "")

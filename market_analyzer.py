@@ -61,6 +61,91 @@ def _make_client():
     return Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
+# ── Fibonacci Bollinger Bands (Rashad) ──────────────────────────
+def _vwma(prices, volumes, period):
+    pv    = sum(p * v for p, v in zip(prices[-period:], volumes[-period:]))
+    v_sum = sum(volumes[-period:])
+    return pv / v_sum if v_sum > 0 else sum(prices[-period:]) / period
+
+
+def _calc_fbb(tf_data, period=200, std_mult=3.0):
+    if not tf_data or len(tf_data.get("closes", [])) < period:
+        return None
+    h, l, c, v = (tf_data[k] for k in ("highs", "lows", "closes", "volumes"))
+    hlc3  = [(hi + lo + cl) / 3 for hi, lo, cl in zip(h, l, c)]
+    basis = _vwma(hlc3, v, period)
+    mean  = sum(hlc3[-period:]) / period
+    std   = (sum((x - mean) ** 2 for x in hlc3[-period:]) / period) ** 0.5 * std_mult
+    fibs  = [0.236, 0.382, 0.5, 0.618, 0.764, 1.0]
+    return {
+        "basis": round(basis, 2),
+        "upper": [round(basis + f * std, 2) for f in fibs],
+        "lower": [round(basis - f * std, 2) for f in fibs],
+    }
+
+
+# ── SSL Hybrid (simplified: SMA high/low channel + HMA baseline) ─
+def _wma(data, period):
+    w = list(range(1, period + 1))
+    return sum(d * wt for d, wt in zip(data[-period:], w)) / sum(w)
+
+
+def _hma(closes, period):
+    half   = max(2, period // 2)
+    sqrt_p = max(2, round(period ** 0.5))
+    n      = len(closes)
+    if n < period + sqrt_p:
+        return None
+    wma_h = [_wma(closes[max(0, i - half + 1):i + 1],   min(half,   i + 1)) for i in range(n)]
+    wma_f = [_wma(closes[max(0, i - period + 1):i + 1], min(period, i + 1)) for i in range(n)]
+    diff  = [2 * wma_h[i] - wma_f[i] for i in range(n)]
+    if len(diff) < sqrt_p:
+        return None
+    return _wma(diff, sqrt_p)
+
+
+def _calc_ssl(tf_data, period=14):
+    if not tf_data or len(tf_data.get("closes", [])) < period + 1:
+        return None
+    h, l, c = tf_data["highs"], tf_data["lows"], tf_data["closes"]
+    sma_h = sum(h[-period:]) / period
+    sma_l = sum(l[-period:]) / period
+    trend = "YUKARI" if c[-1] > sma_h else "AŞAĞI"
+    hma   = _hma(c, period)
+    return {
+        "trend":    trend,
+        "sma_high": round(sma_h, 2),
+        "sma_low":  round(sma_l, 2),
+        "hma":      round(hma, 2) if hma else None,
+    }
+
+
+def _fbb_text(fbb, label, price):
+    if not fbb:
+        return f"{label} FBB: veri yok"
+    basis = fbb["basis"]
+    pct   = (price - basis) / basis * 100 if basis else 0
+    ab    = "üstünde" if price > basis else "altında"
+    lower = fbb["lower"]
+    upper = fbb["upper"]
+    sup   = [v for v in lower if v < price]
+    res   = [v for v in upper if v > price]
+    lines = [f"{label} FBB Basis: ${basis:,.2f} (şu an %{abs(pct):.1f} {ab})"]
+    if sup:
+        lines.append(f"  Alt bandlar (destek): {' | '.join(f'${v:,.2f}' for v in sup[-3:])}")
+    if res:
+        lines.append(f"  Üst bandlar (direnç): {' | '.join(f'${v:,.2f}' for v in res[:2])}")
+    return "\n".join(lines)
+
+
+def _ssl_text(ssl, label):
+    if not ssl:
+        return f"{label} SSL: veri yok"
+    hma_s = f" | HMA: ${ssl['hma']:,.2f}" if ssl.get("hma") else ""
+    return (f"{label} SSL Hybrid: {ssl['trend']} "
+            f"| Kanal ${ssl['sma_low']:,.2f} – ${ssl['sma_high']:,.2f}{hma_s}")
+
+
 def _swing_levels(highs, lows, window=3):
     """Basit swing high/low tespiti — en son 5 noktayı döndür."""
     n = len(highs)
@@ -104,6 +189,23 @@ def _build_prompt(data, portfolio_context=""):
     btc_lines = "\n".join(_tf_summary(btc.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
     eth_lines = "\n".join(_tf_summary(eth.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
 
+    # FBB + SSL hesapla
+    btc_fbb_w = _calc_fbb(btc.get("1w"))
+    btc_fbb_d = _calc_fbb(btc.get("1d"))
+    btc_ssl_d = _calc_ssl(btc.get("1d"))
+    eth_fbb_w = _calc_fbb(eth.get("1w"))
+    eth_fbb_d = _calc_fbb(eth.get("1d"))
+    eth_ssl_d = _calc_ssl(eth.get("1d"))
+
+    indicator_section = f"""## TEKNİK İNDİKATÖRLER (FBB + SSL)
+{_fbb_text(btc_fbb_w, "BTC Haftalık", btc_price)}
+{_fbb_text(btc_fbb_d, "BTC Günlük",   btc_price)}
+{_ssl_text(btc_ssl_d, "BTC Günlük")}
+
+{_fbb_text(eth_fbb_w, "ETH Haftalık", eth_price)}
+{_fbb_text(eth_fbb_d, "ETH Günlük",   eth_price)}
+{_ssl_text(eth_ssl_d, "ETH Günlük")}"""
+
     tweet_section = (
         f"## @AnalizCoin1 SON TWEETLER\n" +
         "\n".join(f"- {t['title']}" for t in tweets[:5])
@@ -124,6 +226,8 @@ BTC.D: {g.get('btc_dominance', 0):.2f}% | ETH.D: {g.get('eth_dominance', 0):.2f}
 
 ## ETH/USDT — ${eth_price:,.2f}
 {eth_lines}
+
+{indicator_section}
 
 {tweet_section}
 
