@@ -163,7 +163,7 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 {{"btc": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}, "eth": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}}}
 </levels>
 
-Sonra yukarıdaki analizi yaz. Max 380 kelime.
+Sonra yukarıdaki analizi yaz. Max 500 kelime.
 FORMATLAMA: Yalnızca Telegram HTML — <b></b> kullan, *, #, _ işaretleri kullanma.
 """
 
@@ -201,7 +201,7 @@ def run_daily_analysis(portfolio_context=""):
     try:
         resp = client.messages.create(
             model="claude-opus-4-8",
-            max_tokens=1100,
+            max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text
