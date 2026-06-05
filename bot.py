@@ -2304,19 +2304,9 @@ def _market_daily_loop():
         except Exception as e:
             print(f"[MARKET] Daily analiz hata: {e}", flush=True)
 
-def _market_proximity_loop():
-    time.sleep(60)
-    while True:
-        try:
-            subprocess.run([sys.executable, "market_analyzer.py", "proximity"], timeout=30)
-        except Exception as e:
-            print(f"[MARKET] Proximity hata: {e}", flush=True)
-        time.sleep(30 * 60)
-
 def _start_market_analyzer():
-    threading.Thread(target=_market_daily_loop,     daemon=True, name="market_daily").start()
-    threading.Thread(target=_market_proximity_loop, daemon=True, name="market_proximity").start()
-    print("[MARKET] Başlatıldı — daily@08:00TR + proximity@30dk (subprocess)", flush=True)
+    threading.Thread(target=_market_daily_loop, daemon=True, name="market_daily").start()
+    print("[MARKET] Başlatıldı — daily@08:00TR (subprocess)", flush=True)
 
 
 # ============================================================
