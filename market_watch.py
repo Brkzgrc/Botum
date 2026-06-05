@@ -22,14 +22,17 @@ _BROWSER_UA = (
 )
 
 
-def fetch_binance_ohlcv(symbol, timeframes, limit=30):
+_TF_LIMITS = {"4h": 200, "1d": 90, "3d": 60, "1w": 52}
+
+def fetch_binance_ohlcv(symbol, timeframes, limit=None):
     binance_symbol = symbol.replace("/", "")
     result = {}
     for tf in timeframes:
+        tf_limit = limit or _TF_LIMITS.get(tf, 100)
         try:
             resp = requests.get(
                 f"{BINANCE_BASE}/api/v3/klines",
-                params={"symbol": binance_symbol, "interval": tf, "limit": limit},
+                params={"symbol": binance_symbol, "interval": tf, "limit": tf_limit},
                 timeout=10,
             )
             resp.raise_for_status()
