@@ -22,7 +22,7 @@ _BROWSER_UA = (
 )
 
 
-def fetch_binance_ohlcv(symbol, timeframes, limit=100):
+def fetch_binance_ohlcv(symbol, timeframes, limit=30):
     binance_symbol = symbol.replace("/", "")
     result = {}
     for tf in timeframes:

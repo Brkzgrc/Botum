@@ -1,11 +1,11 @@
 import os
+import gc
 import json
 import re
 import time
 import threading
 import requests
 from datetime import datetime, timedelta, timezone
-from anthropic import Anthropic
 
 from market_watch import fetch_all
 
@@ -16,8 +16,6 @@ ANALYZER_TOKEN     = os.environ.get("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 LEVELS_FILE        = "levels.json"
 ALERT_COOLDOWN_SEC = 6 * 3600
-
-_client  = None
 _alerted = {}  # (symbol_key, level, threshold) -> last_alert_timestamp
 
 
@@ -37,11 +35,9 @@ def _tg(msg):
         print(f"[MARKET_ANALYZER] TG exception: {e}", flush=True)
 
 
-def _get_client():
-    global _client
-    if _client is None:
-        _client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    return _client
+def _make_client():
+    from anthropic import Anthropic
+    return Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def _swing_levels(highs, lows, window=3):
@@ -159,8 +155,9 @@ def run_daily_analysis(portfolio_context=""):
     data   = fetch_all()
     prompt = _build_prompt(data, portfolio_context)
 
+    client = _make_client()
     try:
-        resp = _get_client().messages.create(
+        resp = client.messages.create(
             model="claude-opus-4-8",
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
@@ -169,6 +166,10 @@ def run_daily_analysis(portfolio_context=""):
     except Exception as e:
         print(f"[MARKET_ANALYZER] Claude API hata: {e}", flush=True)
         return
+    finally:
+        del client
+        del data
+        gc.collect()
 
     levels = _parse_levels(text)
     if levels:
