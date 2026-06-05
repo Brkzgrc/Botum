@@ -238,7 +238,15 @@ def run_daily_analysis(portfolio_context=""):
         f"USDT.D: {g.get('usdt_dominance',0):.1f}%\n"
         f"{SEP}\n\n"
     )
-    _tg(header + clean)
+    # İlk 3 bölüm (Global/BTC/Altcoin) header ile birlikte gönder, geri kalan ayrı mesaj
+    section_starts = [m.start() for m in re.finditer(r"<b>", clean)]
+    if len(section_starts) >= 4:
+        split_at = section_starts[3]
+        _tg(header + clean[:split_at].strip())
+        time.sleep(0.5)
+        _tg(clean[split_at:].strip())
+    else:
+        _tg(header + clean)
     del data
     gc.collect()
     print("[MARKET_ANALYZER] Analiz tamamlandı.", flush=True)
