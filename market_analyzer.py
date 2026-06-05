@@ -26,13 +26,15 @@ def _tg(msg):
         print(f"[MARKET_ANALYZER] TG eksik: {msg[:80]}", flush=True)
         return
     try:
-        requests.post(
+        r = requests.post(
             f"https://api.telegram.org/bot{ANALYZER_TOKEN}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"},
             timeout=10,
         )
+        if r.status_code != 200:
+            print(f"[MARKET_ANALYZER] TG hata {r.status_code}: {r.text[:120]}", flush=True)
     except Exception as e:
-        print(f"[MARKET_ANALYZER] Telegram hata: {e}", flush=True)
+        print(f"[MARKET_ANALYZER] TG exception: {e}", flush=True)
 
 
 def _get_client():
