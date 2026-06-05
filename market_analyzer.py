@@ -13,7 +13,7 @@ TR_TZ = timezone(timedelta(hours=3))
 
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 ANALYZER_TOKEN     = os.environ.get("ANALYZER_TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("ANALYZER_CHAT_ID", "")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 LEVELS_FILE        = "levels.json"
 ALERT_COOLDOWN_SEC = 6 * 3600
 _alerted = {}  # (symbol_key, level, threshold) -> last_alert_timestamp
@@ -270,4 +270,8 @@ def start_market_analyzer():
 
 
 if __name__ == "__main__":
-    run_daily_analysis()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "proximity":
+        check_price_proximity()
+    else:
+        run_daily_analysis()

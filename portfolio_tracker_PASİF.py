@@ -1263,11 +1263,5 @@ if __name__ == "__main__":
     load_signals()
     threading.Thread(target=position_checker_loop, daemon=True).start()
 
-    try:
-        from market_analyzer import start_market_analyzer
-        start_market_analyzer()
-    except ImportError:
-        print("[PORTFOLIO] market_analyzer bulunamadı, atlanıyor", flush=True)
-
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port, use_reloader=False)

@@ -27,6 +27,8 @@ SİSTEM 5: PUMP PROBABILITY (Kırılım Tespiti)
 import asyncio
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 from collections import Counter
@@ -2286,6 +2288,38 @@ async def gainers_scan_loop(candidate_queue):
         await asyncio.sleep(GAINERS_INTERVAL_S)
 
 # ============================================================
+# MARKET ANALYZER — subprocess tabanlı, bellek bağımsız
+# ============================================================
+TR_TZ_MA = timezone(timedelta(hours=3))
+
+def _market_daily_loop():
+    while True:
+        now    = datetime.now(TR_TZ_MA)
+        target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        time.sleep((target - now).total_seconds())
+        try:
+            subprocess.run([sys.executable, "market_analyzer.py"], timeout=180)
+        except Exception as e:
+            print(f"[MARKET] Daily analiz hata: {e}", flush=True)
+
+def _market_proximity_loop():
+    time.sleep(60)
+    while True:
+        try:
+            subprocess.run([sys.executable, "market_analyzer.py", "proximity"], timeout=30)
+        except Exception as e:
+            print(f"[MARKET] Proximity hata: {e}", flush=True)
+        time.sleep(30 * 60)
+
+def _start_market_analyzer():
+    threading.Thread(target=_market_daily_loop,     daemon=True, name="market_daily").start()
+    threading.Thread(target=_market_proximity_loop, daemon=True, name="market_proximity").start()
+    print("[MARKET] Başlatıldı — daily@08:00TR + proximity@30dk (subprocess)", flush=True)
+
+
+# ============================================================
 # MAIN
 # ============================================================
 async def main():
@@ -2324,6 +2358,7 @@ async def main():
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
     _start_market_watcher()
     _start_news_watcher()
+    _start_market_analyzer()
 
     await ws_all(symbols, candidate_queue)
 
