@@ -18,6 +18,8 @@ from collections import defaultdict
 
 import requests
 from flask import Flask, request, jsonify
+from news_watcher import start_news_watcher
+from market_analyzer import start_market_analyzer
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -1262,6 +1264,8 @@ if __name__ == "__main__":
 
     load_signals()
     threading.Thread(target=position_checker_loop, daemon=True).start()
+    start_news_watcher()
+    start_market_analyzer()
 
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port, use_reloader=False)

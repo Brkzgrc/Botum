@@ -2,6 +2,8 @@ import os
 import gc
 import json
 import re
+import time
+import threading
 import requests
 from datetime import datetime, timedelta, timezone
 
@@ -217,6 +219,22 @@ def run_daily_analysis(portfolio_context=""):
     del data
     gc.collect()
     print("[MARKET_ANALYZER] Analiz tamamlandı.", flush=True)
+
+
+def start_market_analyzer():
+    def _daily_loop():
+        while True:
+            now = datetime.now(TR_TZ)
+            target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            if now >= target:
+                target += timedelta(days=1)
+            time.sleep((target - now).total_seconds())
+            try:
+                run_daily_analysis()
+            except Exception as e:
+                print(f"[MARKET_ANALYZER] Daily loop hata: {e}", flush=True)
+    threading.Thread(target=_daily_loop, daemon=True, name="market_daily").start()
+    print("[MARKET_ANALYZER] Başlatıldı — daily@08:00TR", flush=True)
 
 
 if __name__ == "__main__":
