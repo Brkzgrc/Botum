@@ -17,10 +17,7 @@ TELEGRAM_CHAT_ID   = os.environ.get("ANALYZER_CHAT_ID") or os.environ.get("TELEG
 LEVELS_FILE = "levels.json"
 
 
-def _tg(msg):
-    if not ANALYZER_TOKEN or not TELEGRAM_CHAT_ID:
-        print(f"[MARKET_ANALYZER] TG eksik: {msg[:80]}", flush=True)
-        return
+def _tg_send(msg):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{ANALYZER_TOKEN}/sendMessage",
@@ -31,6 +28,32 @@ def _tg(msg):
             print(f"[MARKET_ANALYZER] TG hata {r.status_code}: {r.text[:120]}", flush=True)
     except Exception as e:
         print(f"[MARKET_ANALYZER] TG exception: {e}", flush=True)
+
+
+def _tg(msg):
+    if not ANALYZER_TOKEN or not TELEGRAM_CHAT_ID:
+        print(f"[MARKET_ANALYZER] TG eksik: {msg[:80]}", flush=True)
+        return
+    limit = 4000
+    if len(msg) <= limit:
+        _tg_send(msg)
+        return
+    # Paragraf sınırından böl
+    parts = []
+    while len(msg) > limit:
+        split_at = msg.rfind("\n\n", 0, limit)
+        if split_at == -1:
+            split_at = msg.rfind("\n", 0, limit)
+        if split_at == -1:
+            split_at = limit
+        parts.append(msg[:split_at].strip())
+        msg = msg[split_at:].strip()
+    if msg:
+        parts.append(msg)
+    for i, part in enumerate(parts):
+        _tg_send(part)
+        if i < len(parts) - 1:
+            time.sleep(0.5)
 
 
 def _make_client():
