@@ -110,26 +110,32 @@ def main():
         print(f"API hatası: {e}", flush=True)
         return
 
-    # Kapalı SMC CHoCH sinyallerini filtrele
+    # Kapalı SMC sinyallerini filtrele (source alanına göre)
+    SMC_SOURCES = ("smc", "smc-original", "smc-trailing", "smc-momentum")
+    CLOSED_STATUSES = ("loss", "win_tp1", "win_tp2", "win_trail", "win_partial",
+                       "half_stopped", "half_expired", "expired")
+    WIN_STATUSES = ("win_tp1", "win_tp2", "win_trail", "win_partial")
+
     smc = [
         s for s in signals
-        if (s.get("sig_type") == "smc" or s.get("sub_type", "").lower() == "choch")
-        and s.get("status") not in ("open", "active", "pending")
-        and s.get("result")
+        if s.get("source") in SMC_SOURCES
+        and s.get("status") in CLOSED_STATUSES
     ]
 
-    print(f"Kapalı SMC sinyali: {len(smc)} / toplam: {len(signals)}", flush=True)
+    all_smc = sum(1 for s in signals if s.get("source") in SMC_SOURCES)
+    print(f"SMC sinyali: toplam={all_smc} | kapalı={len(smc)} / tüm={len(signals)}", flush=True)
     if not smc:
-        print("Yeterli kapalı SMC sinyali yok.", flush=True)
+        print("Kapalı SMC sinyali bulunamadı.", flush=True)
         return
 
     winners, losers = [], []
 
     for sig in smc:
-        symbol      = sig.get("symbol", "").replace("USDT", "")
-        result      = sig.get("result", "")
-        pnl         = float(sig.get("pnl_pct") or sig.get("return_pct") or sig.get("pnl") or 0)
-        open_time   = parse_time_ms(sig)
+        symbol   = sig.get("symbol", "").replace("/USDT", "").replace("USDT", "")
+        status   = sig.get("status", "")
+        pnl      = float(sig.get("close_pct") or 0)
+        source   = sig.get("source", "smc")
+        open_time = parse_time_ms(sig)
 
         if not open_time:
             print(f"  {symbol}: zaman bilgisi yok, atlanıyor", flush=True)
@@ -147,12 +153,12 @@ def main():
             print(f"  {symbol}: ADX hesaplanamadı", flush=True)
             continue
 
-        is_win = "WIN" in result.upper()
-        record = {"symbol": symbol, "adx": adx, "result": result, "pnl": pnl}
+        is_win = status in WIN_STATUSES or (status == "half_stopped" and pnl > 0)
+        record = {"symbol": symbol, "adx": adx, "status": status, "pnl": pnl, "source": source}
         (winners if is_win else losers).append(record)
 
         tag = "✅" if is_win else "❌"
-        print(f"  {tag} {symbol:8} | {result:12} | PNL: {pnl:+6.1f}% | ADX: {adx:.1f}", flush=True)
+        print(f"  {tag} {symbol:8} | {status:14} | PNL: {pnl:+6.1f}% | ADX: {adx:.1f} | {source}", flush=True)
 
     print("\n" + "=" * 55, flush=True)
 
@@ -168,9 +174,9 @@ def main():
         print(f"  ADX 30-40 : {sum(1 for v in adxs if 30 <= v < 40)}", flush=True)
         print(f"  ADX > 40  : {sum(1 for v in adxs if v >= 40)}", flush=True)
 
-    stats(winners, "✅ KAZANANLAR")
+    stats(winners, f"✅ KAZANANLAR ({len(winners)})")
     print(flush=True)
-    stats(losers,  "❌ KAYBEDENLER")
+    stats(losers,  f"❌ KAYBEDENLER ({len(losers)})")
 
     print("\n" + "=" * 55, flush=True)
     if winners and losers:
