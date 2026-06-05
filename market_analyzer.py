@@ -79,16 +79,17 @@ def _build_prompt(data, portfolio_context=""):
     btc_lines = "\n".join(_tf_summary(btc.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
     eth_lines = "\n".join(_tf_summary(eth.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
 
-    tweet_text = (
+    tweet_section = (
+        f"## @AnalizCoin1 SON TWEETLER\n" +
         "\n".join(f"- {t['title']}" for t in tweets[:5])
-        if tweets else "Tweet alınamadı"
-    )
+    ) if tweets else ""
 
     SEP = "─────────────────────────"
 
-    return f"""Sen deneyimli bir kripto teknik analistisin. Türkçe yanıt ver.
+    return f"""Sen deneyimli bir kripto analistisin. Türkçe yaz, okuyucu kripto yatırımcısı ama teknik analist değil.
+DİL KURALI: Teknik terimleri parantez içinde açıkla. Örnek: "fiyatlardaki sert oynaklık (volatilite)", "piyasadan kaçış (risk-off)", "baskın coin oranı (dominans)" gibi.
 
-## GLOBAL PİYASA
+## VERİ
 TOTAL:  ${g.get('total', 0)/1e12:.3f}T | TOTAL2: ${g.get('total2', 0)/1e12:.3f}T | TOTAL3: ${g.get('total3', 0)/1e12:.3f}T
 BTC.D: {g.get('btc_dominance', 0):.2f}% | ETH.D: {g.get('eth_dominance', 0):.2f}% | USDT.D: {g.get('usdt_dominance', 0):.2f}%
 24h Değişim: {g.get('mcap_change_24h', 0):+.2f}%
@@ -99,8 +100,7 @@ BTC.D: {g.get('btc_dominance', 0):.2f}% | ETH.D: {g.get('eth_dominance', 0):.2f}
 ## ETH/USDT — ${eth_price:,.2f}
 {eth_lines}
 
-## @AnalizCoin1 TWEETLER
-{tweet_text}
+{tweet_section}
 
 ## PORTFÖY
 {portfolio_context or "Portföy verisi yok"}
@@ -108,41 +108,38 @@ BTC.D: {g.get('btc_dominance', 0):.2f}% | ETH.D: {g.get('eth_dominance', 0):.2f}
 ---
 ## GÖREVİN
 
-1. BTC için kritik destek/direnç seviyeleri — multi-TF confluence'a göre, max 4 seviye (güncel fiyata mesafeyi yaz)
-2. ETH için kritik destek/direnç seviyeleri — max 4 seviye
-3. Piyasa rejimi: BTC sezonu mu / alt sezon başlangıcı mı / risk-off mu?
-4. BTC.D + USDT.D + TOTAL2/TOTAL3 trend yorumu
-5. @AnalizCoin1 kıyaslaması — haklı mı, çelişiyor mu?
-6. Portföy için somut uyarı/öneri
+Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik talimat, metne yazma.
 
-Önce seviyeleri şu formatta yaz, başka hiçbir şey olmadan:
+<b>🌍 Global Piyasa</b>
+{SEP}
+[TOTAL, TOTAL2, TOTAL3 rakamlarını ver ve ne anlama geldiğini açıkla. BTC.D, ETH.D, USDT.D'yi yorumla — para nereye akıyor, piyasadan çıkış var mı? 3-4 cümle, akıcı paragraf.]
+
+<b>₿ Bitcoin</b>
+{SEP}
+[Teknik tablo: trend, önemli ortalamalar. Ardından kritik destek ve direnç seviyeleri — güncel fiyata % mesafe ile. Max 4 seviye.]
+
+<b>Ξ Ethereum</b>
+{SEP}
+[Aynı yapı: teknik durum + kritik seviyeler. ETH/BTC paritesini de değerlendirmeyi unutma.]
+
+[ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Aşağıdakilerden uygun olanları ekle, uygun olmayanı ekleme:
+  • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı durumu) — varsa
+  • Para akışı detayı (dominans hareketleri anlamlıysa)
+  • Tweet yorumu — SADECE tweet verisi geldiyse ekle, gelmediyse bu bölümü aç bile
+  • Öne çıkan başka bir teknik veya makro gözlem — varsa
+  Her eklediğin konu için uygun bir emoji + başlık + {SEP} kullan. Yoksa hiç ekleme.]
+
+<b>💡 Görüş</b>
+{SEP}
+[İki ayrı tahmin/fikir: "Gün içi:" ve "Haftalık:" olarak ikiye böl. Kesin değil, fikir sun. Somut fiyat seviyeleri veya senaryo ver.]
+
+Önce seviyeleri JSON olarak yaz:
 <levels>
 {{"btc": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}, "eth": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}}}
 </levels>
 
-Sonra analizi TAM OLARAK bu yapıda yaz (max 400 kelime):
-
-<b>📈 PİYASA REJİMİ</b>
-{SEP}
-[Rejim yorumu — 2-3 cümle. BTC.D / USDT.D / TOTAL2-3 dahil]
-
-<b>₿ BTC Kritik Seviyeler</b>
-{SEP}
-[Destek ve direnç seviyeleri, güncel fiyata mesafe ile. Örn: $61,126 destek (%2.3 uzakta)]
-
-<b>Ξ ETH Kritik Seviyeler</b>
-{SEP}
-[ETH destek/direnç seviyeleri]
-
-<b>🐦 @AnalizCoin1 Değerlendirme</b>
-{SEP}
-[Tweetlerle örtüşüyor mu? 1-2 cümle]
-
-<b>💼 Portföy Önerisi</b>
-{SEP}
-[Somut öneri]
-
-FORMATLAMA KURALI: Yalnızca Telegram HTML kullan — <b></b> dışında * # _ işareti kullanma.
+Sonra yukarıdaki analizi yaz. Max 500 kelime.
+FORMATLAMA: Yalnızca Telegram HTML — <b></b> kullan, *, #, _ işaretleri kullanma.
 """
 
 
