@@ -7,8 +7,9 @@ Render shell'den çalıştır.
 import os, json, time, requests
 from datetime import datetime, timezone
 
-PORTFOLIO_URL   = os.getenv("PORTFOLIO_URL", "")
-PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+# Portfolio shell'den çalışırken localhost:10000 fallback
+PORTFOLIO_URL   = os.getenv("PORTFOLIO_URL", "") or "http://localhost:10000"
+PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "") or os.getenv("PORTFOLIO_TOKEN", "")
 BINANCE_BASE    = "https://api.binance.com"
 ADX_PERIOD      = 14
 
@@ -101,10 +102,7 @@ def parse_time_ms(sig):
 
 
 def main():
-    if not PORTFOLIO_URL:
-        print("PORTFOLIO_URL env yok. Render shell'de çalıştır.", flush=True)
-        return
-
+    print(f"Portfolio URL: {PORTFOLIO_URL}", flush=True)
     print("Portfolio'dan sinyaller çekiliyor...", flush=True)
     try:
         signals = fetch_signals()
