@@ -34,7 +34,7 @@ def _tg(msg):
     if not ANALYZER_TOKEN or not TELEGRAM_CHAT_ID:
         print(f"[MARKET_ANALYZER] TG eksik: {msg[:80]}", flush=True)
         return
-    limit = 4000
+    limit = 3500
     if len(msg) <= limit:
         _tg_send(msg)
         return
@@ -163,7 +163,7 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 {{"btc": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}, "eth": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}}}
 </levels>
 
-Sonra yukarıdaki analizi yaz. Max 500 kelime.
+Sonra yukarıdaki analizi yaz. Max 380 kelime.
 FORMATLAMA: Yalnızca Telegram HTML — <b></b> kullan, *, #, _ işaretleri kullanma.
 """
 
@@ -201,7 +201,7 @@ def run_daily_analysis(portfolio_context=""):
     try:
         resp = client.messages.create(
             model="claude-opus-4-8",
-            max_tokens=1500,
+            max_tokens=1100,
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text
