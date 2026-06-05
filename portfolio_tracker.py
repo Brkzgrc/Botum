@@ -1099,6 +1099,9 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   padding-bottom:16px;border-bottom:1px solid var(--border);}}
 .header h1{{color:var(--accent);font-size:1.1rem;letter-spacing:3px;}}
 .header .time{{color:var(--text-dim);font-size:.75rem;display:flex;align-items:center;gap:10px;}}
+.btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;
+  padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
+.btn-refresh:hover{{background:#2ecc7133;}}
 .btn-clear{{background:#c0392b22;color:#e74c3c;border:1px solid #e74c3c44;border-radius:4px;
   padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
 .btn-clear:hover{{background:#c0392b55;}}
@@ -1138,6 +1141,7 @@ tr:hover td{{background:var(--card);}}
     <h1>📊 PORTFÖY TAKİP</h1>
     <span class="time">
         {now} | v2.7
+        <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
         >🗑 Sıfırla</button>
