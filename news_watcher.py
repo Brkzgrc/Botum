@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID",        "")
+TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 NEWS_THREAD_ID          = 64
 
 TR_TZ = timezone(timedelta(hours=3))
