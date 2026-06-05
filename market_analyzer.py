@@ -201,7 +201,7 @@ def run_daily_analysis(portfolio_context=""):
     try:
         resp = client.messages.create(
             model="claude-opus-4-8",
-            max_tokens=2000,
+            max_tokens=5000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text
