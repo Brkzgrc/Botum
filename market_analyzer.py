@@ -15,8 +15,30 @@ ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 ANALYZER_TOKEN     = os.environ.get("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 LEVELS_FILE        = "levels.json"
+ALERTED_FILE       = "alerted_state.json"
 ALERT_COOLDOWN_SEC = 6 * 3600
-_alerted = {}  # (symbol_key, level, threshold) -> last_alert_timestamp
+
+
+def _load_alerted():
+    try:
+        with open(ALERTED_FILE) as f:
+            data = json.load(f)
+        result = {}
+        for k, v in data.items():
+            parts = k.split(",")
+            result[(parts[0], float(parts[1]), float(parts[2]))] = float(v)
+        return result
+    except Exception:
+        return {}
+
+
+def _save_alerted(alerted):
+    try:
+        data = {f"{k[0]},{k[1]},{k[2]}": v for k, v in alerted.items()}
+        with open(ALERTED_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"[MARKET_ANALYZER] alerted_state kayıt hatası: {e}", flush=True)
 
 
 def _tg(msg):
@@ -123,6 +145,7 @@ BTC.D: {g.get('btc_dominance', 0):.2f}% | ETH.D: {g.get('eth_dominance', 0):.2f}
 </levels>
 
 Sonra Türkçe analiz yaz (max 350 kelime, sade, Telegram'a gidecek).
+FORMATLAMA KURALI: Yalnızca Telegram HTML kullan — kalın için <b>başlık</b>, başka hiçbir işaret (*, **, #, ##, _, __) kullanma.
 """
 
 
@@ -178,7 +201,12 @@ def run_daily_analysis(portfolio_context=""):
         print("[MARKET_ANALYZER] Seviye parse başarısız, ham yanıt:\n" + text[:200], flush=True)
 
     clean = re.sub(r"<levels>.*?</levels>", "", text, flags=re.DOTALL).strip()
-    clean = re.sub(r"<[^>]+>", "", clean)  # Claude'un ürettiği HTML taglarını temizle
+    # Allowed HTML tags for Telegram: keep <b>, <i>, <code>, <pre>
+    clean = re.sub(r"<(?!/?(b|i|code|pre)(?:\s[^>]*)?>)[^>]+>", "", clean)
+    # Strip any remaining markdown symbols
+    clean = re.sub(r"\*\*(.+?)\*\*", r"\1", clean)
+    clean = re.sub(r"__(.+?)__", r"\1", clean)
+    clean = re.sub(r"^#{1,4}\s*", "", clean, flags=re.MULTILINE)
     g = data.get("global") or {}
     btc_price = (data.get("btc") or {}).get("4h", {}).get("closes", [0])[-1]
     now_tr = datetime.now(TR_TZ)
@@ -203,6 +231,7 @@ def check_price_proximity():
         return
 
     now = time.time()
+    alerted = _load_alerted()
 
     for symbol, key in [("BTCUSDT", "btc"), ("ETHUSDT", "eth")]:
         sym_levels = levels.get(key, {})
@@ -227,9 +256,9 @@ def check_price_proximity():
             for thr in _THRESHOLDS:
                 if dist_pct <= thr:
                     alert_key = (key, level, thr)
-                    if now - _alerted.get(alert_key, 0) < ALERT_COOLDOWN_SEC:
+                    if now - alerted.get(alert_key, 0) < ALERT_COOLDOWN_SEC:
                         break  # bu eşik için yakın zamanda zaten uyarıldı
-                    _alerted[alert_key] = now
+                    alerted[alert_key] = now
                     direction = "altında" if price < level else "üstünde"
                     coin = symbol.replace("USDT", "")
                     _tg(
@@ -240,6 +269,8 @@ def check_price_proximity():
                         f"(Multi-TF confluence seviyesi)"
                     )
                     break  # bu seviye için sadece en yakın eşiği tetikle
+
+    _save_alerted(alerted)
 
 
 def _daily_loop():
