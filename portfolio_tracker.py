@@ -20,6 +20,7 @@ import requests
 from flask import Flask, request, jsonify
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
+from claude_analyzer import process_and_send as _analyzer_process, start_market_watcher as _start_market_watcher
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -563,6 +564,24 @@ def calc_performance():
 # ============================================================
 # API ENDPOINT'LERİ
 # ============================================================
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    signal      = data.get("signal", {})
+    recent_count = data.get("recent_count", 0)
+    sig_num     = data.get("sig_num", 0)
+    portfolio_id = data.get("portfolio_id", "")
+    threading.Thread(
+        target=_analyzer_process,
+        args=(signal, recent_count, sig_num, portfolio_id),
+        daemon=True,
+    ).start()
+    return jsonify({"status": "queued"}), 202
+
+
 @app.route("/api/health")
 def api_health():
     return jsonify({"status": "ok", "time": tr_now_str()})
@@ -1266,6 +1285,7 @@ if __name__ == "__main__":
     threading.Thread(target=position_checker_loop, daemon=True).start()
     start_news_watcher()
     start_market_analyzer()
+    _start_market_watcher()
 
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port, use_reloader=False)

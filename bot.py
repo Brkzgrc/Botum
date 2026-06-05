@@ -34,7 +34,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import ccxt
-from claude_analyzer import process_and_send as _analyzer_process, start_market_watcher as _start_market_watcher
 import numpy as np
 import pandas as pd
 import requests
@@ -913,13 +912,22 @@ def send_to_portfolio(result):
     return ""
 
 # ============================================================
-# CLAUDE ANALYZER — RETRY WRAPPER
+# CLAUDE ANALYZER — HTTP WRAPPER
 # ============================================================
 def _analyzer_safe(signal: dict, recent_count: int, sig_num: int, portfolio_id: str):
+    if not PORTFOLIO_URL:
+        return
     sym = signal.get("symbol", "?")
     for attempt in range(2):
         try:
-            _analyzer_process(signal, recent_count, sig_num, portfolio_id)
+            r = requests.post(
+                f"{PORTFOLIO_URL}/api/analyze",
+                json={"signal": signal, "recent_count": recent_count, "sig_num": sig_num, "portfolio_id": portfolio_id},
+                headers={"Authorization": f"Bearer {PORTFOLIO_TOKEN}"},
+                timeout=30,
+            )
+            if r.status_code not in (200, 202):
+                print(f"[ANALYZER] HTTP {r.status_code}: {r.text[:80]}", flush=True)
             return
         except Exception as e:
             if attempt == 0:
@@ -2321,7 +2329,6 @@ async def main():
 
     bot_status["status"] = "LIVE"
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
-    _start_market_watcher()
 
     await ws_all(symbols, candidate_queue)
 
