@@ -118,9 +118,9 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 {SEP}
 [Teknik tablo: trend, önemli ortalamalar. Ardından kritik destek ve direnç seviyeleri — güncel fiyata % mesafe ile. Max 4 seviye.]
 
-<b>Ξ Ethereum</b>
+<b>Ξ Alternatif Coinler (ETH öncülüğünde)</b>
 {SEP}
-[Aynı yapı: teknik durum + kritik seviyeler. ETH/BTC paritesini de değerlendirmeyi unutma.]
+[ETH teknik tablo ve kritik seviyeleri, ama asıl mesele şu: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek bir coin olarak değil, tüm alt coinlerin termometresi olarak ele alınacak.]
 
 [ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Aşağıdakilerden uygun olanları ekle, uygun olmayanı ekleme:
   • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı durumu) — varsa
