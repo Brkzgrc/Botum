@@ -178,6 +178,7 @@ def run_daily_analysis(portfolio_context=""):
         print("[MARKET_ANALYZER] Seviye parse başarısız, ham yanıt:\n" + text[:200], flush=True)
 
     clean = re.sub(r"<levels>.*?</levels>", "", text, flags=re.DOTALL).strip()
+    clean = re.sub(r"<[^>]+>", "", clean)  # Claude'un ürettiği HTML taglarını temizle
     g = data.get("global") or {}
     btc_price = (data.get("btc") or {}).get("4h", {}).get("closes", [0])[-1]
     now_tr = datetime.now(TR_TZ)
