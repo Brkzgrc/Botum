@@ -168,7 +168,6 @@ def run_daily_analysis(portfolio_context=""):
         return
     finally:
         del client
-        del data
         gc.collect()
 
     levels = _parse_levels(text)
@@ -187,6 +186,8 @@ def run_daily_analysis(portfolio_context=""):
         f"USDT.D: {g.get('usdt_dominance',0):.1f}%\n\n"
     )
     _tg(header + clean)
+    del data
+    gc.collect()
     print("[MARKET_ANALYZER] Analiz tamamlandı.", flush=True)
 
 
