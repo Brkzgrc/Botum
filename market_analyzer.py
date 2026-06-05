@@ -180,8 +180,10 @@ def run_daily_analysis(portfolio_context=""):
     clean = re.sub(r"<levels>.*?</levels>", "", text, flags=re.DOTALL).strip()
     g = data.get("global") or {}
     btc_price = (data.get("btc") or {}).get("4h", {}).get("closes", [0])[-1]
+    now_tr = datetime.now(TR_TZ)
     header = (
         f"📊 <b>Günlük Piyasa Analizi</b>\n"
+        f"🕐 {now_tr.strftime('%d/%m/%Y %H:%M')}\n"
         f"BTC: ${btc_price:,.2f} | BTC.D: {g.get('btc_dominance',0):.1f}% | "
         f"USDT.D: {g.get('usdt_dominance',0):.1f}%\n\n"
     )
