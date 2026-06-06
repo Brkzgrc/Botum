@@ -94,6 +94,9 @@ def bar_drop(opens, closes, idx):
     return (o - c) / o * 100 if o > 0 else None
 
 
+def avg(lst): return sum(lst) / len(lst) if lst else 0.0
+
+
 def detail(records, label, fn):
     total   = len(records)
     base_w  = sum(1 for r in records if r["is_win"])
@@ -102,18 +105,24 @@ def detail(records, label, fn):
     if not passed:
         print(f"  {label}: sinyal yok", flush=True)
         return
-    pw = sum(1 for r in passed  if r["is_win"])
-    pl = len(passed)  - pw
-    bw = sum(1 for r in blocked if r["is_win"])
-    bl = len(blocked) - bw
-    wr_p = pw / len(passed)  * 100
-    wr_b = bw / len(blocked) * 100 if blocked else 0
-    base_wr = base_w / total * 100
-    diff = wr_p - base_wr
-    mark = f"+{diff:.0f}pp ✅" if diff > 10 else (f"{diff:.0f}pp ❌" if diff < -10 else f"{diff:+.0f}pp —")
+    p_wins   = [r for r in passed  if r["is_win"]]
+    p_losses = [r for r in passed  if not r["is_win"]]
+    b_wins   = [r for r in blocked if r["is_win"]]
+    b_losses = [r for r in blocked if not r["is_win"]]
+    wr_p  = len(p_wins) / len(passed)  * 100
+    wr_b  = len(b_wins) / len(blocked) * 100 if blocked else 0
+    diff  = wr_p - base_w / total * 100
+    mark  = f"+{diff:.0f}pp ✅" if diff > 10 else (f"{diff:.0f}pp ❌" if diff < -10 else f"{diff:+.0f}pp —")
+    avg_p = avg([r["pnl"] for r in passed])
+    avg_b = avg([r["pnl"] for r in blocked]) if blocked else 0.0
     print(f"  ┌ {label}  {mark}", flush=True)
-    print(f"  │ GEÇİYOR {len(passed):2d}: {pw:2d} kazanç  {pl:2d} kayıp  → WR %{wr_p:.0f}", flush=True)
-    print(f"  └ ELİYOR  {len(blocked):2d}: {bw:2d} kazanç  {bl:2d} kayıp  → WR %{wr_b:.0f}  (kurtardığı kayıp: {bl}, feda: {bw})", flush=True)
+    print(f"  │ GEÇİYOR {len(passed):2d}: {len(p_wins):2d}✅ avg+{avg([r['pnl'] for r in p_wins]):.1f}%   {len(p_losses):2d}❌ avg{avg([r['pnl'] for r in p_losses]):.1f}%   → genel avg {avg_p:+.1f}%", flush=True)
+    print(f"  │ ELİYOR  {len(blocked):2d}: {len(b_wins):2d}✅ avg+{avg([r['pnl'] for r in b_wins]):.1f}%   {len(b_losses):2d}❌ avg{avg([r['pnl'] for r in b_losses]):.1f}%   → genel avg {avg_b:+.1f}%", flush=True)
+    if b_wins:
+        feda = "  ".join(f"{r['symbol']}({r['pnl']:+.1f}%)" for r in sorted(b_wins, key=lambda x: x["pnl"], reverse=True))
+        print(f"  └ Feda edilen kazançlar: {feda}", flush=True)
+    else:
+        print(f"  └ Feda edilen kazanç yok", flush=True)
 
 
 def row(records, label, fn):
