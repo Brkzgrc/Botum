@@ -125,6 +125,30 @@ def detail(records, label, fn):
         print(f"  └ Feda edilen kazanç yok", flush=True)
 
 
+def signal_list(records, label, fn):
+    passed  = sorted([r for r in records if fn(r)],     key=lambda x: x["pnl"], reverse=True)
+    blocked = sorted([r for r in records if not fn(r)], key=lambda x: x["pnl"], reverse=True)
+    total   = len(records)
+    base_w  = sum(1 for r in records if r["is_win"])
+    p_wins  = [r for r in passed  if r["is_win"]]
+    p_loss  = [r for r in passed  if not r["is_win"]]
+    b_wins  = [r for r in blocked if r["is_win"]]
+    b_loss  = [r for r in blocked if not r["is_win"]]
+    wr_p = len(p_wins)/len(passed)*100 if passed else 0
+    diff = wr_p - base_w/total*100
+    mark = f"+{diff:.0f}pp ✅" if diff > 10 else (f"{diff:.0f}pp ❌" if diff < -10 else f"{diff:+.0f}pp —")
+    print(f"\n{'─'*65}", flush=True)
+    print(f"DETAY: {label}  {mark}  ({len(passed)} geçiyor / {len(blocked)} eliyor)", flush=True)
+    print(f"  GEÇİYOR ({len(passed)}) — {len(p_wins)} kazanç avg+{avg([r['pnl'] for r in p_wins]):.1f}%  {len(p_loss)} kayıp avg{avg([r['pnl'] for r in p_loss]):.1f}%:", flush=True)
+    for r in passed:
+        tag = "✅" if r["is_win"] else "❌"
+        print(f"    {tag} {r['symbol']:8} {r['pnl']:+6.1f}%", flush=True)
+    print(f"  ELİYOR  ({len(blocked)}) — {len(b_wins)} kazanç avg+{avg([r['pnl'] for r in b_wins]):.1f}%  {len(b_loss)} kayıp avg{avg([r['pnl'] for r in b_loss]):.1f}%:", flush=True)
+    for r in blocked:
+        tag = "✅ FEDA" if r["is_win"] else "❌ iyi eliyor"
+        print(f"    {tag:14} {r['symbol']:8} {r['pnl']:+6.1f}%", flush=True)
+
+
 def row(records, label, fn):
     total   = len(records)
     base_wr = sum(1 for r in records if r["is_win"]) / total * 100
@@ -339,6 +363,13 @@ def main():
     detail(records, "F4t_neg + F8_10",            lambda r: r.get("f4t_neg") and r.get("f8_10"))
     detail(records, "F9_2cons (2 ardışık yeşil)", lambda r: r.get("f9_2cons"))
     detail(records, "F2 + F3a (önceki en iyi)",   lambda r: r.get("f2") and r.get("f3a"))
+
+    print(f"\n{'='*72}", flush=True)
+    print(f"SİNYAL DETAY — EN İYİ FİLTRELER", flush=True)
+    print(f"{'='*72}", flush=True)
+    signal_list(records, "F4t_neg (yeşil mum)",   lambda r: r.get("f4t_neg"))
+    signal_list(records, "F4t_neg + F5t_4",       lambda r: r.get("f4t_neg") and r.get("f5t_4"))
+    signal_list(records, "F5t cum < 4%",          lambda r: r.get("f5t_4"))
 
 
 if __name__ == "__main__":
