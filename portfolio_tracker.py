@@ -28,7 +28,10 @@ SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
 EXPIRE_HOURS = int(os.getenv("EXPIRE_HOURS", "48"))
 SHADOW_EXPIRE_HOURS = int(os.getenv("SHADOW_EXPIRE_HOURS", "72"))
-AUTH_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+AUTH_TOKEN   = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPO  = "brkzgrc/Botum"
+GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 EXPIRE_TRAIL_THRESHOLD = float(os.getenv("EXPIRE_TRAIL_THRESHOLD", "0.80"))
 EXPIRE_TRAIL_PCT = float(os.getenv("EXPIRE_TRAIL_PCT", "2.0"))
@@ -1269,6 +1272,56 @@ function toggleType(key, btn) {{
     return html
 
 # ============================================================
+# GITHUB SNAPSHOT
+# ============================================================
+def push_snapshot_to_github():
+    if not GITHUB_TOKEN:
+        return
+    try:
+        perf = calc_performance()
+        with _lock:
+            sigs = list(signals_db)
+        snapshot = {
+            "updated_at": tr_now_str(),
+            "performance": perf,
+            "open": [s for s in sigs if s.get("status") in ("open", "half_open")],
+            "closed": [s for s in sigs if s.get("status") not in ("open", "half_open")][-50:],
+        }
+        content = json.dumps(snapshot, ensure_ascii=False, default=str, indent=2)
+        import base64
+        encoded = base64.b64encode(content.encode()).decode()
+
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+        }
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
+
+        # Mevcut dosyanın SHA'sını al (güncelleme için gerekli)
+        r = requests.get(api_url, headers=headers, timeout=10)
+        sha = r.json().get("sha") if r.status_code == 200 else None
+
+        payload = {"message": f"snapshot {tr_now_str()}", "content": encoded, "branch": "main"}
+        if sha:
+            payload["sha"] = sha
+
+        r = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if r.status_code in (200, 201):
+            print(f"[SNAPSHOT] GitHub'a yazıldı.", flush=True)
+        else:
+            print(f"[SNAPSHOT] GitHub hata {r.status_code}: {r.text[:120]}", flush=True)
+    except Exception as e:
+        print(f"[SNAPSHOT] Hata: {e}", flush=True)
+
+
+def snapshot_loop():
+    time.sleep(60)  # ilk çalıştırmayı biraz geciktir
+    while True:
+        push_snapshot_to_github()
+        time.sleep(1800)  # 30 dakikada bir
+
+
+# ============================================================
 # MAIN
 # ============================================================
 if __name__ == "__main__":
@@ -1287,6 +1340,7 @@ if __name__ == "__main__":
 
     load_signals()
     threading.Thread(target=position_checker_loop, daemon=True).start()
+    threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
     start_market_analyzer()
     _start_market_watcher()
