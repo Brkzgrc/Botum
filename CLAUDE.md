@@ -7,6 +7,12 @@
 - **portfolio_tracker_PASİF.py** — sadece referans, üretim kodu değil
 - **claude_analyzer.py** — sadece referans, üretim kodu değil (PASİF)
 
+## Servis URL'leri
+
+| Servis | URL |
+|---|---|
+| Portfolio Tracker | https://portfolio-tracker-xzvw.onrender.com |
+
 ## Geliştirme Branch
 
 `claude/github-bot-file-changes-5u6V5` — her değişiklik buraya + main'e push
