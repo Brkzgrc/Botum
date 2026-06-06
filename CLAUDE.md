@@ -65,6 +65,12 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 4. **UZUN VADE T168** — Stop -8% | TP +25% | WR %40
 5. **PUMP PROBABILITY** — BB sıkışma + ADX(7) + OBV + Direnç kırılımı | Stop ~-5% | TP +8/15/25%
 
+## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
+
+- **PANİK PUMP JSON dosyası** — Bilgisayarda ~150-200 sinyalli eski portfolio export'u var. Bu dosyayı buraya upload et veya Render shell'inde `python panik_pump_analysis.py --file /path/to/file.json` ile çalıştır. Şu an 32 sinyal ile çalışıyoruz, 150-200 ile sonuçlar çok daha anlamlı olur.
+- **panik_pump_analysis.py'ye --file flag ekle** — JSON dosyasından okuma desteği henüz yok, eklenecek.
+- **Özgür Analiz Sistemi** — GitHub Actions kurulumu: workflow dosyası + GitHub secrets (PORTFOLIO_URL, PORTFOLIO_AUTH_TOKEN). Ben tetikleyip sonucu okuyabilirim, kullanıcı müdahalesi gerekmez.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
