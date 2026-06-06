@@ -12,7 +12,7 @@ PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "") or os.getenv("PORTFOLIO_
 BINANCE_BASE    = "https://api.binance.com"
 
 WIN_STATUSES = ("win_tp1", "win_tp2", "win_trail", "win_partial")
-ALL_CLOSED   = WIN_STATUSES + ("loss", "expired", "half_stopped", "win_partial")
+ALL_CLOSED   = WIN_STATUSES + ("loss", "expired", "half_stopped", "half_expired")
 
 
 def fetch_signals():
@@ -94,6 +94,28 @@ def bar_drop(opens, closes, idx):
     return (o - c) / o * 100 if o > 0 else None
 
 
+def detail(records, label, fn):
+    total   = len(records)
+    base_w  = sum(1 for r in records if r["is_win"])
+    passed  = [r for r in records if fn(r)]
+    blocked = [r for r in records if not fn(r)]
+    if not passed:
+        print(f"  {label}: sinyal yok", flush=True)
+        return
+    pw = sum(1 for r in passed  if r["is_win"])
+    pl = len(passed)  - pw
+    bw = sum(1 for r in blocked if r["is_win"])
+    bl = len(blocked) - bw
+    wr_p = pw / len(passed)  * 100
+    wr_b = bw / len(blocked) * 100 if blocked else 0
+    base_wr = base_w / total * 100
+    diff = wr_p - base_wr
+    mark = f"+{diff:.0f}pp ✅" if diff > 10 else (f"{diff:.0f}pp ❌" if diff < -10 else f"{diff:+.0f}pp —")
+    print(f"  ┌ {label}  {mark}", flush=True)
+    print(f"  │ GEÇİYOR {len(passed):2d}: {pw:2d} kazanç  {pl:2d} kayıp  → WR %{wr_p:.0f}", flush=True)
+    print(f"  └ ELİYOR  {len(blocked):2d}: {bw:2d} kazanç  {bl:2d} kayıp  → WR %{wr_b:.0f}  (kurtardığı kayıp: {bl}, feda: {bw})", flush=True)
+
+
 def row(records, label, fn):
     total   = len(records)
     base_wr = sum(1 for r in records if r["is_win"]) / total * 100
@@ -161,41 +183,33 @@ def main():
         closes = coin_1h["closes"] if coin_1h else []
         vols   = coin_1h.get("volumes", []) if coin_1h else []
 
-        # Son 3 barın düşüşü: pozitif = kırmızı, negatif/sıfır = yeşil
-        d1 = bar_drop(opens, closes, -1) if len(opens) >= 1 else None  # son bar
-        d2 = bar_drop(opens, closes, -2) if len(opens) >= 2 else None  # bir önceki
-        d3 = bar_drop(opens, closes, -3) if len(opens) >= 3 else None  # iki önceki
+        d1 = bar_drop(opens, closes, -1) if len(opens) >= 1 else None
+        d2 = bar_drop(opens, closes, -2) if len(opens) >= 2 else None
+        d3 = bar_drop(opens, closes, -3) if len(opens) >= 3 else None
 
-        # 4-bar kümülatif düşüş (coin)
         cum_drop = None
         if len(closes) >= 5:
             c4, c0 = closes[-5], closes[-1]
             if c4 > 0:
                 cum_drop = (c4 - c0) / c4 * 100
 
-        # Hacim oranı
         vol_ratio = None
         if len(vols) >= 11:
             avg_vol = sum(vols[-11:-1]) / 10
             if avg_vol > 0:
                 vol_ratio = vols[-1] / avg_vol
 
-        # ── Filtreler ──────────────────────────────────────────
-        # Bağlam
         f2  = (btc_rsi > 40)        if btc_rsi  is not None else None
         f3a = (30 <= coin_rsi <= 50) if coin_rsi is not None else None
 
-        # v2: coin mum büyüklüğü
         f4t_neg = (d1 <= 0)   if d1 is not None else None
         f4t_05  = (d1 < 0.5)  if d1 is not None else None
         f4t_10  = (d1 < 1.0)  if d1 is not None else None
         f4t_15  = (d1 < 1.5)  if d1 is not None else None
 
-        # v2: kümülatif düşüş
         f5t_4 = (cum_drop < 4.0) if cum_drop is not None else None
         f5t_6 = (cum_drop < 6.0) if cum_drop is not None else None
 
-        # v4: hacim eşik sweep
         f8_05  = (vol_ratio < 0.5) if vol_ratio is not None else None
         f8_08  = (vol_ratio < 0.8) if vol_ratio is not None else None
         f8_10  = (vol_ratio < 1.0) if vol_ratio is not None else None
@@ -204,17 +218,14 @@ def main():
         f8_hi2 = (vol_ratio > 2.0) if vol_ratio is not None else None
         f8_hi3 = (vol_ratio > 3.0) if vol_ratio is not None else None
 
-        # v4: çok-barlı yön
-        f9_bar2g = (d2 <= 0) if d2 is not None else None  # bar[-2] yeşil
-        f9_bar3g = (d3 <= 0) if d3 is not None else None  # bar[-3] yeşil
-        f9_2cons = (d1 <= 0 and d2 <= 0) if (d1 is not None and d2 is not None) else None  # son 2 bar yeşil
-        f9_1of2  = (d1 <= 0 or  d2 <= 0) if (d1 is not None and d2 is not None) else None  # 2 bardan biri yeşil
+        f9_bar2g = (d2 <= 0) if d2 is not None else None
+        f9_bar3g = (d3 <= 0) if d3 is not None else None
+        f9_2cons = (d1 <= 0 and d2 <= 0) if (d1 is not None and d2 is not None) else None
+        f9_1of2  = (d1 <= 0 or  d2 <= 0) if (d1 is not None and d2 is not None) else None
 
-        # v4: reversal pattern — önceki bar kırmızı, son bar yeşil (klasik dönüş)
         f9_rev1  = (d2 > 1.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
         f9_rev2  = (d2 > 2.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
         f9_rev3  = (d2 > 3.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
-        # sadece son bar yeşil, önceki kırmızıydı (dönüş ilk barı)
         f9_fresh = (d2 > 0 and d1 <= 0)   if (d2 is not None and d1 is not None) else None
 
         tag = "✅" if is_win else "❌"
@@ -307,6 +318,18 @@ def main():
     row(records, "F9_rev2 + F2",                 lambda r: r.get("f9_rev2") and r.get("f2"))
     row(records, "F9_fresh + F5t_4",             lambda r: r.get("f9_fresh") and r.get("f5t_4"))
     row(records, "F9_fresh + F8_10",             lambda r: r.get("f9_fresh") and r.get("f8_10"))
+
+    print(f"\n{'='*72}", flush=True)
+    print(f"ÖZET — GEÇİYOR vs ELİYOR (baz: {wins}/{total} = WR %{wins/total*100:.0f})", flush=True)
+    print(f"{'='*72}", flush=True)
+    detail(records, "F4t yeşil mum",              lambda r: r.get("f4t_neg"))
+    detail(records, "F8 vol < 0.8x",              lambda r: r.get("f8_08"))
+    detail(records, "F5t cum < 4%",               lambda r: r.get("f5t_4"))
+    detail(records, "F4t_neg + F5t_4",            lambda r: r.get("f4t_neg") and r.get("f5t_4"))
+    detail(records, "F4t_neg + F8_08",            lambda r: r.get("f4t_neg") and r.get("f8_08"))
+    detail(records, "F4t_neg + F8_10",            lambda r: r.get("f4t_neg") and r.get("f8_10"))
+    detail(records, "F9_2cons (2 ardışık yeşil)", lambda r: r.get("f9_2cons"))
+    detail(records, "F2 + F3a (önceki en iyi)",   lambda r: r.get("f2") and r.get("f3a"))
 
 
 if __name__ == "__main__":
