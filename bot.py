@@ -322,6 +322,12 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
         stats["filtered_crash"] += 1; return None
     if not (VOL_MIN <= vol_ratio <= VOL_MAX):
         stats["filtered_vol"] += 1; return None
+    open_now = gv("open")
+    if open_now is not None and close_now < open_now:
+        stats["filtered_f4t"] += 1; return None
+    c5ago = float(df["close"].iloc[-5])
+    if c5ago > 0 and (c5ago - close_now) / c5ago * 100 >= 4.0:
+        stats["filtered_f5t"] += 1; return None
     entry = close_now
     funding     = funding_cache.get(symbol)
     funding_neg = funding is not None and funding < 0
@@ -2133,7 +2139,7 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <div class="footer">
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
-  Eleme: Cooldown:{stats.get("cooldown",0)} Crash:{stats.get("filtered_crash",0)} Vol:{stats.get("filtered_vol",0)} Hacim:{stats.get("low_liquidity",0)}
+  Eleme: Cooldown:{stats.get("cooldown",0)} Crash:{stats.get("filtered_crash",0)} Vol:{stats.get("filtered_vol",0)} F4t:{stats.get("filtered_f4t",0)} F5t:{stats.get("filtered_f5t",0)} Hacim:{stats.get("low_liquidity",0)}
 </div>
 </body></html>"""
 
@@ -2242,6 +2248,7 @@ async def periodic_tasks():
             f"  PUMP PROB     : {pp_cnt}\n"
             f"  ── Filtre ──\n"
             f"  Crash:{stats.get('filtered_crash',0)}  Vol:{stats.get('filtered_vol',0)}"
+            f"  F4t:{stats.get('filtered_f4t',0)}  F5t:{stats.get('filtered_f5t',0)}"
             f"  Hacim:{stats.get('low_liquidity',0)}  Cooldown:{stats.get('cooldown',0)}\n"
             f"╚═══════════════════════════════════════════════╝",
             flush=True,
