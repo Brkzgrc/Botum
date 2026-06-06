@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-PANİK PUMP filtre analizi
-F1: BTC 1H 20MA üstünde
-F2: Coin RSI(14) < 35 (1H)
-F3: Volume spike — panik barı önceki 10 bar ortalamasının 2x+
-F4: BTC 1D 20MA üstünde
+PANİK PUMP filtre analizi — bear market odaklı
+F1: BTC 4H 20MA üstünde (bear içinde yerel yükseliş var mı?)
+F2: BTC 1H RSI > 40 (BTC aynı anda panikliyor mu?)
+F3: Coin RSI 30-50 arası (dip ama kırılmamış)
+F4: Panik mumu > 3% düşüş (gerçek panik mi?)
 """
 import os, time, requests
 from datetime import datetime, timezone
@@ -44,7 +44,7 @@ def fetch_ohlcv(symbol, open_time_ms, interval, limit):
     binance_sym = symbol.replace("/", "")
     if not binance_sym.endswith("USDT"):
         binance_sym += "USDT"
-    ms_per_bar = {"1h": 3600000, "1d": 86400000}.get(interval, 3600000)
+    ms_per_bar = {"1h": 3600000, "4h": 14400000, "1d": 86400000}.get(interval, 3600000)
     start_time = open_time_ms - limit * ms_per_bar
     try:
         resp = requests.get(
@@ -59,6 +59,7 @@ def fetch_ohlcv(symbol, open_time_ms, interval, limit):
         if not klines:
             return None
         return {
+            "opens":   [float(k[1]) for k in klines],
             "closes":  [float(k[4]) for k in klines],
             "volumes": [float(k[5]) for k in klines],
         }
@@ -90,13 +91,6 @@ def ma20(closes):
     return sum(closes[-20:]) / 20
 
 
-def volume_spike(volumes, mult=2.0, lookback=10):
-    if len(volumes) < lookback + 1:
-        return None
-    avg = sum(volumes[-lookback - 1:-1]) / lookback
-    return (volumes[-1] / avg >= mult) if avg > 0 else None
-
-
 def filter_stats(records, key, label):
     passed  = [r for r in records if r.get(key)]
     blocked = [r for r in records if not r.get(key)]
@@ -109,7 +103,7 @@ def filter_stats(records, key, label):
     print(f"FİLTRE: {label}", flush=True)
     print(f"  Geçti  ({pt:2d} sinyal): {pw} kazanç / {pt-pw} kayıp → WR %{pr:.0f}", flush=True)
     print(f"  Engel. ({bt:2d} sinyal): {bw} kazanç / {bt-bw} kayıp → WR %{br:.0f}", flush=True)
-    if pt > 0:
+    if pt > 0 and bt > 0:
         diff = pr - br
         if diff > 10:
             print(f"  → Filtre DEĞER KATIYOR (+{diff:.0f}pp)", flush=True)
@@ -149,29 +143,37 @@ def main():
 
         coin_1h = fetch_ohlcv(symbol, open_time, "1h", 30)
         time.sleep(0.12)
-        btc_1h  = fetch_ohlcv("BTCUSDT", open_time, "1h", 25)
+        btc_1h  = fetch_ohlcv("BTCUSDT", open_time, "1h", 30)
         time.sleep(0.12)
-        btc_1d  = fetch_ohlcv("BTCUSDT", open_time, "1d", 25)
+        btc_4h  = fetch_ohlcv("BTCUSDT", open_time, "4h", 25)
         time.sleep(0.12)
 
         is_win = status in WIN_STATUSES or (status == "half_stopped" and pnl > 0)
 
-        rsi_val  = calc_rsi(coin_1h["closes"]) if coin_1h and len(coin_1h["closes"]) >= 15 else None
-        vol_spk  = volume_spike(coin_1h["volumes"]) if coin_1h else None
+        # F1: BTC 4H 20MA üstünde
+        btc_ma4h = ma20(btc_4h["closes"]) if btc_4h else None
+        f1 = (btc_4h["closes"][-1] > btc_ma4h) if btc_ma4h else None
 
-        btc_ma1h = ma20(btc_1h["closes"]) if btc_1h else None
-        f1       = (btc_1h["closes"][-1] > btc_ma1h) if btc_ma1h else None
+        # F2: BTC 1H RSI > 40
+        btc_rsi = calc_rsi(btc_1h["closes"]) if btc_1h and len(btc_1h["closes"]) >= 15 else None
+        f2 = (btc_rsi > 40) if btc_rsi is not None else None
 
-        btc_ma1d = ma20(btc_1d["closes"]) if btc_1d else None
-        f4       = (btc_1d["closes"][-1] > btc_ma1d) if btc_ma1d else None
+        # F3: Coin RSI 30-50 arası
+        coin_rsi = calc_rsi(coin_1h["closes"]) if coin_1h and len(coin_1h["closes"]) >= 15 else None
+        f3 = (30 <= coin_rsi <= 50) if coin_rsi is not None else None
 
-        f2 = (rsi_val < 35) if rsi_val is not None else None
-        f3 = vol_spk
+        # F4: Panik mumu > 3% düşüş (son barın open→close)
+        f4 = None
+        if coin_1h and coin_1h["opens"] and coin_1h["closes"]:
+            o, c = coin_1h["opens"][-1], coin_1h["closes"][-1]
+            if o > 0:
+                f4 = (o - c) / o * 100 > 3.0
 
         tag = "✅" if is_win else "❌"
-        rsi_s = f"RSI:{rsi_val:.0f}" if rsi_val is not None else "RSI:?"
         def fs(v): return ("↑" if v else "↓") if v is not None else "?"
-        print(f"  {tag} {sym_short:8} | {pnl:+6.1f}% | {rsi_s} "
+        coin_rsi_s = f"cRSI:{coin_rsi:.0f}" if coin_rsi is not None else "cRSI:?"
+        btc_rsi_s  = f"bRSI:{btc_rsi:.0f}"  if btc_rsi  is not None else "bRSI:?"
+        print(f"  {tag} {sym_short:8} | {pnl:+6.1f}% | {coin_rsi_s} {btc_rsi_s} "
               f"| F1:{fs(f1)} F2:{fs(f2)} F3:{fs(f3)} F4:{fs(f4)}", flush=True)
 
         records.append({"symbol": sym_short, "is_win": is_win, "pnl": pnl,
@@ -186,15 +188,18 @@ def main():
     print(f"\n{'='*55}", flush=True)
     print(f"GENEL: {wins}/{total} kazanç → WR %{wins/total*100:.0f}", flush=True)
 
-    filter_stats(records, "f1", "F1 — BTC 1H 20MA üstünde")
-    filter_stats(records, "f2", "F2 — Coin RSI(14) < 35 oversold")
-    filter_stats(records, "f3", "F3 — Volume spike 2x (panik hacmi)")
-    filter_stats(records, "f4", "F4 — BTC 1D 20MA üstünde")
+    filter_stats(records, "f1", "F1 — BTC 4H 20MA üstünde (yerel trend)")
+    filter_stats(records, "f2", "F2 — BTC 1H RSI > 40 (BTC stabil)")
+    filter_stats(records, "f3", "F3 — Coin RSI 30-50 (ideal dip zonu)")
+    filter_stats(records, "f4", "F4 — Panik mumu > 3% düşüş")
 
     combos = [
-        ("F1+F4",       lambda r: r.get("f1") and r.get("f4")),
+        ("F1+F2",       lambda r: r.get("f1") and r.get("f2")),
         ("F2+F3",       lambda r: r.get("f2") and r.get("f3")),
+        ("F1+F3",       lambda r: r.get("f1") and r.get("f3")),
+        ("F2+F4",       lambda r: r.get("f2") and r.get("f4")),
         ("F1+F2+F3",    lambda r: r.get("f1") and r.get("f2") and r.get("f3")),
+        ("F2+F3+F4",    lambda r: r.get("f2") and r.get("f3") and r.get("f4")),
         ("F1+F2+F3+F4", lambda r: r.get("f1") and r.get("f2") and r.get("f3") and r.get("f4")),
     ]
     print(f"\n{'='*55}", flush=True)
@@ -202,6 +207,7 @@ def main():
     for name, fn in combos:
         combo = [r for r in records if fn(r)]
         if not combo:
+            print(f"  {name}: sinyal yok", flush=True)
             continue
         cw = sum(1 for r in combo if r["is_win"])
         print(f"  {name}: {cw}/{len(combo)} → WR %{cw/len(combo)*100:.0f} "
