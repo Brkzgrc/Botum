@@ -149,6 +149,51 @@ def signal_list(records, label, fn):
         print(f"    {tag:14} {r['symbol']:8} {r['pnl']:+6.1f}%", flush=True)
 
 
+def simulate(records, label, fn):
+    passed  = [r for r in records if fn(r)]
+    blocked = [r for r in records if not fn(r)]
+    if not passed:
+        print(f"Simülasyon: {label} — sinyal yok", flush=True)
+        return
+    total       = len(records)
+    base_wins   = [r for r in records if r["is_win"]]
+    base_losses = [r for r in records if not r["is_win"]]
+    p_wins  = [r for r in passed  if r["is_win"]]
+    p_loss  = [r for r in passed  if not r["is_win"]]
+    b_wins  = [r for r in blocked if r["is_win"]]
+    b_loss  = [r for r in blocked if not r["is_win"]]
+
+    base_sum = sum(r["pnl"] for r in records)
+    filt_sum = sum(r["pnl"] for r in passed)
+    feda_sum = sum(r["pnl"] for r in b_wins)
+    save_sum = sum(r["pnl"] for r in b_loss)
+
+    base_wr = len(base_wins) / total * 100
+    filt_wr = len(p_wins)    / len(passed) * 100
+
+    print(f"\n{'='*72}", flush=True)
+    print(f"PORTFÖY SİMÜLASYONU: {label}", flush=True)
+    print(f"Varsayım: eşit lot — her sinyal 1 birim pozisyon", flush=True)
+    print(f"{'─'*72}", flush=True)
+    print(f"                         BASELİNE    FİLTRELİ", flush=True)
+    print(f"  Toplam işlem              {total:5d}       {len(passed):5d}", flush=True)
+    print(f"  Kazançlar                 {len(base_wins):5d}       {len(p_wins):5d}", flush=True)
+    print(f"  Kayıplar                  {len(base_losses):5d}       {len(p_loss):5d}", flush=True)
+    print(f"  Win rate               %{base_wr:6.1f}    %{filt_wr:6.1f}    ({filt_wr-base_wr:+.1f}pp)", flush=True)
+    print(f"  PnL toplamı (ham)       {base_sum:+7.1f}%    {filt_sum:+7.1f}%", flush=True)
+    print(f"  İşlem başına ort.       {base_sum/total:+7.2f}%    {filt_sum/len(passed):+7.2f}%", flush=True)
+    print(f"{'─'*72}", flush=True)
+    print(f"  Feda edilen kazançlar ({len(b_wins)} sinyal)  → toplam {feda_sum:+.1f}%", flush=True)
+    for r in sorted(b_wins, key=lambda x: x["pnl"], reverse=True):
+        print(f"    ✅ FEDA       {r['symbol']:8} {r['pnl']:+6.1f}%", flush=True)
+    print(f"  Tasarruf edilen kayıplar ({len(b_loss)} sinyal) → toplam {save_sum:+.1f}%", flush=True)
+    for r in sorted(b_loss, key=lambda x: x["pnl"]):
+        print(f"    ❌ KURTARILDI {r['symbol']:8} {r['pnl']:+6.1f}%", flush=True)
+    print(f"{'─'*72}", flush=True)
+    net_delta = filt_sum / len(passed) - base_sum / total
+    print(f"  İşlem başına net kazanım: {net_delta:+.2f}%  ({'✅ iyileşti' if net_delta > 0 else '❌ kötüleşti'})", flush=True)
+
+
 def row(records, label, fn):
     total   = len(records)
     base_wr = sum(1 for r in records if r["is_win"]) / total * 100
@@ -370,6 +415,8 @@ def main():
     signal_list(records, "F4t_neg (yeşil mum)",   lambda r: r.get("f4t_neg"))
     signal_list(records, "F4t_neg + F5t_4",       lambda r: r.get("f4t_neg") and r.get("f5t_4"))
     signal_list(records, "F5t cum < 4%",          lambda r: r.get("f5t_4"))
+
+    simulate(records, "F4t_neg + F5t_4",          lambda r: r.get("f4t_neg") and r.get("f5t_4"))
 
 
 if __name__ == "__main__":
