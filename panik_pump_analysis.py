@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-PANİK PUMP — Genişletilmiş Filtre Analizi v3
+PANİK PUMP — Genişletilmiş Filtre Analizi v4
 --file: yerel JSON dosyasından sinyal yükle
-Yeni filtreler: BTC yönü (F6t), RSI momentum (F7), hacim (F8)
+Yeni: hacim eşik sweep, çok-barlı yeşil, reversal pattern
 """
 import os, time, requests, argparse, json
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_AUTH_TOKEN", "") or os.getenv("PORTFOLIO_
 BINANCE_BASE    = "https://api.binance.com"
 
 WIN_STATUSES = ("win_tp1", "win_tp2", "win_trail", "win_partial")
-ALL_CLOSED   = WIN_STATUSES + ("loss", "expired", "half_stopped", "half_expired")
+ALL_CLOSED   = WIN_STATUSES + ("loss", "expired", "half_stopped", "win_partial")
 
 
 def fetch_signals():
@@ -89,19 +89,24 @@ def calc_rsi(closes, period=14):
     return round(100 - 100 / (1 + avg_gain / avg_loss), 1)
 
 
+def bar_drop(opens, closes, idx):
+    o, c = opens[idx], closes[idx]
+    return (o - c) / o * 100 if o > 0 else None
+
+
 def row(records, label, fn):
     total   = len(records)
     base_wr = sum(1 for r in records if r["is_win"]) / total * 100
     combo   = [r for r in records if fn(r)]
     if not combo:
-        print(f"  {label:<34} sinyal yok", flush=True)
+        print(f"  {label:<36} sinyal yok", flush=True)
         return
     cw   = sum(1 for r in combo if r["is_win"])
     wr   = cw / len(combo) * 100
     diff = wr - base_wr
     eli  = total - len(combo)
     mark = f"+{diff:.0f}pp ✅" if diff > 10 else (f"{diff:.0f}pp ❌" if diff < -10 else f"{diff:+.0f}pp —")
-    print(f"  {label:<34} {cw}/{len(combo):2d} → WR %{wr:2.0f}  {mark}  (eliyor {eli}/{total})", flush=True)
+    print(f"  {label:<36} {cw}/{len(combo):2d} → WR %{wr:2.0f}  {mark}  (eliyor {eli}/{total})", flush=True)
 
 
 def main():
@@ -152,90 +157,84 @@ def main():
         coin_rsi = calc_rsi(coin_1h["closes"]) if coin_1h and len(coin_1h["closes"]) >= 15 else None
         btc_rsi  = calc_rsi(btc_1h["closes"])  if btc_1h  and len(btc_1h["closes"])  >= 15 else None
 
-        # RSI momentum: RSI şu an vs 3 bar önceki RSI
-        coin_rsi_3ago = calc_rsi(coin_1h["closes"][:-3]) if coin_1h and len(coin_1h["closes"]) >= 18 else None
-        rsi_rising    = (coin_rsi > coin_rsi_3ago) if (coin_rsi is not None and coin_rsi_3ago is not None) else None
+        opens  = coin_1h["opens"]  if coin_1h else []
+        closes = coin_1h["closes"] if coin_1h else []
+        vols   = coin_1h.get("volumes", []) if coin_1h else []
 
-        # Coin son mum ve 4-bar kümülatif
-        candle_drop = None
-        if coin_1h and coin_1h["opens"]:
-            o, c = coin_1h["opens"][-1], coin_1h["closes"][-1]
-            if o > 0:
-                candle_drop = (o - c) / o * 100
+        # Son 3 barın düşüşü: pozitif = kırmızı, negatif/sıfır = yeşil
+        d1 = bar_drop(opens, closes, -1) if len(opens) >= 1 else None  # son bar
+        d2 = bar_drop(opens, closes, -2) if len(opens) >= 2 else None  # bir önceki
+        d3 = bar_drop(opens, closes, -3) if len(opens) >= 3 else None  # iki önceki
 
+        # 4-bar kümülatif düşüş (coin)
         cum_drop = None
-        if coin_1h and len(coin_1h["closes"]) >= 5:
-            c4, c0 = coin_1h["closes"][-5], coin_1h["closes"][-1]
+        if len(closes) >= 5:
+            c4, c0 = closes[-5], closes[-1]
             if c4 > 0:
                 cum_drop = (c4 - c0) / c4 * 100
 
-        # BTC son mum ve 4-bar kümülatif
-        btc_candle_drop = None
-        if btc_1h and btc_1h["opens"]:
-            o, c = btc_1h["opens"][-1], btc_1h["closes"][-1]
-            if o > 0:
-                btc_candle_drop = (o - c) / o * 100
-
-        btc_cum_drop = None
-        if btc_1h and len(btc_1h["closes"]) >= 5:
-            c4, c0 = btc_1h["closes"][-5], btc_1h["closes"][-1]
-            if c4 > 0:
-                btc_cum_drop = (c4 - c0) / c4 * 100
-
-        # Hacim oranı: son bar / önceki 10 bar ortalaması
+        # Hacim oranı
         vol_ratio = None
-        vols = coin_1h.get("volumes", []) if coin_1h else []
         if len(vols) >= 11:
             avg_vol = sum(vols[-11:-1]) / 10
             if avg_vol > 0:
                 vol_ratio = vols[-1] / avg_vol
 
-        # ── Filtreler ──────────────────────────────────────────────
-        # Bağlam (v2)
-        f2   = (btc_rsi > 40)         if btc_rsi     is not None else None
-        f3a  = (30 <= coin_rsi <= 50)  if coin_rsi    is not None else None
+        # ── Filtreler ──────────────────────────────────────────
+        # Bağlam
+        f2  = (btc_rsi > 40)        if btc_rsi  is not None else None
+        f3a = (30 <= coin_rsi <= 50) if coin_rsi is not None else None
 
-        # Ters: coin mum büyüklüğü (v2)
-        f4t_neg = (candle_drop <= 0)   if candle_drop is not None else None
-        f4t_05  = (candle_drop < 0.5)  if candle_drop is not None else None
-        f4t_10  = (candle_drop < 1.0)  if candle_drop is not None else None
-        f4t_15  = (candle_drop < 1.5)  if candle_drop is not None else None
+        # v2: coin mum büyüklüğü
+        f4t_neg = (d1 <= 0)   if d1 is not None else None
+        f4t_05  = (d1 < 0.5)  if d1 is not None else None
+        f4t_10  = (d1 < 1.0)  if d1 is not None else None
+        f4t_15  = (d1 < 1.5)  if d1 is not None else None
 
-        # Ters: coin kümülatif düşüş (v2)
-        f5t_neg = (cum_drop <= 0)      if cum_drop    is not None else None
-        f5t_2   = (cum_drop < 2.0)     if cum_drop    is not None else None
-        f5t_4   = (cum_drop < 4.0)     if cum_drop    is not None else None
-        f5t_6   = (cum_drop < 6.0)     if cum_drop    is not None else None
+        # v2: kümülatif düşüş
+        f5t_4 = (cum_drop < 4.0) if cum_drop is not None else None
+        f5t_6 = (cum_drop < 6.0) if cum_drop is not None else None
 
-        # YENİ: BTC yönü (F6t)
-        f6t_neg = (btc_candle_drop <= 0) if btc_candle_drop is not None else None
-        f6t_2   = (btc_cum_drop < 2.0)   if btc_cum_drop    is not None else None
-        f6t_4   = (btc_cum_drop < 4.0)   if btc_cum_drop    is not None else None
+        # v4: hacim eşik sweep
+        f8_05  = (vol_ratio < 0.5) if vol_ratio is not None else None
+        f8_08  = (vol_ratio < 0.8) if vol_ratio is not None else None
+        f8_10  = (vol_ratio < 1.0) if vol_ratio is not None else None
+        f8_12  = (vol_ratio < 1.2) if vol_ratio is not None else None
+        f8_15  = (vol_ratio < 1.5) if vol_ratio is not None else None
+        f8_hi2 = (vol_ratio > 2.0) if vol_ratio is not None else None
+        f8_hi3 = (vol_ratio > 3.0) if vol_ratio is not None else None
 
-        # YENİ: RSI momentum (F7)
-        f7_rising = rsi_rising
+        # v4: çok-barlı yön
+        f9_bar2g = (d2 <= 0) if d2 is not None else None  # bar[-2] yeşil
+        f9_bar3g = (d3 <= 0) if d3 is not None else None  # bar[-3] yeşil
+        f9_2cons = (d1 <= 0 and d2 <= 0) if (d1 is not None and d2 is not None) else None  # son 2 bar yeşil
+        f9_1of2  = (d1 <= 0 or  d2 <= 0) if (d1 is not None and d2 is not None) else None  # 2 bardan biri yeşil
 
-        # YENİ: Hacim (F8)
-        f8_hi  = (vol_ratio > 1.5) if vol_ratio is not None else None  # yüksek panik hacmi
-        f8_lo  = (vol_ratio < 1.5) if vol_ratio is not None else None  # normal hacim
-        f8_lo1 = (vol_ratio < 1.0) if vol_ratio is not None else None  # ortalamanın altı
+        # v4: reversal pattern — önceki bar kırmızı, son bar yeşil (klasik dönüş)
+        f9_rev1  = (d2 > 1.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
+        f9_rev2  = (d2 > 2.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
+        f9_rev3  = (d2 > 3.0 and d1 <= 0) if (d2 is not None and d1 is not None) else None
+        # sadece son bar yeşil, önceki kırmızıydı (dönüş ilk barı)
+        f9_fresh = (d2 > 0 and d1 <= 0)   if (d2 is not None and d1 is not None) else None
 
         tag = "✅" if is_win else "❌"
-        cr = f"cRSI:{coin_rsi:.0f}"   if coin_rsi    is not None else "cRSI:?"
-        br = f"bRSI:{btc_rsi:.0f}"    if btc_rsi     is not None else "bRSI:?"
-        cd = f"cd:{candle_drop:.1f}%" if candle_drop is not None else "cd:?"
-        cm = f"cm:{cum_drop:.1f}%"    if cum_drop    is not None else "cm:?"
-        vr = f"vr:{vol_ratio:.1f}x"   if vol_ratio   is not None else "vr:?"
-        print(f"  {tag} {sym_short:8} | {pnl:+6.1f}% | {cr} {br} {cd} {cm} {vr}", flush=True)
+        d1s = f"d1:{d1:+.1f}%" if d1 is not None else "d1:?"
+        d2s = f"d2:{d2:+.1f}%" if d2 is not None else "d2:?"
+        vrs = f"vr:{vol_ratio:.1f}x" if vol_ratio is not None else "vr:?"
+        print(f"  {tag} {sym_short:8} | {pnl:+6.1f}% | {d1s} {d2s} {vrs}", flush=True)
 
         records.append({
             "symbol": sym_short, "is_win": is_win, "pnl": pnl,
             "f2": f2, "f3a": f3a,
             "f4t_neg": f4t_neg, "f4t_05": f4t_05, "f4t_10": f4t_10, "f4t_15": f4t_15,
-            "f5t_neg": f5t_neg, "f5t_2": f5t_2, "f5t_4": f5t_4, "f5t_6": f5t_6,
-            "f6t_neg": f6t_neg, "f6t_2": f6t_2, "f6t_4": f6t_4,
-            "f7_rising": f7_rising,
-            "f8_hi": f8_hi, "f8_lo": f8_lo, "f8_lo1": f8_lo1,
+            "f5t_4": f5t_4, "f5t_6": f5t_6,
+            "f8_05": f8_05, "f8_08": f8_08, "f8_10": f8_10,
+            "f8_12": f8_12, "f8_15": f8_15,
+            "f8_hi2": f8_hi2, "f8_hi3": f8_hi3,
+            "f9_bar2g": f9_bar2g, "f9_bar3g": f9_bar3g,
+            "f9_2cons": f9_2cons, "f9_1of2": f9_1of2,
+            "f9_rev1": f9_rev1, "f9_rev2": f9_rev2, "f9_rev3": f9_rev3,
+            "f9_fresh": f9_fresh,
         })
 
     if not records:
@@ -248,54 +247,66 @@ def main():
     print(f"GENEL: {wins}/{total} → WR %{wins/total*100:.0f}", flush=True)
 
     print(f"\n── BAĞLAM {'─'*62}", flush=True)
-    row(records, "F2  BTC RSI>40",             lambda r: r.get("f2"))
-    row(records, "F3a Coin RSI 30-50",          lambda r: r.get("f3a"))
+    row(records, "F2  BTC RSI>40",               lambda r: r.get("f2"))
+    row(records, "F3a Coin RSI 30-50",            lambda r: r.get("f3a"))
 
-    print(f"\n── TERS: COIN MUMU {'─'*52}", flush=True)
-    row(records, "F4t mumu ≤ 0% (yeşil)",      lambda r: r.get("f4t_neg"))
-    row(records, "F4t mumu < 0.5%",            lambda r: r.get("f4t_05"))
-    row(records, "F4t mumu < 1.0%",            lambda r: r.get("f4t_10"))
-    row(records, "F4t mumu < 1.5%",            lambda r: r.get("f4t_15"))
+    print(f"\n── v2: COIN MUMU {'─'*54}", flush=True)
+    row(records, "F4t mumu ≤ 0% (yeşil)",        lambda r: r.get("f4t_neg"))
+    row(records, "F4t mumu < 0.5%",              lambda r: r.get("f4t_05"))
+    row(records, "F4t mumu < 1.0%",              lambda r: r.get("f4t_10"))
+    row(records, "F4t mumu < 1.5%",              lambda r: r.get("f4t_15"))
+    row(records, "F5t cum < 4%",                 lambda r: r.get("f5t_4"))
 
-    print(f"\n── TERS: COIN KÜMÜLATİF {'─'*46}", flush=True)
-    row(records, "F5t cum ≤ 0% (yükselen)",    lambda r: r.get("f5t_neg"))
-    row(records, "F5t cum < 2%",               lambda r: r.get("f5t_2"))
-    row(records, "F5t cum < 4%",               lambda r: r.get("f5t_4"))
-    row(records, "F5t cum < 6%",               lambda r: r.get("f5t_6"))
+    print(f"\n── v4: HACİM EŞİK SWEEP {'─'*46}", flush=True)
+    row(records, "F8 vol < 0.5x (çok düşük)",   lambda r: r.get("f8_05"))
+    row(records, "F8 vol < 0.8x",               lambda r: r.get("f8_08"))
+    row(records, "F8 vol < 1.0x",               lambda r: r.get("f8_10"))
+    row(records, "F8 vol < 1.2x",               lambda r: r.get("f8_12"))
+    row(records, "F8 vol < 1.5x",               lambda r: r.get("f8_15"))
+    row(records, "F8 vol > 2.0x (yüksek)",      lambda r: r.get("f8_hi2"))
+    row(records, "F8 vol > 3.0x (çok yüksek)",  lambda r: r.get("f8_hi3"))
 
-    print(f"\n── YENİ: BTC YÖNÜ (F6t) {'─'*45}", flush=True)
-    row(records, "F6t BTC mumu yeşil",          lambda r: r.get("f6t_neg"))
-    row(records, "F6t BTC cum < 2%",            lambda r: r.get("f6t_2"))
-    row(records, "F6t BTC cum < 4%",            lambda r: r.get("f6t_4"))
+    print(f"\n── v4: ÇOK BARLI YEŞİL {'─'*47}", flush=True)
+    row(records, "F9 bar[-2] yeşil",             lambda r: r.get("f9_bar2g"))
+    row(records, "F9 bar[-3] yeşil",             lambda r: r.get("f9_bar3g"))
+    row(records, "F9 son 2 bar yeşil (ardışık)", lambda r: r.get("f9_2cons"))
+    row(records, "F9 son 2 bardan biri yeşil",   lambda r: r.get("f9_1of2"))
 
-    print(f"\n── YENİ: RSI MOMENTUM (F7) {'─'*43}", flush=True)
-    row(records, "F7  RSI yükseliyor",          lambda r: r.get("f7_rising"))
+    print(f"\n── v4: REVERSAL PATTERN {'─'*46}", flush=True)
+    row(records, "F9 rev: önceki>0% + son yeşil", lambda r: r.get("f9_fresh"))
+    row(records, "F9 rev: önceki>1% + son yeşil", lambda r: r.get("f9_rev1"))
+    row(records, "F9 rev: önceki>2% + son yeşil", lambda r: r.get("f9_rev2"))
+    row(records, "F9 rev: önceki>3% + son yeşil", lambda r: r.get("f9_rev3"))
 
-    print(f"\n── YENİ: HACİM (F8) {'─'*50}", flush=True)
-    row(records, "F8  vol > 1.5x (yüksek)",    lambda r: r.get("f8_hi"))
-    row(records, "F8  vol < 1.5x (normal)",    lambda r: r.get("f8_lo"))
-    row(records, "F8  vol < 1.0x (düşük)",     lambda r: r.get("f8_lo1"))
+    print(f"\n── KOMBİNASYONLAR (v2 referans) {'─'*38}", flush=True)
+    row(records, "F4t_neg + F5t_4",               lambda r: r.get("f4t_neg") and r.get("f5t_4"))
+    row(records, "F4t_neg + F5t_4 + F2",          lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f2"))
+    row(records, "F2 + F3a (önceki en iyi)",      lambda r: r.get("f2") and r.get("f3a"))
 
-    print(f"\n── KOMBİNASYONLAR (v2 güçlüler) {'─'*37}", flush=True)
-    row(records, "F4t_neg + F5t_4",             lambda r: r.get("f4t_neg") and r.get("f5t_4"))
-    row(records, "F4t_neg + F5t_4 + F2",        lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f2"))
-    row(records, "F4t_neg + F2 + F3a",          lambda r: r.get("f4t_neg") and r.get("f2") and r.get("f3a"))
-    row(records, "F5t_4 + F2 + F3a",            lambda r: r.get("f5t_4") and r.get("f2") and r.get("f3a"))
-    row(records, "F2 + F3a (önceki en iyi)",    lambda r: r.get("f2") and r.get("f3a"))
+    print(f"\n── KOMBİNASYONLAR (hacim) {'─'*44}", flush=True)
+    row(records, "F4t_neg + F8_05",               lambda r: r.get("f4t_neg") and r.get("f8_05"))
+    row(records, "F4t_neg + F8_08",               lambda r: r.get("f4t_neg") and r.get("f8_08"))
+    row(records, "F4t_neg + F8_10",               lambda r: r.get("f4t_neg") and r.get("f8_10"))
+    row(records, "F4t_neg + F8_12",               lambda r: r.get("f4t_neg") and r.get("f8_12"))
+    row(records, "F4t_neg + F8_15",               lambda r: r.get("f4t_neg") and r.get("f8_15"))
+    row(records, "F5t_4 + F8_10",                 lambda r: r.get("f5t_4") and r.get("f8_10"))
+    row(records, "F4t_neg + F5t_4 + F8_10",       lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f8_10"))
 
-    print(f"\n── KOMBİNASYONLAR (yeni F6/F7/F8) {'─'*34}", flush=True)
-    row(records, "F4t_neg + F6t_neg",            lambda r: r.get("f4t_neg") and r.get("f6t_neg"))
-    row(records, "F4t_neg + F6t_neg + F2",       lambda r: r.get("f4t_neg") and r.get("f6t_neg") and r.get("f2"))
-    row(records, "F5t_4 + F6t_4",               lambda r: r.get("f5t_4") and r.get("f6t_4"))
-    row(records, "F4t_neg + F7_rising",          lambda r: r.get("f4t_neg") and r.get("f7_rising"))
-    row(records, "F5t_4 + F7_rising",            lambda r: r.get("f5t_4") and r.get("f7_rising"))
-    row(records, "F4t_neg + F8_hi",              lambda r: r.get("f4t_neg") and r.get("f8_hi"))
-    row(records, "F4t_neg + F8_lo",              lambda r: r.get("f4t_neg") and r.get("f8_lo"))
-    row(records, "F4t_neg + F5t_4 + F6t_neg",   lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f6t_neg"))
-    row(records, "F4t_neg + F5t_4 + F7",        lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f7_rising"))
-    row(records, "F4t_neg + F5t_4 + F8_hi",     lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f8_hi"))
-    row(records, "F4t+F5t+F6t+F2",              lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f6t_neg") and r.get("f2"))
-    row(records, "F4t+F5t+F7+F2",               lambda r: r.get("f4t_neg") and r.get("f5t_4") and r.get("f7_rising") and r.get("f2"))
+    print(f"\n── KOMBİNASYONLAR (multi-bar) {'─'*40}", flush=True)
+    row(records, "F4t_neg + F9_bar2g",            lambda r: r.get("f4t_neg") and r.get("f9_bar2g"))
+    row(records, "F9_2cons (her iki bar yeşil)",  lambda r: r.get("f9_2cons"))
+    row(records, "F9_2cons + F5t_4",              lambda r: r.get("f9_2cons") and r.get("f5t_4"))
+    row(records, "F9_2cons + F2",                 lambda r: r.get("f9_2cons") and r.get("f2"))
+    row(records, "F9_1of2 + F5t_4",              lambda r: r.get("f9_1of2") and r.get("f5t_4"))
+
+    print(f"\n── KOMBİNASYONLAR (reversal) {'─'*41}", flush=True)
+    row(records, "F9_rev1 (panik>1% → yeşil)",   lambda r: r.get("f9_rev1"))
+    row(records, "F9_rev2 (panik>2% → yeşil)",   lambda r: r.get("f9_rev2"))
+    row(records, "F9_rev1 + F5t_4",              lambda r: r.get("f9_rev1") and r.get("f5t_4"))
+    row(records, "F9_rev1 + F2",                 lambda r: r.get("f9_rev1") and r.get("f2"))
+    row(records, "F9_rev2 + F2",                 lambda r: r.get("f9_rev2") and r.get("f2"))
+    row(records, "F9_fresh + F5t_4",             lambda r: r.get("f9_fresh") and r.get("f5t_4"))
+    row(records, "F9_fresh + F8_10",             lambda r: r.get("f9_fresh") and r.get("f8_10"))
 
 
 if __name__ == "__main__":
