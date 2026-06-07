@@ -398,7 +398,8 @@ def run_daily_analysis(portfolio_context=""):
         f"{SEP}\n\n"
     )
     # İlk 3 bölüm (Global/BTC/Altcoin) header ile birlikte gönder, geri kalan ayrı mesaj
-    section_starts = [m.start() for m in re.finditer(r"<b>", clean)]
+    # Sadece satır başındaki section header <b>'lerini say (inline bold'ları değil)
+    section_starts = [m.start() for m in re.finditer(r"(?:^|\n)<b>", clean)]
     if len(section_starts) >= 4:
         split_at = section_starts[3]
         _tg(header + clean[:split_at].strip())
