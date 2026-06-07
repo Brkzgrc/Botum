@@ -834,7 +834,7 @@ def dashboard():
             <td style="color:{peak_c}">{peak_s}</td><td style="color:{low_c}">{low_s}</td>
             <td>{stop_cell}</td><td>{tp1_cell}</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
-            <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
+            <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
             <td>{sure_cell}</td><td>{analyzer_badge(sig)}</td></tr>"""
 
     closed_rows = ""
@@ -855,8 +855,8 @@ def dashboard():
             <td style="color:{peak_c}">{peak_s}</td>
             <td>{tp1_badge}</td>
             <td>{analyzer_badge(sig)}</td>
-            <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
-            <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('close_time') or '')[:16]}</td></tr>"""
+            <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
+            <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap">{datetime.fromisoformat(sig['close_time']).strftime('%d/%m/%Y') if sig.get('close_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['close_time']).strftime('%H:%M') if sig.get('close_time') else ''}</span></td></tr>"""
 
     # Sinyal türü tabloları — SMC vs Bot ayrımı
     smc_type_rows = ""
