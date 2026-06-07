@@ -20,7 +20,7 @@ jobs:
           python-version: '3.11'
 
       - name: Bağımlılıkları yükle
-        run: pip install anthropic requests
+        run: pip install anthropic requests numpy pandas
 
       - name: Proaktif piyasa taramasını çalıştır
         env:
