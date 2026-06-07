@@ -289,19 +289,11 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 
 <b>₿ Bitcoin</b>
 {SEP}
-[Önce mevcut trendi ve indikatör yorumunu yaz: SSL, TMA, FBB'nin o anki konumu ne anlatıyor, yön değişimine dair sinyal var mı, ilerleyen süreçte ne beklenebilir? Yeni bir trader anlayacak şekilde, yorumlayarak yaz. 3-4 cümle.]
-📍 Destek 1: <b>$[seviye1]</b> (-X%)
-📍 Destek 2: <b>$[seviye2]</b> (-X%)
-🎯 Direnç 1: <b>$[seviye1]</b> (+X%)
-🎯 Direnç 2: <b>$[seviye2]</b> (+X%)
+[Önce mevcut trendi ve indikatör yorumunu yaz: SSL, TMA, FBB'nin o anki konumu ne anlatıyor, yön değişimine dair sinyal var mı, ilerleyen süreçte ne beklenebilir? Yeni bir trader anlayacak şekilde, yorumlayarak yaz. 3-4 cümle. Destek/direnç satırı YAZMA — onları sistem ekleyecek.]
 
 <b>Ξ Alternatif Coinler (ETH öncülüğünde)</b>
 {SEP}
-[ETH'nin teknik görünümünü yorumla. Asıl soru: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek coin değil, tüm altcoinlerin termometresi. 3-4 cümle.]
-📍 ETH Destek 1: <b>$[seviye1]</b> (-X%)
-📍 ETH Destek 2: <b>$[seviye2]</b> (-X%)
-🎯 ETH Direnç 1: <b>$[seviye1]</b> (+X%)
-🎯 ETH Direnç 2: <b>$[seviye2]</b> (+X%)
+[ETH'nin teknik görünümünü yorumla. Asıl soru: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek coin değil, tüm altcoinlerin termometresi. 3-4 cümle. Destek/direnç satırı YAZMA — onları sistem ekleyecek.]
 
 [ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Uygun olanları ekle, olmayanı ekleme:
   • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı) — anlamlıysa
@@ -385,8 +377,45 @@ def run_daily_analysis(portfolio_context=""):
     clean = re.sub(r"\*\*(.+?)\*\*", r"\1", clean)
     clean = re.sub(r"__(.+?)__", r"\1", clean)
     clean = re.sub(r"^#{1,4}\s*", "", clean, flags=re.MULTILINE)
+    # Claude'un yazmış olabileceği 📍/🎯 satırlarını temizle — Python ekleyecek
+    clean = re.sub(r"\n[📍🎯][^\n]+", "", clean)
+
     g = data.get("global") or {}
     btc_price = (data.get("btc") or {}).get("4h", {}).get("closes", [0])[-1]
+    eth_price = (data.get("eth") or {}).get("4h", {}).get("closes", [0])[-1]
+
+    def _fmt_sr(supports, resistances, price, prefix=""):
+        lines = []
+        for i, s in enumerate((supports or [])[:2], 1):
+            pct = (s - price) / price * 100 if price else 0
+            lines.append(f"📍 {prefix}Destek {i}: <b>${s:,.0f}</b> ({pct:+.1f}%)")
+        for i, r in enumerate((resistances or [])[:2], 1):
+            pct = (r - price) / price * 100 if price else 0
+            lines.append(f"🎯 {prefix}Direnç {i}: <b>${r:,.0f}</b> ({pct:+.1f}%)")
+        return "\n".join(lines)
+
+    btc_sr = eth_sr = ""
+    if levels:
+        btc_l = levels.get("btc", {})
+        eth_l = levels.get("eth", {})
+        if btc_l and btc_price:
+            btc_sr = _fmt_sr(btc_l.get("supports"), btc_l.get("resistances"), btc_price)
+        if eth_l and eth_price:
+            eth_sr = _fmt_sr(eth_l.get("supports"), eth_l.get("resistances"), eth_price, "ETH ")
+
+    # S/R satırlarını section'ların sonuna Python olarak ekle
+    if btc_sr:
+        clean = re.sub(r"(\n<b>Ξ)", "\n" + btc_sr + "\\1", clean, count=1)
+    if eth_sr:
+        # ETH section'ından sonraki ilk section header'dan önce ekle
+        sections = list(re.finditer(r"\n<b>", clean))
+        eth_idx = next((i for i, m in enumerate(sections) if "Ξ" in clean[m.start():m.start()+10]), None)
+        if eth_idx is not None and eth_idx + 1 < len(sections):
+            pos = sections[eth_idx + 1].start()
+            clean = clean[:pos] + "\n" + eth_sr + clean[pos:]
+        else:
+            clean = clean + "\n" + eth_sr
+
     now_tr = datetime.now(TR_TZ)
     SEP = "─────────────────────────"
     header = (
@@ -397,8 +426,7 @@ def run_daily_analysis(portfolio_context=""):
         f"USDT.D: {g.get('usdt_dominance',0):.1f}%\n"
         f"{SEP}\n\n"
     )
-    # İlk 3 bölüm (Global/BTC/Altcoin) header ile birlikte gönder, geri kalan ayrı mesaj
-    # Sadece satır başındaki section header <b>'lerini say (inline bold'ları değil)
+    # Sadece satır başındaki section header <b>'lerini say
     section_starts = [m.start() for m in re.finditer(r"(?:^|\n)<b>", clean)]
     if len(section_starts) >= 4:
         split_at = section_starts[3]
