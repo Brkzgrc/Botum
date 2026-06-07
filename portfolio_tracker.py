@@ -215,6 +215,7 @@ def check_open_positions():
                 if low <= stop:
                     close_reason = "stop"; close_price = stop
                     sig["status"] = "loss"
+                    sig["tp2_shadow"] = "not_reached"
                 elif high >= tp1 and tp2:
                     tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
                     sig["status"] = "half_open"
@@ -270,6 +271,7 @@ def check_open_positions():
             if high > sig["peak_price"]:
                 sig["peak_price"] = high
                 sig["peak_pct"] = round((high - entry) / entry * 100, 2)
+                sig["tp2_peak_after_tp1"] = sig["peak_pct"]
             if low < sig["low_price"]:
                 sig["low_price"] = low
                 sig["low_pct"] = round((low - entry) / entry * 100, 2)
@@ -830,6 +832,7 @@ def dashboard():
             <td style="color:{peak_c}">{peak_s}</td><td style="color:{low_c}">{low_s}</td>
             <td>{stop_cell}</td><td>{tp1_cell}</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
+            <td style="font-size:.7rem;color:#7f8c8d">{(sig.get('open_time',''))[:16]}</td>
             <td>{sure_cell}</td><td>{analyzer_badge(sig)}</td></tr>"""
 
     closed_rows = ""
@@ -1238,9 +1241,9 @@ function toggleType(key, btn) {{
     <p class="note">Bot sinyalleri: ⚡ trailing stop (%3 peak altı) aktif — TP1 milestone, TP2 hedef. SMC: TP1'de %50 çıkış.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
-        <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Süre</th><th>Analiz</th>
+        <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th>
     </tr></thead><tbody>
-        {open_rows if open_rows else '<tr><td colspan="11" class="empty">Açık pozisyon yok</td></tr>'}
+        {open_rows if open_rows else '<tr><td colspan="12" class="empty">Açık pozisyon yok</td></tr>'}
     </tbody></table></div>
 </div>
 
