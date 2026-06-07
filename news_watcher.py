@@ -37,6 +37,7 @@ RSS_FEEDS = [
     ("CryptoSlate",  "https://cryptoslate.com/feed/"),
     ("Blockworks",   "https://blockworks.co/feed/"),
     ("Google News",  "https://news.google.com/rss/search?q=bitcoin+cryptocurrency+crypto+blackrock+jpmorgan+%22federal+reserve%22&hl=en-US&gl=US&ceid=US:en"),
+    ("CryptoCurrency.cv", "https://cryptocurrency.cv/api/rss"),
 ]
 
 KEYWORDS = [
