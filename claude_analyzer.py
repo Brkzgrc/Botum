@@ -938,8 +938,8 @@ def _market_watcher_loop():
             now_ts = time.time()
             st     = _watcher_state
 
-            # Günlük rapor: her gün 03:00-03:04 TR arası
-            if now_tr.hour == 3 and now_tr.minute < 5:
+            # Günlük rapor: her gün 06:00-06:04 TR arası
+            if now_tr.hour == 6 and now_tr.minute < 5:
                 today = now_tr.date()
                 if st["last_daily"] != today:
                     st["last_daily"] = today
