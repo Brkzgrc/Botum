@@ -71,6 +71,19 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 - **panik_pump_analysis.py'ye --file flag ekle** — JSON dosyasından okuma desteği henüz yok, eklenecek.
 - **Özgür Analiz Sistemi** — GitHub Actions kurulumu: workflow dosyası + GitHub secrets (PORTFOLIO_URL, PORTFOLIO_AUTH_TOKEN). Ben tetikleyip sonucu okuyabilirim, kullanıcı müdahalesi gerekmez.
 
+## Uzun Vadeli Sistem Hedefi (Kullanıcının Vizyonu)
+
+**"Sürekli izleyen, bağlam biriktiren sistem"** — şu anki analyzer reaktif (sinyal gelince çalışır). Hedef: proaktif, hafızalı, trader gibi düşünen sistem.
+
+- Sinyal gelmeden önce piyasayı zaten analiz etmiş olsun
+- "Bu düşüş likidite temizliğinden miydi?" sorusunu cevaplayabilsin
+- Haber etkisini, Twitter'daki analist yorumlarını bağlama katabileceği bir yapı
+- Her indikatörü en iyi çalıştığı timeframe'de kullansın (FBB haftalık, TMA 3 günlük, SSL haftalık)
+- Tek seferlik değerlendirme değil, sürekli hafıza gerektiriyor
+
+**Şu an yapılan (adım adım):** claude_analyzer.py'ye FBB + SSL + TMA + likidite tespiti ekleniyor.
+**Sonraki aşama:** Proaktif tarama + hafıza mimarisi (GitHub Actions + portfolio tracker entegrasyonu).
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.

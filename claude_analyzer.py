@@ -68,6 +68,7 @@ def _fetch_klines(symbol: str, interval: str, limit: int) -> dict | None:
             return None
         raw = r.json()
         return {
+            "opens":   [float(k[1]) for k in raw],
             "closes":  [float(k[4]) for k in raw],
             "highs":   [float(k[2]) for k in raw],
             "lows":    [float(k[3]) for k in raw],
@@ -305,6 +306,41 @@ def _fetch_btc_macro() -> dict | None:
                 clustered[-1] = round((clustered[-1] + p) / 2, 0)
         result["weekly_sr"] = [round(p, 0) for p in clustered]
 
+        # Fibonacci Bollinger Bands (Rashad) — SMA(20) + ATR(20) × Fib — haftalık
+        if len(w_closes) >= 21:
+            trs = [max(w_highs[i] - w_lows[i],
+                       abs(w_highs[i] - w_closes[i-1]),
+                       abs(w_lows[i] - w_closes[i-1]))
+                   for i in range(1, len(w_closes))]
+            atr20 = sum(trs[-20:]) / 20
+            sma20 = sum(w_closes[-20:]) / 20
+            result["fbb"] = {
+                "sma":        round(sma20, 0),
+                "lower_1618": round(sma20 - atr20 * 1.618, 0),
+                "lower_2618": round(sma20 - atr20 * 2.618, 0),
+                "lower_4236": round(sma20 - atr20 * 4.236, 0),
+                "upper_1618": round(sma20 + atr20 * 1.618, 0),
+                "upper_2618": round(sma20 + atr20 * 2.618, 0),
+            }
+
+        # SSL Hybrid (Mikhel00) — SMA(10) High vs Low — haftalık
+        ssl_p = 10
+        if len(w_highs) >= ssl_p + 1:
+            sma_h      = sum(w_highs[-ssl_p:])      / ssl_p
+            sma_l      = sum(w_lows[-ssl_p:])       / ssl_p
+            prev_sma_h = sum(w_highs[-ssl_p-1:-1])  / ssl_p
+            prev_sma_l = sum(w_lows[-ssl_p-1:-1])   / ssl_p
+            cur, prev  = w_closes[-1], w_closes[-2]
+            cur_sig  = "bullish" if cur  > sma_h  else ("bearish" if cur  < sma_l  else "neutral")
+            prev_sig = "bullish" if prev > prev_sma_h else ("bearish" if prev < prev_sma_l else "neutral")
+            cross = None
+            if prev_sig == "bullish" and cur_sig == "bearish":
+                cross = "boğadan ayıya döndü — güçlü düşüş uyarısı"
+            elif prev_sig == "bearish" and cur_sig == "bullish":
+                cross = "ayıdan boğaya döndü — dönüş sinyali"
+            result["ssl"] = {"signal": cur_sig, "cross": cross,
+                             "sma_h": round(sma_h, 0), "sma_l": round(sma_l, 0)}
+
         _macro_cache["data"] = result
         _macro_cache["ts"]   = now
         return result
@@ -353,7 +389,106 @@ def _btc_macro_str(macro: dict | None, btc_price: float | None = None) -> str:
             for rv in ress:
                 lines.append(f"  Direnç: ${rv:,.0f}  (+%{(rv-btc_price)/btc_price*100:.1f})")
 
+    if "fbb" in macro and btc_price:
+        fbb = macro["fbb"]
+        p = btc_price
+        if p < fbb["lower_4236"]:
+            fbb_zone = f"🟢 AŞIRI UCUZ — 4.236 bandı altı (${fbb['lower_4236']:,.0f})"
+        elif p < fbb["lower_2618"]:
+            fbb_zone = f"🟡 UCUZ BÖLGE — 2.618 bandı altı (${fbb['lower_2618']:,.0f})"
+        elif p < fbb["lower_1618"]:
+            fbb_zone = f"⚪ ORTA-UCUZ — 1.618 bandı altı (${fbb['lower_1618']:,.0f})"
+        elif p > fbb["upper_2618"]:
+            fbb_zone = f"🔴 AŞIRI PAHALI — 2.618 bandı üstü (${fbb['upper_2618']:,.0f})"
+        elif p > fbb["upper_1618"]:
+            fbb_zone = f"🟠 PAHALI — 1.618 bandı üstü (${fbb['upper_1618']:,.0f})"
+        else:
+            fbb_zone = f"⚪ NÖTR — SMA: ${fbb['sma']:,.0f}"
+        lines.append(f"FBB Haftalık (Rashad): {fbb_zone}")
+
+    if "ssl" in macro:
+        ssl = macro["ssl"]
+        em = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}.get(ssl["signal"], "⚪")
+        ssl_line = f"SSL Hybrid Haftalık: {em} {ssl['signal'].upper()}"
+        if ssl["cross"]:
+            ssl_line += f"  ⚠️ {ssl['cross']}"
+        lines.append(ssl_line)
+
     return "\n".join(lines)
+
+# ============================================================
+# TMA OVERLAY — 3 GÜNLÜK BTC (ArtyFXC)
+# ============================================================
+def _tma_3d_btc() -> dict | None:
+    """TMA Overlay on BTC 3d — beyaz (hızlı) kırmızıyı (yavaş) kesince dip sinyali."""
+    data = _fetch_klines("BTC/USDT", "3d", 60)
+    if not data or len(data["closes"]) < 25:
+        return None
+    c = data["closes"]
+
+    def _tma(arr, p):
+        half = p // 2 + 1
+        if len(arr) < half * 2:
+            return None
+        sma1 = [sum(arr[i - half:i]) / half for i in range(half, len(arr) + 1)]
+        if len(sma1) < half:
+            return None
+        return sum(sma1[-half:]) / half
+
+    fast_p, slow_p = 14, 21
+    fn  = _tma(c,       fast_p)
+    fp  = _tma(c[:-1],  fast_p)
+    sn  = _tma(c,       slow_p)
+    sp  = _tma(c[:-1],  slow_p)
+
+    if None in (fn, fp, sn, sp):
+        return None
+
+    trend = "beyaz kırmızı altında — düşüş baskısı" if fn < sn else "beyaz kırmızı üstünde — yükseliş"
+    cross = None
+    if fp >= sp and fn < sn:
+        cross = "AŞAĞI KESİŞİM — dip bölgesi sinyali"
+    elif fp <= sp and fn > sn:
+        cross = "YUKARI KESİŞİM — dönüş başlıyor"
+
+    return {"trend": trend, "cross": cross,
+            "fast": round(fn, 0), "slow": round(sn, 0), "price": round(c[-1], 0)}
+
+
+# ============================================================
+# LİKİDİTE SWEEP TESPİTİ
+# ============================================================
+def _liquidity_sweep(symbol: str) -> list:
+    """
+    Son 48 saatte alt wick tespiti — potansiyel likidite temizliği.
+    Kriter: alt wick gövdeden 1.5x büyük VE son destek altına inmiş.
+    """
+    data = _fetch_klines(symbol, "1h", 72)
+    if not data or len(data["closes"]) < 20:
+        return []
+    opens  = data["opens"]
+    closes = data["closes"]
+    highs  = data["highs"]
+    lows   = data["lows"]
+
+    if len(lows) < 20:
+        return []
+    recent_support = min(lows[-48:-3]) if len(lows) >= 48 else min(lows[:-3])
+
+    sweeps = []
+    check_range = range(max(-24, -len(closes) + 1), -1)
+    for i in check_range:
+        body       = abs(closes[i] - opens[i])
+        lower_wick = min(opens[i], closes[i]) - lows[i]
+        if lower_wick > max(body * 1.5, closes[i] * 0.003) and lows[i] < recent_support:
+            sweeps.append({
+                "hours_ago": abs(i),
+                "low":       round(lows[i], 6),
+                "close":     round(closes[i], 6),
+                "wick_pct":  round(lower_wick / closes[i] * 100, 2),
+            })
+    return sweeps[-3:]
+
 
 # ============================================================
 # PORTFOLIO BAĞLAMI
@@ -473,15 +608,19 @@ def evaluate(signal: dict, recent_count: int = 0) -> str:
     source   = signal.get("source", "bot")
 
     # Tüm verileri paralel çek
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=6) as ex:
         fut_tf    = ex.submit(_fetch_all_tf, symbol)
         fut_fg    = ex.submit(_fear_greed)
         fut_dom   = ex.submit(_dominance)
         fut_macro = ex.submit(_fetch_btc_macro)
+        fut_tma   = ex.submit(_tma_3d_btc)
+        fut_sweep = ex.submit(_liquidity_sweep, symbol)
     tf_data          = fut_tf.result()
     fg_val, fg_label = fut_fg.result()
     dom              = fut_dom.result()
     macro            = fut_macro.result()
+    tma              = fut_tma.result()
+    sweep            = fut_sweep.result()
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
 
     coin_block = "\n".join([
@@ -505,6 +644,20 @@ def evaluate(signal: dict, recent_count: int = 0) -> str:
     else:
         cluster_str = "Normal (tek sinyal)"
 
+    tma_str = ""
+    if tma:
+        tma_str = f"\nBTC 3G TMA: {tma['trend']}"
+        if tma["cross"]:
+            tma_str += f"  ⚠️ {tma['cross']}"
+
+    if sweep:
+        sweep_str = "\n[LİKİDİTE SWEEP — Son 24S]\n" + "\n".join(
+            f"  {s['hours_ago']}s önce: ${s['low']:,.4f} altına iğne (%{s['wick_pct']:.1f} wick) → kapanış ${s['close']:,.4f}"
+            for s in sweep
+        )
+    else:
+        sweep_str = "\n[LİKİDİTE SWEEP — Son 24S]\nBelirgin sweep yok."
+
     prompt = f"""Sen deneyimli bir kripto risk analistisisin. Ham verileri kendin yorumla.
 
 [SİNYAL]
@@ -520,7 +673,7 @@ Giriş: {_fmt(signal.get('entry'))} | Stop: {_fmt(signal.get('stop'))} | TP1: {_
 {btc_block}
 
 [BTC MAKRO — UZUN VADE]
-{macro_block if macro_block else "veri yok"}
+{macro_block if macro_block else "veri yok"}{tma_str}
 
 [MARKET]
 Fear & Greed: {fg_str}
@@ -533,7 +686,10 @@ Sinyal clustering: {cluster_str}
 [SİSTEM GENEL PERFORMANS — SMC HARİCİ]
 {sys_hist}
 
-RSI, EMA, hacim, trend uyumu ve momentum verilerini birlikte değerlendir.
+{sweep_str}
+
+RSI, EMA, hacim, FBB bölgesi, SSL yönü, TMA kesişimi, likidite sweep bağlamını birlikte değerlendir.
+Yakın döneme takılma — haftalık ve 3 günlük yapıya önce bak, sonra anlık sinyali değerlendir.
 Geçmiş istatistikler sadece bağlamdır — anlık koşullar esastır.
 
 KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
