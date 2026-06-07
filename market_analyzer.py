@@ -290,16 +290,18 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 <b>₿ Bitcoin</b>
 {SEP}
 [Önce mevcut trendi ve indikatör yorumunu yaz: SSL, TMA, FBB'nin o anki konumu ne anlatıyor, yön değişimine dair sinyal var mı, ilerleyen süreçte ne beklenebilir? Yeni bir trader anlayacak şekilde, yorumlayarak yaz. 3-4 cümle.]
-📍 Destek: $[seviye1] (-X%) · $[seviye2] (-X%)
-🎯 Direnç: $[seviye1] (+X%) · $[seviye2] (+X%)
-ÖNEMLİ: Destek iki seviyeyi aynı satırda yaz, araya · koy. Direnç de aynı şekilde tek satır. Satır kırma yok.
+📍 Destek: $[seviye1] (-X%)
+              $[seviye2] (-X%)
+🎯 Direnç: $[seviye1] (+X%)
+              $[seviye2] (+X%)
 
 <b>Ξ Alternatif Coinler (ETH öncülüğünde)</b>
 {SEP}
 [ETH'nin teknik görünümünü yorumla. Asıl soru: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek coin değil, tüm altcoinlerin termometresi. 3-4 cümle.]
-📍 ETH Destek: $[seviye1] (-X%) · $[seviye2] (-X%)
-🎯 ETH Direnç: $[seviye1] (+X%) · $[seviye2] (+X%)
-ÖNEMLİ: ETH destek ve direnç seviyeleri de her biri tek satırda, araya · koy. Satır kırma yok.
+📍 ETH Destek: $[seviye1] (-X%)
+                  $[seviye2] (-X%)
+🎯 ETH Direnç: $[seviye1] (+X%)
+                  $[seviye2] (+X%)
 
 [ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Uygun olanları ekle, olmayanı ekleme:
   • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı) — anlamlıysa
