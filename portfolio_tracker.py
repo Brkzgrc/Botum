@@ -21,6 +21,7 @@ from flask import Flask, request, jsonify
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
 from claude_analyzer import process_and_send as _analyzer_process, start_market_watcher as _start_market_watcher
+from intraday_scanner import start_intraday_scanner
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -1344,6 +1345,7 @@ if __name__ == "__main__":
     start_news_watcher()
     start_market_analyzer()
     _start_market_watcher()
+    start_intraday_scanner()
 
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port, use_reloader=False)

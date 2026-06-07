@@ -1,9 +1,7 @@
 name: Gün İçi Piyasa Nabzı
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Her 6 saatte bir (03:00, 09:00, 15:00, 21:00 TR)
-  workflow_dispatch:        # Manuel tetikleme
+  workflow_dispatch:        # Sadece manuel tetikleme (otomatik çalışma Render'da)
 
 jobs:
   scan:
