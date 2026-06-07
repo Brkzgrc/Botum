@@ -146,6 +146,43 @@ def _ssl_text(ssl, label):
             f"| Kanal ${ssl['sma_low']:,.2f} – ${ssl['sma_high']:,.2f}{hma_s}")
 
 
+def _calc_tma(tf_data, fast_p=14, slow_p=21):
+    if not tf_data or len(tf_data.get("closes", [])) < slow_p * 2:
+        return None
+    closes = tf_data["closes"]
+
+    def tma(arr, p):
+        half = p // 2 + 1
+        if len(arr) < half * 2:
+            return None
+        sma1 = [sum(arr[i - half:i]) / half for i in range(half, len(arr) + 1)]
+        if len(sma1) < half:
+            return None
+        return sum(sma1[-half:]) / half
+
+    fn = tma(closes, fast_p)
+    fp = tma(closes[:-1], fast_p)
+    sn = tma(closes, slow_p)
+    sp = tma(closes[:-1], slow_p)
+    if None in (fn, fp, sn, sp):
+        return None
+    trend = "beyaz kırmızı altında (düşüş)" if fn < sn else "beyaz kırmızı üstünde (yükseliş)"
+    cross = None
+    if fp >= sp and fn < sn:
+        cross = "AŞAĞI KESİŞİM — dip sinyali olabilir"
+    elif fp <= sp and fn > sn:
+        cross = "YUKARI KESİŞİM — dönüş başlıyor olabilir"
+    return {"trend": trend, "cross": cross, "fast": round(fn, 2), "slow": round(sn, 2)}
+
+
+def _tma_text(tma):
+    if not tma:
+        return "BTC 3G TMA: veri yok"
+    cross_str = f" ⚠️ {tma['cross']}" if tma.get("cross") else ""
+    return (f"BTC 3G TMA: {tma['trend']} "
+            f"| Hızlı=${tma['fast']:,.2f} / Yavaş=${tma['slow']:,.2f}{cross_str}")
+
+
 def _swing_levels(highs, lows, window=3):
     """Basit swing high/low tespiti — en son 5 noktayı döndür."""
     n = len(highs)
@@ -189,18 +226,20 @@ def _build_prompt(data, portfolio_context=""):
     btc_lines = "\n".join(_tf_summary(btc.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
     eth_lines = "\n".join(_tf_summary(eth.get(tf), tf) for tf in ["4h", "1d", "3d", "1w"])
 
-    # FBB + SSL hesapla
+    # FBB + SSL + TMA hesapla
     btc_fbb_w = _calc_fbb(btc.get("1w"))
     btc_fbb_d = _calc_fbb(btc.get("1d"))
     btc_ssl_d = _calc_ssl(btc.get("1d"))
+    btc_tma   = _calc_tma(btc.get("3d"))
     eth_fbb_w = _calc_fbb(eth.get("1w"))
     eth_fbb_d = _calc_fbb(eth.get("1d"))
     eth_ssl_d = _calc_ssl(eth.get("1d"))
 
-    indicator_section = f"""## TEKNİK İNDİKATÖRLER (FBB + SSL)
+    indicator_section = f"""## TEKNİK İNDİKATÖRLER (FBB + SSL + TMA)
 {_fbb_text(btc_fbb_w, "BTC Haftalık", btc_price)}
 {_fbb_text(btc_fbb_d, "BTC Günlük",   btc_price)}
 {_ssl_text(btc_ssl_d, "BTC Günlük")}
+{_tma_text(btc_tma)}
 
 {_fbb_text(eth_fbb_w, "ETH Haftalık", eth_price)}
 {_fbb_text(eth_fbb_d, "ETH Günlük",   eth_price)}
@@ -245,7 +284,7 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 
 <b>₿ Bitcoin</b>
 {SEP}
-[Teknik tablo: trend, önemli ortalamalar. Ardından kritik destek ve direnç seviyeleri — güncel fiyata % mesafe ile. Max 4 seviye.]
+[Teknik tablo: trend, önemli ortalamalar. FBB, SSL ve TMA (3 günlük zaman dilimi) verilerini yorumla — trend yönü, kırılım var mı, dikkate değer bir sinyal var mı? Ardından kritik destek ve direnç seviyeleri — güncel fiyata % mesafe ile. Max 4 seviye.]
 
 <b>Ξ Alternatif Coinler (ETH öncülüğünde)</b>
 {SEP}

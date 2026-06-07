@@ -790,7 +790,6 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
 # PERİYODİK PİYASA İZLEME
 # ============================================================
 _watcher_state: dict = {
-    "last_daily": None,  # date nesnesi — günlük rapor için
     "last_4h_ts": 0,     # son 4h kontrolünün unix timestamp'i
     "last_fg":    None,  # son gönderilen F&G değeri
     "last_dom":   None,  # son gönderilen dominans %
@@ -933,19 +932,11 @@ def _run_market_check(report_type: str):
         print(f"[WATCHER CHECK] {e}", flush=True)
 
 def _market_watcher_loop():
-    print("[WATCHER] Başlatıldı — 4h değişim kontrolü + 03:00 günlük rapor.", flush=True)
+    print("[WATCHER] Başlatıldı — 4h değişim kontrolü aktif.", flush=True)
     while True:
         try:
-            now_tr = _tr_now()
             now_ts = time.time()
             st     = _watcher_state
-
-            # Günlük rapor: her gün 06:00-06:04 TR arası
-            if now_tr.hour == 6 and now_tr.minute < 5:
-                today = now_tr.date()
-                if st["last_daily"] != today:
-                    st["last_daily"] = today
-                    _run_market_check("daily")
 
             # 4 saatlik değişim kontrolü
             if now_ts - st["last_4h_ts"] >= 14400:
