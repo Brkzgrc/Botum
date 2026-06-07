@@ -518,8 +518,10 @@ def calc_performance():
                 else:
                     ba["tp1_only"]["expired"] += 1
 
-    # Hayali senaryo hesabı (tüm sinyaller üzerinde — ayrı döngü)
+    # Hayali senaryo hesabı (sadece kapanmış sinyaller — açık pozisyonlar dahil değil)
     for sig in all_sigs:
+        if sig.get("status") in ("open", "half_open"):
+            continue
         is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
         bucket = result["sim_smc"] if is_smc else result["sim_bot"]
         pk = sig.get("peak_pct", 0) or 0
