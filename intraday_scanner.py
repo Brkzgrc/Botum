@@ -108,19 +108,23 @@ Fear & Greed: {fg_str}
 {_dom_str(dom)}
 
 ---
-GÖREV: Gün içi anlık tarama — şunları sırayla değerlendir ve kısa, net yaz:
+GÖREV:
+Yukarıdaki verileri kullanarak aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik talimat — metne yazma, numara kullanma, madde işareti koyma.
 
-1. Son 6 saatte ne oldu? Fiyat nerede açıldı, nereye geldi, önemli seviye test edildi mi?
-2. Kısa vade (1h/4h) momentum: alıcı mı satıcı mı baskın, RSI ve EMA'lar ne söylüyor?
-3. Uzun vade bağlamı: Haftalık tablo bu kısa vadeli hareketi nasıl çerçeveler? Tepki yükselişi mi, gerçek dönüş mü, düşüş devamı mı?
-4. Pratik yorum: Giriş mantığı var mı? Hangi seviyeleri izle? Yoksa uzak mı durulmalı?
+<b>📊 Son 6 Saat</b>
+━━━━━━━━━━━━━━━━━━━━
+[Son 6 saatte ne oldu? Açılış fiyatı, şimdiki seviye, önemli seviye test edildi mi, momentum hangi yönde? 2-3 cümle, akıcı paragraf.]
 
-DİL KURALI:
-- Net konuş. Veriye dayanıyorsa kararını söyle: eğer tepki yükselişiyse "büyük ihtimalle tepki yükselişi çünkü [neden]"
-- "Takip edilmeli", "ayırt edilmeli" gibi belirsiz ifadeler yok — görüşünü ver
-- Alarm dili yok, trader yorumu var
-- 4-6 cümle, kısa ve özlü
-FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan, *, #, _ işaretleri kullanma."""
+<b>🔍 Piyasa Yorumu</b>
+━━━━━━━━━━━━━━━━━━━━
+[Kısa vade (1h/4h) ve uzun vade (haftalık FBB/SSL/TMA) birlikte ne anlatıyor? Tepki yükselişi mi, gerçek dönüş mü, düşüş devamı mı? Uzun vade kısa vadeyi nasıl çerçeliyor? 2-3 cümle, trader yorumu.]
+
+<b>💡 Pratik Görüş</b>
+━━━━━━━━━━━━━━━━━━━━
+[Giriş mantığı var mı? Hangi seviyeler kritik? Yoksa bekle mi? Net konuş — veriye dayanıyorsa kararını söyle. 1-2 cümle.]
+
+DİL KURALI: Alarm dili yok. Trader yorumu var. Net ol, belirsiz ifadeler kullanma.
+FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan. *, #, _, madde numaraları kullanma."""
 
     print("[NABİZ] Claude'a gönderiliyor...", flush=True)
     try:
