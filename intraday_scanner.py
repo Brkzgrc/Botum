@@ -199,3 +199,7 @@ def start_intraday_scanner():
             time.sleep(30)
 
     threading.Thread(target=_loop, daemon=True, name="intraday-scanner").start()
+
+
+if __name__ == "__main__":
+    run_intraday_scan()
