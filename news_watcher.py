@@ -28,8 +28,6 @@ NEWS_THREAD_ID          = 64
 
 TR_TZ = timezone(timedelta(hours=3))
 
-_API_BASE = "https://cryptocurrency.cv/api"
-
 RSS_FEEDS = [
     ("CoinDesk",     "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ("CoinTelegraph","https://cointelegraph.com/rss"),
@@ -166,139 +164,6 @@ def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
-def _fetch_from_api(hours_back: int) -> list[dict]:
-    """cryptocurrency.cv API'sinden haber çeker — birincil kaynak."""
-    try:
-        resp = requests.get(
-            f"{_API_BASE}/news",
-            params={"limit": 30},
-            timeout=12,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
-        )
-        if resp.status_code != 200:
-            print(f"[NEWS API] HTTP {resp.status_code}", flush=True)
-            return []
-
-        data     = resp.json()
-        articles = data.get("articles", data) if isinstance(data, dict) else data
-        if not isinstance(articles, list):
-            return []
-
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
-        items  = []
-        for article in articles[:30]:
-            title  = article.get("title",       "").strip()
-            link   = article.get("link",  article.get("url", "")).strip()
-            desc   = article.get("description", article.get("summary", ""))[:300]
-            source = article.get("source", article.get("sourceName", "API"))
-            pub_str = article.get("pubDate", article.get("publishedAt", ""))
-
-            if not title or not link:
-                continue
-
-            pub = None
-            if pub_str:
-                try:
-                    pub = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
-                except Exception:
-                    pass
-
-            if pub and pub < cutoff:
-                continue
-
-            h = _item_hash(link)
-            with _lock:
-                if h in _state["sent_hashes"]:
-                    continue
-
-            if _is_topic_duplicate(title):
-                continue
-
-            hours_ago = None
-            if pub:
-                hours_ago = int((datetime.now(timezone.utc) - pub).total_seconds() / 3600)
-
-            items.append({
-                "hash":      h,
-                "source":    source,
-                "title":     title,
-                "desc":      desc,
-                "link":      link,
-                "pub":       pub,
-                "hours_ago": hours_ago,
-            })
-
-        print(f"[NEWS API] {len(items)} yeni haber alındı", flush=True)
-        return items[:20]
-
-    except Exception as e:
-        print(f"[NEWS API] Hata: {e}", flush=True)
-        return []
-
-
-def _fetch_breaking_from_api() -> list[dict]:
-    """cryptocurrency.cv /api/breaking endpoint'inden son 2 saatlik kritik haberler."""
-    try:
-        resp = requests.get(
-            f"{_API_BASE}/breaking",
-            timeout=12,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
-        )
-        if resp.status_code != 200:
-            return []
-
-        data     = resp.json()
-        articles = data.get("articles", data) if isinstance(data, dict) else data
-        if not isinstance(articles, list):
-            return []
-
-        items = []
-        for article in articles[:20]:
-            title  = article.get("title",       "").strip()
-            link   = article.get("link",  article.get("url", "")).strip()
-            desc   = article.get("description", article.get("summary", ""))[:300]
-            source = article.get("source", article.get("sourceName", "API"))
-            pub_str = article.get("pubDate", article.get("publishedAt", ""))
-
-            if not title or not link:
-                continue
-
-            h = _item_hash(link)
-            with _lock:
-                if h in _state["sent_hashes"]:
-                    continue
-
-            if _is_topic_duplicate(title):
-                continue
-
-            pub = None
-            if pub_str:
-                try:
-                    pub = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
-                except Exception:
-                    pass
-
-            hours_ago = None
-            if pub:
-                hours_ago = int((datetime.now(timezone.utc) - pub).total_seconds() / 3600)
-
-            items.append({
-                "hash":      h,
-                "source":    source,
-                "title":     title,
-                "desc":      desc,
-                "link":      link,
-                "pub":       pub,
-                "hours_ago": hours_ago,
-            })
-
-        return items
-
-    except Exception as e:
-        print(f"[NEWS BREAK API] {e}", flush=True)
-        return []
-
-
 def _fetch_rss(source_name: str, url: str, cutoff: datetime, keywords: list) -> list[dict]:
     items = []
     try:
@@ -352,17 +217,10 @@ def _fetch_rss(source_name: str, url: str, cutoff: datetime, keywords: list) -> 
 
 
 def _fetch_all(hours_back: int, keywords: list = None) -> list[dict]:
-    # Birincil: cryptocurrency.cv API (200+ kaynak)
-    items = _fetch_from_api(hours_back)
-    if len(items) >= 5:
-        return items
-
-    # Yedek: RSS feed'leri
     if keywords is None:
         keywords = KEYWORDS
-    print(f"[NEWS] API yetersiz ({len(items)} haber), RSS'e geçiliyor...", flush=True)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
-    raw = list(items)
+    raw = []
     with ThreadPoolExecutor(max_workers=5) as ex:
         futures = [ex.submit(_fetch_rss, name, url, cutoff, keywords) for name, url in RSS_FEEDS]
         for f in futures:
@@ -381,6 +239,7 @@ def _fetch_all(hours_back: int, keywords: list = None) -> list[dict]:
             seen_norm.append(norm)
             unique.append(item)
 
+    print(f"[NEWS] RSS'ten {len(unique)} haber alındı", flush=True)
     return unique[:20]
 
 
@@ -557,9 +416,7 @@ HABERLER:
 
 def _check_breaking_news():
     try:
-        items = _fetch_breaking_from_api()
-        if not items:
-            items = _fetch_all(hours_back=2, keywords=BREAK_KEYWORDS)
+        items = _fetch_all(hours_back=2, keywords=BREAK_KEYWORDS)
         if not items:
             return
 
