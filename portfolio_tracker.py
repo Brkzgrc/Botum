@@ -36,7 +36,8 @@ GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 EXPIRE_TRAIL_THRESHOLD = float(os.getenv("EXPIRE_TRAIL_THRESHOLD", "0.80"))
 EXPIRE_TRAIL_PCT = float(os.getenv("EXPIRE_TRAIL_PCT", "2.0"))
-TRAIL_PCT  = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
+TRAIL_PCT      = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
+SMC_TRAIL_PCT  = 2.5   # half_open sonrası trailing — peak'in %2.5 altında kapanır
 SIM_TP1    = 5.0   # Hayali senaryo parametreleri (sabit)
 SIM_TP2    = 10.0
 SIM_STOP   = -2.5
@@ -300,6 +301,8 @@ def check_open_positions():
             sig["last_check"] = now.isoformat()
             sig["checks"] = sig.get("checks", 0) + 1
 
+            trail_stop = round(sig["peak_price"] * (1 - SMC_TRAIL_PCT / 100), 8)
+
             if tp2 and high >= tp2:
                 tp2_pct = round((tp2 - entry) / entry * 100, 2)
                 combined_pct = round((tp1_exit_pct + tp2_pct) / 2, 2)
@@ -312,18 +315,18 @@ def check_open_positions():
                 sig["close_pct"] = combined_pct
                 need_save = True; closed_count += 1
                 print(f"  🎯🎯 TP2 KAPANDI: {symbol.replace('/USDT','')} | TP2:+{tp2_pct}% | Ort:+{combined_pct}%", flush=True)
-            elif low <= stop:
-                stop_pct = round((stop - entry) / entry * 100, 2)
-                combined_pct = round((tp1_exit_pct + stop_pct) / 2, 2)
-                sig["status"] = "half_stopped"
+            elif low <= trail_stop:
+                trail_pct = round((trail_stop - entry) / entry * 100, 2)
+                combined_pct = round((tp1_exit_pct + trail_pct) / 2, 2)
+                sig["status"] = "win_trail" if combined_pct > 0 else "half_stopped"
                 sig["close_time"] = now.isoformat()
-                sig["close_price"] = round(stop, 8)
-                sig["close_reason"] = "stop_after_tp1"
+                sig["close_price"] = round(trail_stop, 8)
+                sig["close_reason"] = "trailing_after_tp1"
                 sig["close_pct"] = combined_pct
-                sig["tp2_shadow"] = "stopped"
+                sig["tp2_shadow"] = "trailed"
                 need_save = True; closed_count += 1
                 emoji2 = "💰" if combined_pct > 0 else "🔴"
-                print(f"  {emoji2} YARIM STOP: {symbol.replace('/USDT','')} | TP1:+{tp1_exit_pct}% Stop:{stop_pct:+.2f}% | Ort:{combined_pct:+.2f}%", flush=True)
+                print(f"  {emoji2} TRAIL ÇIKIŞ (TP1 sonrası): {symbol.replace('/USDT','')} | TP1:+{tp1_exit_pct}% Trail:{trail_pct:+.2f}% | Ort:{combined_pct:+.2f}%", flush=True)
             else:
                 tp1_time_str = sig.get("tp1_time", sig["open_time"])
                 try:
