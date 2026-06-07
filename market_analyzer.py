@@ -405,14 +405,14 @@ def run_daily_analysis(portfolio_context=""):
 
     # S/R satırlarını section'ların sonuna Python olarak ekle
     if btc_sr:
-        clean = re.sub(r"(\n<b>Ξ)", "\n" + btc_sr + "\\1", clean, count=1)
+        clean = re.sub(r"(\n<b>Ξ)", "\n" + btc_sr + "\n\\1", clean, count=1)
     if eth_sr:
         # ETH section'ından sonraki ilk section header'dan önce ekle
         sections = list(re.finditer(r"\n<b>", clean))
         eth_idx = next((i for i, m in enumerate(sections) if "Ξ" in clean[m.start():m.start()+10]), None)
         if eth_idx is not None and eth_idx + 1 < len(sections):
             pos = sections[eth_idx + 1].start()
-            clean = clean[:pos] + "\n" + eth_sr + clean[pos:]
+            clean = clean[:pos] + "\n" + eth_sr + "\n" + clean[pos:]
         else:
             clean = clean + "\n" + eth_sr
 

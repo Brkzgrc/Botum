@@ -123,6 +123,7 @@ Yukarıdaki verileri kullanarak aşağıdaki yapıyı TAM OLARAK uygula. Köşel
 ━━━━━━━━━━━━━━━━━━━━
 [Giriş mantığı var mı? Hangi seviyeler kritik? Yoksa bekle mi? Net konuş — veriye dayanıyorsa kararını söyle. 1-2 cümle.]
 
+
 DİL KURALI: Alarm dili yok. Trader yorumu var. Net ol, belirsiz ifadeler kullanma.
 FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan. *, #, _, madde numaraları kullanma."""
 
