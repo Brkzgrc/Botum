@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-08 00:30:31",
+  "updated_at": "2026-06-08 01:00:32",
   "performance": {
-    "total": 0,
-    "open": 0,
+    "total": 1,
+    "open": 1,
     "closed": 0,
     "wins": 0,
     "win_partial": 0,
@@ -95,11 +95,100 @@
         "wr": 0
       }
     },
-    "by_type": {},
-    "daily": {},
-    "weekly": {},
-    "monthly": {}
+    "by_type": {
+      "PUMP_UZUN": {
+        "total": 1,
+        "open": 1,
+        "wins": 0,
+        "win_partial": 0,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": 0.0,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 0,
+        "avg_peak": 0,
+        "tp2_rate": 0
+      }
+    },
+    "daily": {
+      "2026-06-08": {
+        "trades": 1,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "weekly": {
+      "2026-W23": {
+        "trades": 1,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "monthly": {
+      "2026-06": {
+        "trades": 1,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "ALLO_USDT_1780869601",
+      "symbol": "ALLO/USDT",
+      "entry": 0.3155,
+      "stop": 0.29026,
+      "tp1": 0.394375,
+      "tp2": 0.394375,
+      "sig_type": "pump_uzun",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-08T01:00:01.666583+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.3155,
+      "peak_pct": 0.0,
+      "low_price": 0.3155,
+      "low_pct": 0.0,
+      "current_price": 0.3155,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-08T01:00:01.666583+03:00",
+      "checks": 0,
+      "extra": {}
+    }
+  ],
   "closed": []
 }
