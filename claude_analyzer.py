@@ -794,7 +794,7 @@ _watcher_state: dict = {
     "last_btc":   None,  # son gönderilen BTC fiyatı
 }
 
-def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h) -> str:
+def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h, tma=None) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
     import anthropic
@@ -806,8 +806,16 @@ def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h) 
     fg_str     = f"{fg_val} ({fg_label})" if fg_val is not None else "bilinmiyor"
     macro_str  = _btc_macro_str(macro, btc_price) if macro else "veri yok"
 
+    tma_str = ""
+    if tma:
+        tma_str = f"\nBTC 3G TMA: {tma['trend']}"
+        if tma["cross"]:
+            tma_str += f"  ⚠️ {tma['cross']}"
+
     if report_type == "daily":
-        gorev = ("Günlük kapanış özeti yaz. BTC'nin genel durumunu ve bu hafta için beklentiyi anlat. "
+        gorev = ("Günlük kapanış özeti yaz. Haftalık yapıya önce bak (FBB zonu, SSL yönü), "
+                 "sonra 3 günlük TMA durumunu değerlendir, sonra anlık koşulları yorumla. "
+                 "BTC'nin genel durumunu ve bu hafta için beklentiyi anlat. "
                  "Sade, anlaşılır Türkçe kullan — teknik jargon yok, markdown başlık yok. "
                  "Makro Konum ve Bu Hafta Beklentisi olmak üzere 2 kısa paragraf. Her paragraf 2-3 cümle. "
                  "Cümleleri mutlaka tamamla, yarıda bırakma.")
@@ -822,7 +830,7 @@ def _market_report_text(report_type: str, fg_val, fg_label, dom, macro, btc_4h) 
 Fiyat: {btc_price} | RSI: {btc_rsi} | EMA50: {btc_ema50} | EMA200: {btc_ema200}
 
 [BTC MAKRO — UZUN VADE]
-{macro_str}
+{macro_str}{tma_str}
 
 [MARKET]
 Fear & Greed: {fg_str}
@@ -865,13 +873,15 @@ def _should_alert(fg_val, dom, btc_price) -> str | None:
 
 def _run_market_check(report_type: str):
     try:
-        with ThreadPoolExecutor(max_workers=3) as ex:
+        with ThreadPoolExecutor(max_workers=4) as ex:
             fut_fg    = ex.submit(_fear_greed)
             fut_dom   = ex.submit(_dominance)
             fut_macro = ex.submit(_fetch_btc_macro)
+            fut_tma   = ex.submit(_tma_3d_btc)
         fg_val, fg_label = fut_fg.result()
         dom              = fut_dom.result()
         macro            = fut_macro.result()
+        tma              = fut_tma.result()
         btc_4h           = _tf_summary("BTC/USDT", "4h", 100)
         btc_price        = (btc_4h or {}).get("close")
 
@@ -888,7 +898,7 @@ def _run_market_check(report_type: str):
         else:
             change_label = "📅 Günlük Özet"
 
-        text = _market_report_text(report_type, fg_val, fg_label, dom, macro, btc_4h)
+        text = _market_report_text(report_type, fg_val, fg_label, dom, macro, btc_4h, tma)
         if not text:
             fg_str = f"{fg_val} ({fg_label})" if fg_val is not None else "—"
             dom_cur = dom.get("current", "—") if dom else "—"

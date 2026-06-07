@@ -1,0 +1,32 @@
+name: Proaktif Piyasa Taraması
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Her 6 saatte bir (00:00, 06:00, 12:00, 18:00 UTC)
+  workflow_dispatch:        # Manuel tetikleme
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Repo'yu çek
+        uses: actions/checkout@v4
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Bağımlılıkları yükle
+        run: pip install anthropic requests
+
+      - name: Proaktif piyasa taramasını çalıştır
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANALYZER_TELEGRAM_TOKEN: ${{ secrets.ANALYZER_TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BINANCE_API_SECRET: ${{ secrets.BINANCE_API_SECRET }}
+        run: python scripts/proactive_scan.py

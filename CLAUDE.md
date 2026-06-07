@@ -89,6 +89,17 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
 - **PUMP PROBABILITY Backtest** — Script hazır (bilgisayarda çalıştırılacak): filtresiz vs BTC filtreli karşılaştırma, Jan-May 2026 dönemi.
 
+## İnteraktif Analiz Botu (İleride — Acil Değil)
+
+Telegram kanalına coin + timeframe yazınca anında analiz gelsin:
+- `btc 1h` → BTC 1 saatlik analiz
+- `zec 1h` → ZEC 1 saatlik analiz
+- `uni 1w` → UNI haftalık analiz
+
+**Kapsam:** Binance spot'taki **herhangi bir coin**, herhangi bir timeframe  
+**Mimari:** Telegram webhook → Python handler → claude_analyzer → yanıt  
+**Durum:** Bekleyen fikir — önce mevcut sistemler olgunlaşsın
+
 ## Claude Analyzer (claude_analyzer.py)
 
 - Bağımsız modül — bot.py'nin iç yapısına bağlı değil
