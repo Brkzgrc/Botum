@@ -12,8 +12,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-import numpy as np
-
 from market_watch import fetch_binance_ohlcv
 from market_analyzer import _calc_fbb, _calc_ssl, _calc_tma, _fbb_text, _ssl_text, _tma_text
 from claude_analyzer import _fear_greed, _dominance, _dom_str, _rsi, _ema, _tr_now, send_decision, ANTHROPIC_API_KEY
