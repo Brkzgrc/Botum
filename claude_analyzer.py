@@ -35,18 +35,19 @@ def _tr_now():
 # ============================================================
 # TELEGRAM
 # ============================================================
-def send_decision(text: str, thread_id: int = 38):
+def send_decision(text: str, thread_id: int | None = 38):
     token = ANALYZER_TELEGRAM_TOKEN
     if not token or not TELEGRAM_CHAT_ID:
         print("[ANALYZER] Token veya chat_id eksik, mesaj gönderilemedi.", flush=True)
         return
     try:
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text,
+                   "parse_mode": "HTML", "disable_web_page_preview": True}
+        if thread_id:
+            payload["message_thread_id"] = thread_id
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True,
-                  "message_thread_id": thread_id},
-            timeout=10,
+            json=payload, timeout=10,
         )
         if r.status_code != 200:
             print(f"[ANALYZER TG] {r.status_code}: {r.text[:80]}", flush=True)
@@ -920,7 +921,7 @@ def _run_market_check(report_type: str):
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"<i>Claude Analyzer · Piyasa İzleme</i>"
         )
-        thread = 1 if report_type == "daily" else 38
+        thread = None if report_type == "daily" else 38
         send_decision(msg, thread_id=thread)
         print(f"[WATCHER] {report_type} raporu gönderildi (thread {thread})", flush=True)
 
