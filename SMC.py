@@ -12,6 +12,12 @@ import requests
 import websockets
 from flask import Flask
 
+try:
+    from claude_analyzer import process_and_send as _analyzer_send
+except Exception as _e:
+    _analyzer_send = None
+    print(f"[SMC] claude_analyzer yüklenemedi: {_e}", flush=True)
+
 app = Flask(__name__)
 
 import logging
@@ -871,6 +877,29 @@ def _analyze_symbol(symbol):
                 mark_sent(symbol, "choch", "smc-original")
                 send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
                                   stop_price=stop_price)
+
+                if _analyzer_send:
+                    try:
+                        _stop = stop_price if stop_price else round(entry_price - atr_val * 4.0, 10)
+                        _risk = entry_price - _stop
+                        _tp1  = round(entry_price + _risk * 1.5, 10)
+                        _tp2  = round(entry_price + _risk * 2.5, 10)
+                        _analyzer_send({
+                            "symbol": symbol,
+                            "type":   "smc",
+                            "source": "smc",
+                            "entry":  entry_price,
+                            "stop":   _stop,
+                            "tp1":    _tp1,
+                            "tp2":    _tp2,
+                            "break_type": micro_break,
+                            "rsi":    round(rsi, 2),
+                            "atr_pct": round(atr_ratio, 2),
+                            "dist_ma200": round(dist_ma, 2),
+                        })
+                    except Exception as _ae:
+                        print(f"[SMC ANALYZER] {_ae}", flush=True)
+
                 scan_stats["signal_phase2_smc-original"] += 1
                 pat_log = candle_pattern_summary(patterns)
                 print(f"🚀 [CHoCH] {symbol} | CHoCH:{entry_price:.8g} | Close:{price:.8g} | RSI:{round(rsi,1)}"

@@ -545,6 +545,7 @@ _TYPE_NAMES = {
     "t72":       "ORTA VADE T72 — 3 gün hedef | Stop -5% | TP +10% | WR %54",
     "t168":      "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | WR %40",
     "pump_prob": "PUMP PROBABILITY — kırılım | Stop ~-5% | TP +8/15/25%",
+    "smc":       "SMC — CHoCH yapısal kırılım | Discount Zone + Micro CHoCH",
 }
 _SOURCE_NAMES = {
     "bot": "Pump Scanner Bot",
@@ -555,6 +556,7 @@ _TYPE_SHORT = {
     "t72":       "ORTA VADE",
     "t168":      "UZUN VADE",
     "pump_prob": "PUMP PROB",
+    "smc":       "SMC CHoCH",
 }
 
 def _fmt(p):
