@@ -56,11 +56,30 @@ def load_signals():
             with open(SIGNALS_FILE, "r", encoding="utf-8") as f:
                 signals_db = json.load(f)
             print(f"[DB] {len(signals_db)} sinyal yüklendi.", flush=True)
+            _migrate_signals()
         else:
             signals_db = []
     except Exception as e:
         print(f"[DB] Yükleme hatası: {e}", flush=True)
         signals_db = []
+
+def _migrate_signals():
+    """Eski DB kayıtlarındaki bilinen hataları düzelt."""
+    fixed = 0
+    for sig in signals_db:
+        # Stop olan ama tp2_shadow="watching" kalan sinyalleri temizle
+        if (sig.get("tp2_shadow") == "watching"
+                and sig.get("status") not in ("open", "half_open")
+                and not sig.get("tp1_hit")):
+            sig["tp2_shadow"] = "not_reached"
+            fixed += 1
+        # half_open iken tp2_peak_after_tp1 hiç yazılmamış olanları doldur
+        if sig.get("status") == "half_open" and sig.get("tp2_peak_after_tp1", 0) == 0:
+            sig["tp2_peak_after_tp1"] = sig.get("peak_pct", 0)
+            fixed += 1
+    if fixed:
+        save_signals()
+        print(f"[DB] Migrasyon: {fixed} kayıt düzeltildi.", flush=True)
 
 def save_signals():
     try:
@@ -222,6 +241,7 @@ def check_open_positions():
                     sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                     sig["tp1_exit_price"] = round(tp1, 8)
                     sig["tp1_exit_pct"] = tp1_pct_v
+                    sig["tp2_peak_after_tp1"] = sig.get("peak_pct", 0)
                     close_reason = None
                     need_save = True
                     print(f"  🎯 TP1 YARI ÇIKIŞ: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 takipte", flush=True)
