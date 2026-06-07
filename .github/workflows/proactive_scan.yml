@@ -1,8 +1,8 @@
-name: Proaktif Piyasa Taraması
+name: Gün İçi Piyasa Nabzı
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Her 6 saatte bir (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'  # Her 6 saatte bir (03:00, 09:00, 15:00, 21:00 TR)
   workflow_dispatch:        # Manuel tetikleme
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
       - name: Bağımlılıkları yükle
         run: pip install anthropic requests numpy pandas
 
-      - name: Proaktif piyasa taramasını çalıştır
+      - name: Gün içi piyasa nabzını çalıştır
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANALYZER_TELEGRAM_TOKEN: ${{ secrets.ANALYZER_TELEGRAM_TOKEN }}
