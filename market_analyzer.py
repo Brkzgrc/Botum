@@ -252,8 +252,13 @@ def _build_prompt(data, portfolio_context=""):
 
     SEP = "─────────────────────────"
 
-    return f"""Sen deneyimli bir kripto analistisin. Türkçe yaz, okuyucu kripto yatırımcısı ama teknik analist değil.
-DİL KURALI: Teknik terimleri parantez içinde açıkla. Örnek: "fiyatlardaki sert oynaklık (volatilite)", "piyasadan kaçış (risk-off)", "baskın coin oranı (dominans)" gibi.
+    return f"""Sen deneyimli bir kripto analistisin. Türkçe yaz. Okuyucu kripto yatırımcısı ama teknik analist değil — yeni başlayan biri de anlayabilmeli.
+
+DİL KURALI:
+- Teknik terimleri parantez içinde açıkla: "baskın coin oranı (dominans)", "piyasadan kaçış (risk-off)" gibi.
+- İndikatörleri (FBB, SSL, TMA vb.) alarm dili ile değil, yorumlayarak kullan. "Tehlikeli" değil, "şu seviyede seyretmesi şunu gösteriyor" şeklinde.
+- İndikatörlerin o anki değerini ve yönünü anlamlandır: TMA kesmek üzereyse bunu belirt, FBB bir banda doğru ilerliyorsa ilerleyen sürece dair ne beklenebileceğini söyle. Spesifik süre (kaç hafta) tahmini yapma, yön ve senaryo sun.
+- Destekler ve dirençler paragraf içinde değil, ayrı satırda emoji ile ver.
 
 ## VERİ
 TOTAL:  ${g.get('total', 0)/1e12:.3f}T | TOTAL2: ${g.get('total2', 0)/1e12:.3f}T | TOTAL3: ${g.get('total3', 0)/1e12:.3f}T
@@ -284,30 +289,37 @@ Aşağıdaki yapıyı TAM OLARAK uygula. Köşeli parantezler sana yönelik tali
 
 <b>₿ Bitcoin</b>
 {SEP}
-[Teknik tablo: trend, önemli ortalamalar. FBB, SSL ve TMA (3 günlük zaman dilimi) verilerini yorumla — trend yönü, kırılım var mı, dikkate değer bir sinyal var mı? Ardından kritik destek ve direnç seviyeleri — güncel fiyata % mesafe ile. Max 4 seviye.]
+[Önce mevcut trendi ve indikatör yorumunu yaz: SSL, TMA, FBB'nin o anki konumu ne anlatıyor, yön değişimine dair sinyal var mı, ilerleyen süreçte ne beklenebilir? Yeni bir trader anlayacak şekilde, yorumlayarak yaz. 3-4 cümle.]
+📍 Destek: [seviye] (-X%) · [seviye] (-X%)
+🎯 Direnç: [seviye] (+X%) · [seviye] (+X%)
 
 <b>Ξ Alternatif Coinler (ETH öncülüğünde)</b>
 {SEP}
-[ETH teknik tablo ve kritik seviyeleri, ama asıl mesele şu: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek bir coin olarak değil, tüm alt coinlerin termometresi olarak ele alınacak.]
+[ETH'nin teknik görünümünü yorumla. Asıl soru: alt coin sezonu (altseason) geliyor mu, gecikiyor mu, uzak mı? ETH/BTC paritesi, ETH.D, TOTAL3 birlikte değerlendir. ETH burada tek coin değil, tüm altcoinlerin termometresi. 3-4 cümle.]
+📍 ETH Destek: [seviye] (-X%) · [seviye] (-X%)
+🎯 ETH Direnç: [seviye] (+X%) · [seviye] (+X%)
 
-[ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Aşağıdakilerden uygun olanları ekle, uygun olmayanı ekleme:
-  • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı durumu) — varsa
-  • Para akışı detayı (dominans hareketleri anlamlıysa)
-  • Tweet yorumu — SADECE tweet verisi geldiyse ekle, gelmediyse bu bölümü aç bile
-  • Öne çıkan başka bir teknik veya makro gözlem — varsa
-  Her eklediğin konu için uygun bir emoji + başlık + {SEP} kullan. Yoksa hiç ekleme.]
+[ORTA KISIM — ÖZGÜR: Burada ne dahil edeceğine sen karar ver. Uygun olanları ekle, olmayanı ekleme:
+  • Piyasa rejimi analizi (boğa/ayı/yatay, risk iştahı) — anlamlıysa
+  • Para akışı detayı (dominans hareketleri dikkat çekiciyse)
+  • Tweet yorumu — SADECE tweet verisi geldiyse
+  • Öne çıkan başka teknik veya makro gözlem — varsa
+  Her konu için: uygun emoji + başlık + {SEP} kullan. Yoksa hiç ekleme.]
 
 <b>💡 Görüş</b>
 {SEP}
-[İki ayrı tahmin/fikir: "Gün içi:" ve "Haftalık:" olarak ikiye böl. Kesin değil, fikir sun. Somut fiyat seviyeleri veya senaryo ver.]
+[İki ayrı fikir: "Gün içi:" ve "Haftalık:" olarak ikiye böl. Kesin değil, senaryo sun. Somut fiyat seviyeleri ver.]
 
 Önce seviyeleri JSON olarak yaz:
 <levels>
 {{"btc": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}, "eth": {{"supports": [sayı, sayı], "resistances": [sayı, sayı]}}}}
 </levels>
 
-Sonra yukarıdaki analizi yaz. Max 500 kelime.
-FORMATLAMA: Yalnızca Telegram HTML — <b></b> kullan, *, #, _ işaretleri kullanma.
+Sonra yukarıdaki analizi yaz.
+Mesaj sonuna şu dipnotu ekle (hangi indikatörleri kullandıysan listele, kullanmadıklarını yazma):
+<i>📐 Bu analizde: [kullandığın indikatörler — örn. FBB · SSL Hybrid · TMA · 20MA]</i>
+
+FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan, *, #, _ işaretleri kullanma.
 """
 
 
@@ -344,7 +356,7 @@ def run_daily_analysis(portfolio_context=""):
     try:
         resp = client.messages.create(
             model="claude-opus-4-8",
-            max_tokens=5000,
+            max_tokens=10000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text
