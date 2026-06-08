@@ -379,8 +379,8 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
             stop = round(stop_price, 10)
             risk = entry_price - stop
             tp1  = round(entry_price + risk * 1.0, 10)
-            tp2  = round(entry_price + risk * 1.5, 10)
-            tp3  = round(entry_price + risk * 2.5, 10)
+            tp2  = round(entry_price + risk * 2.0, 10)
+            tp3  = round(entry_price + risk * 3.0, 10)
         else:
             # Fallback: stop = entry - ATR×4
             stop = round(entry_price - atr_val * 4.0, 10)
@@ -715,8 +715,8 @@ def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
             stop_val = round(_stop_arg, 10)
             _risk    = choch_price - stop_val
             tp1_val  = round(choch_price + _risk * 1.0, 10)
-            tp2_val  = round(choch_price + _risk * 1.5, 10)
-            tp3_val  = round(choch_price + _risk * 2.5, 10)
+            tp2_val  = round(choch_price + _risk * 2.0, 10)
+            tp3_val  = round(choch_price + _risk * 3.0, 10)
         else:
             stop_val = round(choch_price - atr_val * 4.0, 10)
             tp1_val  = round(choch_price + atr_val * 4.0, 10)
@@ -728,7 +728,7 @@ def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
         tp3_line = ""
         if tp3_val:
             tp3_str = f"{tp3_val:.10f}".rstrip("0").rstrip(".")
-            tp3_line = f"🌟 <b>TP3 (shadow %2):</b> <code>{tp3_str}</code>\n"
+            tp3_line = f"🌟 <b>TP3 (shadow %2.5):</b> <code>{tp3_str}</code>\n"
         tp_block = (f"🎯 <b>TP1 (%50 çıkış):</b> <code>{tp1_str}</code>\n"
                     f"🚀 <b>TP2 (kapat):</b> <code>{tp2_str}</code>\n"
                     f"{tp3_line}"
@@ -926,8 +926,8 @@ def _analyze_symbol(symbol):
                         _stop = stop_price if stop_price else round(entry_price - atr_val * 4.0, 10)
                         _risk = entry_price - _stop
                         _tp1  = round(entry_price + _risk * 1.0, 10)
-                        _tp2  = round(entry_price + _risk * 1.5, 10)
-                        _tp3  = round(entry_price + _risk * 2.5, 10)
+                        _tp2  = round(entry_price + _risk * 2.0, 10)
+                        _tp3  = round(entry_price + _risk * 3.0, 10)
                         _analyzer_send({
                             "symbol": symbol,
                             "type":   "smc",

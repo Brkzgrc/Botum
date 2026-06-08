@@ -114,7 +114,7 @@ def _migrate_signals():
         if "tp3_shadow" not in sig:
             sig["tp3_shadow"] = None
             sig["tp3_trail_peak"] = 0.0
-            sig["tp3_trail_stop_pct"] = 2.0
+            sig["tp3_trail_stop_pct"] = 2.5
             sig["tp3_hit_time"] = None
             fixed += 1
     if fixed:
@@ -184,7 +184,7 @@ def receive_signal():
         "tp1_hit": False, "tp1_time": None,
         "tp2_shadow": "watching", "tp2_hit": False, "tp2_time": None,
         "tp2_peak_after_tp1": 0.0, "tp2_shadow_end": None,
-        "tp3_shadow": None, "tp3_trail_peak": 0.0, "tp3_trail_stop_pct": 2.0, "tp3_hit_time": None,
+        "tp3_shadow": None, "tp3_trail_peak": 0.0, "tp3_trail_stop_pct": 2.5, "tp3_hit_time": None,
         "trailing_shadow": "watching", "trailing_peak": 0.0,
         "trailing_stop_pct": 2.0, "trailing_exit_price": None,
         "trailing_exit_pct": None, "trailing_shadow_end": None,
@@ -426,7 +426,7 @@ def check_open_positions():
                 if high > sig.get("tp3_trail_peak", 0):
                     sig["tp3_trail_peak"] = high
                     need_save = True
-                trail_stop_pct = sig.get("tp3_trail_stop_pct", 2.0)
+                trail_stop_pct = sig.get("tp3_trail_stop_pct", 2.5)
                 trail_stop = round(sig["tp3_trail_peak"] * (1 - trail_stop_pct / 100), 8)
                 if high >= tp3_val:
                     sig["tp3_shadow"] = "başarılı"
@@ -1251,7 +1251,7 @@ def dashboard():
         tp3_shadow_section = f"""
 <div class="section">
     <h2>🌟 TP3 SHADOW İZLEME ({len(tp3_shadow_watching)})</h2>
-    <p class="note">TP2'de tamamen kapandı — TP3'e ulaşabilir mi? %2 trailing ile gözlemsel izleme. Gerçek pozisyon yok.</p>
+    <p class="note">TP2'de tamamen kapandı — TP3'e ulaşabilir mi? %2.5 trailing ile gözlemsel izleme. Gerçek pozisyon yok.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>TP2 Kâr</th><th>Şu An</th><th>TP3 Hedef</th><th>Trail Peak / Stop</th><th>Kalan</th>
     </tr></thead><tbody>{tp3_shadow_rows}</tbody></table></div>
@@ -1458,7 +1458,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Portföy Takip v2.8 | Bot: Trailing %3 (TP1 milestone, TP2 hedef) | SMC: TP1×1.0(50%) + TP2×1.5(kapat) + TP3×2.5(shadow) |
+    Portföy Takip v2.8 | Bot: Trailing %3 (TP1 milestone, TP2 hedef) | SMC: TP1×1.0(50%) + TP2×2.0(kapat) + TP3×3.0(shadow %2.5) |
     Kontrol: {CHECK_INTERVAL//60}dk | Expire: {EXPIRE_HOURS}s | {now}
 </div>
 </body></html>"""
