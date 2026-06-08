@@ -110,6 +110,13 @@ def _migrate_signals():
         if sig.get("status") == "half_open" and sig.get("tp2_peak_after_tp1", 0) == 0:
             sig["tp2_peak_after_tp1"] = sig.get("peak_pct", 0)
             fixed += 1
+        # tp3 shadow alanlarını yoksa ekle
+        if "tp3_shadow" not in sig:
+            sig["tp3_shadow"] = None
+            sig["tp3_trail_peak"] = 0.0
+            sig["tp3_trail_stop_pct"] = 2.0
+            sig["tp3_hit_time"] = None
+            fixed += 1
     if fixed:
         save_signals()
         print(f"[DB] Migrasyon: {fixed} kayıt düzeltildi.", flush=True)
@@ -161,6 +168,7 @@ def receive_signal():
         "stop": float(data["stop"]),
         "tp1": float(data["tp1"]),
         "tp2": float(data.get("tp2", 0)) or None,
+        "tp3": float(data.get("tp3", 0)) or None,
         "sig_type": data.get("sig_type", data.get("type", "unknown")),
         "sub_type": data.get("sub_type", data.get("subtype", data.get("tp_system", ""))),
         "source": data.get("source", "bot"),
@@ -176,6 +184,7 @@ def receive_signal():
         "tp1_hit": False, "tp1_time": None,
         "tp2_shadow": "watching", "tp2_hit": False, "tp2_time": None,
         "tp2_peak_after_tp1": 0.0, "tp2_shadow_end": None,
+        "tp3_shadow": None, "tp3_trail_peak": 0.0, "tp3_trail_stop_pct": 2.0, "tp3_hit_time": None,
         "trailing_shadow": "watching", "trailing_peak": 0.0,
         "trailing_stop_pct": 2.0, "trailing_exit_price": None,
         "trailing_exit_pct": None, "trailing_shadow_end": None,
@@ -227,13 +236,16 @@ def check_open_positions():
     now = tr_now()
     with _lock:
         active = [s for s in signals_db
-                  if s["status"] in ("open", "half_open") or s.get("tp2_shadow") == "watching"]
+                  if s["status"] in ("open", "half_open")
+                  or s.get("tp2_shadow") == "watching"
+                  or s.get("tp3_shadow") == "watching"]
     if not active:
         return
 
     open_count = sum(1 for s in active if s["status"] in ("open", "half_open"))
-    shadow_count = sum(1 for s in active if s["status"] != "open" and s.get("tp2_shadow") == "watching")
-    print(f"[CHECK] {open_count} açık + {shadow_count} shadow takip...", flush=True)
+    shadow_count = sum(1 for s in active if s["status"] not in ("open", "half_open") and s.get("tp2_shadow") == "watching")
+    tp3_count = sum(1 for s in active if s.get("tp3_shadow") == "watching")
+    print(f"[CHECK] {open_count} açık + {shadow_count} TP2 shadow + {tp3_count} TP3 shadow takip...", flush=True)
 
     closed_count = 0
     need_save = False
@@ -354,6 +366,12 @@ def check_open_positions():
                 sig["close_pct"] = combined_pct
                 need_save = True; closed_count += 1
                 print(f"  🎯🎯 TP2 KAPANDI: {symbol.replace('/USDT','')} | TP2:+{tp2_pct}% | Ort:+{combined_pct}%", flush=True)
+                # TP3 shadow takibini başlat
+                tp3_val = sig.get("tp3")
+                if tp3_val and tp3_val > tp2:
+                    sig["tp3_shadow"] = "watching"
+                    sig["tp3_trail_peak"] = tp2
+                    print(f"  🌟 TP3 SHADOW BAŞLADI: {symbol.replace('/USDT','')} | Hedef: {tp3_val:.8g} | Trailing: %{sig.get('tp3_trail_stop_pct', 2.0)}", flush=True)
                 try:
                     _update_archive_outcome(sig.get("id", ""), "tp2",
                                             combined_pct, sig["peak_pct"], sig["open_time"])
@@ -400,6 +418,40 @@ def check_open_positions():
                                                 combined_pct, sig["peak_pct"], sig["open_time"])
                     except Exception as _ae:
                         print(f"[ARCHIVE] {_ae}", flush=True)
+
+        # TP3 shadow takibi (SMC sinyali TP2'de kapandıktan sonra TP3 izleme)
+        elif sig.get("tp3_shadow") == "watching" and sig.get("status") == "win_tp2":
+            tp3_val = sig.get("tp3")
+            if tp3_val:
+                if high > sig.get("tp3_trail_peak", 0):
+                    sig["tp3_trail_peak"] = high
+                    need_save = True
+                trail_stop_pct = sig.get("tp3_trail_stop_pct", 2.0)
+                trail_stop = round(sig["tp3_trail_peak"] * (1 - trail_stop_pct / 100), 8)
+                if high >= tp3_val:
+                    sig["tp3_shadow"] = "başarılı"
+                    sig["tp3_hit_time"] = now.isoformat()
+                    need_save = True
+                    print(f"  🌟 TP3 SHADOW BAŞARILI: {symbol.replace('/USDT','')} | TP3 ulaşıldı!", flush=True)
+                elif low <= trail_stop:
+                    sig["tp3_shadow"] = "durdu"
+                    need_save = True
+                    print(f"  ⚡ TP3 SHADOW DURDU: {symbol.replace('/USDT','')} | Trailing tetiklendi", flush=True)
+                else:
+                    ref_time_str = sig.get("tp2_time") or sig.get("close_time") or sig["open_time"]
+                    try:
+                        ref_dt = datetime.fromisoformat(ref_time_str)
+                        if ref_dt.tzinfo is None: ref_dt = ref_dt.replace(tzinfo=TR_TZ)
+                        elapsed = (now - ref_dt).total_seconds() / 3600
+                    except Exception:
+                        elapsed = 0
+                    if elapsed >= SHADOW_EXPIRE_HOURS:
+                        sig["tp3_shadow"] = "durdu"
+                        need_save = True
+                        print(f"  ⏰ TP3 SHADOW SÜRE DOLDU: {symbol.replace('/USDT','')} | {SHADOW_EXPIRE_HOURS}s geçti", flush=True)
+            else:
+                sig["tp3_shadow"] = "durdu"
+                need_save = True
 
         time.sleep(0.15)
 
@@ -842,6 +894,16 @@ def type_badge(sig):
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
     return f'<span style="border:1px solid {c};color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{label}</span>'
 
+def tp3_shadow_badge(sig):
+    shadow = sig.get("tp3_shadow")
+    if shadow == "başarılı":
+        return '<span style="background:#2ecc7122;color:#2ecc71;padding:1px 6px;border-radius:3px;font-size:.6rem">🌟 başarılı</span>'
+    if shadow == "durdu":
+        return '<span style="background:#e74c3c22;color:#e74c3c;padding:1px 6px;border-radius:3px;font-size:.6rem">⚡ durdu</span>'
+    if shadow == "watching":
+        return '<span style="background:#3498db22;color:#3498db;padding:1px 6px;border-radius:3px;font-size:.6rem">👁 izleniyor</span>'
+    return '<span style="color:#5a6a7a;font-size:.6rem">—</span>'
+
 def analyzer_badge(sig):
     d = sig.get("analyzer_decision") or ""
     if not d:
@@ -923,6 +985,8 @@ def dashboard():
         if sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
+        _is_smc_closed = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        tp3_cell = tp3_shadow_badge(sig) if _is_smc_closed else '<span style="color:#2a3a4a;font-size:.6rem">—</span>'
 
         closed_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
@@ -931,6 +995,7 @@ def dashboard():
             <td style="color:{close_c};font-weight:bold">{close_s}</td>
             <td style="color:{peak_c}">{peak_s}</td>
             <td>{tp1_badge}</td>
+            <td>{tp3_cell}</td>
             <td>{analyzer_badge(sig)}</td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['close_time']).strftime('%d/%m/%Y') if sig.get('close_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['close_time']).strftime('%H:%M') if sig.get('close_time') else ''}</span></td></tr>"""
@@ -1149,6 +1214,49 @@ def dashboard():
     </tr></thead><tbody>{shadow_rows}</tbody></table></div>
 </div>"""
 
+    # TP3 shadow section
+    tp3_shadow_watching = [s for s in all_sigs if s.get("tp3_shadow") == "watching" and s.get("status") == "win_tp2"]
+    tp3_shadow_rows = ""
+    for sig in tp3_shadow_watching[:30]:
+        sym = sig["symbol"].replace("/USDT", "")
+        entry = sig["entry"]
+        tp2_close_pct = sig.get("close_pct", 0) or 0
+        tp3_val = sig.get("tp3")
+        tp3_pct = round((tp3_val - entry) / entry * 100, 1) if tp3_val and entry > 0 else 0
+        trail_peak = sig.get("tp3_trail_peak", 0)
+        trail_peak_pct = round((trail_peak - entry) / entry * 100, 1) if trail_peak and entry > 0 else 0
+        trail_stop_pct_v = sig.get("tp3_trail_stop_pct", 2.0)
+        trail_stop_v = round(trail_peak * (1 - trail_stop_pct_v / 100), 8) if trail_peak else 0
+        cur_price = sig.get("current_price", entry)
+        cur_pct = sig.get("current_pct", 0)
+        cur_c = "#2ecc71" if cur_pct > 0 else ("#e74c3c" if cur_pct < 0 else "#8a9bb0")
+        remaining = ""
+        try:
+            ref_time_str = sig.get("tp2_time") or sig.get("close_time") or sig["open_time"]
+            ref_dt = datetime.fromisoformat(ref_time_str)
+            if ref_dt.tzinfo is None: ref_dt = ref_dt.replace(tzinfo=TR_TZ)
+            remaining = f"{max(0, SHADOW_EXPIRE_HOURS - (now_dt - ref_dt).total_seconds() / 3600):.0f}s"
+        except Exception:
+            pass
+        tp3_shadow_rows += f"""<tr>
+            <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
+            <td style="color:#2ecc71">{tp2_close_pct:+.2f}%</td>
+            <td style="color:{cur_c}">{fmt_price(cur_price)} ({cur_pct:+.2f}%)</td>
+            <td>{fmt_price(tp3_val)} (+{tp3_pct}%)</td>
+            <td style="color:#f39c12">+{trail_peak_pct:.1f}% &nbsp;<span style="color:#5a6a7a;font-size:.6rem">Trail stop: {fmt_price(trail_stop_v)}</span></td>
+            <td style="color:#7f8c8d;font-size:.7rem">{remaining}</td></tr>"""
+
+    tp3_shadow_section = ""
+    if tp3_shadow_rows:
+        tp3_shadow_section = f"""
+<div class="section">
+    <h2>🌟 TP3 SHADOW İZLEME ({len(tp3_shadow_watching)})</h2>
+    <p class="note">TP2'de tamamen kapandı — TP3'e ulaşabilir mi? %2 trailing ile gözlemsel izleme. Gerçek pozisyon yok.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Sembol</th><th>Tür</th><th>TP2 Kâr</th><th>Şu An</th><th>TP3 Hedef</th><th>Trail Peak / Stop</th><th>Kalan</th>
+    </tr></thead><tbody>{tp3_shadow_rows}</tbody></table></div>
+</div>"""
+
     expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
 
     _smc_section_block = ""
@@ -1168,7 +1276,7 @@ def dashboard():
 
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
-<meta charset="UTF-8"><title>Portföy Takip v2.7</title>
+<meta charset="UTF-8"><title>Portföy Takip v2.8</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
@@ -1226,7 +1334,7 @@ tr:hover td{{background:var(--card);}}
 <div class="header">
     <h1>📊 PORTFÖY TAKİP</h1>
     <span class="time">
-        {now} | v2.7
+        {now} | v2.8
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
@@ -1328,13 +1436,15 @@ function toggleType(key, btn) {{
 
 {shadow_section}
 
+{tp3_shadow_section}
+
 <div class="section">
     <h2>📋 KAPANMIŞ İŞLEMLER (son 100)</h2>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Getiri</th><th>Peak</th>
-        <th>TP1 Hit</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
+        <th>TP1 Hit</th><th>TP3</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
-        {closed_rows if closed_rows else '<tr><td colspan="10" class="empty">Henüz kapanmış işlem yok</td></tr>'}
+        {closed_rows if closed_rows else '<tr><td colspan="11" class="empty">Henüz kapanmış işlem yok</td></tr>'}
     </tbody></table></div>
 </div>
 
@@ -1348,7 +1458,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Portföy Takip v2.7 | Bot: Trailing %3 (TP1 milestone, TP2 hedef) | SMC: %50 TP1 + %50 TP2 |
+    Portföy Takip v2.8 | Bot: Trailing %3 (TP1 milestone, TP2 hedef) | SMC: TP1×1.0(50%) + TP2×1.5(kapat) + TP3×2.5(shadow) |
     Kontrol: {CHECK_INTERVAL//60}dk | Expire: {EXPIRE_HOURS}s | {now}
 </div>
 </body></html>"""
@@ -1437,9 +1547,9 @@ def snapshot_loop():
 # ============================================================
 if __name__ == "__main__":
     print("=" * 50, flush=True)
-    print("📊 Portföy Takip Sistemi v2.7", flush=True)
+    print("📊 Portföy Takip Sistemi v2.8", flush=True)
     print("   Bot: Trailing %3 (TP1 milestone, TP2 hedef)", flush=True)
-    print("   SMC: %50 TP1 yarı çıkış + %50 TP2", flush=True)
+    print("   SMC: TP1×1.0 (50% çıkış) | TP2×1.5 (kapat) | TP3×2.5 (shadow %2 trailing)", flush=True)
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
     print(f"  Expire süresi        : {EXPIRE_HOURS} saat", flush=True)

@@ -30,7 +30,7 @@ def health_check():
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
     struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
-    return (f"SMC v17 WS — 4H Crash Filter | {boot_status} | {cached} coin cached | "
+    return (f"SMC v18 WS — 4H Crash + CHoCH 4H Teyit | {boot_status} | {cached} coin cached | "
             f"{active} discount aktif | {btc_ema} | {struc} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -378,16 +378,18 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
         if stop_price is not None:
             stop = round(stop_price, 10)
             risk = entry_price - stop
-            tp1  = round(entry_price + risk * 1.5, 10)
-            tp2  = round(entry_price + risk * 2.5, 10)
+            tp1  = round(entry_price + risk * 1.0, 10)
+            tp2  = round(entry_price + risk * 1.5, 10)
+            tp3  = round(entry_price + risk * 2.5, 10)
         else:
-            # ESKİ: stop = entry - ATR×4, TP = entry + ATR×4/6
+            # Fallback: stop = entry - ATR×4
             stop = round(entry_price - atr_val * 4.0, 10)
             tp1  = round(entry_price + atr_val * 4.0, 10)
             tp2  = round(entry_price + atr_val * 6.0, 10)
+            tp3  = None
         payload = {
             "symbol": symbol, "entry": entry_price, "stop": stop,
-            "tp1": tp1, "tp2": tp2, "sig_type": "smc",
+            "tp1": tp1, "tp2": tp2, "tp3": tp3, "sig_type": "smc",
             "sub_type": break_type, "source": source, "phase": phase,
         }
         headers = {"Content-Type": "application/json"}
@@ -665,6 +667,29 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     return break_type, break_direction, swing_trend, choch_level, swing_low_level
 
 # ============================================================
+# 7c) 4H Bullish Teyit (1H veriden resample)
+# ============================================================
+def _4h_bullish_confirm(df_1h):
+    """
+    1H bar verisini 4H'e resample edip coinin 4H swing trendini kontrol eder.
+    Sadece neutral (0) veya bullish (1) trendde CHoCH sinyali verilir.
+    Döner: True = bullish/neutral → sinyale izin ver
+           False = bearish → CHoCH sinyali engelle
+    """
+    try:
+        df_4h = df_1h.resample("4h", label="right", closed="right").agg({
+            "open": "first", "high": "max", "low": "min",
+            "close": "last", "volume": "sum"
+        }).dropna()
+        df_4h = df_4h.iloc[:-1]  # Henüz kapanmamış son 4H bar'ı çıkar
+        if len(df_4h) < 20:
+            return True  # Yetersiz veri → engelleme
+        _, _, swing_trend_4h, _, _ = detect_micro_choch(df_4h, choch_swing=5)
+        return swing_trend_4h >= 0  # 0=neutral, 1=bullish → izin ver; -1=bearish → engelle
+    except Exception:
+        return True  # Hata durumunda sinyal engelleme
+
+# ============================================================
 # 8) MESAJ ŞABLONLARI
 # ============================================================
 def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
@@ -685,21 +710,29 @@ def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
     m_str   = f"{ma200:.10f}".rstrip("0").rstrip(".")
 
     if atr_val:
-        # ESKİ: stop_val = round(choch_price - atr_val * 4.0, 10)
         _stop_arg = kwargs.get("stop_val") if kwargs else None
         if _stop_arg is not None:
             stop_val = round(_stop_arg, 10)
             _risk    = choch_price - stop_val
-            tp1_val  = round(choch_price + _risk * 1.5, 10)
-            tp2_val  = round(choch_price + _risk * 2.5, 10)
+            tp1_val  = round(choch_price + _risk * 1.0, 10)
+            tp2_val  = round(choch_price + _risk * 1.5, 10)
+            tp3_val  = round(choch_price + _risk * 2.5, 10)
         else:
             stop_val = round(choch_price - atr_val * 4.0, 10)
             tp1_val  = round(choch_price + atr_val * 4.0, 10)
             tp2_val  = round(choch_price + atr_val * 6.0, 10)
+            tp3_val  = None
         stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
         tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
         tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
-        tp_block = f"🎯 <b>TP1:</b> <code>{tp1_str}</code>\n🚀 <b>TP2:</b> <code>{tp2_str}</code>\n🛑 <b>STOP:</b> <code>{stop_str}</code>\n"
+        tp3_line = ""
+        if tp3_val:
+            tp3_str = f"{tp3_val:.10f}".rstrip("0").rstrip(".")
+            tp3_line = f"🌟 <b>TP3 (shadow %2):</b> <code>{tp3_str}</code>\n"
+        tp_block = (f"🎯 <b>TP1 (%50 çıkış):</b> <code>{tp1_str}</code>\n"
+                    f"🚀 <b>TP2 (kapat):</b> <code>{tp2_str}</code>\n"
+                    f"{tp3_line}"
+                    f"🛑 <b>STOP:</b> <code>{stop_str}</code>\n")
     else:
         tp_block = ""
 
@@ -853,6 +886,13 @@ def _analyze_symbol(symbol):
 
         if micro_break == "CHoCH" and micro_dir == "BULLISH":
             scan_stats["choch_found"] += 1
+
+            # 4H yapısal teyit: coinin 4H swing trendi bearish ise CHoCH sinyalini engelle
+            if not _4h_bullish_confirm(df):
+                scan_stats["4h_bearish_skip"] += 1
+                print(f"⛔ [4H BEARISH] {symbol} | 4H trend bearish → CHoCH engellendi", flush=True)
+                return
+
             last_p2 = get_last_sent(symbol, "choch", "smc-original")
             if now - last_p2 > PHASE2_COOLDOWN:
                 # choch_level yoksa (beklenmedik durum) bar kapanışını kullan
@@ -885,8 +925,9 @@ def _analyze_symbol(symbol):
                     try:
                         _stop = stop_price if stop_price else round(entry_price - atr_val * 4.0, 10)
                         _risk = entry_price - _stop
-                        _tp1  = round(entry_price + _risk * 1.5, 10)
-                        _tp2  = round(entry_price + _risk * 2.5, 10)
+                        _tp1  = round(entry_price + _risk * 1.0, 10)
+                        _tp2  = round(entry_price + _risk * 1.5, 10)
+                        _tp3  = round(entry_price + _risk * 2.5, 10)
                         _analyzer_send({
                             "symbol": symbol,
                             "type":   "smc",
@@ -895,6 +936,7 @@ def _analyze_symbol(symbol):
                             "stop":   _stop,
                             "tp1":    _tp1,
                             "tp2":    _tp2,
+                            "tp3":    _tp3,
                             "break_type": micro_break,
                             "rsi":    round(rsi, 2),
                             "atr_pct": round(atr_ratio, 2),
@@ -1024,7 +1066,8 @@ async def periodic_summary():
         print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
         print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
-        print(f"BTC 4H pause skip: {scan_stats.get('btc_4h_pause_skip', 0)}", flush=True)  # YENİ
+        print(f"BTC 4H pause skip: {scan_stats.get('btc_4h_pause_skip', 0)}", flush=True)
+        print(f"CHoCH 4H bearish : {scan_stats.get('4h_bearish_skip', 0)}", flush=True)
         print(f"Toplam sinyal    : {total_signals}", flush=True)
         print(f"------------------------\n", flush=True)
         scan_stats.clear()
@@ -1041,7 +1084,7 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v17 — 4H Yapısal Crash Filter")
+    print("🚀  SMC v18 — 4H Yapısal Crash Filter + CHoCH 4H Teyit")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
@@ -1053,9 +1096,11 @@ async def main():
     print(f"  Bar kapanışı    : Referans olarak mesajda gösterilir")
     print(f"  Aşama 1         : Discount + Depth>%{PHASE1_DEPTH} + RSI<{PHASE1_RSI} + BTC EMA21")
     print(f"  Aşama 2         : Micro CHoCH → Tam sinyal + Portfolio")
-    print(f"  [YENİ] 4H Filter: 2 kapanmış 4H mum EMA21 altı (2.↓) + çoğunluk EMA50 altı")
+    print(f"  4H BTC Filter   : 2 kapanmış 4H mum EMA21 altı (2.↓) + çoğunluk EMA50 altı")
     print(f"           Level 1 : Sinyal dur (paused)")
     print(f"           Level 2 : Level 1 + önceki mum da EMA50 çoğunluk altı → Telegram uyarı")
+    print(f"  [YENİ] CHoCH 4H : Coin 4H swing trend bearish ise CHoCH sinyali engellenir")
+    print(f"  [YENİ] TP Yapısı: TP1=risk×1.0 (50%) | TP2=risk×1.5 (kapat) | TP3=risk×2.5 (shadow)")
     print("=" * 60 + "\n")
 
     for attempt in range(3):
