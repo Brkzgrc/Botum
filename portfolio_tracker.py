@@ -20,7 +20,9 @@ import requests
 from flask import Flask, request, jsonify
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
-from claude_analyzer import process_and_send as _analyzer_process, start_market_watcher as _start_market_watcher
+from claude_analyzer import (process_and_send as _analyzer_process,
+                             start_market_watcher as _start_market_watcher,
+                             update_archive_outcome as _update_archive_outcome)
 from intraday_scanner import start_intraday_scanner
 
 TR_TZ = timezone(timedelta(hours=3))
@@ -50,6 +52,28 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 signals_db = []
 _lock = threading.Lock()
 
+_ARCHIVE_FILE = os.path.join(DATA_DIR, "learning_archive.json")
+
+def _restore_archive_from_github():
+    """Eğer local archive yoksa GitHub'dan çeker."""
+    if os.path.exists(_ARCHIVE_FILE) or not GITHUB_TOKEN:
+        return
+    try:
+        headers = {"Authorization": f"token {GITHUB_TOKEN}",
+                   "Accept": "application/vnd.github+json"}
+        r = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json",
+            headers=headers, timeout=10)
+        if r.status_code == 200:
+            import base64
+            content = base64.b64decode(r.json()["content"]).decode()
+            with open(_ARCHIVE_FILE, "w", encoding="utf-8") as f:
+                f.write(content)
+            data = json.loads(content)
+            print(f"[ARCHIVE] GitHub'dan geri yüklendi: {len(data)} kayıt.", flush=True)
+    except Exception as e:
+        print(f"[ARCHIVE] GitHub'dan geri yükleme hatası: {e}", flush=True)
+
 def load_signals():
     global signals_db
     try:
@@ -63,6 +87,7 @@ def load_signals():
     except Exception as e:
         print(f"[DB] Yükleme hatası: {e}", flush=True)
         signals_db = []
+    _restore_archive_from_github()
 
 def _migrate_signals():
     """Eski DB kayıtlarındaki bilinen hataları düzelt."""
@@ -284,6 +309,11 @@ def check_open_positions():
                          "stop": "🔴", "expired": "⏰"}.get(close_reason, "⚪")
                 print(f"  {emoji} KAPANDI: {symbol} | {close_reason.upper()} | "
                       f"{sig['close_pct']:+.2f}% | Peak: {sig['peak_pct']:+.2f}%", flush=True)
+                try:
+                    _update_archive_outcome(sig.get("id", ""), close_reason,
+                                            sig["close_pct"], sig["peak_pct"], sig["open_time"])
+                except Exception as _ae:
+                    print(f"[ARCHIVE] {_ae}", flush=True)
 
         elif sig["status"] == "half_open":
             # SMC yarı çıkış — TP1'de %50 kapatıldı, TP2 veya stop'a kadar takip
@@ -315,6 +345,11 @@ def check_open_positions():
                 sig["close_pct"] = combined_pct
                 need_save = True; closed_count += 1
                 print(f"  🎯🎯 TP2 KAPANDI: {symbol.replace('/USDT','')} | TP2:+{tp2_pct}% | Ort:+{combined_pct}%", flush=True)
+                try:
+                    _update_archive_outcome(sig.get("id", ""), "tp2",
+                                            combined_pct, sig["peak_pct"], sig["open_time"])
+                except Exception as _ae:
+                    print(f"[ARCHIVE] {_ae}", flush=True)
             elif low <= trail_stop:
                 trail_pct = round((trail_stop - entry) / entry * 100, 2)
                 combined_pct = round((tp1_exit_pct + trail_pct) / 2, 2)
@@ -327,6 +362,11 @@ def check_open_positions():
                 need_save = True; closed_count += 1
                 emoji2 = "💰" if combined_pct > 0 else "🔴"
                 print(f"  {emoji2} TRAIL ÇIKIŞ (TP1 sonrası): {symbol.replace('/USDT','')} | TP1:+{tp1_exit_pct}% Trail:{trail_pct:+.2f}% | Ort:{combined_pct:+.2f}%", flush=True)
+                try:
+                    _update_archive_outcome(sig.get("id", ""), "trailing_after_tp1",
+                                            combined_pct, sig["peak_pct"], sig["open_time"])
+                except Exception as _ae:
+                    print(f"[ARCHIVE] {_ae}", flush=True)
             else:
                 tp1_time_str = sig.get("tp1_time", sig["open_time"])
                 try:
@@ -346,6 +386,11 @@ def check_open_positions():
                     sig["tp2_shadow"] = "missed"
                     need_save = True; closed_count += 1
                     print(f"  ⏰ YARIM EXPİRE: {symbol.replace('/USDT','')} | Ort:{combined_pct:+.2f}%", flush=True)
+                    try:
+                        _update_archive_outcome(sig.get("id", ""), "expired_after_tp1",
+                                                combined_pct, sig["peak_pct"], sig["open_time"])
+                    except Exception as _ae:
+                        print(f"[ARCHIVE] {_ae}", flush=True)
 
         time.sleep(0.15)
 
@@ -1343,10 +1388,38 @@ def push_snapshot_to_github():
         print(f"[SNAPSHOT] Hata: {e}", flush=True)
 
 
+def push_archive_to_github():
+    """Öğrenen arşivi GitHub'a yükler — deploy sonrası veri kaybını önler."""
+    if not GITHUB_TOKEN or not os.path.exists(_ARCHIVE_FILE):
+        return
+    try:
+        with open(_ARCHIVE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        import base64
+        encoded = base64.b64encode(content.encode()).decode()
+        headers = {"Authorization": f"token {GITHUB_TOKEN}",
+                   "Accept": "application/vnd.github+json"}
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json"
+        r = requests.get(api_url, headers=headers, timeout=10)
+        sha = r.json().get("sha") if r.status_code == 200 else None
+        payload = {"message": f"archive {tr_now_str()}", "content": encoded, "branch": "main"}
+        if sha:
+            payload["sha"] = sha
+        r = requests.put(api_url, headers=headers, json=payload, timeout=15)
+        if r.status_code in (200, 201):
+            data = json.loads(content)
+            print(f"[ARCHIVE] GitHub'a yazıldı ({len(data)} kayıt).", flush=True)
+        else:
+            print(f"[ARCHIVE] GitHub hata {r.status_code}", flush=True)
+    except Exception as e:
+        print(f"[ARCHIVE] GitHub hata: {e}", flush=True)
+
+
 def snapshot_loop():
     time.sleep(60)  # ilk çalıştırmayı biraz geciktir
     while True:
         push_snapshot_to_github()
+        push_archive_to_github()
         time.sleep(1800)  # 30 dakikada bir
 
 

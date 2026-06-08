@@ -10,6 +10,7 @@ Yeni bir sistem eklemek için: signals = {...}; process_and_send(signals)
 """
 
 import os
+import json
 import threading
 import time
 import requests
@@ -28,9 +29,149 @@ PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
 PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
 
 TR_TZ = timezone(timedelta(hours=3))
+ARCHIVE_FILE = os.path.join(os.getenv("DATA_DIR", "/tmp"), "learning_archive.json")
+_archive_lock = threading.Lock()
 
 def _tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
+
+# ============================================================
+# ÖĞRENEN ARŞİV — Piyasa koşulu → sonuç eşleştirmesi
+# ============================================================
+def _archive_load() -> list:
+    """Lock almadan okur — caller lock almalı."""
+    try:
+        if os.path.exists(ARCHIVE_FILE):
+            with open(ARCHIVE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+def _archive_save(entries: list):
+    """Lock almadan yazar — caller lock almalı."""
+    try:
+        with open(ARCHIVE_FILE, "w", encoding="utf-8") as f:
+            json.dump(entries, f, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[ARCHIVE] Kayıt hatası: {e}", flush=True)
+
+def _archive_add_entry(portfolio_id: str, signal: dict, conditions: dict, decision: str):
+    """Yeni sinyal değerlendirmesi arşive eklenir."""
+    entry_p = float(signal.get("entry") or 0)
+    stop_p  = float(signal.get("stop")  or 0)
+    tp1_p   = float(signal.get("tp1")   or 0)
+    risk_pct = round((stop_p - entry_p) / entry_p * 100, 2) if entry_p > 0 else None
+    rr_ratio = None
+    if entry_p > 0 and stop_p > 0 and tp1_p > 0:
+        risk   = abs(entry_p - stop_p)
+        reward = abs(tp1_p   - entry_p)
+        if risk > 0:
+            rr_ratio = round(reward / risk, 2)
+    rec = {
+        "id":              portfolio_id or f"{signal.get('symbol','?')}_{int(time.time())}",
+        "ts":              datetime.now(timezone.utc).isoformat(),
+        "symbol":          signal.get("symbol", ""),
+        "sig_type":        signal.get("type", ""),
+        "source":          signal.get("source", "bot"),
+        "risk_pct":        risk_pct,
+        "rr_ratio":        rr_ratio,
+        "fg":              conditions.get("fg"),
+        "fg_label":        conditions.get("fg_label"),
+        "btc_4h_rsi":      conditions.get("btc_4h_rsi"),
+        "btc_above_ema50": conditions.get("btc_above_ema50"),
+        "dominance":       conditions.get("dominance"),
+        "dom_trend":       conditions.get("dom_trend"),
+        "tma_trend":       conditions.get("tma_trend"),
+        "decision":        decision,
+        "outcome":         None,
+        "close_reason":    None,
+        "close_pct":       None,
+        "peak_pct":        None,
+        "duration_h":      None,
+    }
+    with _archive_lock:
+        entries = _archive_load()
+        entries.append(rec)
+        _archive_save(entries)
+    print(f"[ARCHIVE] Eklendi: {rec['id']} ({decision})", flush=True)
+
+def update_archive_outcome(portfolio_id: str, close_reason: str, close_pct: float,
+                           peak_pct: float, open_time: str):
+    """Sinyal kapandığında sonucu arşive yazar — portfolio_tracker.py'den çağrılır."""
+    if not portfolio_id:
+        return
+    with _archive_lock:
+        entries = _archive_load()
+        for e in entries:
+            if e.get("id") == portfolio_id and e.get("outcome") is None:
+                e["close_reason"] = close_reason
+                e["close_pct"]    = close_pct
+                e["peak_pct"]     = peak_pct
+                try:
+                    open_dt = datetime.fromisoformat(open_time)
+                    if open_dt.tzinfo is None:
+                        open_dt = open_dt.replace(tzinfo=timezone.utc)
+                    e["duration_h"] = round(
+                        (datetime.now(timezone.utc) - open_dt).total_seconds() / 3600, 1)
+                except Exception:
+                    pass
+                if close_reason in ("expired", "expired_after_tp1"):
+                    e["outcome"] = "expired"
+                elif (close_pct or 0) > 0:
+                    e["outcome"] = "win"
+                else:
+                    e["outcome"] = "loss"
+                _archive_save(entries)
+                print(f"[ARCHIVE] Güncellendi: {portfolio_id} → {e['outcome']} ({close_pct:+.2f}%)", flush=True)
+                return
+
+def _archive_condition_context(conditions: dict) -> str:
+    """Arşivden benzer piyasa koşullarındaki geçmiş sonuçları özetler."""
+    try:
+        with _archive_lock:
+            entries = _archive_load()
+        completed = [e for e in entries if e.get("outcome") in ("win", "loss")]
+        if len(completed) < 3:
+            total = len([e for e in entries if e.get("outcome") is not None])
+            return f"Koşul arşivi: {total} tamamlanmış kayıt — henüz yeterli veri yok."
+
+        fg        = conditions.get("fg")
+        btc_above = conditions.get("btc_above_ema50")
+        dom       = conditions.get("dominance")
+
+        similar = []
+        for e in completed:
+            score = 0
+            if fg is not None and e.get("fg") is not None and abs(fg - e["fg"]) <= 15:
+                score += 1
+            if (btc_above is not None and e.get("btc_above_ema50") is not None
+                    and btc_above == e["btc_above_ema50"]):
+                score += 1
+            if dom is not None and e.get("dominance") is not None and abs(dom - e["dominance"]) <= 3:
+                score += 1
+            if score >= 2:
+                similar.append(e)
+
+        if len(similar) < 3:
+            wins_all = sum(1 for e in completed if e.get("outcome") == "win")
+            wr_all   = round(wins_all / len(completed) * 100)
+            return (f"Koşul arşivi: {len(completed)} kayıt (genel WR %{wr_all}) — "
+                    f"bu koşullara benzer yeterli örnek yok ({len(similar)} adet).")
+
+        wins    = sum(1 for e in similar if e.get("outcome") == "win")
+        wr      = round(wins / len(similar) * 100)
+        avg_pct = round(sum(e.get("close_pct") or 0 for e in similar) / len(similar), 2)
+        fg_label  = conditions.get("fg_label", "?")
+        dom_trend = conditions.get("dom_trend", "?")
+        dom_str   = f"{dom:.1f}%" if dom is not None else "?"
+        above_str = "üstünde" if btc_above else "altında" if btc_above is not None else "?"
+        return (f"Benzer koşullar (F&G ~{fg if fg is not None else '?'} [{fg_label}], "
+                f"BTC EMA50 {above_str}, dominans {dom_str} [{dom_trend}]): "
+                f"{len(similar)} örnek → {wins} WIN | WR %{wr} | Ort. {avg_pct:+.2f}%")
+    except Exception as _e:
+        print(f"[ARCHIVE CTX] {_e}", flush=True)
+        return ""
 
 # ============================================================
 # TELEGRAM
@@ -513,23 +654,32 @@ def _portfolio_context(symbol: str, sig_type: str) -> tuple[str, str]:
         signals = r.json()
         if not isinstance(signals, list):
             signals = signals.get("signals", signals.get("data", []))
-        closed = [s for s in signals if s.get("status") in ("win", "loss", "expired")]
+        _CLOSED_ST = {"win_tp1", "win_tp2", "win_trail", "win_partial",
+                      "half_stopped", "half_expired", "loss", "expired"}
+        _WIN_ST    = {"win_tp1", "win_tp2", "win_trail", "win_partial"}
+        closed = [s for s in signals if s.get("status") in _CLOSED_ST]
+
+        def _is_win(s):
+            st = s.get("status", "")
+            return st in _WIN_ST or (st == "half_stopped" and (s.get("close_pct") or 0) > 0)
 
         pt = _SIG_TYPE_MAP.get(sig_type, sig_type)
         cs = [s for s in closed if s.get("symbol","").upper() == symbol.upper()
               and s.get("sig_type","") == pt]
         if cs:
-            wins = [s for s in cs if s.get("status") == "win"]
+            wins = [s for s in cs if _is_win(s)]
             wr   = round(len(wins) / len(cs) * 100)
             coin_hist = f"{len(cs)} geçmiş sinyal → {len(wins)} WIN | WR %{wr}"
         else:
             coin_hist = "Bu coin için henüz geçmiş veri yok."
 
-        non_smc = [s for s in closed if "smc" not in s.get("sig_type","").lower()]
+        non_smc = [s for s in closed if "smc" not in s.get("source","").lower()]
         if non_smc[:30]:
-            w30  = sum(1 for s in non_smc[:30] if s.get("status") == "win")
-            wr30 = round(w30 / 30 * 100)
-            sys_hist = f"Son 30 sinyal (SMC hariç): {w30} WIN / {30-w30} LOSS | WR %{wr30}"
+            sample = non_smc[:30]
+            w30  = sum(1 for s in sample if _is_win(s))
+            n    = len(sample)
+            wr30 = round(w30 / n * 100)
+            sys_hist = f"Son {n} sinyal (SMC hariç): {w30} WIN / {n-w30} LOSS/EXP | WR %{wr30}"
         else:
             sys_hist = "Yeterli sistem verisi yok."
 
@@ -596,13 +746,13 @@ def _build_sig_data(signal: dict) -> str:
     skip = {"symbol","type","entry","stop","tp1","tp2","tp3","source","_internal"}
     return " | ".join(f"{k}:{v}" for k, v in signal.items() if k not in skip)
 
-def evaluate(signal: dict, recent_count: int = 0) -> str:
+def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     """
-    Sinyali Claude ile değerlendirir, karar metni döndürür.
+    Sinyali Claude ile değerlendirir, (karar_metni, koşullar_dict) döndürür.
     recent_count: son 1 saatte kaç sinyal geldi (clustering bağlamı için)
     """
     if not ANTHROPIC_API_KEY:
-        return ""
+        return "", {}
 
     import anthropic
 
@@ -625,6 +775,20 @@ def evaluate(signal: dict, recent_count: int = 0) -> str:
     tma              = fut_tma.result()
     sweep            = fut_sweep.result()
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
+
+    # Piyasa koşulları — arşiv eşleştirmesi için
+    btc_4h = tf_data.get("btc_4h") or {}
+    conditions = {
+        "fg":              fg_val,
+        "fg_label":        fg_label,
+        "btc_4h_rsi":      btc_4h.get("rsi"),
+        "btc_above_ema50": (btc_4h.get("close", 0) > btc_4h.get("ema50", 0))
+                           if btc_4h.get("ema50") else None,
+        "dominance":       dom.get("current") if dom else None,
+        "dom_trend":       dom.get("trend_dir") if dom else None,
+        "tma_trend":       tma.get("trend") if tma else None,
+    }
+    archive_ctx = _archive_condition_context(conditions)
 
     coin_block = "\n".join([
         _tf_line("1S",  tf_data.get("coin_1h")),
@@ -689,6 +853,9 @@ Sinyal clustering: {cluster_str}
 [SİSTEM GENEL PERFORMANS — SMC HARİCİ]
 {sys_hist}
 
+[GEÇMİŞ PIYASA KOŞUL ARŞİVİ]
+{archive_ctx if archive_ctx else "Yeterli arşiv verisi yok."}
+
 {sweep_str}
 
 RSI, EMA, hacim, FBB bölgesi, SSL yönü, TMA kesişimi, likidite sweep bağlamını birlikte değerlendir.
@@ -706,10 +873,10 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
             max_tokens=350,
             messages=[{"role": "user", "content": prompt}],
         )
-        return resp.content[0].text.strip()
+        return resp.content[0].text.strip(), conditions
     except Exception as e:
         print(f"[ANALYZER CLAUDE] {e}", flush=True)
-        return ""
+        return "", conditions
 
 # ============================================================
 # ANA GİRİŞ NOKTASI
@@ -749,7 +916,7 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
     signal dict zorunlu alanlar: symbol, type, entry, stop, tp1
     Opsiyonel: source ("bot" veya "smc"), tp2, tp3, sistem-spesifik metrikler
     """
-    decision = evaluate(signal, recent_count)
+    decision, conditions = evaluate(signal, recent_count)
     if not decision:
         return
 
@@ -783,6 +950,8 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
     send_decision(msg)
     verdict = _extract_verdict(decision)
     _update_portfolio_analyzer(portfolio_id, verdict)
+    if portfolio_id:
+        _archive_add_entry(portfolio_id, signal, conditions, verdict or decision[:20])
     print(f"[ANALYZER] #{symbol} kararı gönderildi ({source}){f' → {verdict}' if verdict else ''}", flush=True)
 
 
