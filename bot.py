@@ -885,7 +885,7 @@ _SIG_TYPE_MAP = {
 }
 
 def send_to_portfolio(result):
-    if not PORTFOLIO_URL: return
+    if not PORTFOLIO_URL: return ""
     try:
         sig_type = _SIG_TYPE_MAP.get(result.get("type", "capit"), "panik_pump")
         payload = {

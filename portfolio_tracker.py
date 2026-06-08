@@ -604,7 +604,7 @@ def api_analyze():
     signal      = data.get("signal", {})
     recent_count = data.get("recent_count", 0)
     sig_num     = data.get("sig_num", 0)
-    portfolio_id = data.get("portfolio_id", "")
+    portfolio_id = data.get("portfolio_id") or ""
     threading.Thread(
         target=_analyzer_process,
         args=(signal, recent_count, sig_num, portfolio_id),

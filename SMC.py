@@ -396,13 +396,16 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
         r = requests.post(f"{PORTFOLIO_URL}/api/signal",
                           json=payload, headers=headers, timeout=5)
         if r.status_code == 201:
-            print(f"[PORTFOLIO] {source} sinyal gönderildi: {symbol} ({phase})", flush=True)
+            sig_id = r.json().get("id", "")
+            print(f"[PORTFOLIO] {source} sinyal gönderildi: {symbol} ({phase}) id={sig_id}", flush=True)
+            return sig_id
         elif r.status_code == 409:
             print(f"[PORTFOLIO] {source} zaten açık: {symbol}", flush=True)
         else:
             print(f"[PORTFOLIO] HTTP {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
         print(f"[PORTFOLIO] Hata: {e}", flush=True)
+    return ""
 
 # ============================================================
 # 4) PİYASA LİSTESİ + COİN ADI
@@ -875,7 +878,7 @@ def _analyze_symbol(symbol):
 
                 send_telegram_msg(msg)
                 mark_sent(symbol, "choch", "smc-original")
-                send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
+                _portfolio_id = send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
                                   stop_price=stop_price)
 
                 if _analyzer_send:
@@ -896,7 +899,7 @@ def _analyze_symbol(symbol):
                             "rsi":    round(rsi, 2),
                             "atr_pct": round(atr_ratio, 2),
                             "dist_ma200": round(dist_ma, 2),
-                        })
+                        }, portfolio_id=_portfolio_id)
                     except Exception as _ae:
                         print(f"[SMC ANALYZER] {_ae}", flush=True)
 
