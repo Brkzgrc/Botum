@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-08 09:57:24",
+  "updated_at": "2026-06-08 10:27:26",
   "performance": {
-    "total": 6,
-    "open": 3,
+    "total": 7,
+    "open": 4,
     "closed": 3,
     "wins": 1,
     "win_partial": 0,
@@ -96,6 +96,23 @@
       }
     },
     "by_type": {
+      "SMC CHoCH": {
+        "total": 5,
+        "open": 4,
+        "wins": 0,
+        "win_partial": 0,
+        "losses": 1,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": -3.2,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 0.0,
+        "avg_peak": 1.27,
+        "tp2_rate": 0
+      },
       "PUMP_UZUN": {
         "total": 2,
         "open": 0,
@@ -112,28 +129,11 @@
         "win_rate": 50.0,
         "avg_peak": 2.93,
         "tp2_rate": 0
-      },
-      "SMC CHoCH": {
-        "total": 4,
-        "open": 3,
-        "wins": 0,
-        "win_partial": 0,
-        "losses": 1,
-        "expired": 0,
-        "tp1_hits": 0,
-        "total_pnl": -3.2,
-        "tp2_hits": 0,
-        "tp2_total": 0,
-        "tp2_extra_pnl": 0.0,
-        "tp2_stopped": 0,
-        "win_rate": 0.0,
-        "avg_peak": 1.27,
-        "tp2_rate": 0
       }
     },
     "daily": {
       "2026-06-08": {
-        "trades": 6,
+        "trades": 7,
         "pnl": -3.5100000000000002,
         "wins": 0,
         "losses": 2
@@ -141,7 +141,7 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 6,
+        "trades": 7,
         "pnl": -3.5100000000000002,
         "wins": 0,
         "losses": 2
@@ -149,7 +149,7 @@
     },
     "monthly": {
       "2026-06": {
-        "trades": 6,
+        "trades": 7,
         "pnl": -3.5100000000000002,
         "wins": 0,
         "losses": 2
@@ -157,6 +157,55 @@
     }
   },
   "open": [
+    {
+      "id": "ONDO_USDT_1780902006",
+      "symbol": "ONDO/USDT",
+      "entry": 0.3546,
+      "stop": 0.328549,
+      "tp1": 0.3936765,
+      "tp2": 0.4197275,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-original",
+      "phase": "choch",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-08T10:00:06.497581+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.3638,
+      "peak_pct": 2.59,
+      "low_price": 0.3542,
+      "low_pct": -0.11,
+      "current_price": 0.3619,
+      "current_pct": 2.06,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-08T10:23:02.750637+03:00",
+      "checks": 5,
+      "extra": {}
+    },
     {
       "id": "LUNC_USDT_1780891203",
       "symbol": "LUNC/USDT",
@@ -180,8 +229,8 @@
       "peak_pct": 7.05,
       "low_price": 6.782e-05,
       "low_pct": 0.0,
-      "current_price": 7.075e-05,
-      "current_pct": 4.32,
+      "current_price": 7.097e-05,
+      "current_pct": 4.64,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -202,8 +251,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-08T09:52:51.662023+03:00",
-      "checks": 35,
+      "last_check": "2026-06-08T10:23:02.750637+03:00",
+      "checks": 41,
       "extra": {}
     },
     {
@@ -229,8 +278,8 @@
       "peak_pct": 0.35,
       "low_price": 2.74e-06,
       "low_pct": -2.84,
-      "current_price": 2.78e-06,
-      "current_pct": -1.42,
+      "current_price": 2.79e-06,
+      "current_pct": -1.06,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -251,8 +300,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-08T09:52:51.662023+03:00",
-      "checks": 66,
+      "last_check": "2026-06-08T10:23:02.750637+03:00",
+      "checks": 72,
       "extra": {}
     },
     {
@@ -278,8 +327,8 @@
       "peak_pct": 2.5,
       "low_price": 0.001503,
       "low_pct": -1.31,
-      "current_price": 0.001545,
-      "current_pct": 1.44,
+      "current_price": 0.001554,
+      "current_pct": 2.04,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -300,8 +349,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-08T09:52:51.662023+03:00",
-      "checks": 70,
+      "last_check": "2026-06-08T10:23:02.750637+03:00",
+      "checks": 76,
       "extra": {}
     }
   ],
