@@ -99,6 +99,13 @@ def _migrate_signals():
                 and not sig.get("tp1_hit")):
             sig["tp2_shadow"] = "not_reached"
             fixed += 1
+        # Bot sinyalleri: tp2 vurulmadıysa shadow izleme gereksiz
+        _is_bot = sig.get("source", "bot") not in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        if (_is_bot and sig.get("tp2_shadow") == "watching"
+                and sig.get("status") not in ("open", "half_open")
+                and sig.get("status") != "win_tp2"):
+            sig["tp2_shadow"] = "not_reached"
+            fixed += 1
         # half_open iken tp2_peak_after_tp1 hiç yazılmamış olanları doldur
         if sig.get("status") == "half_open" and sig.get("tp2_peak_after_tp1", 0) == 0:
             sig["tp2_peak_after_tp1"] = sig.get("peak_pct", 0)
@@ -288,16 +295,18 @@ def check_open_positions():
 
                 if tp2 and high >= tp2:
                     close_reason = "tp2"; close_price = tp2
-                    sig["status"] = "win_tp2"
+                    sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
                 elif low <= trail_stop_price:
                     trail_ret = round((trail_stop_price - entry) / entry * 100, 2)
                     close_reason = "trailing"; close_price = trail_stop_price
                     sig["status"] = "win_trail" if trail_ret > 0 else "loss"
+                    sig["tp2_shadow"] = "not_reached"
                 else:
                     open_time = datetime.fromisoformat(sig["open_time"])
                     if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                     if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
                         close_reason = "expired"; close_price = close; sig["status"] = "expired"
+                        sig["tp2_shadow"] = "not_reached"
 
             if close_reason:
                 sig["close_time"] = now.isoformat()
