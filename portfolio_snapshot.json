@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-09 17:39:46",
+  "updated_at": "2026-06-09 18:09:48",
   "performance": {
-    "total": 5,
-    "open": 1,
+    "total": 6,
+    "open": 2,
     "closed": 4,
     "wins": 2,
     "win_partial": 0,
@@ -97,8 +97,8 @@
     },
     "by_type": {
       "PUMP_UZUN": {
-        "total": 2,
-        "open": 0,
+        "total": 3,
+        "open": 1,
         "wins": 1,
         "win_partial": 0,
         "losses": 1,
@@ -150,7 +150,7 @@
     },
     "daily": {
       "2026-06-09": {
-        "trades": 5,
+        "trades": 6,
         "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
@@ -158,7 +158,7 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 5,
+        "trades": 6,
         "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
@@ -166,7 +166,7 @@
     },
     "monthly": {
       "2026-06": {
-        "trades": 5,
+        "trades": 6,
         "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
@@ -174,6 +174,61 @@
     }
   },
   "open": [
+    {
+      "id": "FIDA_USDT_1781017210",
+      "symbol": "FIDA/USDT",
+      "entry": 0.02406,
+      "stop": 0.0221352,
+      "tp1": 0.030075,
+      "tp2": 0.030075,
+      "tp3": null,
+      "sig_type": "pump_uzun",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-09T18:00:10.336134+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.02407,
+      "peak_pct": 0.04,
+      "low_price": 0.02383,
+      "low_pct": -0.96,
+      "current_price": 0.02385,
+      "current_pct": -0.87,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-09T18:09:04.104592+03:00",
+      "checks": 2,
+      "extra": {},
+      "trail_stop": 0.0233479
+    },
     {
       "id": "HOLO_USDT_1781002806",
       "symbol": "HOLO/USDT",
@@ -198,8 +253,8 @@
       "peak_pct": 5.12,
       "low_price": 0.0606,
       "low_pct": 0.0,
-      "current_price": 0.0631,
-      "current_pct": 4.13,
+      "current_price": 0.0632,
+      "current_pct": 4.29,
       "tp1_hit": true,
       "tp1_time": "2026-06-09T14:03:29.881077+03:00",
       "tp2_shadow": "watching",
@@ -224,8 +279,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T17:39:01.296204+03:00",
-      "checks": 44,
+      "last_check": "2026-06-09T18:09:04.104592+03:00",
+      "checks": 50,
       "extra": {
         "tp3": 0.066882
       },
