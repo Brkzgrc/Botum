@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-09 05:08:54",
+  "updated_at": "2026-06-09 05:38:55",
   "performance": {
     "total": 2,
-    "open": 2,
-    "closed": 0,
-    "wins": 0,
+    "open": 1,
+    "closed": 1,
+    "wins": 1,
     "win_partial": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 0,
-    "total_pnl": 0.0,
-    "avg_peak": 0.0,
-    "win_rate": 0.0,
+    "total_pnl": 2.6,
+    "avg_peak": 5.77,
+    "win_rate": 100.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -37,11 +37,11 @@
     },
     "sim_bot": {
       "tp2": 0,
-      "tp1": 0,
+      "tp1": 1,
       "stop": 0,
       "open": 0,
-      "pnl": 0.0,
-      "wr": 0
+      "pnl": 5.0,
+      "wr": 100.0
     },
     "sim_smc": {
       "tp2": 0,
@@ -79,18 +79,18 @@
     },
     "bot_alt": {
       "actual": {
-        "wins": 0,
+        "wins": 1,
         "losses": 0,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "total": 1,
+        "pnl": 2.6,
+        "wr": 100.0
       },
       "tp1_only": {
         "wins": 0,
         "losses": 0,
-        "expired": 0,
-        "total": 0,
+        "expired": 1,
+        "total": 1,
         "pnl": 0.0,
         "wr": 0
       }
@@ -115,26 +115,26 @@
       },
       "PUMP_ORTA": {
         "total": 1,
-        "open": 1,
-        "wins": 0,
+        "open": 0,
+        "wins": 1,
         "win_partial": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 0,
-        "total_pnl": 0.0,
+        "total_pnl": 2.6,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 0,
-        "avg_peak": 0,
+        "win_rate": 100.0,
+        "avg_peak": 5.77,
         "tp2_rate": 0
       }
     },
     "daily": {
       "2026-06-09": {
         "trades": 2,
-        "pnl": 0.0,
+        "pnl": 2.6,
         "wins": 0,
         "losses": 0
       }
@@ -142,7 +142,7 @@
     "weekly": {
       "2026-W23": {
         "trades": 2,
-        "pnl": 0.0,
+        "pnl": 2.6,
         "wins": 0,
         "losses": 0
       }
@@ -150,7 +150,7 @@
     "monthly": {
       "2026-06": {
         "trades": 2,
-        "pnl": 0.0,
+        "pnl": 2.6,
         "wins": 0,
         "losses": 0
       }
@@ -179,10 +179,10 @@
       "close_pct": null,
       "peak_price": 0.7478,
       "peak_pct": 0.96,
-      "low_price": 0.736,
-      "low_pct": -0.63,
-      "current_price": 0.7387,
-      "current_pct": -0.27,
+      "low_price": 0.7261,
+      "low_pct": -1.97,
+      "current_price": 0.7261,
+      "current_pct": -1.97,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -207,12 +207,14 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T05:07:57.375124+03:00",
-      "checks": 2,
+      "last_check": "2026-06-09T05:38:00.955188+03:00",
+      "checks": 8,
       "extra": {
         "tp3": 0.906135
       }
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "币安人生_USDT_1780956006",
       "symbol": "币安人生/USDT",
@@ -227,21 +229,21 @@
       "phase": "",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "win_trail",
       "open_time": "2026-06-09T01:00:06.135550+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-06-09T05:17:58.961194+03:00",
+      "close_price": 0.73235,
+      "close_reason": "trailing",
+      "close_pct": 2.6,
       "peak_price": 0.755,
       "peak_pct": 5.77,
       "low_price": 0.703,
       "low_pct": -1.51,
-      "current_price": 0.7387,
-      "current_pct": 3.49,
+      "current_price": 0.735,
+      "current_pct": 2.97,
       "tp1_hit": false,
       "tp1_time": null,
-      "tp2_shadow": "watching",
+      "tp2_shadow": "not_reached",
       "tp2_hit": false,
       "tp2_time": null,
       "tp2_peak_after_tp1": 0.0,
@@ -263,11 +265,10 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T05:07:57.375124+03:00",
-      "checks": 50,
+      "last_check": "2026-06-09T05:17:58.961194+03:00",
+      "checks": 52,
       "extra": {},
       "trail_stop": 0.73235
     }
-  ],
-  "closed": []
+  ]
 }
