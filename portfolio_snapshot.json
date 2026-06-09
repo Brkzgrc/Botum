@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-09 14:39:32",
+  "updated_at": "2026-06-09 15:09:34",
   "performance": {
-    "total": 4,
-    "open": 1,
+    "total": 5,
+    "open": 2,
     "closed": 3,
     "wins": 1,
     "win_partial": 0,
@@ -96,6 +96,23 @@
       }
     },
     "by_type": {
+      "PUMP_UZUN": {
+        "total": 2,
+        "open": 1,
+        "wins": 0,
+        "win_partial": 0,
+        "losses": 1,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": -0.42,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 0.0,
+        "avg_peak": 2.66,
+        "tp2_rate": 0
+      },
       "SMC CHoCH": {
         "total": 2,
         "open": 1,
@@ -111,23 +128,6 @@
         "tp2_stopped": 0,
         "win_rate": 0.0,
         "avg_peak": 1.24,
-        "tp2_rate": 0
-      },
-      "PUMP_UZUN": {
-        "total": 1,
-        "open": 0,
-        "wins": 0,
-        "win_partial": 0,
-        "losses": 1,
-        "expired": 0,
-        "tp1_hits": 0,
-        "total_pnl": -0.42,
-        "tp2_hits": 0,
-        "tp2_total": 0,
-        "tp2_extra_pnl": 0.0,
-        "tp2_stopped": 0,
-        "win_rate": 0.0,
-        "avg_peak": 2.66,
         "tp2_rate": 0
       },
       "PUMP_ORTA": {
@@ -150,7 +150,7 @@
     },
     "daily": {
       "2026-06-09": {
-        "trades": 4,
+        "trades": 5,
         "pnl": -5.26,
         "wins": 0,
         "losses": 2
@@ -158,7 +158,7 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 4,
+        "trades": 5,
         "pnl": -5.26,
         "wins": 0,
         "losses": 2
@@ -166,7 +166,7 @@
     },
     "monthly": {
       "2026-06": {
-        "trades": 4,
+        "trades": 5,
         "pnl": -5.26,
         "wins": 0,
         "losses": 2
@@ -174,6 +174,61 @@
     }
   },
   "open": [
+    {
+      "id": "FIDA_USDT_1781006410",
+      "symbol": "FIDA/USDT",
+      "entry": 0.0239,
+      "stop": 0.021988,
+      "tp1": 0.029875,
+      "tp2": 0.029875,
+      "tp3": null,
+      "sig_type": "pump_uzun",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-09T15:00:10.940879+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.02434,
+      "peak_pct": 1.84,
+      "low_price": 0.02388,
+      "low_pct": -0.08,
+      "current_price": 0.02413,
+      "current_pct": 0.96,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-09T15:08:37.937386+03:00",
+      "checks": 2,
+      "extra": {},
+      "trail_stop": 0.0236098
+    },
     {
       "id": "HOLO_USDT_1781002806",
       "symbol": "HOLO/USDT",
@@ -198,8 +253,8 @@
       "peak_pct": 5.12,
       "low_price": 0.0606,
       "low_pct": 0.0,
-      "current_price": 0.0629,
-      "current_pct": 3.8,
+      "current_price": 0.0634,
+      "current_pct": 4.62,
       "tp1_hit": true,
       "tp1_time": "2026-06-09T14:03:29.881077+03:00",
       "tp2_shadow": "watching",
@@ -224,8 +279,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T14:38:34.671397+03:00",
-      "checks": 8,
+      "last_check": "2026-06-09T15:08:37.937386+03:00",
+      "checks": 14,
       "extra": {
         "tp3": 0.066882
       },
