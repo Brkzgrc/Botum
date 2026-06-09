@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-09 17:09:43",
+  "updated_at": "2026-06-09 17:39:46",
   "performance": {
     "total": 5,
-    "open": 2,
-    "closed": 3,
-    "wins": 1,
+    "open": 1,
+    "closed": 4,
+    "wins": 2,
     "win_partial": 0,
     "losses": 2,
     "expired": 0,
     "tp1_hits": 0,
-    "total_pnl": -5.26,
-    "avg_peak": 3.22,
-    "win_rate": 33.3,
+    "total_pnl": -3.8,
+    "avg_peak": 3.57,
+    "win_rate": 50.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -39,7 +39,7 @@
       "tp2": 0,
       "tp1": 1,
       "stop": 1,
-      "open": 0,
+      "open": 1,
       "pnl": 2.5,
       "wr": 50.0
     },
@@ -79,18 +79,18 @@
     },
     "bot_alt": {
       "actual": {
-        "wins": 1,
+        "wins": 2,
         "losses": 1,
         "expired": 0,
-        "total": 2,
-        "pnl": 2.18,
-        "wr": 50.0
+        "total": 3,
+        "pnl": 3.64,
+        "wr": 66.7
       },
       "tp1_only": {
         "wins": 0,
         "losses": 0,
-        "expired": 2,
-        "total": 2,
+        "expired": 3,
+        "total": 3,
         "pnl": 0.0,
         "wr": 0
       }
@@ -98,19 +98,19 @@
     "by_type": {
       "PUMP_UZUN": {
         "total": 2,
-        "open": 1,
-        "wins": 0,
+        "open": 0,
+        "wins": 1,
         "win_partial": 0,
         "losses": 1,
         "expired": 0,
         "tp1_hits": 0,
-        "total_pnl": -0.42,
+        "total_pnl": 1.04,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 0.0,
-        "avg_peak": 2.66,
+        "win_rate": 50.0,
+        "avg_peak": 3.63,
         "tp2_rate": 0
       },
       "SMC CHoCH": {
@@ -151,7 +151,7 @@
     "daily": {
       "2026-06-09": {
         "trades": 5,
-        "pnl": -5.26,
+        "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
       }
@@ -159,7 +159,7 @@
     "weekly": {
       "2026-W23": {
         "trades": 5,
-        "pnl": -5.26,
+        "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
       }
@@ -167,68 +167,13 @@
     "monthly": {
       "2026-06": {
         "trades": 5,
-        "pnl": -5.26,
+        "pnl": -3.8000000000000003,
         "wins": 0,
         "losses": 2
       }
     }
   },
   "open": [
-    {
-      "id": "FIDA_USDT_1781006410",
-      "symbol": "FIDA/USDT",
-      "entry": 0.0239,
-      "stop": 0.021988,
-      "tp1": 0.029875,
-      "tp2": 0.029875,
-      "tp3": null,
-      "sig_type": "pump_uzun",
-      "sub_type": "",
-      "source": "bot",
-      "phase": "",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-06-09T15:00:10.940879+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.025,
-      "peak_pct": 4.6,
-      "low_price": 0.02388,
-      "low_pct": -0.08,
-      "current_price": 0.02456,
-      "current_pct": 2.76,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "tp2_shadow": "watching",
-      "tp2_hit": false,
-      "tp2_time": null,
-      "tp2_peak_after_tp1": 0.0,
-      "tp2_shadow_end": null,
-      "tp3_shadow": null,
-      "tp3_trail_peak": 0.0,
-      "tp3_trail_stop_pct": 2.5,
-      "tp3_hit_time": null,
-      "trailing_shadow": "watching",
-      "trailing_peak": 0.0,
-      "trailing_stop_pct": 2.0,
-      "trailing_exit_price": null,
-      "trailing_exit_pct": null,
-      "trailing_shadow_end": null,
-      "expire_trailing_active": false,
-      "expire_trailing_peak": 0.0,
-      "expire_trailing_stop_pct": 2.0,
-      "expire_trailing_exit_price": null,
-      "expire_trailing_exit_pct": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-06-09T17:08:57.647439+03:00",
-      "checks": 26,
-      "extra": {},
-      "trail_stop": 0.02425
-    },
     {
       "id": "HOLO_USDT_1781002806",
       "symbol": "HOLO/USDT",
@@ -279,8 +224,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T17:08:57.647439+03:00",
-      "checks": 38,
+      "last_check": "2026-06-09T17:39:01.296204+03:00",
+      "checks": 44,
       "extra": {
         "tp3": 0.066882
       },
@@ -289,6 +234,61 @@
     }
   ],
   "closed": [
+    {
+      "id": "FIDA_USDT_1781006410",
+      "symbol": "FIDA/USDT",
+      "entry": 0.0239,
+      "stop": 0.021988,
+      "tp1": 0.029875,
+      "tp2": 0.029875,
+      "tp3": null,
+      "sig_type": "pump_uzun",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-06-09T15:00:10.940879+03:00",
+      "close_time": "2026-06-09T17:18:59.236676+03:00",
+      "close_price": 0.02425,
+      "close_reason": "trailing",
+      "close_pct": 1.46,
+      "peak_price": 0.025,
+      "peak_pct": 4.6,
+      "low_price": 0.02388,
+      "low_pct": -0.08,
+      "current_price": 0.02414,
+      "current_pct": 1.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "not_reached",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-09T17:18:59.236676+03:00",
+      "checks": 28,
+      "extra": {},
+      "trail_stop": 0.02425
+    },
     {
       "id": "FIDA_USDT_1780995611",
       "symbol": "FIDA/USDT",
