@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-09 14:09:30",
+  "updated_at": "2026-06-09 14:39:32",
   "performance": {
     "total": 4,
-    "open": 2,
-    "closed": 2,
+    "open": 1,
+    "closed": 3,
     "wins": 1,
     "win_partial": 0,
-    "losses": 1,
+    "losses": 2,
     "expired": 0,
     "tp1_hits": 0,
-    "total_pnl": -4.84,
-    "avg_peak": 3.5,
-    "win_rate": 50.0,
+    "total_pnl": -5.26,
+    "avg_peak": 3.22,
+    "win_rate": 33.3,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -38,10 +38,10 @@
     "sim_bot": {
       "tp2": 0,
       "tp1": 1,
-      "stop": 0,
+      "stop": 1,
       "open": 0,
-      "pnl": 5.0,
-      "wr": 100.0
+      "pnl": 2.5,
+      "wr": 50.0
     },
     "sim_smc": {
       "tp2": 0,
@@ -80,17 +80,17 @@
     "bot_alt": {
       "actual": {
         "wins": 1,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
-        "total": 1,
-        "pnl": 2.6,
-        "wr": 100.0
+        "total": 2,
+        "pnl": 2.18,
+        "wr": 50.0
       },
       "tp1_only": {
         "wins": 0,
         "losses": 0,
-        "expired": 1,
-        "total": 1,
+        "expired": 2,
+        "total": 2,
         "pnl": 0.0,
         "wr": 0
       }
@@ -115,19 +115,19 @@
       },
       "PUMP_UZUN": {
         "total": 1,
-        "open": 1,
+        "open": 0,
         "wins": 0,
         "win_partial": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
         "tp1_hits": 0,
-        "total_pnl": 0.0,
+        "total_pnl": -0.42,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 0,
-        "avg_peak": 0,
+        "win_rate": 0.0,
+        "avg_peak": 2.66,
         "tp2_rate": 0
       },
       "PUMP_ORTA": {
@@ -151,25 +151,25 @@
     "daily": {
       "2026-06-09": {
         "trades": 4,
-        "pnl": -4.84,
+        "pnl": -5.26,
         "wins": 0,
-        "losses": 1
+        "losses": 2
       }
     },
     "weekly": {
       "2026-W23": {
         "trades": 4,
-        "pnl": -4.84,
+        "pnl": -5.26,
         "wins": 0,
-        "losses": 1
+        "losses": 2
       }
     },
     "monthly": {
       "2026-06": {
         "trades": 4,
-        "pnl": -4.84,
+        "pnl": -5.26,
         "wins": 0,
-        "losses": 1
+        "losses": 2
       }
     }
   },
@@ -194,8 +194,8 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.063,
-      "peak_pct": 3.96,
+      "peak_price": 0.0637,
+      "peak_pct": 5.12,
       "low_price": 0.0606,
       "low_pct": 0.0,
       "current_price": 0.0629,
@@ -205,7 +205,7 @@
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 3.96,
+      "tp2_peak_after_tp1": 5.12,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -224,14 +224,16 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T14:08:30.672597+03:00",
-      "checks": 2,
+      "last_check": "2026-06-09T14:38:34.671397+03:00",
+      "checks": 8,
       "extra": {
         "tp3": 0.066882
       },
       "tp1_exit_price": 0.062694,
       "tp1_exit_pct": 3.46
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "FIDA_USDT_1780995611",
       "symbol": "FIDA/USDT",
@@ -246,21 +248,21 @@
       "phase": "",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "loss",
       "open_time": "2026-06-09T12:00:11.922273+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-06-09T14:23:33.054492+03:00",
+      "close_price": 0.0239881,
+      "close_reason": "trailing",
+      "close_pct": -0.42,
       "peak_price": 0.02473,
       "peak_pct": 2.66,
       "low_price": 0.02348,
       "low_pct": -2.53,
-      "current_price": 0.02406,
-      "current_pct": -0.12,
+      "current_price": 0.02396,
+      "current_pct": -0.54,
       "tp1_hit": false,
       "tp1_time": null,
-      "tp2_shadow": "watching",
+      "tp2_shadow": "not_reached",
       "tp2_hit": false,
       "tp2_time": null,
       "tp2_peak_after_tp1": 0.0,
@@ -282,13 +284,11 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T14:08:30.672597+03:00",
-      "checks": 26,
+      "last_check": "2026-06-09T14:23:33.054492+03:00",
+      "checks": 29,
       "extra": {},
       "trail_stop": 0.0239881
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "币安人生_USDT_1780970405",
       "symbol": "币安人生/USDT",
