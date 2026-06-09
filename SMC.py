@@ -30,7 +30,7 @@ def health_check():
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
     struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
-    return (f"SMC v18 WS — 4H Crash + CHoCH 4H Teyit | {boot_status} | {cached} coin cached | "
+    return (f"SMC v19 WS — 4H Crash + CHoCH 4H Teyit + EMA21 | {boot_status} | {cached} coin cached | "
             f"{active} discount aktif | {btc_ema} | {struc} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -671,10 +671,9 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
 # ============================================================
 def _4h_bullish_confirm(df_1h):
     """
-    1H bar verisini 4H'e resample edip coinin 4H swing trendini kontrol eder.
-    Sadece neutral (0) veya bullish (1) trendde CHoCH sinyali verilir.
-    Döner: True = bullish/neutral → sinyale izin ver
-           False = bearish → CHoCH sinyali engelle
+    1H bar verisini 4H'e resample edip coinin 4H swing trendini ve EMA21 konumunu kontrol eder.
+    Sinyal için iki şart: swing_trend bearish değil VE son close > 4H EMA21.
+    Döner: True → sinyale izin ver | False → CHoCH sinyali engelle
     """
     try:
         df_4h = df_1h.resample("4h", label="right", closed="right").agg({
@@ -682,10 +681,13 @@ def _4h_bullish_confirm(df_1h):
             "close": "last", "volume": "sum"
         }).dropna()
         df_4h = df_4h.iloc[:-1]  # Henüz kapanmamış son 4H bar'ı çıkar
-        if len(df_4h) < 20:
+        if len(df_4h) < 21:
             return True  # Yetersiz veri → engelleme
         _, _, swing_trend_4h, _, _ = detect_micro_choch(df_4h, choch_swing=5)
-        return swing_trend_4h >= 0  # 0=neutral, 1=bullish → izin ver; -1=bearish → engelle
+        if swing_trend_4h < 0:
+            return False  # Bearish swing → engelle
+        ema21 = df_4h["close"].ewm(span=21, adjust=False).mean().iloc[-1]
+        return df_4h["close"].iloc[-1] > ema21  # Fiyat 4H EMA21 üstünde mi?
     except Exception:
         return True  # Hata durumunda sinyal engelleme
 
