@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-09 13:09:26",
+  "updated_at": "2026-06-09 13:39:28",
   "performance": {
     "total": 3,
     "open": 1,
@@ -194,12 +194,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.02419,
-      "peak_pct": 0.42,
+      "peak_price": 0.02453,
+      "peak_pct": 1.83,
       "low_price": 0.02348,
       "low_pct": -2.53,
-      "current_price": 0.02376,
-      "current_pct": -1.37,
+      "current_price": 0.02438,
+      "current_pct": 1.2,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -224,10 +224,10 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T13:08:25.478705+03:00",
-      "checks": 14,
+      "last_check": "2026-06-09T13:38:27.885980+03:00",
+      "checks": 20,
       "extra": {},
-      "trail_stop": 0.0234643
+      "trail_stop": 0.0237941
     }
   ],
   "closed": [
