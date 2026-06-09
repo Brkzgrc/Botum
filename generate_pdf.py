@@ -28,6 +28,7 @@ class PDF(FPDF):
         self.cell(0, 6, f"Sayfa {self.page_no()}", align="C")
 
     def chapter_title(self, num, title):
+        self.set_x(self.l_margin)
         self.set_font("Sans", "B", 13)
         self.set_fill_color(25, 25, 50)
         self.set_text_color(255, 255, 255)
@@ -36,6 +37,7 @@ class PDF(FPDF):
         self.ln(3)
 
     def section_title(self, title):
+        self.set_x(self.l_margin)
         self.ln(2)
         self.set_font("Sans", "B", 10.5)
         self.set_text_color(25, 80, 170)
@@ -47,6 +49,7 @@ class PDF(FPDF):
         self.ln(2)
 
     def sub_title(self, title):
+        self.set_x(self.l_margin)
         self.set_font("Sans", "B", 9.5)
         self.set_text_color(50, 50, 50)
         self.cell(0, 6, title, new_x="LMARGIN", new_y="NEXT")
@@ -55,7 +58,7 @@ class PDF(FPDF):
     def body(self, txt):
         self.set_x(self.l_margin)
         self.set_font("Sans", "", 9.5)
-        self.multi_cell(0, 5.5, txt)
+        self.multi_cell(0, 5.5, txt, new_x="LMARGIN", new_y="NEXT")
         self.ln(1)
 
     def bullet(self, txt, indent=8):
@@ -64,7 +67,7 @@ class PDF(FPDF):
         w_avail = self.w - self.r_margin - x0 - 5
         self.set_x(x0)
         self.cell(5, 5.5, "•")
-        self.multi_cell(w_avail, 5.5, txt)
+        self.multi_cell(w_avail, 5.5, txt, new_x="LMARGIN", new_y="NEXT")
 
     def kv(self, key, val):
         x0 = self.l_margin + 8
@@ -74,17 +77,18 @@ class PDF(FPDF):
         self.set_x(x0)
         self.cell(w_key, 5.5, key + ":")
         self.set_font("Sans", "", 9.5)
-        self.multi_cell(w_val, 5.5, val)
+        self.multi_cell(w_val, 5.5, val, new_x="LMARGIN", new_y="NEXT")
 
     def info_box(self, txt, color=(235, 245, 255)):
         self.set_x(self.l_margin)
         self.set_fill_color(*color)
         self.set_font("Sans", "I", 9)
-        self.multi_cell(0, 5.5, txt, fill=True)
+        self.multi_cell(0, 5.5, txt, fill=True, new_x="LMARGIN", new_y="NEXT")
         self.set_fill_color(255, 255, 255)
         self.ln(2)
 
     def divider(self):
+        self.set_x(self.l_margin)
         self.ln(3)
         self.set_draw_color(180, 180, 180)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
