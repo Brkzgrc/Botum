@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-09 11:39:20",
+  "updated_at": "2026-06-09 12:09:22",
   "performance": {
-    "total": 2,
-    "open": 0,
+    "total": 3,
+    "open": 1,
     "closed": 2,
     "wins": 1,
     "win_partial": 0,
@@ -96,6 +96,23 @@
       }
     },
     "by_type": {
+      "PUMP_UZUN": {
+        "total": 1,
+        "open": 1,
+        "wins": 0,
+        "win_partial": 0,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": 0.0,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 0,
+        "avg_peak": 0,
+        "tp2_rate": 0
+      },
       "SMC CHoCH": {
         "total": 1,
         "open": 0,
@@ -133,7 +150,7 @@
     },
     "daily": {
       "2026-06-09": {
-        "trades": 2,
+        "trades": 3,
         "pnl": -4.84,
         "wins": 0,
         "losses": 1
@@ -141,7 +158,7 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 2,
+        "trades": 3,
         "pnl": -4.84,
         "wins": 0,
         "losses": 1
@@ -149,14 +166,70 @@
     },
     "monthly": {
       "2026-06": {
-        "trades": 2,
+        "trades": 3,
         "pnl": -4.84,
         "wins": 0,
         "losses": 1
       }
     }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "FIDA_USDT_1780995611",
+      "symbol": "FIDA/USDT",
+      "entry": 0.02409,
+      "stop": 0.0221628,
+      "tp1": 0.0301125,
+      "tp2": 0.0301125,
+      "tp3": null,
+      "sig_type": "pump_uzun",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-09T12:00:11.922273+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.02419,
+      "peak_pct": 0.42,
+      "low_price": 0.02368,
+      "low_pct": -1.7,
+      "current_price": 0.02371,
+      "current_pct": -1.58,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-09T12:08:20.643363+03:00",
+      "checks": 2,
+      "extra": {},
+      "trail_stop": 0.0234643
+    }
+  ],
   "closed": [
     {
       "id": "币安人生_USDT_1780970405",
