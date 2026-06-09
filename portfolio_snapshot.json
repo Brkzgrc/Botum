@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-09 09:09:09",
+  "updated_at": "2026-06-09 09:39:11",
   "performance": {
     "total": 2,
-    "open": 1,
-    "closed": 1,
+    "open": 0,
+    "closed": 2,
     "wins": 1,
     "win_partial": 0,
-    "losses": 0,
+    "losses": 1,
     "expired": 0,
     "tp1_hits": 0,
-    "total_pnl": 2.6,
-    "avg_peak": 5.77,
-    "win_rate": 100.0,
+    "total_pnl": -4.84,
+    "avg_peak": 3.5,
+    "win_rate": 50.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -46,35 +46,35 @@
     "sim_smc": {
       "tp2": 0,
       "tp1": 0,
-      "stop": 0,
+      "stop": 1,
       "open": 0,
-      "pnl": 0.0,
-      "wr": 0
+      "pnl": -2.5,
+      "wr": 0.0
     },
     "smc_alt": {
       "actual": {
         "wins": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "total": 1,
+        "pnl": -7.44,
+        "wr": 0.0
       },
       "tp1_only": {
         "wins": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "total": 1,
+        "pnl": -7.44,
+        "wr": 0.0
       },
       "tp2_only": {
         "wins": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "total": 1,
+        "pnl": -7.44,
+        "wr": 0.0
       }
     },
     "bot_alt": {
@@ -98,19 +98,19 @@
     "by_type": {
       "SMC CHoCH": {
         "total": 1,
-        "open": 1,
+        "open": 0,
         "wins": 0,
         "win_partial": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
         "tp1_hits": 0,
-        "total_pnl": 0.0,
+        "total_pnl": -7.44,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 0,
-        "avg_peak": 0,
+        "win_rate": 0.0,
+        "avg_peak": 1.24,
         "tp2_rate": 0
       },
       "PUMP_ORTA": {
@@ -134,29 +134,30 @@
     "daily": {
       "2026-06-09": {
         "trades": 2,
-        "pnl": 2.6,
+        "pnl": -4.84,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       }
     },
     "weekly": {
       "2026-W23": {
         "trades": 2,
-        "pnl": 2.6,
+        "pnl": -4.84,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       }
     },
     "monthly": {
       "2026-06": {
         "trades": 2,
-        "pnl": 2.6,
+        "pnl": -4.84,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       }
     }
   },
-  "open": [
+  "open": [],
+  "closed": [
     {
       "id": "币安人生_USDT_1780970405",
       "symbol": "币安人生/USDT",
@@ -171,21 +172,21 @@
       "phase": "choch",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "loss",
       "open_time": "2026-06-09T05:00:05.963518+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-06-09T09:33:19.832060+03:00",
+      "close_price": 0.685555,
+      "close_reason": "stop",
+      "close_pct": -7.44,
       "peak_price": 0.7499,
       "peak_pct": 1.24,
-      "low_price": 0.6896,
-      "low_pct": -6.9,
-      "current_price": 0.6938,
-      "current_pct": -6.33,
+      "low_price": 0.6849,
+      "low_pct": -7.53,
+      "current_price": 0.6874,
+      "current_pct": -7.2,
       "tp1_hit": false,
       "tp1_time": null,
-      "tp2_shadow": "watching",
+      "tp2_shadow": "not_reached",
       "tp2_hit": false,
       "tp2_time": null,
       "tp2_peak_after_tp1": 0.0,
@@ -207,14 +208,12 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T09:08:17.808589+03:00",
-      "checks": 50,
+      "last_check": "2026-06-09T09:33:19.832060+03:00",
+      "checks": 55,
       "extra": {
         "tp3": 0.906135
       }
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "币安人生_USDT_1780956006",
       "symbol": "币安人生/USDT",
