@@ -12,11 +12,6 @@ import requests
 import websockets
 from flask import Flask
 
-try:
-    from claude_analyzer import process_and_send as _analyzer_send
-except Exception as _e:
-    _analyzer_send = None
-    print(f"[SMC] claude_analyzer yüklenemedi: {_e}", flush=True)
 
 app = Flask(__name__)
 
@@ -30,7 +25,7 @@ def health_check():
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
     struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
-    return (f"SMC v19 WS — 4H Crash + CHoCH 4H Teyit + EMA21 | {boot_status} | {cached} coin cached | "
+    return (f"SMC v20 WS — 4H Crash + CHoCH 4H Teyit + EMA21 | {boot_status} | {cached} coin cached | "
             f"{active} discount aktif | {btc_ema} | {struc} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -923,27 +918,30 @@ def _analyze_symbol(symbol):
                 _portfolio_id = send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
                                   stop_price=stop_price)
 
-                if _analyzer_send:
+                if PORTFOLIO_URL and _portfolio_id:
                     try:
                         _stop = stop_price if stop_price else round(entry_price - atr_val * 4.0, 10)
                         _risk = entry_price - _stop
-                        _tp1  = round(entry_price + _risk * 1.0, 10)
-                        _tp2  = round(entry_price + _risk * 2.0, 10)
-                        _tp3  = round(entry_price + _risk * 3.0, 10)
-                        _analyzer_send({
-                            "symbol": symbol,
-                            "type":   "smc",
-                            "source": "smc",
-                            "entry":  entry_price,
-                            "stop":   _stop,
-                            "tp1":    _tp1,
-                            "tp2":    _tp2,
-                            "tp3":    _tp3,
+                        _sig  = {
+                            "symbol": symbol, "type": "smc", "source": "smc",
+                            "entry":  entry_price, "stop": _stop,
+                            "tp1":    round(entry_price + _risk * 1.0, 10),
+                            "tp2":    round(entry_price + _risk * 2.0, 10),
+                            "tp3":    round(entry_price + _risk * 3.0, 10),
                             "break_type": micro_break,
                             "rsi":    round(rsi, 2),
                             "atr_pct": round(atr_ratio, 2),
                             "dist_ma200": round(dist_ma, 2),
-                        }, portfolio_id=_portfolio_id)
+                        }
+                        _hdrs = {"Content-Type": "application/json"}
+                        if PORTFOLIO_TOKEN:
+                            _hdrs["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+                        requests.post(
+                            f"{PORTFOLIO_URL}/api/analyze",
+                            json={"signal": _sig, "recent_count": 0, "sig_num": 0,
+                                  "portfolio_id": _portfolio_id},
+                            headers=_hdrs, timeout=10,
+                        )
                     except Exception as _ae:
                         print(f"[SMC ANALYZER] {_ae}", flush=True)
 
