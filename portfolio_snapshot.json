@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-09 15:39:37",
+  "updated_at": "2026-06-09 16:09:39",
   "performance": {
     "total": 5,
     "open": 2,
@@ -194,12 +194,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.02434,
-      "peak_pct": 1.84,
+      "peak_price": 0.025,
+      "peak_pct": 4.6,
       "low_price": 0.02388,
       "low_pct": -0.08,
-      "current_price": 0.02406,
-      "current_pct": 0.67,
+      "current_price": 0.02475,
+      "current_pct": 3.56,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -224,10 +224,10 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T15:38:42.731047+03:00",
-      "checks": 8,
+      "last_check": "2026-06-09T16:08:47.655916+03:00",
+      "checks": 14,
       "extra": {},
-      "trail_stop": 0.0236098
+      "trail_stop": 0.02425
     },
     {
       "id": "HOLO_USDT_1781002806",
@@ -253,8 +253,8 @@
       "peak_pct": 5.12,
       "low_price": 0.0606,
       "low_pct": 0.0,
-      "current_price": 0.0633,
-      "current_pct": 4.46,
+      "current_price": 0.0631,
+      "current_pct": 4.13,
       "tp1_hit": true,
       "tp1_time": "2026-06-09T14:03:29.881077+03:00",
       "tp2_shadow": "watching",
@@ -279,8 +279,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-09T15:38:42.731047+03:00",
-      "checks": 20,
+      "last_check": "2026-06-09T16:08:47.655916+03:00",
+      "checks": 26,
       "extra": {
         "tp3": 0.066882
       },
