@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-06-10 02:40:28",
+  "updated_at": "2026-06-10 03:10:30",
   "performance": {
-    "total": 6,
-    "open": 0,
+    "total": 7,
+    "open": 1,
     "closed": 6,
     "wins": 3,
     "win_partial": 0,
@@ -96,6 +96,23 @@
       }
     },
     "by_type": {
+      "PUMP_ORTA": {
+        "total": 2,
+        "open": 1,
+        "wins": 1,
+        "win_partial": 0,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": 2.6,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 100.0,
+        "avg_peak": 5.77,
+        "tp2_rate": 0
+      },
       "PUMP_UZUN": {
         "total": 3,
         "open": 0,
@@ -129,26 +146,15 @@
         "win_rate": 50.0,
         "avg_peak": 3.18,
         "tp2_rate": 0
-      },
-      "PUMP_ORTA": {
-        "total": 1,
-        "open": 0,
-        "wins": 1,
-        "win_partial": 0,
-        "losses": 0,
-        "expired": 0,
-        "tp1_hits": 0,
-        "total_pnl": 2.6,
-        "tp2_hits": 0,
-        "tp2_total": 0,
-        "tp2_extra_pnl": 0.0,
-        "tp2_stopped": 0,
-        "win_rate": 100.0,
-        "avg_peak": 5.77,
-        "tp2_rate": 0
       }
     },
     "daily": {
+      "2026-06-10": {
+        "trades": 1,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
       "2026-06-09": {
         "trades": 6,
         "pnl": -3.7800000000000007,
@@ -158,7 +164,7 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 6,
+        "trades": 7,
         "pnl": -3.7800000000000007,
         "wins": 0,
         "losses": 3
@@ -166,14 +172,70 @@
     },
     "monthly": {
       "2026-06": {
-        "trades": 6,
+        "trades": 7,
         "pnl": -3.7800000000000007,
         "wins": 0,
         "losses": 3
       }
     }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "DEXE_USDT_1781049607",
+      "symbol": "DEXE/USDT",
+      "entry": 19.249,
+      "stop": 18.28655,
+      "tp1": 21.1739,
+      "tp2": 22.13635,
+      "tp3": null,
+      "sig_type": "pump_orta",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-10T03:00:07.462238+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 19.34,
+      "peak_pct": 0.47,
+      "low_price": 19.221,
+      "low_pct": -0.15,
+      "current_price": 19.29,
+      "current_pct": 0.21,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-10T03:09:11.818496+03:00",
+      "checks": 2,
+      "extra": {},
+      "trail_stop": 18.7598
+    }
+  ],
   "closed": [
     {
       "id": "FIDA_USDT_1781017210",
