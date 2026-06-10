@@ -485,6 +485,7 @@ def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     atr_pct   = float(bar.get("atr_pct") or 0)
     bar_low   = float(bar["low"])
     stop      = max(bar_low * 0.995, close * 0.95)
+    bb_w_cur  = float(bb_w.iloc[-1])
 
     return {
         "symbol":     symbol,
