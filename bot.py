@@ -65,6 +65,7 @@ MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",         "1000000"))
 MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",             "0"))
 SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS",   "4"))
 PUMP_COOLDOWN_HOURS   = int(os.getenv("PUMP_COOLDOWN_HOURS",     "4"))
+PUMP_WATCH_COOLDOWN_HOURS = int(os.getenv("PUMP_WATCH_COOLDOWN_HOURS", "24"))
 TRAILING_PCT          = float(os.getenv("TRAILING_PCT",          "0.03"))  # %3 trailing stop
 TRAILING_MIN_GAIN     = float(os.getenv("TRAILING_MIN_GAIN",     "0.0"))   # ilk andan itibaren aktif
 WS_STREAM_CHUNK       = int(os.getenv("WS_STREAM_CHUNK",         "120"))
@@ -461,17 +462,12 @@ def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     if not _calc_obv_trend(df):
         return None
 
-    # --- Direnç kırılımı + hacim 1.5x+ ---
-    _, res = calc_sr_levels(df)
-    if not res: return None
-    nearest_res = res[0]
-
+    # --- Hacim 1.5x+ ---
     bar     = df.iloc[-1]
     close   = float(bar["close"])
     vol_now = float(bar["volume"])
     vol_ma  = float(bar["vol_ma"]) if not pd.isna(bar.get("vol_ma", np.nan)) else None
 
-    if close <= nearest_res:                           return None
     if vol_ma is None or vol_now < vol_ma * 1.5:       return None
 
     # --- BTC sakin (tam düşüş trendinde sinyal verme) ---
@@ -499,11 +495,58 @@ def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
         "adx":        round(adx_now, 1),
         "di_plus":    round(di_plus, 1),
         "di_minus":   round(di_minus, 1),
-        "resistance": round(nearest_res, 8),
         "vol_ratio":  vol_ratio,
         "engulfing":  engulfing,
         "strength":   "GÜÇLÜ" if engulfing else "NORMAL",
         "atr_pct":    round(atr_pct, 2),
+    }
+
+# ============================================================
+# SİSTEM 5b — PUMP WATCHLIST (Erken Alarm)
+# ============================================================
+def check_pump_watchlist_signal(df: pd.DataFrame, symbol: str) -> dict | None:
+    if len(df) < 60: return None
+
+    # --- BB Sıkışma (son 5 barda sıkışma vardı mı?) ---
+    bb_w = df["bb_width"].dropna()
+    if len(bb_w) < 50: return None
+    squeeze_thr = float(bb_w.rolling(50).quantile(0.25).iloc[-1])
+    if pd.isna(squeeze_thr): return None
+    recent_squeeze = any(float(v) <= squeeze_thr for v in bb_w.iloc[-6:-1])
+    if not recent_squeeze:
+        return None
+
+    # --- ADX(7) yükseliyor + DI+ > DI- (gevşetilmiş eşik) ---
+    adx_now, adx_prev3, di_plus, di_minus = _calc_adx_di(df, period=7)
+    if adx_now is None: return None
+    if adx_now < 12:         return None  # momentum başlamamış
+    if di_plus <= di_minus:  return None  # yön yukarı değil
+    if adx_now <= adx_prev3: return None  # ADX düşüyor
+
+    # --- OBV birikim trendi ---
+    if not _calc_obv_trend(df):
+        return None
+
+    # --- Hacim 1.2x+ ---
+    bar     = df.iloc[-1]
+    close   = float(bar["close"])
+    vol_now = float(bar["volume"])
+    vol_ma  = float(bar["vol_ma"]) if not pd.isna(bar.get("vol_ma", np.nan)) else None
+
+    if vol_ma is None or vol_now < vol_ma * 1.2:       return None
+
+    vol_ratio = round(vol_now / vol_ma, 2) if vol_ma else 0.0
+    bb_w_cur  = float(bb_w.iloc[-1])
+
+    return {
+        "symbol":    symbol,
+        "type":      "pump_watch",
+        "entry":     round(close, 8),
+        "bb_width":  round(bb_w_cur, 4),
+        "adx":       round(adx_now, 1),
+        "di_plus":   round(di_plus, 1),
+        "di_minus":  round(di_minus, 1),
+        "vol_ratio": vol_ratio,
     }
 
 # ============================================================
@@ -776,7 +819,7 @@ def build_pump_probability_message(r, tr_time, sig_num):
         f"📉 BB Sıkışma: {r['bb_width']:.4f}  (dar bant ✅)",
         f"📈 ADX(7): {r['adx']:.1f} ↑  |  DI+: {r['di_plus']:.1f}  DI-: {r['di_minus']:.1f}",
         f"📈 OBV: Birikim trendi ✅",
-        f"💥 Direnç kırıldı: {fmt_price(r['resistance'])}  •  Hacim {r['vol_ratio']:.2f}x ✅",
+        f"💥 Hacim: {r['vol_ratio']:.2f}x ✅",
     ]
     if strong:
         lines.append(f"🕯️ <b>Formasyon</b>  🟢 Bullish Engulfing  ✅")
@@ -786,6 +829,28 @@ def build_pump_probability_message(r, tr_time, sig_num):
         f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
         _sep(),
         f"⏱ Yeni sistem — geçmiş veri yok  |  #{sig_num} sinyal",
+    ]
+    return "\n".join(lines)
+
+def build_pump_watchlist_message(r, tr_time, sig_num):
+    sym = r["symbol"].replace("/USDT", "")
+    lines = [
+        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
+        "",
+        f"🟡 <b>#{sym}/USDT  •  PUMP WATCHLIST  •  1H</b>",
+        _sep(),
+        f"💵 <b>Fiyat</b>    {fmt_price(r['entry'])}",
+        _sep(),
+        "📊 <b>Göstergeler</b>",
+        f"📉 BB Sıkışma: {r['bb_width']:.4f}  (dar bant ✅)",
+        f"📈 ADX(7): {r['adx']:.1f} ↑  |  DI+: {r['di_plus']:.1f}  DI-: {r['di_minus']:.1f}",
+        f"📈 OBV: Birikim trendi ✅",
+        f"📊 Hacim: {r['vol_ratio']:.2f}x ortalama",
+        _sep(),
+        "Bu coin izlenmeli. Henüz kırılım yok.",
+        "Birikim ve momentum oluşuyor.",
+        _sep(),
+        f"#{sig_num} watchlist",
     ]
     return "\n".join(lines)
 
@@ -877,12 +942,13 @@ def _notify_trailing_close(entry, close_price, close_ret):
 
 # sig_type → portfolio type eşleştirmesi
 _SIG_TYPE_MAP = {
-    "capit":     "panik_pump",
-    "t24":       "pump_kisa",
-    "t72":       "pump_orta",
-    "t168":      "pump_uzun",
-    "pump_prob": "pump_probability",
-    "gainers":   "momentum_devam",
+    "capit":      "panik_pump",
+    "t24":        "pump_kisa",
+    "t72":        "pump_orta",
+    "t168":       "pump_uzun",
+    "pump_prob":  "pump_probability",
+    "gainers":    "momentum_devam",
+    "pump_watch": "pump_watch",
 }
 
 def send_to_portfolio(result):
@@ -1586,6 +1652,38 @@ signal_log        = load_signal_log()
 pending_by_symbol = {}
 _last_periodic_save = 0.0  # restart sonrası peak_pct/trailing kaybını önlemek için
 
+# --- Pump Watchlist hafif loglama ---
+PUMP_WATCH_LOG_PATH = os.path.join(os.getenv("DATA_DIR", "/tmp"), "pump_watchlist_log.json")
+
+def load_pump_watch_log():
+    try:
+        with open(PUMP_WATCH_LOG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_pump_watch_log(log):
+    try:
+        with open(PUMP_WATCH_LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(log[-500:], f, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"pump_watch_log kayit hata: {e}", flush=True)
+
+pump_watch_log = load_pump_watch_log()
+
+def log_pump_watch(result, tr_time):
+    pump_watch_log.append({
+        "symbol":    result["symbol"],
+        "time":      tr_time.strftime("%Y-%m-%d %H:%M"),
+        "close":     result["entry"],
+        "adx":       result["adx"],
+        "di_plus":   result["di_plus"],
+        "di_minus":  result["di_minus"],
+        "vol_ratio": result["vol_ratio"],
+        "bb_width":  result["bb_width"],
+    })
+    save_pump_watch_log(pump_watch_log)
+
 def log_signal(result, tr_time):
     sig_type = result.get("type", "capit")
     entry_rec = {
@@ -1832,6 +1930,16 @@ async def signal_worker(candidate_queue):
                       f" | ADX:{result['adx']:.0f}"
                       f" | vol:{result['vol_ratio']:.2f}x"
                       f" | giriş:{fmt_price(result['entry'])}", flush=True)
+            elif sig_type == "pump_watch":
+                msg = build_pump_watchlist_message(result, tr_time, signal_counter + 1)
+                print(f"SİNYAL 🟡 [PUMP WATCHLIST] {symbol}"
+                      f" | ADX:{result['adx']:.1f}"
+                      f" | vol:{result['vol_ratio']:.2f}x", flush=True)
+                signal_counter += 1
+                send_pump_telegram(msg)
+                log_pump_watch(result, tr_time)
+                last_pump_ts[(symbol, sig_type)] = tr_time.replace(tzinfo=None)
+                continue
             else:
                 continue
 
@@ -1952,6 +2060,18 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
             pp_ok = False
     if pp_ok:
         result = check_pump_probability_signal(df, symbol)
+        if result:
+            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+
+    # --- Sistem 5b: Pump Watchlist ---
+    last_pw = last_pump_ts.get((symbol, "pump_watch"))
+    pw_ok = True
+    if last_pw is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_pw.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_WATCH_COOLDOWN_HOURS:
+            pw_ok = False
+    if pw_ok:
+        result = check_pump_watchlist_signal(df, symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
 
