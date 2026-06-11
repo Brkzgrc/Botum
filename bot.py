@@ -2425,13 +2425,12 @@ async def gainers_scan_loop(candidate_queue):
 # ============================================================
 async def main():
     global tracked_symbols
-    print("Pump Scanner v6.1 başlatılıyor — 5 Sistem + Watchlist (T24 devre dışı)", flush=True)
+    print("Pump Scanner v6.0 başlatılıyor — 5 Sistem (T24 devre dışı)", flush=True)
     print(f"  [1] PANİK PUMP  : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
     print(f"  [2] T24         : *** DEVRE DIŞI ***", flush=True)
     print(f"  [3] ORTA VADE   : T72 | Stop -5% | TP +10% | WR %54", flush=True)
     print(f"  [4] UZUN VADE   : T168 | Stop -8% | TP +25% | WR %40", flush=True)
-    print(f"  [5] PUMP PROB   : BB Sıkışma + ADX(7)>=15 + OBV + Hacim 1.5x + BTC filtre | Stop ~-5% | TP +8/15/25%", flush=True)
-    print(f"  [5b] WATCHLIST : BB Sıkışma + ADX(7)>=12 + OBV + Hacim 1.2x | erken alarm, log-only", flush=True)
+    print(f"  [5] PUMP PROB   : BB Sıkışma + ADX(7) + OBV + Direnç | Stop ~-5% | TP +8/15/25%", flush=True)
     print(f"  [6] ROCKET      : Momentum devam + hacim artışı | Stop ~-5% | TP +8/15/25%", flush=True)
     pp_tok = "VAR" if PUMP_PROBABILITY_TOKEN else "YOK (fallback: ana bot)"
     print(f"       → PUMP_PROBABILITY_TOKEN: {pp_tok}", flush=True)
