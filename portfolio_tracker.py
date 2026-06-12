@@ -49,6 +49,10 @@ SIM_STOP   = -2.5
 # satırı ve aşağıdaki "+ SMC_ESKI_SOURCES" eklerini silmek yeterli.
 SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch")
 
+# Kaldırılmış sinyal tipleri — veritabanında kalır (Analyzer geçmiş veri
+# olarak kullanabilir), ama portfolyo panelinde/snapshot'ta gösterilmez.
+HIDDEN_SIG_TYPES = ("pump_probability", "pump_prob", "pump_watch")
+
 app = Flask(__name__)
 
 import logging
@@ -498,6 +502,7 @@ def position_checker_loop():
 def calc_performance():
     with _lock:
         all_sigs = list(signals_db)
+    all_sigs = [s for s in all_sigs if s.get("sig_type", "unknown") not in HIDDEN_SIG_TYPES]
 
     result = {
         "total": sum(1 for s in all_sigs if s.get("source", "bot") not in SMC_ESKI_SOURCES),
@@ -986,6 +991,7 @@ def dashboard():
 
     with _lock:
         all_sigs = list(signals_db)
+    all_sigs = [s for s in all_sigs if s.get("sig_type", "unknown") not in HIDDEN_SIG_TYPES]
 
     open_sigs = [s for s in all_sigs if s.get("status") in ("open", "half_open")]
     closed_sigs = [s for s in all_sigs if s.get("status") not in ("open", "half_open")]
@@ -1571,6 +1577,7 @@ def push_snapshot_to_github():
         perf = calc_performance()
         with _lock:
             sigs = list(signals_db)
+        sigs = [s for s in sigs if s.get("sig_type", "unknown") not in HIDDEN_SIG_TYPES]
         snapshot = {
             "updated_at": tr_now_str(),
             "performance": perf,
