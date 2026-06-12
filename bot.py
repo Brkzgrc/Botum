@@ -454,7 +454,7 @@ def check_pump_probability_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     # --- ADX(7) yükseliyor + DI+ > DI- ---
     adx_now, adx_prev3, di_plus, di_minus = _calc_adx_di(df, period=7)
     if adx_now is None: return None
-    if adx_now < 15:         return None  # momentum başlamamış
+    if adx_now < 25:         return None  # momentum başlamamış
     if di_plus <= di_minus:  return None  # yön yukarı değil
     if adx_now <= adx_prev3: return None  # ADX düşüyor
 
