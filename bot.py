@@ -984,6 +984,17 @@ def send_to_portfolio(result):
         print(f"[PORTFOLIO] Hata: {e}", flush=True)
     return ""
 
+def send_watchlist_to_portfolio(entry):
+    if not PORTFOLIO_URL: return
+    try:
+        headers = {"Content-Type": "application/json"}
+        if PORTFOLIO_TOKEN:
+            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+        requests.post(f"{PORTFOLIO_URL}/api/watchlist",
+                      json=entry, headers=headers, timeout=5)
+    except Exception as e:
+        print(f"[PORTFOLIO] Watchlist hata: {e}", flush=True)
+
 # ============================================================
 # CLAUDE ANALYZER — HTTP WRAPPER
 # ============================================================
@@ -1672,7 +1683,7 @@ def save_pump_watch_log(log):
 pump_watch_log = load_pump_watch_log()
 
 def log_pump_watch(result, tr_time):
-    pump_watch_log.append({
+    entry = {
         "symbol":    result["symbol"],
         "time":      tr_time.strftime("%Y-%m-%d %H:%M"),
         "close":     result["entry"],
@@ -1681,8 +1692,10 @@ def log_pump_watch(result, tr_time):
         "di_minus":  result["di_minus"],
         "vol_ratio": result["vol_ratio"],
         "bb_width":  result["bb_width"],
-    })
+    }
+    pump_watch_log.append(entry)
     save_pump_watch_log(pump_watch_log)
+    send_watchlist_to_portfolio(entry)
 
 def log_signal(result, tr_time):
     sig_type = result.get("type", "capit")
