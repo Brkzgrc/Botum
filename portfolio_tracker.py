@@ -99,6 +99,20 @@ def load_signals():
 def _migrate_signals():
     """Eski DB kayıtlarındaki bilinen hataları düzelt."""
     fixed = 0
+
+    # [SMC-ESKİ] Hatalı koşulla (in_discount tek başına, depth>=5 no-op) açılmış
+    # 'Eski Discount' sinyallerini temizle. Düzeltme: price <= discount_bottom*1.05.
+    # Bu cutoff'tan önce açılmış olanlar eski (hatalı) koşulla gelmiştir.
+    _ESKI_DISCOUNT_CUTOFF = "2026-06-12T12:00:00+03:00"
+    _before = len(signals_db)
+    signals_db[:] = [
+        sig for sig in signals_db
+        if not (sig.get("source") == "smc-eski-discount"
+                and sig.get("status") in ("open", "half_open")
+                and sig.get("open_time", "") < _ESKI_DISCOUNT_CUTOFF)
+    ]
+    fixed += _before - len(signals_db)
+
     for sig in signals_db:
         # Stop olan ama tp2_shadow="watching" kalan sinyalleri temizle
         if (sig.get("tp2_shadow") == "watching"
