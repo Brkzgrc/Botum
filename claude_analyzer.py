@@ -639,7 +639,6 @@ _SIG_TYPE_MAP = {
     "capit":     "panik_pump",
     "t72":       "pump_orta",
     "t168":      "pump_uzun",
-    "pump_prob": "pump_probability",
 }
 
 def _portfolio_context(symbol: str, sig_type: str) -> tuple[str, str]:
@@ -695,7 +694,6 @@ _TYPE_NAMES = {
     "capit":     "PANİK PUMP — kapitülasyon mean reversion | Stop -3% | TP +5/10/15% | WR ~%84",
     "t72":       "ORTA VADE T72 — 3 gün hedef | Stop -5% | TP +10% | WR %54",
     "t168":      "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | WR %40",
-    "pump_prob": "PUMP PROBABILITY — kırılım | Stop ~-5% | TP +8/15/25%",
     "rocket":    "ROCKET — momentum devam + hacim artışı | Stop -5% | TP +8/15/25%",
     "smc":       "SMC — CHoCH yapısal kırılım | Discount Zone + Micro CHoCH",
 }
@@ -707,7 +705,6 @@ _TYPE_SHORT = {
     "capit":     "PANİK PUMP",
     "t72":       "ORTA VADE",
     "t168":      "UZUN VADE",
-    "pump_prob": "PUMP PROB",
     "smc":       "SMC CHoCH",
 }
 
@@ -736,13 +733,6 @@ def _build_sig_data(signal: dict) -> str:
         return (f"MA200 uzaklık: +%{signal.get('dist_ma200',0):.2f} | "
                 f"Mom10: +%{signal.get('mom10_pct',0):.2f} | "
                 f"Son zirve: {signal.get('days_since_high',0)} bar")
-    if sig_type == "pump_prob":
-        return (f"BB genişlik: {signal.get('bb_width',0):.4f} | "
-                f"ADX: {signal.get('adx',0):.1f} | "
-                f"DI+: {signal.get('di_plus',0):.1f} / DI-: {signal.get('di_minus',0):.1f} | "
-                f"Hacim: {signal.get('vol_ratio',0):.2f}x | "
-                f"Engulfing: {'Var' if signal.get('engulfing') else 'Yok'} | "
-                f"Güç: {signal.get('strength','?')}")
     if sig_type == "rocket":
         return (f"24s değişim: +%{signal.get('change_24h',0):.1f} | "
                 f"ADX: {signal.get('adx',0):.1f} | "
