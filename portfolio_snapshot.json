@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-12 04:53:59",
+  "updated_at": "2026-06-12 05:03:20",
   "performance": {
     "total": 1,
     "open": 0,
@@ -136,6 +136,28 @@
         "pnl": 3.78,
         "wins": 0,
         "losses": 0
+      }
+    },
+    "smc_eski": {
+      "discount": {
+        "total": 0,
+        "closed": 0,
+        "wins": 0,
+        "losses": 0,
+        "expired": 0,
+        "win_rate": 0,
+        "total_pnl": 0.0,
+        "avg_peak": 0.0
+      },
+      "choch": {
+        "total": 0,
+        "closed": 0,
+        "wins": 0,
+        "losses": 0,
+        "expired": 0,
+        "win_rate": 0,
+        "total_pnl": 0.0,
+        "avg_peak": 0.0
       }
     }
   },
