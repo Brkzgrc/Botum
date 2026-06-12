@@ -839,6 +839,35 @@ def _analyze_symbol(symbol):
         in_discount = smc_data['in_discount']
         patterns    = detect_candle_patterns(df)
 
+        # ============================================================
+        # [SMC-ESKİ] Karşılaştırma sinyalleri — v20 öncesi gevşek koşullar
+        # Telegram YOK, sadece portfolyoya gönderilir. Totale dahil değil.
+        # Kaldırmak için bu bloğu (BAŞLA—BİTİŞ) tamamen silmek yeterli.
+        # ============================================================
+        ESKI_DISCOUNT_DEPTH = 5  # [SMC-ESKİ]
+
+        # Eski Discount: in_discount + depth>=5 (RSI/EMA21/4H filtresi yok)
+        if in_discount and depth >= ESKI_DISCOUNT_DEPTH:
+            last_eski_p1 = get_last_sent(symbol, "discount", "smc-eski-discount")
+            if now - last_eski_p1 > PHASE1_COOLDOWN:
+                send_to_portfolio(symbol, price, atr_val, "discount", "smc-eski-discount")
+                mark_sent(symbol, "discount", "smc-eski-discount")
+                print(f"📉 [ESKİ-DISCOUNT] {symbol} | Depth:%{round(depth,1)}", flush=True)
+
+        # Eski CHoCH: yeşil CHoCH + BTC çakılış koruması (discount_active/4H/RSI şartı yok)
+        eski_break, eski_dir, _, eski_choch_level, eski_swing_low = detect_micro_choch(df, CHOCH_SWING)
+        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash():
+            last_eski_p2 = get_last_sent(symbol, "choch", "smc-eski-choch")
+            if now - last_eski_p2 > PHASE2_COOLDOWN:
+                eski_entry = eski_choch_level if eski_choch_level is not None else price
+                eski_stop  = round(eski_swing_low * 0.995, 10) if eski_swing_low is not None else None
+                send_to_portfolio(symbol, eski_entry, atr_val, "choch", "smc-eski-choch", eski_break, stop_price=eski_stop)
+                mark_sent(symbol, "choch", "smc-eski-choch")
+                print(f"🚀 [ESKİ-CHoCH] {symbol} | CHoCH:{eski_entry:.8g}", flush=True)
+        # ============================================================
+        # [SMC-ESKİ] BİTİŞ
+        # ============================================================
+
         # ── AŞAMA 1: Discount Zone Bildirimi ──────────────────────────────
         if in_discount:
             scan_stats["in_discount"] += 1

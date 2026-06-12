@@ -45,6 +45,11 @@ SIM_TP1    = 5.0   # Hayali senaryo parametreleri (sabit)
 SIM_TP2    = 10.0
 SIM_STOP   = -2.5
 
+# [SMC-ESKİ] Karşılaştırma sinyalleri — TOPLAM/breakdown'a dahil edilmez,
+# SMC bölümünde ayrı bir özet tablosuyla gösterilir. Kaldırmak için bu
+# satırı ve aşağıdaki "+ SMC_ESKI_SOURCES" eklerini silmek yeterli.
+SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch")
+
 app = Flask(__name__)
 
 import logging
@@ -102,7 +107,7 @@ def _migrate_signals():
             sig["tp2_shadow"] = "not_reached"
             fixed += 1
         # Bot sinyalleri: tp2 vurulmadıysa shadow izleme gereksiz
-        _is_bot = sig.get("source", "bot") not in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        _is_bot = sig.get("source", "bot") not in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
         if (_is_bot and sig.get("tp2_shadow") == "watching"
                 and sig.get("status") not in ("open", "half_open")
                 and sig.get("status") != "win_tp2"):
@@ -189,8 +194,8 @@ def receive_signal():
         "entry": float(data["entry"]),
         "stop": float(data["stop"]),
         "tp1": float(data["tp1"]),
-        "tp2": float(data.get("tp2", 0)) or None,
-        "tp3": float(data.get("tp3", 0)) or None,
+        "tp2": float(data.get("tp2") or 0) or None,
+        "tp3": float(data.get("tp3") or 0) or None,
         "sig_type": data.get("sig_type", data.get("type", "unknown")),
         "sub_type": data.get("sub_type", data.get("subtype", data.get("tp_system", ""))),
         "source": data.get("source", "bot"),
@@ -325,7 +330,7 @@ def check_open_positions():
             sig["last_check"] = now.isoformat()
             sig["checks"] = sig.get("checks", 0) + 1
 
-            is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+            is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
             close_reason = None; close_price = None
 
             if is_smc:
@@ -531,7 +536,8 @@ def calc_performance():
         all_sigs = list(signals_db)
 
     result = {
-        "total": len(all_sigs), "open": 0, "closed": 0,
+        "total": sum(1 for s in all_sigs if s.get("source", "bot") not in SMC_ESKI_SOURCES),
+        "open": 0, "closed": 0,
         "wins": 0, "win_partial": 0, "losses": 0, "expired": 0, "tp1_hits": 0,
         "total_pnl": 0.0, "avg_peak": 0.0, "win_rate": 0.0,
         "analyzer": {
@@ -551,6 +557,11 @@ def calc_performance():
             "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
         },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
+        # [SMC-ESKİ] Karşılaştırma — TOPLAM/breakdown'a dahil edilmez
+        "smc_eski": {
+            "discount": {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0},
+            "choch":    {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0},
+        },
     }
 
     closed_peaks = []
@@ -566,6 +577,9 @@ def calc_performance():
         sig_type = sig.get("sig_type", "unknown")
         sub = sig.get("sub_type", "")
         source = sig.get("source", "bot")
+
+        if source in SMC_ESKI_SOURCES:
+            continue  # [SMC-ESKİ] ayrı hesaplanır, TOPLAM/breakdown'a girmez
 
         if source == "smc-trailing":
             phase = sig.get('phase', '')
@@ -705,6 +719,8 @@ def calc_performance():
     for sig in all_sigs:
         if sig.get("status") in ("open", "half_open"):
             continue
+        if sig.get("source", "bot") in SMC_ESKI_SOURCES:
+            continue  # [SMC-ESKİ] hayali senaryoya dahil değil
         is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
         bucket = result["sim_smc"] if is_smc else result["sim_bot"]
         pk = sig.get("peak_pct", 0) or 0
@@ -717,6 +733,36 @@ def calc_performance():
             bucket["stop"] += 1; bucket["pnl"] += SIM_STOP
         else:
             bucket["open"] += 1
+
+    # [SMC-ESKİ] Karşılaştırma istatistikleri — TOPLAM/breakdown'a dahil edilmez
+    _eski_peaks = {"discount": [], "choch": []}
+    for sig in all_sigs:
+        source = sig.get("source", "bot")
+        if source not in SMC_ESKI_SOURCES:
+            continue
+        key = "discount" if source == "smc-eski-discount" else "choch"
+        eb = result["smc_eski"][key]
+        eb["total"] += 1
+        status = sig.get("status", "open")
+        if status in ("open", "half_open"):
+            continue
+        eb["closed"] += 1
+        eb["total_pnl"] += sig.get("close_pct", 0) or 0
+        _eski_peaks[key].append(sig.get("peak_pct", 0) or 0)
+        if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
+            eb["wins"] += 1
+        elif status == "half_stopped":
+            if (sig.get("close_pct", 0) or 0) > 0: eb["wins"] += 1
+            else: eb["losses"] += 1
+        elif status == "loss":
+            eb["losses"] += 1
+        elif status in ("expired", "half_expired"):
+            eb["expired"] += 1
+    for key, eb in result["smc_eski"].items():
+        if eb["closed"] > 0:
+            eb["win_rate"] = round(eb["wins"] / eb["closed"] * 100, 1)
+            eb["avg_peak"] = round(sum(_eski_peaks[key]) / len(_eski_peaks[key]), 2)
+        eb["total_pnl"] = round(eb["total_pnl"], 2)
 
     if closed_peaks:
         result["avg_peak"] = round(sum(closed_peaks) / len(closed_peaks), 2)
@@ -919,10 +965,12 @@ def type_badge(sig):
     sig_type = sig.get("sig_type", "unknown")
     sub = sig.get("sub_type", "")
     source = sig.get("source", "bot")
-    if source in ("smc", "smc-original", "smc-trailing", "smc-momentum"):
+    if source in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES:
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
-        src_label = "SMC-T" if source == "smc-trailing" else ("SMC-M" if source == "smc-momentum" else "SMC")
+        src_label = ("SMC-T" if source == "smc-trailing" else
+                      "SMC-M" if source == "smc-momentum" else
+                      "SMC-Eski" if source in SMC_ESKI_SOURCES else "SMC")
         return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{src_label} {phase_label}</span>'
     colors = {
         "dip":              "#2ecc71",
@@ -992,7 +1040,7 @@ def dashboard():
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
         # Dinamik trailing stop: peak * %97
-        is_smc_sig = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        is_smc_sig = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
         if not is_smc_sig:
             trail_stop_v = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
             trail_ret_v  = round((trail_stop_v - sig["entry"]) / sig["entry"] * 100, 1)
@@ -1039,7 +1087,7 @@ def dashboard():
         if sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
-        _is_smc_closed = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        _is_smc_closed = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
         tp3_cell = tp3_shadow_badge(sig) if _is_smc_closed else '<span style="color:#2a3a4a;font-size:.6rem">—</span>'
 
         closed_rows += f"""<tr>
@@ -1329,6 +1377,36 @@ def dashboard():
             f'<p class="note">{_note_bot}</p>{_bot_alt_section}</div>'
         )
 
+    # [SMC-ESKİ] Karşılaştırma tablosu — TOPLAM/breakdown'a dahil değil
+    _smc_eski_section = ""
+    _eski = perf.get("smc_eski", {})
+    _eski_d = _eski.get("discount", {})
+    _eski_c = _eski.get("choch", {})
+    if _eski_d.get("total", 0) > 0 or _eski_c.get("total", 0) > 0:
+        def _eski_row(label, b):
+            wr = b.get("win_rate", 0)
+            wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
+            pnl = b.get("total_pnl", 0)
+            pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
+            return (f'<tr><td style="color:#ecf0f1;font-weight:bold">{label}</td>'
+                    f'<td>{b.get("total",0)}</td><td>{b.get("closed",0)}</td>'
+                    f'<td style="color:#2ecc71">{b.get("wins",0)}</td><td style="color:#e74c3c">{b.get("losses",0)}</td>'
+                    f'<td style="color:#f39c12">{b.get("expired",0)}</td>'
+                    f'<td style="color:{wr_c};font-weight:bold">%{wr}</td>'
+                    f'<td style="color:{pnl_c};font-weight:bold">{pnl:+.2f}%</td>'
+                    f'<td>{b.get("avg_peak",0)}%</td></tr>')
+        _smc_eski_section = f"""
+<div class="section">
+    <h2>🟤 ESKİ SMC — Karşılaştırma</h2>
+    <p class="note">Discount zone'a girince (depth≥%5) ve yeşil CHoCH oluşunca (BTC çakılış korumalı) — v20'nin RSI/EMA21/4H filtreleri olmadan tetiklenir. Telegram'a gitmez, TOPLAM ve yukarıdaki kırılıma dahil değildir; sadece kıyas amaçlıdır.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Tür</th><th>Toplam</th><th>Kapanan</th><th>Win</th><th>Loss</th><th>Exp.</th>
+        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
+    </tr></thead><tbody>
+        {_eski_row("Eski Discount", _eski_d)}{_eski_row("Eski CHoCH", _eski_c)}
+    </tbody></table></div>
+</div>"""
+
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip v2.8</title>
@@ -1481,6 +1559,8 @@ function toggleType(key, btn) {{
 </div>
 
 {_smc_section_block}
+
+{_smc_eski_section}
 
 {_bot_section_block}
 
