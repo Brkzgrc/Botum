@@ -50,6 +50,9 @@ SIM_STOP   = -2.5
 # satırı ve aşağıdaki "+ SMC_ESKI_SOURCES" eklerini silmek yeterli.
 SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch")
 
+# Watchlist (erken alarm) → PUMP_PROBABILITY dönüşüm penceresi
+PUMP_CONVERSION_WINDOW_HOURS = 24
+
 app = Flask(__name__)
 
 import logging
@@ -1624,11 +1627,45 @@ function toggleType(key, btn) {{
     return html
 
 # ============================================================
+# WATCHLIST → PUMP_PROBABILITY DÖNÜŞÜM ÖZETİ
+# ============================================================
+def calc_watchlist_conversion():
+    """Watchlist'e giren sinyallerden kaçı sonraki N saat içinde
+    aynı coin için PUMP_PROBABILITY sinyali tetikledi?"""
+    with _lock:
+        wl_items = list(watchlist_db)
+        pump_signals = [s for s in signals_db
+                        if s.get("sig_type") == "pump_probability" and s.get("source", "bot") == "bot"]
+
+    pump_times_by_symbol = defaultdict(list)
+    for s in pump_signals:
+        try:
+            pump_times_by_symbol[s["symbol"]].append(datetime.fromisoformat(s["open_time"]))
+        except (KeyError, ValueError, TypeError):
+            continue
+
+    total = len(wl_items)
+    converted = 0
+    for it in wl_items:
+        try:
+            wl_time = datetime.strptime(it.get("time", ""), "%Y-%m-%d %H:%M").replace(tzinfo=TR_TZ)
+        except (ValueError, TypeError):
+            continue
+        window_end = wl_time + timedelta(hours=PUMP_CONVERSION_WINDOW_HOURS)
+        if any(wl_time <= ot <= window_end for ot in pump_times_by_symbol.get(it.get("symbol"), [])):
+            converted += 1
+
+    not_converted = total - converted
+    rate = round(converted / total * 100, 1) if total > 0 else 0
+    return {"total": total, "converted": converted, "not_converted": not_converted, "rate": rate}
+
+# ============================================================
 # HTML DASHBOARD — PUMP WATCHLIST (erken alarm izleme)
 # ============================================================
 @app.route("/watchlist")
 def watchlist_page():
     now = tr_now_str()
+    conv = calc_watchlist_conversion()
     with _lock:
         items = list(reversed(watchlist_db))[:200]
 
@@ -1701,6 +1738,21 @@ tr:hover td{{background:var(--card);}}
 <div class="nav-tabs">
   <a href="/" class="nav-tab">📊 Portfolio</a>
   <a href="/watchlist" class="nav-tab active">🟡 Watchlist</a>
+</div>
+
+<div class="section">
+    <h2>🔄 DÖNÜŞÜM ÖZETİ</h2>
+    <p class="note">Watchlist'e giren bir sinyal, sonraki {PUMP_CONVERSION_WINDOW_HOURS} saat içinde aynı coin için PUMP_PROBABILITY sinyali tetiklerse "dönüşmüş" sayılır.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Toplam Watchlist</th><th>Dönüşen</th><th>Dönüşmeyen</th><th>Dönüşüm Oranı</th>
+    </tr></thead><tbody>
+        <tr>
+            <td style="color:#ecf0f1;font-weight:bold">{conv['total']}</td>
+            <td style="color:#2ecc71">{conv['converted']}</td>
+            <td style="color:#e74c3c">{conv['not_converted']}</td>
+            <td style="color:{'#2ecc71' if conv['rate']>=20 else ('#f39c12' if conv['rate']>=10 else '#e74c3c')};font-weight:bold">%{conv['rate']}</td>
+        </tr>
+    </tbody></table></div>
 </div>
 
 <div class="section">
