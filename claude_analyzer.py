@@ -696,6 +696,7 @@ _TYPE_NAMES = {
     "t72":       "ORTA VADE T72 — 3 gün hedef | Stop -5% | TP +10% | WR %54",
     "t168":      "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | WR %40",
     "pump_prob": "PUMP PROBABILITY — kırılım | Stop ~-5% | TP +8/15/25%",
+    "rocket":    "ROCKET — momentum devam + hacim artışı | Stop -5% | TP +8/15/25%",
     "smc":       "SMC — CHoCH yapısal kırılım | Discount Zone + Micro CHoCH",
 }
 _SOURCE_NAMES = {
@@ -739,9 +740,14 @@ def _build_sig_data(signal: dict) -> str:
         return (f"BB genişlik: {signal.get('bb_width',0):.4f} | "
                 f"ADX: {signal.get('adx',0):.1f} | "
                 f"DI+: {signal.get('di_plus',0):.1f} / DI-: {signal.get('di_minus',0):.1f} | "
-                f"Direnç: {_fmt(signal.get('resistance'))} | "
                 f"Hacim: {signal.get('vol_ratio',0):.2f}x | "
+                f"Engulfing: {'Var' if signal.get('engulfing') else 'Yok'} | "
                 f"Güç: {signal.get('strength','?')}")
+    if sig_type == "rocket":
+        return (f"24s değişim: +%{signal.get('change_24h',0):.1f} | "
+                f"ADX: {signal.get('adx',0):.1f} | "
+                f"DI+: {signal.get('di_plus',0):.1f} / DI-: {signal.get('di_minus',0):.1f} | "
+                f"Hacim: {signal.get('vol_ratio',0):.2f}x")
     # Bilinmeyen tip — tüm alanları yaz
     skip = {"symbol","type","entry","stop","tp1","tp2","tp3","source","_internal"}
     return " | ".join(f"{k}:{v}" for k, v in signal.items() if k not in skip)
