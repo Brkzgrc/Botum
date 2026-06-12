@@ -117,6 +117,10 @@ def _migrate_signals():
     fixed += _before - len(signals_db)
 
     for sig in signals_db:
+        # ROCKET yeniden adlandırma: eski "momentum_devam" → "rocket"
+        if sig.get("sig_type") == "momentum_devam":
+            sig["sig_type"] = "rocket"
+            fixed += 1
         # Stop olan ama tp2_shadow="watching" kalan sinyalleri temizle
         if (sig.get("tp2_shadow") == "watching"
                 and sig.get("status") not in ("open", "half_open")
@@ -999,7 +1003,7 @@ def type_badge(sig):
         "pump_orta":        "#ffcc00",
         "pump_uzun":        "#00cc66",
         "pump_probability": "#0088ff",
-        "momentum_devam":   "#00ccaa",
+        "rocket":           "#00ccaa",
     }
     labels = {
         "panik_pump":       "PANİK PUMP",
@@ -1007,7 +1011,7 @@ def type_badge(sig):
         "pump_orta":        "ORTA VADE (72s)",
         "pump_uzun":        "UZUN VADE (168s)",
         "pump_probability": "PUMP PROB",
-        "momentum_devam":   "ROCKET",
+        "rocket":           "ROCKET",
     }
     c = colors.get(sig_type, "#8a9bb0")
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
@@ -1127,7 +1131,7 @@ def dashboard():
         wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
         pnl = ts.get("total_pnl", 0)
         pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
-        tk_label = "ROCKET" if tk == "MOMENTUM_DEVAM" else tk
+        tk_label = tk
         row = (f'<tr><td style="color:#ecf0f1;font-weight:bold">{tk_label}</td>'
                f'<td>{ts.get("total",0)}</td><td style="color:#3498db">{ts.get("open",0)}</td>'
                f'<td style="color:#2ecc71">{ts.get("wins",0)}</td><td style="color:#e74c3c">{ts.get("losses",0)}</td>'
@@ -1549,7 +1553,7 @@ function toggleType(key, btn) {{
 </script>
 
 <div class="filter-bar">
-  {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{"ROCKET" if k == "MOMENTUM_DEVAM" else k}</button>' for k in sorted(perf.get('by_type', {})))}
+  {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{k}</button>' for k in sorted(perf.get('by_type', {})))}
 </div>
 
 <div class="cards">
