@@ -844,10 +844,10 @@ def _analyze_symbol(symbol):
         # Telegram YOK, sadece portfolyoya gönderilir. Totale dahil değil.
         # Kaldırmak için bu bloğu (BAŞLA—BİTİŞ) tamamen silmek yeterli.
         # ============================================================
-        ESKI_DISCOUNT_DEPTH = 5  # [SMC-ESKİ]
+        ESKI_DISCOUNT_DEPTH = 5  # [SMC-ESKİ] discount dibinin (bottom) en fazla %X üzeri
 
-        # Eski Discount: in_discount + depth>=5 (RSI/EMA21/4H filtresi yok)
-        if in_discount and depth >= ESKI_DISCOUNT_DEPTH:
+        # Eski Discount: fiyat, discount dibinin (bottom) en fazla %5 üzerinde (RSI/EMA21/4H filtresi yok)
+        if price <= smc_data['discount_bottom'] * (1 + ESKI_DISCOUNT_DEPTH / 100):
             last_eski_p1 = get_last_sent(symbol, "discount", "smc-eski-discount")
             if now - last_eski_p1 > PHASE1_COOLDOWN:
                 send_to_portfolio(symbol, price, atr_val, "discount", "smc-eski-discount")
