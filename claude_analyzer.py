@@ -25,7 +25,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
-PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
+# PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
+# servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
+# her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
+PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL") or os.getenv("RENDER_EXTERNAL_URL", "")
 PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
 
 TR_TZ = timezone(timedelta(hours=3))
