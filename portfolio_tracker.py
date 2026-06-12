@@ -1111,7 +1111,8 @@ def dashboard():
     st_pnlc = "#2ecc71" if st_pnl > 0 else ("#e74c3c" if st_pnl < 0 else "#8a9bb0")
 
     _sim_section = f"""<div class="tp2-box">
-    <h3>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</h3>
+    <details>
+    <summary>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</summary>
     <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
         Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
     <div class="table-wrap"><table style="font-size:.72rem"><thead><tr>
@@ -1155,6 +1156,7 @@ def dashboard():
             <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.2f}%</span></td>
         </tr>
     </tbody></table></div>
+    </details>
 </div>"""
     type_rows = smc_type_rows + bot_type_rows
 
@@ -1206,12 +1208,14 @@ def dashboard():
         return (f'<div class="tp2-stat"><span class="v" style="color:{color}">{label}</span>'
                 f'<span class="l">{t} sinyal | WR <b style="color:{wr_c}">%{b.get("wr",0)}</b> | P&L <b style="color:{pc}">{b.get("pnl",0):+.2f}%</b></span></div>')
     _analyzer_section = f"""<div class="tp2-box">
-    <h3>🤖 CLAUDE ANALYZER PERFORMANSI — "Karar kalitesi ne?"</h3>
+    <details>
+    <summary>🤖 CLAUDE ANALYZER PERFORMANSI — "Karar kalitesi ne?"</summary>
     <div class="tp2-stats">
         {_az_row("gir",    "✅ GİR",     "#2ecc71")}
         {_az_row("dikkat", "⚠️ DİKKAT",  "#f39c12")}
         {_az_row("riskli", "🚫 RİSKLİ",  "#e74c3c")}
     </div>
+    </details>
 </div>"""
 
     # Alternatif senaryo bölümleri (SMC ve Bot altına eklenecek)
@@ -1278,11 +1282,13 @@ def dashboard():
     if shadow_rows:
         shadow_section = f"""
 <div class="section">
-    <h2>👁 TP2 SHADOW İZLEME ({len(shadow_watching)})</h2>
+    <details>
+    <summary>👁 TP2 SHADOW İZLEME ({len(shadow_watching)})</summary>
     <p class="note">TP1'de kapanmış — TP2'ye stop'a düşmeden ulaşabilir miydi izleniyor.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>TP1 Kâr</th><th>Şu An</th><th>TP2 Hedef</th><th>Peak Sonrası</th><th>Kalan</th>
     </tr></thead><tbody>{shadow_rows}</tbody></table></div>
+    </details>
 </div>"""
 
     # TP3 shadow section
@@ -1321,11 +1327,13 @@ def dashboard():
     if tp3_shadow_rows:
         tp3_shadow_section = f"""
 <div class="section">
-    <h2>🌟 TP3 SHADOW İZLEME ({len(tp3_shadow_watching)})</h2>
+    <details>
+    <summary>🌟 TP3 SHADOW İZLEME ({len(tp3_shadow_watching)})</summary>
     <p class="note">TP2'de tamamen kapandı — TP3'e ulaşabilir mi? %2.5 trailing ile gözlemsel izleme. Gerçek pozisyon yok.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>TP2 Kâr</th><th>Şu An</th><th>TP3 Hedef</th><th>Trail Peak / Stop</th><th>Kalan</th>
     </tr></thead><tbody>{tp3_shadow_rows}</tbody></table></div>
+    </details>
 </div>"""
 
     expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
@@ -1334,15 +1342,15 @@ def dashboard():
     if _smc_alt_section:
         _note_smc = "TP1'de %50 çıkış (half_open) → kalan %50 TP2 veya stop'a kadar takip edilir"
         _smc_section_block = (
-            f'<div class="section"><h2>🟠 SMC SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</h2>'
-            f'<p class="note">{_note_smc}</p>{_smc_alt_section}</div>'
+            f'<div class="section"><details><summary>🟠 SMC SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</summary>'
+            f'<p class="note">{_note_smc}</p>{_smc_alt_section}</details></div>'
         )
     _bot_section_block = ""
     if _bot_alt_section:
         _note_bot = "Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır"
         _bot_section_block = (
-            f'<div class="section"><h2>🔵 BOT SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</h2>'
-            f'<p class="note">{_note_bot}</p>{_bot_alt_section}</div>'
+            f'<div class="section"><details><summary>🔵 BOT SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</summary>'
+            f'<p class="note">{_note_bot}</p>{_bot_alt_section}</details></div>'
         )
 
     # [SMC-ESKİ] Karşılaştırma tablosu — TOPLAM/breakdown'a dahil değil
@@ -1365,7 +1373,8 @@ def dashboard():
                     f'<td>{b.get("avg_peak",0)}%</td></tr>')
         _smc_eski_section = f"""
 <div class="section">
-    <h2>🟤 ESKİ SMC — Karşılaştırma</h2>
+    <details>
+    <summary>🟤 ESKİ SMC — Karşılaştırma</summary>
     <p class="note">Discount zone'a girince (depth≥%5) ve yeşil CHoCH oluşunca (BTC çakılış korumalı) — v20'nin RSI/EMA21/4H filtreleri olmadan tetiklenir. Telegram'a gitmez, TOPLAM ve yukarıdaki kırılıma dahil değildir; sadece kıyas amaçlıdır.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Tür</th><th>Toplam</th><th>Kapanan</th><th>Win</th><th>Loss</th><th>Exp.</th>
@@ -1373,6 +1382,7 @@ def dashboard():
     </tr></thead><tbody>
         {_eski_row("Eski Discount", _eski_d)}{_eski_row("Eski CHoCH", _eski_c)}
     </tbody></table></div>
+    </details>
 </div>"""
 
     html = f"""<!DOCTYPE html>
@@ -1422,6 +1432,10 @@ tr:hover td{{background:var(--card);}}
 .empty{{color:var(--text-dim);padding:20px;text-align:center;font-size:.8rem;}}
 .tp2-box{{background:#0d1520;border:1px solid #1a3050;border-radius:6px;padding:16px;margin-bottom:24px;}}
 .tp2-box h3{{color:#3498db;font-size:.8rem;margin-bottom:10px;}}
+.tp2-box summary{{color:#3498db;font-size:.8rem;margin-bottom:10px;cursor:pointer;list-style:none;}}
+.tp2-box summary::-webkit-details-marker{{display:none;}}
+.tp2-box summary::before{{content:'▸ ';}}
+.tp2-box details[open] summary::before{{content:'▾ ';}}
 .tp2-stats{{display:flex;gap:20px;flex-wrap:wrap;font-size:.75rem;}}
 .tp2-stat{{display:flex;flex-direction:column;align-items:center;}}
 .tp2-stat .v{{font-size:1.1rem;font-weight:bold;}}
@@ -1512,13 +1526,15 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="section">
-    <h2>📈 SİNYAL TÜRÜ BAZLI KIRILIM</h2>
+    <details open>
+    <summary>📈 SİNYAL TÜRÜ BAZLI KIRILIM</summary>
     <div class="table-wrap"><table><thead><tr>
         <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
         <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
     </tr></thead><tbody>
         {type_rows if type_rows else '<tr><td colspan="9" class="empty">Henüz veri yok</td></tr>'}
     </tbody></table></div>
+    </details>
 </div>
 
 {_smc_section_block}
@@ -1532,7 +1548,8 @@ function toggleType(key, btn) {{
 {_analyzer_section}
 
 <div class="section">
-    <h2>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</h2>
+    <details open>
+    <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
     <p class="note">Bot sinyalleri: ⚡ trailing stop (%3 peak altı) aktif — TP1 milestone, TP2 hedef. SMC: TP1'de %50 çıkış.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
@@ -1540,6 +1557,7 @@ function toggleType(key, btn) {{
     </tr></thead><tbody>
         {open_rows if open_rows else '<tr><td colspan="12" class="empty">Açık pozisyon yok</td></tr>'}
     </tbody></table></div>
+    </details>
 </div>
 
 {shadow_section}
@@ -1559,12 +1577,14 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="section">
-    <h2>📅 GÜNLÜK PERFORMANS (son 14 gün)</h2>
+    <details>
+    <summary>📅 GÜNLÜK PERFORMANS (son 14 gün)</summary>
     <div class="table-wrap"><table><thead><tr>
         <th>Tarih</th><th>İşlem</th><th>Win</th><th>Loss</th><th>P&L</th>
     </tr></thead><tbody>
         {daily_rows if daily_rows else '<tr><td colspan="5" class="empty">Henüz veri yok</td></tr>'}
     </tbody></table></div>
+    </details>
 </div>
 
 <div class="footer">
