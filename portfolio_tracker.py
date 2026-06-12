@@ -28,6 +28,7 @@ from intraday_scanner import start_intraday_scanner
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
+WATCHLIST_FILE = os.path.join(DATA_DIR, "portfolio_watchlist.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
 EXPIRE_HOURS = int(os.getenv("EXPIRE_HOURS", "48"))
 SHADOW_EXPIRE_HOURS = int(os.getenv("SHADOW_EXPIRE_HOURS", "72"))
@@ -50,6 +51,7 @@ import logging
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 signals_db = []
+watchlist_db = []
 _lock = threading.Lock()
 
 _ARCHIVE_FILE = os.path.join(DATA_DIR, "learning_archive.json")
@@ -127,6 +129,26 @@ def save_signals():
             json.dump(signals_db[-2000:], f, ensure_ascii=False, default=str, indent=None)
     except Exception as e:
         print(f"[DB] Kayıt hatası: {e}", flush=True)
+
+def load_watchlist():
+    global watchlist_db
+    try:
+        if os.path.exists(WATCHLIST_FILE):
+            with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+                watchlist_db = json.load(f)
+            print(f"[WATCHLIST] {len(watchlist_db)} kayıt yüklendi.", flush=True)
+        else:
+            watchlist_db = []
+    except Exception as e:
+        print(f"[WATCHLIST] Yükleme hatası: {e}", flush=True)
+        watchlist_db = []
+
+def save_watchlist():
+    try:
+        with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(watchlist_db[-500:], f, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[WATCHLIST] Kayıt hatası: {e}", flush=True)
 
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -210,6 +232,38 @@ def receive_signal():
     print(f"[SİNYAL] {signal['sig_type'].upper()} | {signal['symbol']} | "
           f"Giriş: {signal['entry']} | Kaynak: {signal['source']}", flush=True)
     return jsonify({"ok": True, "id": signal["id"]}), 201
+
+# ============================================================
+# WATCHLIST ALMA ENDPOINT'İ (Pump Watchlist — erken alarm)
+# ============================================================
+@app.route("/api/watchlist", methods=["POST"])
+def receive_watchlist():
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json(force=True, silent=True)
+    if not data or "symbol" not in data:
+        return jsonify({"error": "missing field: symbol"}), 400
+
+    entry = {
+        "symbol":    data["symbol"],
+        "time":      data.get("time") or tr_now_str(),
+        "close":     data.get("close"),
+        "adx":       data.get("adx"),
+        "di_plus":   data.get("di_plus"),
+        "di_minus":  data.get("di_minus"),
+        "vol_ratio": data.get("vol_ratio"),
+        "bb_width":  data.get("bb_width"),
+    }
+
+    with _lock:
+        watchlist_db.append(entry)
+        del watchlist_db[:-500]
+        save_watchlist()
+
+    return jsonify({"ok": True})
 
 # ============================================================
 # BİNANCE FİYAT KONTROLÜ
@@ -1327,6 +1381,11 @@ tr:hover td{{background:var(--card);}}
   color:#5a6a7a;font-size:.62rem;padding:5px 12px;cursor:pointer;font-family:inherit;
   letter-spacing:.5px;transition:all .15s;}}
 .filter-btn.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
+.nav-tabs{{display:flex;gap:8px;margin-bottom:20px;}}
+.nav-tab{{background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);
+  font-size:.7rem;padding:6px 16px;text-decoration:none;letter-spacing:.5px;transition:all .15s;}}
+.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
+.nav-tab:hover{{color:var(--text);}}
 @media(max-width:768px){{body{{padding:10px;}}.cards{{grid-template-columns:repeat(3,1fr);}}
   table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}}}
 </style></head><body>
@@ -1340,6 +1399,11 @@ tr:hover td{{background:var(--card);}}
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
         >🗑 Sıfırla</button>
     </span>
+</div>
+
+<div class="nav-tabs">
+  <a href="/" class="nav-tab active">📊 Portfolio</a>
+  <a href="/watchlist" class="nav-tab">🟡 Watchlist</a>
 </div>
 
 <script>
@@ -1465,6 +1529,102 @@ function toggleType(key, btn) {{
     return html
 
 # ============================================================
+# HTML DASHBOARD — PUMP WATCHLIST (erken alarm izleme)
+# ============================================================
+@app.route("/watchlist")
+def watchlist_page():
+    now = tr_now_str()
+    with _lock:
+        items = list(reversed(watchlist_db))[:200]
+
+    rows = ""
+    for it in items:
+        sym  = (it.get("symbol") or "").replace("/USDT", "")
+        adx  = it.get("adx") or 0
+        di_p = it.get("di_plus") or 0
+        di_m = it.get("di_minus") or 0
+        vr   = it.get("vol_ratio") or 0
+        bbw  = it.get("bb_width") or 0
+        rows += f"""<tr>
+            <td style="color:#ecf0f1"><b>{sym}</b></td>
+            <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap">{it.get("time","")}</td>
+            <td>{fmt_price(it.get("close"))}</td>
+            <td>{adx:.1f}</td>
+            <td style="color:#2ecc71">{di_p:.1f}</td>
+            <td style="color:#e74c3c">{di_m:.1f}</td>
+            <td>{vr:.2f}x</td>
+            <td>{bbw:.4f}</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="tr"><head>
+<meta charset="UTF-8"><title>Pump Watchlist</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<style>
+:root {{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--text-dim:#5a6a7a;
+  --accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#f39c12;--purple:#9b59b6;}}
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira Code','Consolas',monospace;
+  padding:20px;max-width:1200px;margin:0 auto;line-height:1.5;}}
+.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;
+  padding-bottom:16px;border-bottom:1px solid var(--border);}}
+.header h1{{color:var(--accent);font-size:1.1rem;letter-spacing:3px;}}
+.header .time{{color:var(--text-dim);font-size:.75rem;display:flex;align-items:center;gap:10px;}}
+.btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;
+  padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
+.btn-refresh:hover{{background:#2ecc7133;}}
+.nav-tabs{{display:flex;gap:8px;margin-bottom:20px;}}
+.nav-tab{{background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);
+  font-size:.7rem;padding:6px 16px;text-decoration:none;letter-spacing:.5px;transition:all .15s;}}
+.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
+.nav-tab:hover{{color:var(--text);}}
+.section{{margin-bottom:28px;}}
+.section h2{{color:var(--accent);font-size:.85rem;letter-spacing:2px;margin-bottom:12px;
+  padding-bottom:6px;border-bottom:1px solid var(--border);}}
+.section .note{{color:var(--text-dim);font-size:.65rem;margin-top:-8px;margin-bottom:12px;font-style:italic;}}
+table{{width:100%;border-collapse:collapse;font-size:.73rem;}}
+th{{background:var(--card);color:var(--text-dim);font-size:.58rem;text-transform:uppercase;
+  letter-spacing:1px;padding:8px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;}}
+td{{padding:7px 8px;border-bottom:1px solid #0d111a;vertical-align:middle;}}
+tr:hover td{{background:var(--card);}}
+.table-wrap{{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}}
+.empty{{color:var(--text-dim);padding:20px;text-align:center;font-size:.8rem;}}
+.footer{{color:var(--text-dim);font-size:.6rem;margin-top:20px;padding-top:12px;
+  border-top:1px solid var(--border);text-align:center;}}
+@media(max-width:768px){{body{{padding:10px;}}table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}}}
+</style></head><body>
+
+<div class="header">
+    <h1>🟡 PUMP WATCHLIST</h1>
+    <span class="time">
+        {now}
+        <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+    </span>
+</div>
+
+<div class="nav-tabs">
+  <a href="/" class="nav-tab">📊 Portfolio</a>
+  <a href="/watchlist" class="nav-tab active">🟡 Watchlist</a>
+</div>
+
+<div class="section">
+    <h2>🟡 ERKEN ALARM SİNYALLERİ ({len(watchlist_db)})</h2>
+    <p class="note">BB sıkışma + ADX(7)≥12 yükseliş + OBV birikim + Hacim 1.2x — kırılım öncesi izleme, gerçek pozisyon yok.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Sembol</th><th>Zaman</th><th>Fiyat</th><th>ADX(7)</th><th>DI+</th><th>DI-</th><th>Hacim</th><th>BB Genişlik</th>
+    </tr></thead><tbody>
+        {rows if rows else '<tr><td colspan="8" class="empty">Henüz watchlist sinyali yok</td></tr>'}
+    </tbody></table></div>
+</div>
+
+<div class="footer">
+    Pump Watchlist — bot.py Sistem 5b (erken alarm, log-only) | {now}
+</div>
+</body></html>"""
+    return html
+
+# ============================================================
 # GITHUB SNAPSHOT
 # ============================================================
 def push_snapshot_to_github():
@@ -1560,6 +1720,7 @@ if __name__ == "__main__":
     print("=" * 50, flush=True)
 
     load_signals()
+    load_watchlist()
     threading.Thread(target=position_checker_loop, daemon=True).start()
     threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
