@@ -622,8 +622,12 @@ def calc_performance():
                     if _tk not in _tb:
                         _tb[_tk] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
                     _tb[_tk]["trades"] += 1; _tb[_tk]["pnl"] += _pct_for_time
-                    if status in ("win_tp1", "win_partial"): _tb[_tk]["wins"] += 1
-                    elif status == "loss": _tb[_tk]["losses"] += 1
+                    if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
+                        _tb[_tk]["wins"] += 1
+                    elif status == "half_stopped":
+                        _tb[_tk]["wins" if (sig.get("close_pct", 0) or 0) > 0 else "losses"] += 1
+                    elif status == "loss":
+                        _tb[_tk]["losses"] += 1
             except Exception: pass
 
         # Alternatif senaryo hesabı (sadece kapanmış sinyaller)
