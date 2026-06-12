@@ -40,7 +40,7 @@ bot.py        → sinyal → Telegram (TELEGRAM_TOKEN)
 SMC.py        → sinyal → kendi Telegram botu
                → [İLERDE] claude_analyzer.py → karar → Telegram (ANALYZER_TELEGRAM_TOKEN)
 
-PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
+ROCKET        → sinyal → Telegram (PUMP_PROBABILITY_TOKEN, ayrı thread)
 ```
 
 ## Environment Variables (Render — bot.py servisi)
@@ -51,7 +51,7 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 | BINANCE_API_SECRET | Binance Secret |
 | TELEGRAM_TOKEN | Ana sinyal botu |
 | TELEGRAM_CHAT_ID | Kullanıcı chat ID (tüm botlar ortak) |
-| PUMP_PROBABILITY_TOKEN | @PUMP_PROBABILITY_BOT tokeni |
+| PUMP_PROBABILITY_TOKEN | ROCKET sinyalleri için ayrı thread tokeni |
 | ANALYZER_TELEGRAM_TOKEN | @CLAUDE_ANALYZR_BOT tokeni |
 | ANTHROPIC_API_KEY | Claude API |
 | PORTFOLIO_URL | Portfolio tracker URL |
@@ -63,7 +63,7 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 2. **T24** — DEVRE DIŞI
 3. **ORTA VADE T72** — Stop -5% | TP +10% | WR %54
 4. **UZUN VADE T168** — Stop -8% | TP +25% | WR %40
-5. **PUMP PROBABILITY** — BB sıkışma + ADX(7) + OBV + Direnç kırılımı | Stop ~-5% | TP +8/15/25%
+5. **ROCKET** — Momentum devam + hacim artışı | Stop -5% | TP +8/15/25%
 
 ## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
 
@@ -87,7 +87,6 @@ PUMP_PROBABILITY → sinyal → Telegram (PUMP_PROBABILITY_TOKEN)
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
-- **PUMP PROBABILITY Backtest** — Script hazır (bilgisayarda çalıştırılacak): filtresiz vs BTC filtreli karşılaştırma, Jan-May 2026 dönemi.
 
 ## İnteraktif Analiz Botu (İleride — Acil Değil)
 
