@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-12 03:53:56",
+  "updated_at": "2026-06-12 04:23:57",
   "performance": {
     "total": 1,
-    "open": 1,
-    "closed": 0,
-    "wins": 0,
+    "open": 0,
+    "closed": 1,
+    "wins": 1,
     "win_partial": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 0,
-    "total_pnl": 0.0,
-    "avg_peak": 0.0,
-    "win_rate": 0.0,
+    "total_pnl": 3.78,
+    "avg_peak": 6.99,
+    "win_rate": 100.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -37,11 +37,11 @@
     },
     "sim_bot": {
       "tp2": 0,
-      "tp1": 0,
+      "tp1": 1,
       "stop": 0,
       "open": 0,
-      "pnl": 0.0,
-      "wr": 0
+      "pnl": 5.0,
+      "wr": 100.0
     },
     "sim_smc": {
       "tp2": 0,
@@ -79,18 +79,18 @@
     },
     "bot_alt": {
       "actual": {
-        "wins": 0,
+        "wins": 1,
         "losses": 0,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "total": 1,
+        "pnl": 3.78,
+        "wr": 100.0
       },
       "tp1_only": {
         "wins": 0,
         "losses": 0,
-        "expired": 0,
-        "total": 0,
+        "expired": 1,
+        "total": 1,
         "pnl": 0.0,
         "wr": 0
       }
@@ -98,26 +98,26 @@
     "by_type": {
       "MOMENTUM_DEVAM": {
         "total": 1,
-        "open": 1,
-        "wins": 0,
+        "open": 0,
+        "wins": 1,
         "win_partial": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 0,
-        "total_pnl": 0.0,
+        "total_pnl": 3.78,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 0,
-        "avg_peak": 0,
+        "win_rate": 100.0,
+        "avg_peak": 6.99,
         "tp2_rate": 0
       }
     },
     "daily": {
       "2026-06-12": {
         "trades": 1,
-        "pnl": 0.0,
+        "pnl": 3.78,
         "wins": 0,
         "losses": 0
       }
@@ -125,7 +125,7 @@
     "weekly": {
       "2026-W23": {
         "trades": 1,
-        "pnl": 0.0,
+        "pnl": 3.78,
         "wins": 0,
         "losses": 0
       }
@@ -133,13 +133,14 @@
     "monthly": {
       "2026-06": {
         "trades": 1,
-        "pnl": 0.0,
+        "pnl": 3.78,
         "wins": 0,
         "losses": 0
       }
     }
   },
-  "open": [
+  "open": [],
+  "closed": [
     {
       "id": "SOPH_USDT_1781223600",
       "symbol": "SOPH/USDT",
@@ -154,21 +155,21 @@
       "phase": "",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "win_trail",
       "open_time": "2026-06-12T03:20:00.666042+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.00655,
-      "peak_pct": 6.5,
+      "close_time": "2026-06-12T04:02:57.081412+03:00",
+      "close_price": 0.0063826,
+      "close_reason": "trailing",
+      "close_pct": 3.78,
+      "peak_price": 0.00658,
+      "peak_pct": 6.99,
       "low_price": 0.00615,
       "low_pct": 0.0,
-      "current_price": 0.00654,
-      "current_pct": 6.34,
+      "current_price": 0.00632,
+      "current_pct": 2.76,
       "tp1_hit": false,
       "tp1_time": null,
-      "tp2_shadow": "watching",
+      "tp2_shadow": "not_reached",
       "tp2_hit": false,
       "tp2_time": null,
       "tp2_peak_after_tp1": 0.0,
@@ -190,11 +191,10 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-12T03:52:56.154656+03:00",
-      "checks": 1,
+      "last_check": "2026-06-12T04:02:57.081412+03:00",
+      "checks": 3,
       "extra": {},
-      "trail_stop": 0.0063535
+      "trail_stop": 0.0063826
     }
-  ],
-  "closed": []
+  ]
 }
