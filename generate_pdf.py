@@ -138,7 +138,8 @@ pdf.divider()
 pdf.chapter_title(2, "Sinyal Üreticisi: bot.py")
 pdf.body(
     "Binance'teki 1000'den fazla USDT çiftini 1 saatlik mumlar bazında izler. "
-    "Her saat kapanışında tüm coinleri tarar ve 5 farklı stratejiyle sinyal arar."
+    "Her saat kapanışında tüm coinleri tarar; 6 farklı stratejiyle sinyal üretir ve "
+    "ayrıca 1 erken alarm/izleme katmanı (Watchlist) çalıştırır."
 )
 
 pdf.section_title("Strateji 1 — PANİK PUMP")
@@ -198,15 +199,60 @@ pdf.ln(3)
 
 pdf.section_title("Strateji 5 — PUMP PROBABILITY")
 pdf.sub_title("Nedir?")
-pdf.body("Fiyat sıkıştıktan sonra direnç kıran coinleri önceden tespit eder.")
+pdf.body("Bollinger Bandı sıkışması sonrası momentum ve hacim patlamasıyla harekete geçen coinleri önceden tespit eder.")
 pdf.sub_title("Tetiklenme Koşulları (Dört koşulun TAMAMI gerçekleşmeli):")
 pdf.bullet("Fiyat son dönemde bant içinde sıkışmış (Bollinger Bandı daralması)")
-pdf.bullet("Piyasa momentumu artıyor ve alıcılar baskın (ADX yükseliyor, yön alıcı tarafta)")
+pdf.bullet("Piyasa momentumu artıyor ve alıcılar baskın (ADX(7) yükseliyor, yön alıcı tarafta)")
 pdf.bullet("Para girişi gerçekleşiyor (OBV ortalamasının üstünde ve artıyor)")
-pdf.bullet("Bir direnç seviyesi yüksek hacimle kırılmış")
+pdf.bullet("Hacim patlaması yaşanıyor (son bar hacmi, 20 barlık ortalamanın en az 1.5 katı)")
 pdf.sub_title("Hedef:")
 pdf.kv("Stop / TP", "~-%5  |  TP1: +%8  |  TP2: +%15  |  TP3: +%25")
-pdf.info_box("NOT: Bu strateji için henüz yeterli gerçek veri birikimi yok. Haziran 2026'dan itibaren veri toplanmaktadır.")
+pdf.info_box(
+    "NOT: Bu strateji için henüz yeterli gerçek veri birikimi yok. Haziran 2026'dan itibaren "
+    "veri toplanmaktadır. Önceki sürümde yer alan 'direnç kırılımı' koşulu kaldırıldı."
+)
+
+pdf.section_title("Strateji 5b — PUMP WATCHLIST (Erken Alarm)")
+pdf.sub_title("Nedir?")
+pdf.body(
+    "Strateji 5'in (Pump Probability) gevşetilmiş eşiklerle çalışan ön-izleme katmanı. "
+    "Henüz tam sinyal kalitesine ulaşmamış ama 'izlenmeye değer' hale gelen coinleri yakalar. "
+    "Telegram'a sinyal göndermez — sadece kayıt tutar."
+)
+pdf.sub_title("Tetiklenme Koşulları (Sistem 5 ile aynı, eşikler düşürülmüş):")
+pdf.bullet("Fiyat son dönemde bant içinde sıkışmış (Bollinger Bandı daralması)")
+pdf.bullet("ADX(7) en az 12 (Sistem 5'te 15), yükseliyor ve DI+ > DI-")
+pdf.bullet("Para girişi gerçekleşiyor (OBV ortalamasının üstünde ve artıyor)")
+pdf.bullet("Hacim, 20 barlık ortalamanın en az 1.2 katı (Sistem 5'te 1.5 katı)")
+pdf.body("NOT: Bu katmanda BTC trend filtresi uygulanmaz.")
+pdf.sub_title("Kayıt ve Takip:")
+pdf.bullet("Sinyal Telegram'a gitmez, sadece loglanır")
+pdf.bullet("Portfolio Tracker'da ayrı bir 'Watchlist' sekmesinde listelenir (sembol, zaman, fiyat, ADX, DI+/-, hacim oranı, BB genişliği)")
+pdf.bullet("Aynı coin için 24 saat cooldown uygulanır")
+pdf.info_box(
+    "Amaç: Strateji 5'i tetikleyecek koşulların oluşma sürecini gözlemlemek — bir coin "
+    "Watchlist'e girdikten sonra ne kadar sürede / oranda gerçek Pump Probability sinyaline dönüşüyor?"
+)
+
+pdf.section_title("Strateji 6 — ROCKET (Momentum Devam)")
+pdf.sub_title("Nedir?")
+pdf.body(
+    "Son 24 saatte zaten güçlü bir yükseliş yapmış ve bu yükselişin hacim ile trend gücü "
+    "tarafından desteklendiği coinleri yakalar. Soru: 'Bu yükseliş devam eder mi?'"
+)
+pdf.sub_title("Tetiklenme Koşulları (Hepsi gerçekleşmeli):")
+pdf.bullet("Son 24 saatte en az %10 yükseliş")
+pdf.bullet("Son 1 saatlik bar hacmi, son 20 barın ortalamasının en az 1.2 katı")
+pdf.bullet("ADX(14) en az 25 ve DI+ > DI- (güçlü, yukarı yönlü trend)")
+pdf.bullet("BTC 4 saatlik grafikte düşüş trendinde değil")
+pdf.sub_title("Hedef ve Performans:")
+pdf.kv("Stop", "-%5")
+pdf.kv("TP1 / TP2 / TP3", "+%8 / +%15 / +%25")
+pdf.kv("Diğer", "Aynı coin için 12 saat cooldown, sinyal 48 saat sonra 'sona erdi' sayılır")
+pdf.info_box(
+    "NOT: Yeni sistem (Haziran 2026 başında devreye alındı). Henüz performans verisi birikmedi. "
+    "Telegram'da 'ROCKET' marka adıyla gönderilir."
+)
 
 pdf.ln(2)
 pdf.sub_title("Tüm Stratejiler İçin Geçerli Filtreler:")
@@ -243,8 +289,8 @@ pdf.body(
 )
 
 pdf.section_title("CHoCH ve BOS Farkı")
-pdf.kv("CHoCH (Guclu — Trend Dondu)", "Coin dusus trendindeyken ilk kez yukari kirilim yapar.")
-pdf.kv("BOS (Orta — Trend Devam)", "Coin zaten yukari trendde, yeni bir yuksek kirar.")
+pdf.kv("CHoCH (Güçlü — Trend Döndü)", "Coin düşüş trendindeyken ilk kez yukarı kırılım yapar.")
+pdf.kv("BOS (Orta — Trend Devam)", "Coin zaten yukarı trendde, yeni bir yüksek kırar.")
 
 pdf.section_title("Giriş ve Çıkış Yapısı")
 pdf.kv("Giriş", "Kırılan swing yüksek seviyesinin tam üzeri (CHoCH çizgisi)")
@@ -283,9 +329,9 @@ pdf.bullet("Son 48 saatteki likidite tuzağı (wick) hareketleri")
 
 pdf.section_title("Karar Formatı")
 pdf.body("Tüm bu veriyi Claude yapay zekasına gönderir ve üç karardan birini almasını ister:")
-pdf.kv("GIR", "Kosullar uygun, giris yapilabilir")
-pdf.kv("DIKKAT", "Belirsizlik var, dikkatli olunmali")
-pdf.kv("RISKLI", "Girilmemeli")
+pdf.kv("GİR", "Koşullar uygun, giriş yapılabilir")
+pdf.kv("DİKKAT", "Belirsizlik var, dikkatli olunmalı")
+pdf.kv("RİSKLİ", "Girilmemeli")
 pdf.body("Karar, gerekçe ve varsa uyarı ile birlikte ayrı bir Telegram botundan gönderilir.")
 
 pdf.section_title("Hafıza Sistemi (Arşiv)")
@@ -342,6 +388,7 @@ pdf.bullet("Sistem bazlı ayrım: SMC vs Bot")
 pdf.bullet("AI performansı: 'GİR dediğinde WR ne, RİSKLİ dediğinde WR ne?'")
 pdf.bullet("Alternatif senaryo simülasyonu: 'Sabit TP ve stop kullansaydık ne olurdu?'")
 pdf.bullet("Günlük/haftalık/aylık özet")
+pdf.bullet("Sekme navigasyonu: 'Portfolio' (ana panel) ve 'Watchlist' (Strateji 5b'nin erken alarm kayıtları)")
 pdf.divider()
 
 # ── BÖLÜM 6 ────────────────────────────────────────────────────────────────
@@ -413,8 +460,8 @@ pdf.bullet(
     "Teorik olarak bir coin indirim bölgesinden çok yukarı çıkıp orada CHoCH verse sinyal gidebilir."
 )
 pdf.bullet(
-    "PUMP PROBABILITY için henüz veri yok. Sistem çalışıyor, sinyaller geliyor, ama backtest "
-    "ve gerçek sonuç verisi yok. Başarı oranı belirsiz."
+    "PUMP PROBABILITY ve ROCKET için henüz veri yok. İkisi de çalışıyor, sinyaller geliyor, "
+    "ama backtest ve gerçek sonuç verisi yok. Başarı oranları belirsiz."
 )
 pdf.divider()
 
@@ -429,8 +476,12 @@ pdf.bullet(
     "'AI GİR dedi → WR %X, RİSKLİ dedi → WR %Y' karşılaştırması gerçek anlam taşıyacak."
 )
 pdf.bullet(
-    "PUMP PROBABILITY gerçek performansı netleşecek. Haziran 2026'dan veri toplanıyor. "
+    "PUMP PROBABILITY ve ROCKET gerçek performansı netleşecek. Haziran 2026'dan veri toplanıyor. "
     "Birkaç ay içinde BTC filtreli vs filtresiz karşılaştırması yapılabilir."
+)
+pdf.bullet(
+    "Watchlist (Strateji 5b) verisi biriktikçe, Pump Probability sinyalinin öncü göstergesi "
+    "olarak ne kadar isabetli olduğu değerlendirilebilecek."
 )
 pdf.divider()
 
