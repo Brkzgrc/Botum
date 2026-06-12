@@ -1124,7 +1124,7 @@ def dashboard():
         wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
         pnl = ts.get("total_pnl", 0)
         pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
-        tk_label = "ROCKET" if tk == "momentum_devam" else tk
+        tk_label = "ROCKET" if tk == "MOMENTUM_DEVAM" else tk
         row = (f'<tr><td style="color:#ecf0f1;font-weight:bold">{tk_label}</td>'
                f'<td>{ts.get("total",0)}</td><td style="color:#3498db">{ts.get("open",0)}</td>'
                f'<td style="color:#2ecc71">{ts.get("wins",0)}</td><td style="color:#e74c3c">{ts.get("losses",0)}</td>'
@@ -1546,7 +1546,7 @@ function toggleType(key, btn) {{
 </script>
 
 <div class="filter-bar">
-  {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{"ROCKET" if k == "momentum_devam" else k}</button>' for k in sorted(perf.get('by_type', {})))}
+  {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{"ROCKET" if k == "MOMENTUM_DEVAM" else k}</button>' for k in sorted(perf.get('by_type', {})))}
 </div>
 
 <div class="cards">
