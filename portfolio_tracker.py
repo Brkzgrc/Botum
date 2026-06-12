@@ -1407,6 +1407,11 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .section{{margin-bottom:28px;}}
 .section h2{{color:var(--accent);font-size:.85rem;letter-spacing:2px;margin-bottom:12px;
   padding-bottom:6px;border-bottom:1px solid var(--border);}}
+.section summary{{color:var(--accent);font-size:.85rem;letter-spacing:2px;margin-bottom:12px;
+  padding-bottom:6px;border-bottom:1px solid var(--border);cursor:pointer;list-style:none;}}
+.section summary::-webkit-details-marker{{display:none;}}
+.section summary::before{{content:'▸ ';}}
+.section details[open] summary::before{{content:'▾ ';}}
 .section .note{{color:var(--text-dim);font-size:.65rem;margin-top:-8px;margin-bottom:12px;font-style:italic;}}
 table{{width:100%;border-collapse:collapse;font-size:.73rem;}}
 th{{background:var(--card);color:var(--text-dim);font-size:.58rem;text-transform:uppercase;
@@ -1542,13 +1547,15 @@ function toggleType(key, btn) {{
 {tp3_shadow_section}
 
 <div class="section">
-    <h2>📋 KAPANMIŞ İŞLEMLER (son 100)</h2>
+    <details>
+    <summary>📋 KAPANMIŞ İŞLEMLER (son 100)</summary>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Getiri</th><th>Peak</th>
         <th>TP1 Hit</th><th>TP3</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
         {closed_rows if closed_rows else '<tr><td colspan="11" class="empty">Henüz kapanmış işlem yok</td></tr>'}
     </tbody></table></div>
+    </details>
 </div>
 
 <div class="section">
