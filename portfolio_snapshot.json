@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-06-13 17:00:41",
+  "updated_at": "2026-06-13 17:30:43",
   "performance": {
-    "total": 52,
-    "open": 3,
-    "closed": 49,
+    "total": 54,
+    "open": 4,
+    "closed": 50,
     "wins": 24,
     "win_partial": 0,
-    "losses": 25,
+    "losses": 26,
     "expired": 0,
     "tp1_hits": 3,
-    "total_pnl": 14.09,
-    "avg_peak": 3.34,
-    "win_rate": 49.0,
+    "total_pnl": 13.13,
+    "avg_peak": 3.32,
+    "win_rate": 48.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -28,18 +28,18 @@
         "wr": 40.0
       },
       "riskli": {
-        "total": 18,
+        "total": 19,
         "wins": 7,
-        "losses": 11,
-        "pnl": -11.19,
-        "wr": 38.9
+        "losses": 12,
+        "pnl": -12.15,
+        "wr": 36.8
       }
     },
     "sim_bot": {
       "tp2": 2,
       "tp1": 9,
       "stop": 13,
-      "open": 25,
+      "open": 26,
       "pnl": 32.5,
       "wr": 45.8
     },
@@ -80,37 +80,37 @@
     "bot_alt": {
       "actual": {
         "wins": 24,
-        "losses": 25,
+        "losses": 26,
         "expired": 0,
-        "total": 49,
-        "pnl": 14.09,
-        "wr": 49.0
+        "total": 50,
+        "pnl": 13.13,
+        "wr": 48.0
       },
       "tp1_only": {
         "wins": 3,
         "losses": 1,
-        "expired": 45,
-        "total": 49,
+        "expired": 46,
+        "total": 50,
         "pnl": 19.0,
         "wr": 75.0
       }
     },
     "by_type": {
       "ROCKET": {
-        "total": 50,
-        "open": 2,
+        "total": 52,
+        "open": 3,
         "wins": 23,
         "win_partial": 0,
-        "losses": 25,
+        "losses": 26,
         "expired": 0,
         "tp1_hits": 3,
-        "total_pnl": 13.41,
+        "total_pnl": 12.45,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "tp2_stopped": 0,
-        "win_rate": 47.9,
-        "avg_peak": 3.33,
+        "win_rate": 46.9,
+        "avg_peak": 3.31,
         "tp2_rate": 0
       },
       "SMC CHoCH": {
@@ -150,10 +150,10 @@
     },
     "daily": {
       "2026-06-13": {
-        "trades": 21,
-        "pnl": -19.489999999999995,
+        "trades": 23,
+        "pnl": -20.449999999999996,
         "wins": 4,
-        "losses": 14
+        "losses": 15
       },
       "2026-06-12": {
         "trades": 31,
@@ -164,18 +164,18 @@
     },
     "weekly": {
       "2026-W23": {
-        "trades": 52,
-        "pnl": 14.090000000000003,
+        "trades": 54,
+        "pnl": 13.130000000000003,
         "wins": 24,
-        "losses": 25
+        "losses": 26
       }
     },
     "monthly": {
       "2026-06": {
-        "trades": 52,
-        "pnl": 14.090000000000003,
+        "trades": 54,
+        "pnl": 13.130000000000003,
         "wins": 24,
-        "losses": 25
+        "losses": 26
       }
     },
     "smc_eski": {
@@ -203,6 +203,61 @@
   },
   "open": [
     {
+      "id": "FET_USDT_1781359704",
+      "symbol": "FET/USDT",
+      "entry": 0.2072,
+      "stop": 0.19684,
+      "tp1": 0.223776,
+      "tp2": 0.23828,
+      "tp3": null,
+      "sig_type": "rocket",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-06-13T17:08:24.479710+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.2074,
+      "peak_pct": 0.1,
+      "low_price": 0.2036,
+      "low_pct": -1.74,
+      "current_price": 0.2043,
+      "current_pct": -1.4,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "watching",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": "🚫 RİSKLİ",
+      "analyzer_time": "2026-06-13T17:08:31.044483+03:00",
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 4,
+      "extra": {},
+      "trail_stop": 0.201178
+    },
+    {
       "id": "ALLO_USDT_1781359201",
       "symbol": "ALLO/USDT",
       "entry": 0.3826,
@@ -222,12 +277,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.3826,
-      "peak_pct": 0.0,
-      "low_price": 0.3826,
-      "low_pct": 0.0,
-      "current_price": 0.3826,
-      "current_pct": 0.0,
+      "peak_price": 0.3864,
+      "peak_pct": 0.99,
+      "low_price": 0.3797,
+      "low_pct": -0.76,
+      "current_price": 0.385,
+      "current_pct": 0.63,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -252,8 +307,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T17:00:01.927032+03:00",
-      "checks": 0,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 6,
       "extra": {
         "tp3": null
       }
@@ -280,10 +335,10 @@
       "close_pct": null,
       "peak_price": 0.07896,
       "peak_pct": 0.61,
-      "low_price": 0.07831,
-      "low_pct": -0.22,
-      "current_price": 0.07835,
-      "current_pct": -0.17,
+      "low_price": 0.07815,
+      "low_pct": -0.42,
+      "current_price": 0.07824,
+      "current_pct": -0.31,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -308,8 +363,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 22,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 28,
       "extra": {
         "tp3": 0.084672
       }
@@ -336,10 +391,10 @@
       "close_pct": null,
       "peak_price": 106.9,
       "peak_pct": 0.0,
-      "low_price": 105.66,
-      "low_pct": -1.16,
-      "current_price": 105.95,
-      "current_pct": -0.89,
+      "low_price": 105.65,
+      "low_pct": -1.17,
+      "current_price": 105.92,
+      "current_pct": -0.92,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -364,8 +419,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-13T14:08:29.974860+03:00",
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 31,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 37,
       "extra": {},
       "trail_stop": 103.693
     },
@@ -389,12 +444,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 1.719,
-      "peak_pct": 1.42,
+      "peak_price": 1.721,
+      "peak_pct": 1.53,
       "low_price": 1.695,
       "low_pct": 0.0,
-      "current_price": 1.715,
-      "current_pct": 1.18,
+      "current_price": 1.712,
+      "current_pct": 1.0,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -419,8 +474,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 33,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 39,
       "extra": {
         "tp3": 1.8249
       }
@@ -449,8 +504,8 @@
       "peak_pct": 0.18,
       "low_price": 0.5429,
       "low_pct": -1.4,
-      "current_price": 0.55,
-      "current_pct": -0.11,
+      "current_price": 0.5498,
+      "current_pct": -0.15,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -475,8 +530,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 44,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 50,
       "extra": {
         "tp3": 0.6379615
       }
@@ -505,8 +560,8 @@
       "peak_pct": 6.28,
       "low_price": 0.2358,
       "low_pct": 0.0,
-      "current_price": 0.2434,
-      "current_pct": 3.22,
+      "current_price": 0.2451,
+      "current_pct": 3.94,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -531,8 +586,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-13T12:00:14.888987+03:00",
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 55,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 61,
       "extra": {
         "tp3": 0.313962
       }
@@ -561,8 +616,8 @@
       "peak_pct": 6.28,
       "low_price": 0.2358,
       "low_pct": 0.0,
-      "current_price": 0.2434,
-      "current_pct": 3.22,
+      "current_price": 0.2451,
+      "current_pct": 3.94,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -587,8 +642,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 55,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 61,
       "extra": {
         "tp3": 0.313962
       }
@@ -613,8 +668,8 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.3174,
-      "peak_pct": 0.51,
+      "peak_price": 0.3179,
+      "peak_pct": 0.66,
       "low_price": 0.3158,
       "low_pct": 0.0,
       "current_price": 0.3173,
@@ -643,8 +698,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 55,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 61,
       "extra": {
         "tp3": 0.33188
       }
@@ -669,18 +724,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.0856,
-      "peak_pct": 6.6,
+      "peak_price": 0.0862,
+      "peak_pct": 7.35,
       "low_price": 0.0803,
       "low_pct": 0.0,
-      "current_price": 0.0854,
-      "current_pct": 6.35,
+      "current_price": 0.0853,
+      "current_pct": 6.23,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T15:18:30.638845+03:00",
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 6.6,
+      "tp2_peak_after_tp1": 7.35,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -699,8 +754,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 66,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 72,
       "extra": {
         "tp3": 0.0898625
       },
@@ -731,8 +786,8 @@
       "peak_pct": 1.05,
       "low_price": 0.05412,
       "low_pct": -1.89,
-      "current_price": 0.05453,
-      "current_pct": -1.14,
+      "current_price": 0.05438,
+      "current_pct": -1.41,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -757,8 +812,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-13T10:08:30.079897+03:00",
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 75,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 81,
       "extra": {},
       "trail_stop": 0.0540678
     },
@@ -786,8 +841,8 @@
       "peak_pct": 4.83,
       "low_price": 0.0317,
       "low_pct": -1.28,
-      "current_price": 0.03276,
-      "current_pct": 2.02,
+      "current_price": 0.03281,
+      "current_pct": 2.18,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -812,8 +867,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 77,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 83,
       "extra": {
         "tp3": 0.03784525
       }
@@ -840,10 +895,10 @@
       "close_pct": null,
       "peak_price": 0.03356,
       "peak_pct": 3.58,
-      "low_price": 0.03191,
-      "low_pct": -1.51,
-      "current_price": 0.03194,
-      "current_pct": -1.42,
+      "low_price": 0.03182,
+      "low_pct": -1.79,
+      "current_price": 0.03189,
+      "current_pct": -1.57,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -868,8 +923,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 77,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 83,
       "extra": {
         "tp3": 0.03960225
       }
@@ -894,18 +949,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.6481,
-      "peak_pct": 4.41,
+      "peak_price": 0.6506,
+      "peak_pct": 4.82,
       "low_price": 0.6198,
       "low_pct": -0.14,
-      "current_price": 0.6389,
-      "current_pct": 2.93,
+      "current_price": 0.6462,
+      "current_pct": 4.11,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T11:18:04.127080+03:00",
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 4.41,
+      "tp2_peak_after_tp1": 4.82,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -924,8 +979,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 88,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 94,
       "extra": {
         "tp3": 0.688218
       },
@@ -956,8 +1011,8 @@
       "peak_pct": 1.3,
       "low_price": 0.0814,
       "low_pct": -3.9,
-      "current_price": 0.0832,
-      "current_pct": -1.77,
+      "current_price": 0.0837,
+      "current_pct": -1.18,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -982,8 +1037,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 99,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 105,
       "extra": {
         "tp3": null
       }
@@ -1012,8 +1067,8 @@
       "peak_pct": 3.77,
       "low_price": 0.433,
       "low_pct": -0.51,
-      "current_price": 0.4442,
-      "current_pct": 2.07,
+      "current_price": 0.4475,
+      "current_pct": 2.83,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1038,8 +1093,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 99,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 105,
       "extra": {
         "tp3": null
       }
@@ -1064,18 +1119,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.5107,
-      "peak_pct": 7.02,
+      "peak_price": 0.5196,
+      "peak_pct": 8.89,
       "low_price": 0.4684,
       "low_pct": -1.84,
-      "current_price": 0.5053,
-      "current_pct": 5.89,
+      "current_price": 0.5191,
+      "current_pct": 8.78,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T15:07:32.948895+03:00",
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 7.02,
+      "tp2_peak_after_tp1": 8.89,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -1094,8 +1149,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 121,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 127,
       "extra": {
         "tp3": 0.5413715
       },
@@ -1122,18 +1177,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 1.1548,
-      "peak_pct": 1.57,
+      "peak_price": 1.1575,
+      "peak_pct": 1.81,
       "low_price": 1.1305,
       "low_pct": -0.56,
-      "current_price": 1.1511,
-      "current_pct": 1.25,
+      "current_price": 1.1538,
+      "current_pct": 1.49,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T15:34:57.024308+03:00",
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 1.57,
+      "tp2_peak_after_tp1": 1.81,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -1152,8 +1207,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 132,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 138,
       "extra": {
         "tp3": 1.18052
       },
@@ -1184,8 +1239,8 @@
       "peak_pct": 1.2,
       "low_price": 26.84,
       "low_pct": -2.04,
-      "current_price": 27.45,
-      "current_pct": 0.18,
+      "current_price": 27.34,
+      "current_pct": -0.22,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1210,8 +1265,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 143,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 149,
       "extra": {
         "tp3": null
       }
@@ -1240,8 +1295,8 @@
       "peak_pct": 0.61,
       "low_price": 408.99,
       "low_pct": -1.71,
-      "current_price": 412.41,
-      "current_pct": -0.88,
+      "current_price": 412.2,
+      "current_pct": -0.93,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1266,8 +1321,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 143,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 149,
       "extra": {
         "tp3": null
       }
@@ -1322,8 +1377,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 143,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 149,
       "extra": {
         "tp3": null
       }
@@ -1348,12 +1403,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 35.36,
-      "peak_pct": 2.17,
+      "peak_price": 35.41,
+      "peak_pct": 2.31,
       "low_price": 34.32,
       "low_pct": -0.84,
-      "current_price": 35.19,
-      "current_pct": 1.68,
+      "current_price": 35.16,
+      "current_pct": 1.59,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1378,8 +1433,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 143,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 149,
       "extra": {
         "tp3": null
       }
@@ -1408,8 +1463,8 @@
       "peak_pct": 2.6,
       "low_price": 0.667,
       "low_pct": -2.6,
-      "current_price": 0.6796,
-      "current_pct": -0.76,
+      "current_price": 0.6733,
+      "current_pct": -1.68,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1434,8 +1489,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": 0.809099
       }
@@ -1460,12 +1515,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 6.689,
-      "peak_pct": 1.8,
+      "peak_price": 6.694,
+      "peak_pct": 1.87,
       "low_price": 6.56,
       "low_pct": -0.17,
-      "current_price": 6.669,
-      "current_pct": 1.49,
+      "current_price": 6.682,
+      "current_pct": 1.69,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1490,8 +1545,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 153,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 159,
       "extra": {
         "tp3": null
       }
@@ -1520,8 +1575,8 @@
       "peak_pct": 7.26,
       "low_price": 5.06,
       "low_pct": -0.45,
-      "current_price": 5.256,
-      "current_pct": 3.4,
+      "current_price": 5.281,
+      "current_pct": 3.9,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1546,8 +1601,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": null
       }
@@ -1576,8 +1631,8 @@
       "peak_pct": 2.22,
       "low_price": 1.969,
       "low_pct": -0.46,
-      "current_price": 1.973,
-      "current_pct": -0.25,
+      "current_price": 1.976,
+      "current_pct": -0.1,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T04:08:35.421212+03:00",
       "tp2_shadow": "watching",
@@ -1602,8 +1657,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": 2.08528
       },
@@ -1630,12 +1685,12 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 1.1548,
-      "peak_pct": 1.97,
+      "peak_price": 1.1575,
+      "peak_pct": 2.21,
       "low_price": 1.1305,
       "low_pct": -0.18,
-      "current_price": 1.1511,
-      "current_pct": 1.64,
+      "current_price": 1.1538,
+      "current_pct": 1.88,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1660,8 +1715,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": null
       }
@@ -1690,8 +1745,8 @@
       "peak_pct": 3.18,
       "low_price": 1.991,
       "low_pct": -0.99,
-      "current_price": 2.051,
-      "current_pct": 1.99,
+      "current_price": 2.058,
+      "current_pct": 2.34,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1716,8 +1771,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": null
       }
@@ -1746,8 +1801,8 @@
       "peak_pct": 0.96,
       "low_price": 1663.33,
       "low_pct": -0.18,
-      "current_price": 1677.66,
-      "current_pct": 0.68,
+      "current_price": 1679.11,
+      "current_pct": 0.76,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1772,8 +1827,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 154,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 160,
       "extra": {
         "tp3": null
       }
@@ -1802,8 +1857,8 @@
       "peak_pct": 2.15,
       "low_price": 0.07358,
       "low_pct": -0.41,
-      "current_price": 0.07488,
-      "current_pct": 1.35,
+      "current_price": 0.07511,
+      "current_pct": 1.66,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1828,8 +1883,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 164,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 170,
       "extra": {
         "tp3": null
       }
@@ -1858,8 +1913,8 @@
       "peak_pct": 2.71,
       "low_price": 0.626,
       "low_pct": -0.16,
-      "current_price": 0.641,
-      "current_pct": 2.23,
+      "current_price": 0.64,
+      "current_pct": 2.07,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T10:02:01.192725+03:00",
       "tp2_shadow": "watching",
@@ -1884,8 +1939,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 164,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 170,
       "extra": {
         "tp3": null
       },
@@ -1916,8 +1971,8 @@
       "peak_pct": 3.7,
       "low_price": 0.746,
       "low_pct": -0.33,
-      "current_price": 0.7673,
-      "current_pct": 2.51,
+      "current_price": 0.7685,
+      "current_pct": 2.67,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1942,8 +1997,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 191,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 197,
       "extra": {
         "tp3": null
       }
@@ -1972,8 +2027,8 @@
       "peak_pct": 1.42,
       "low_price": 0.1837,
       "low_pct": -3.06,
-      "current_price": 0.1884,
-      "current_pct": -0.58,
+      "current_price": 0.1892,
+      "current_pct": -0.16,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -1998,8 +2053,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 213,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 219,
       "extra": {
         "tp3": null
       }
@@ -2028,8 +2083,8 @@
       "peak_pct": 1.02,
       "low_price": 0.006621,
       "low_pct": -3.34,
-      "current_price": 0.006806,
-      "current_pct": -0.64,
+      "current_price": 0.006833,
+      "current_pct": -0.25,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2054,8 +2109,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 248,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 254,
       "extra": {
         "tp3": 0.007624375
       }
@@ -2084,8 +2139,8 @@
       "peak_pct": 2.26,
       "low_price": 66.42,
       "low_pct": -1.31,
-      "current_price": 67.98,
-      "current_pct": 1.01,
+      "current_price": 68.17,
+      "current_pct": 1.29,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2110,8 +2165,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 248,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 254,
       "extra": {
         "tp3": 72.33925
       }
@@ -2140,8 +2195,8 @@
       "peak_pct": 0.72,
       "low_price": 63411.41,
       "low_pct": -0.82,
-      "current_price": 64087.91,
-      "current_pct": 0.24,
+      "current_price": 64132.81,
+      "current_pct": 0.31,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2166,8 +2221,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 248,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 254,
       "extra": {
         "tp3": 66871.13
       }
@@ -2196,8 +2251,8 @@
       "peak_pct": 2.83,
       "low_price": 42.73,
       "low_pct": -0.23,
-      "current_price": 43.9,
-      "current_pct": 2.5,
+      "current_price": 43.84,
+      "current_pct": 2.36,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T15:56:48.396256+03:00",
       "tp2_shadow": "watching",
@@ -2222,8 +2277,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 256,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 262,
       "extra": {
         "tp3": null
       },
@@ -2254,8 +2309,8 @@
       "peak_pct": 1.27,
       "low_price": 599.48,
       "low_pct": -0.96,
-      "current_price": 609.03,
-      "current_pct": 0.62,
+      "current_price": 608.56,
+      "current_pct": 0.54,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2280,8 +2335,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 256,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 262,
       "extra": {
         "tp3": null
       }
@@ -2310,8 +2365,8 @@
       "peak_pct": 5.94,
       "low_price": 0.6542,
       "low_pct": -1.34,
-      "current_price": 0.6795,
-      "current_pct": 2.47,
+      "current_price": 0.6735,
+      "current_pct": 1.57,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2336,8 +2391,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 268,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 274,
       "extra": {
         "tp3": null
       }
@@ -2366,8 +2421,8 @@
       "peak_pct": 4.21,
       "low_price": 0.01359,
       "low_pct": -3.07,
-      "current_price": 0.01421,
-      "current_pct": 1.36,
+      "current_price": 0.01407,
+      "current_pct": 0.36,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2392,8 +2447,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 268,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 274,
       "extra": {
         "tp3": null
       }
@@ -2418,18 +2473,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.3174,
-      "peak_pct": 1.57,
+      "peak_price": 0.3179,
+      "peak_pct": 1.73,
       "low_price": 0.3123,
       "low_pct": -0.06,
-      "current_price": 0.3174,
-      "current_pct": 1.57,
+      "current_price": 0.3173,
+      "current_pct": 1.54,
       "tp1_hit": true,
       "tp1_time": "2026-06-13T12:56:22.324110+03:00",
       "tp2_shadow": "watching",
       "tp2_hit": false,
       "tp2_time": null,
-      "tp2_peak_after_tp1": 1.57,
+      "tp2_peak_after_tp1": 1.73,
       "tp2_shadow_end": null,
       "tp3_shadow": null,
       "tp3_trail_peak": 0.0,
@@ -2448,8 +2503,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 268,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 274,
       "extra": {
         "tp3": null
       },
@@ -2480,8 +2535,8 @@
       "peak_pct": 1.23,
       "low_price": 0.0768,
       "low_pct": -2.75,
-      "current_price": 0.07838,
-      "current_pct": -0.75,
+      "current_price": 0.07824,
+      "current_pct": -0.92,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2506,8 +2561,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 268,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 274,
       "extra": {
         "tp3": null
       }
@@ -2536,8 +2591,8 @@
       "peak_pct": 0.99,
       "low_price": 63104.0,
       "low_pct": -1.04,
-      "current_price": 64089.61,
-      "current_pct": 0.51,
+      "current_price": 64132.81,
+      "current_pct": 0.58,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2562,8 +2617,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 276,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 282,
       "extra": {
         "tp3": null
       }
@@ -2592,8 +2647,8 @@
       "peak_pct": 0.35,
       "low_price": 0.006589,
       "low_pct": -18.2,
-      "current_price": 0.007626,
-      "current_pct": -5.33,
+      "current_price": 0.007706,
+      "current_pct": -4.33,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2618,8 +2673,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 299,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 305,
       "extra": {
         "tp3": null
       }
@@ -2648,8 +2703,8 @@
       "peak_pct": 1.1,
       "low_price": 599.48,
       "low_pct": -1.13,
-      "current_price": 609.03,
-      "current_pct": 0.45,
+      "current_price": 608.56,
+      "current_pct": 0.37,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -2674,8 +2729,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 299,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 305,
       "extra": {
         "tp3": 631.892
       }
@@ -2704,8 +2759,8 @@
       "peak_pct": 2.9,
       "low_price": 42.69,
       "low_pct": -0.26,
-      "current_price": 43.9,
-      "current_pct": 2.57,
+      "current_price": 43.85,
+      "current_pct": 2.45,
       "tp1_hit": true,
       "tp1_time": "2026-06-12T17:57:07.317274+03:00",
       "tp2_shadow": "watching",
@@ -2730,8 +2785,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-06-13T16:56:44.942087+03:00",
-      "checks": 311,
+      "last_check": "2026-06-13T17:29:25.957844+03:00",
+      "checks": 317,
       "extra": {
         "tp3": 44.7554
       },
