@@ -528,8 +528,8 @@ def calc_performance():
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
         # [SMC-ESKİ] Karşılaştırma — TOPLAM/breakdown'a dahil edilmez
         "smc_eski": {
-            "discount": {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0},
-            "choch":    {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0},
+            "discount": {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0, "expired_avg_pnl": 0.0},
+            "choch":    {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "avg_peak": 0.0, "expired_avg_pnl": 0.0},
         },
     }
 
@@ -538,7 +538,7 @@ def calc_performance():
         "total": 0, "open": 0, "wins": 0, "win_partial": 0, "losses": 0, "expired": 0,
         "tp1_hits": 0, "total_pnl": 0.0, "peaks": [],
         "tp2_hits": 0, "tp2_total": 0, "tp2_extra_pnl": 0.0,
-        "tp2_stopped": 0,
+        "tp2_stopped": 0, "expired_pnl_sum": 0.0,
     })
 
     for sig in all_sigs:
@@ -590,9 +590,10 @@ def calc_performance():
                 else:
                     result["losses"] += 1; ts["losses"] += 1
             elif status == "half_expired":
-                result["expired"] += 1; ts["expired"] += 1
+                result["expired"] += 1; ts["expired"] += 1; ts["expired_pnl_sum"] += pct
             elif status == "loss": result["losses"] += 1; ts["losses"] += 1
-            elif status == "expired": result["expired"] += 1; ts["expired"] += 1
+            elif status == "expired":
+                result["expired"] += 1; ts["expired"] += 1; ts["expired_pnl_sum"] += pct
 
             # analyzer istatistikleri (sadece kapanmış sinyaller)
             ad = sig.get("analyzer_decision", "")
@@ -731,11 +732,16 @@ def calc_performance():
             eb["losses"] += 1
         elif status in ("expired", "half_expired"):
             eb["expired"] += 1
+            eb["_expired_pnl_sum"] = eb.get("_expired_pnl_sum", 0.0) + (sig.get("close_pct", 0) or 0)
     for key, eb in result["smc_eski"].items():
         if eb["closed"] > 0:
             eb["win_rate"] = round(eb["wins"] / eb["closed"] * 100, 1)
             eb["avg_peak"] = round(sum(_eski_peaks[key]) / len(_eski_peaks[key]), 2)
         eb["total_pnl"] = round(eb["total_pnl"], 2)
+        if eb["expired"] > 0:
+            eb["expired_avg_pnl"] = round(eb.pop("_expired_pnl_sum", 0.0) / eb["expired"], 2)
+        else:
+            eb.pop("_expired_pnl_sum", None)
 
     if closed_peaks:
         result["avg_peak"] = round(sum(closed_peaks) / len(closed_peaks), 2)
@@ -766,7 +772,9 @@ def calc_performance():
         ts["total_pnl"] = round(ts["total_pnl"], 2)
         ts["tp2_extra_pnl"] = round(ts["tp2_extra_pnl"], 2)
         ts["tp2_rate"] = round(ts["tp2_hits"] / ts["tp2_total"] * 100, 1) if ts["tp2_total"] > 0 else 0
+        ts["expired_avg_pnl"] = round(ts["expired_pnl_sum"] / ts["expired"], 2) if ts["expired"] > 0 else 0
         del ts["peaks"]
+        del ts["expired_pnl_sum"]
 
     result["by_type"] = dict(type_stats)
     return result
@@ -1082,6 +1090,9 @@ def dashboard():
         wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
         pnl = ts.get("total_pnl", 0)
         pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
+        exp_pnl = ts.get("expired_avg_pnl", 0)
+        exp_pnl_c = "#2ecc71" if exp_pnl > 0 else ("#e74c3c" if exp_pnl < 0 else "#8a9bb0")
+        exp_pnl_cell = f'{exp_pnl:+.2f}%' if ts.get("expired", 0) > 0 else "—"
         tk_label = tk
         row = (f'<tr><td style="color:#ecf0f1;font-weight:bold">{tk_label}</td>'
                f'<td>{ts.get("total",0)}</td><td style="color:#3498db">{ts.get("open",0)}</td>'
@@ -1089,7 +1100,8 @@ def dashboard():
                f'<td style="color:#f39c12">{ts.get("expired",0)}</td>'
                f'<td style="color:{wr_c};font-weight:bold">%{wr}</td>'
                f'<td style="color:{pnl_c};font-weight:bold">{pnl:+.2f}%</td>'
-               f'<td>{ts.get("avg_peak",0)}%</td></tr>')
+               f'<td>{ts.get("avg_peak",0)}%</td>'
+               f'<td style="color:{exp_pnl_c}">{exp_pnl_cell}</td></tr>')
         if tk.startswith("SMC"):
             smc_type_rows += row
         else:
@@ -1368,13 +1380,17 @@ def dashboard():
             wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
             pnl = b.get("total_pnl", 0)
             pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
+            exp_pnl = b.get("expired_avg_pnl", 0)
+            exp_pnl_c = "#2ecc71" if exp_pnl > 0 else ("#e74c3c" if exp_pnl < 0 else "#8a9bb0")
+            exp_pnl_cell = f'{exp_pnl:+.2f}%' if b.get("expired", 0) > 0 else "—"
             return (f'<tr><td style="color:#ecf0f1;font-weight:bold">{label}</td>'
                     f'<td>{b.get("total",0)}</td><td>{b.get("closed",0)}</td>'
                     f'<td style="color:#2ecc71">{b.get("wins",0)}</td><td style="color:#e74c3c">{b.get("losses",0)}</td>'
                     f'<td style="color:#f39c12">{b.get("expired",0)}</td>'
                     f'<td style="color:{wr_c};font-weight:bold">%{wr}</td>'
                     f'<td style="color:{pnl_c};font-weight:bold">{pnl:+.2f}%</td>'
-                    f'<td>{b.get("avg_peak",0)}%</td></tr>')
+                    f'<td>{b.get("avg_peak",0)}%</td>'
+                    f'<td style="color:{exp_pnl_c}">{exp_pnl_cell}</td></tr>')
         _smc_eski_section = f"""
 <div class="section">
     <details>
@@ -1382,7 +1398,7 @@ def dashboard():
     <p class="note">Discount zone'a girince (depth≥%5) ve yeşil CHoCH oluşunca (BTC çakılış korumalı) — v20'nin RSI/EMA21/4H filtreleri olmadan tetiklenir. Telegram'a gitmez, TOPLAM ve yukarıdaki kırılıma dahil değildir; sadece kıyas amaçlıdır.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Tür</th><th>Toplam</th><th>Kapanan</th><th>Win</th><th>Loss</th><th>Exp.</th>
-        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
+        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th><th>Ort. Exp P&L</th>
     </tr></thead><tbody>
         {_eski_row("Eski Discount", _eski_d)}{_eski_row("Eski CHoCH", _eski_c)}
     </tbody></table></div>
@@ -1534,9 +1550,9 @@ function toggleType(key, btn) {{
     <summary>📈 SİNYAL TÜRÜ BAZLI KIRILIM</summary>
     <div class="table-wrap"><table><thead><tr>
         <th>Tür</th><th>Toplam</th><th>Açık</th><th>Win</th><th>Loss</th><th>Exp.</th>
-        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th>
+        <th>Win Rate</th><th>P&L</th><th>Ort. Peak</th><th>Ort. Exp P&L</th>
     </tr></thead><tbody>
-        {type_rows if type_rows else '<tr><td colspan="9" class="empty">Henüz veri yok</td></tr>'}
+        {type_rows if type_rows else '<tr><td colspan="10" class="empty">Henüz veri yok</td></tr>'}
     </tbody></table></div>
     </details>
 </div>
