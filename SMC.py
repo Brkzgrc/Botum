@@ -25,8 +25,9 @@ def health_check():
     active = len([s for s, v in discount_active.items() if v])
     btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
     struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
+    btc_dt = "BTC DÜŞÜŞ 🔻" if btc_downtrend_cache.get("active") else "BTC YAPI OK ✅"
     return (f"SMC v20 WS — 4H Crash + CHoCH 4H Teyit + EMA21 | {boot_status} | {cached} coin cached | "
-            f"{active} discount aktif | {btc_ema} | {struc} | {ws_1h_closes} bar kapandı"), 200
+            f"{active} discount aktif | {btc_ema} | {struc} | {btc_dt} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -158,6 +159,10 @@ BTC_CRASH_PCT = 3.0
 BTC_CRASH_TTL = 1800
 BTC_EMA21_TTL = 1800
 
+# [SMC-ESKİ] BTC 4H düşüş yapısı cache — Eski CHoCH filtresi için
+btc_downtrend_cache = {"active": False, "updated": 0}
+BTC_DOWNTREND_TTL = 3600
+
 # ── YENİ: 4H Yapısal Kırılma Cache ──────────────────────────────
 # Level 1 (paused=True):
 #   Son 2 kapanmış 4H mum EMA21 altında (2. daha düşük) +
@@ -218,6 +223,37 @@ def check_btc_ema21():
         btc_ema21_cache["above"] = False
     btc_ema21_cache["updated"] = now
     return btc_ema21_cache["above"]
+
+def check_btc_downtrend_active():
+    """
+    [SMC-ESKİ] BTC 4H'de aktif düşüş yapısı var mı?
+
+    Son swing kırılımı düşen dip (swing_trend == -1) VE en son swing dip,
+    ondan önceki swing dipten daha YÜKSEK değilse (henüz "yükselen dip"
+    oluşmadı, düşüş duraklamadı) → True (aktif düşüş, Eski CHoCH engellenir).
+
+    EMA'ya dayanmaz — sadece swing yapısına (düşen/yükselen dip dizilimi) bakar.
+    """
+    now = time.time()
+    if now - btc_downtrend_cache["updated"] < BTC_DOWNTREND_TTL:
+        return btc_downtrend_cache["active"]
+
+    active = False
+    try:
+        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=200)
+        df_btc = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        trend, last_low, prev_low = _swing_lows_trend(df_btc, CHOCH_SWING)
+        if trend == -1 and (prev_low is None or last_low <= prev_low):
+            active = True
+        status = "AKTİF 🔻" if active else "yok/durdu ✅"
+        print(f"📉 BTC 4H Düşüş Yapısı: {status} (trend={trend}, son_dip={last_low}, önceki_dip={prev_low})", flush=True)
+    except Exception as e:
+        print(f"BTC downtrend check hata: {e}", flush=True)
+        active = False
+
+    btc_downtrend_cache["active"]  = active
+    btc_downtrend_cache["updated"] = now
+    return active
 
 def check_btc_4h_structural():
     """
@@ -662,6 +698,63 @@ def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     return break_type, break_direction, swing_trend, choch_level, swing_low_level
 
 # ============================================================
+# 7b-2) [SMC-ESKİ] Swing dip dizilimi (düşüş duraklamış mı?)
+# ============================================================
+def _swing_lows_trend(df, choch_swing=CHOCH_SWING):
+    """
+    detect_micro_choch ile aynı leg/swing mantığı, ama son İKİ swing dip
+    seviyesini de döner — düşüşün durup durmadığını (yükselen dip oluştu mu)
+    anlamak için.
+
+    Döner: (swing_trend, son_swing_dip, önceki_swing_dip)
+    """
+    highs  = df["high"].values
+    lows   = df["low"].values
+    closes = df["close"].values
+    n = len(df)
+
+    if n < choch_swing + 10:
+        return 0, None, None
+
+    legs = [0] * n
+    current_leg = 0
+    for i in range(choch_swing, n):
+        pivot_high  = highs[i - choch_swing]
+        pivot_low   = lows[i - choch_swing]
+        window_high = max(highs[i - choch_swing + 1 : i + 1])
+        window_low  = min(lows[i - choch_swing + 1 : i + 1])
+        if pivot_high > window_high:
+            current_leg = 0
+        elif pivot_low < window_low:
+            current_leg = 1
+        legs[i] = current_leg
+
+    swing_high_level = None; swing_high_crossed = True
+    swing_low_level  = None; swing_low_crossed  = True
+    prev_swing_low   = None
+    swing_trend = 0
+
+    for i in range(choch_swing + 1, n):
+        if legs[i] != legs[i - 1]:
+            if legs[i] == 1:
+                prev_swing_low    = swing_low_level
+                swing_low_level   = lows[i - choch_swing]
+                swing_low_crossed = False
+            else:
+                swing_high_level   = highs[i - choch_swing]
+                swing_high_crossed = False
+
+        c, c_prev = closes[i], closes[i - 1]
+        if (swing_high_level is not None and not swing_high_crossed
+                and c > swing_high_level and c_prev <= swing_high_level):
+            swing_high_crossed = True; swing_trend = 1
+        if (swing_low_level is not None and not swing_low_crossed
+                and c < swing_low_level and c_prev >= swing_low_level):
+            swing_low_crossed = True; swing_trend = -1
+
+    return swing_trend, swing_low_level, prev_swing_low
+
+# ============================================================
 # 7c) 4H Bullish Teyit (1H veriden resample)
 # ============================================================
 def _4h_bullish_confirm(df_1h):
@@ -854,9 +947,10 @@ def _analyze_symbol(symbol):
                 mark_sent(symbol, "discount", "smc-eski-discount")
                 print(f"📉 [ESKİ-DISCOUNT] {symbol} | Depth:%{round(depth,1)}", flush=True)
 
-        # Eski CHoCH: yeşil CHoCH + BTC çakılış koruması (discount_active/4H/RSI şartı yok)
+        # Eski CHoCH: yeşil CHoCH + BTC çakılış koruması + BTC düşüş yapısı koruması
+        # (discount_active/4H/RSI/EMA şartı yok — sadece BTC'nin swing yapısına bakılır)
         eski_break, eski_dir, _, eski_choch_level, eski_swing_low = detect_micro_choch(df, CHOCH_SWING)
-        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash():
+        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash() and not check_btc_downtrend_active():
             last_eski_p2 = get_last_sent(symbol, "choch", "smc-eski-choch")
             if now - last_eski_p2 > PHASE2_COOLDOWN:
                 eski_entry = eski_choch_level if eski_choch_level is not None else price
