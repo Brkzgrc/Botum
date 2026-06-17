@@ -439,7 +439,9 @@ def run(symbols, btc_df, only=None):
 
     ESKI_VARS = [
         "eski_v1_rsi35",       # RSI <= 35
-        "eski_v2_vol15",       # vol_ratio >= 1.5
+        "eski_v2_vol15",       # vol_ratio >= 1.5  (½TP1 + ½TP2)
+        "eski_v2_tp1",         # vol_ratio >= 1.5  (tam TP1 çıkış)
+        "eski_v2_tp2",         # vol_ratio >= 1.5  (tam TP2 çıkış)
         "eski_v3_btc_ema21",   # BTC EMA21 üzerinde
         "eski_v4_dd20",        # coin_drawdown <= -20%
         "eski_v5_atr2",        # atr_pct >= 2%
@@ -654,7 +656,17 @@ def run(symbols, btc_df, only=None):
                             d200   = float(bar.get("dist_ma200") or 0)
 
                             if rsi_e is not None and rsi_e <= 35:        rec(R["eski_v1_rsi35"],    re)
-                            if vr >= 1.5:                                 rec(R["eski_v2_vol15"],    re)
+                            if vr >= 1.5:
+                                rec(R["eski_v2_vol15"], re)
+                                # V2 için ek çıkış karşılaştırması
+                                re_v2tp1 = simulate(df_future, cl_e, slp_e,
+                                                    cl_e+risk_e, None, None,
+                                                    EXPIRE_H["eski"])
+                                re_v2tp2 = simulate(df_future, cl_e, slp_e,
+                                                    cl_e+risk_e, cl_e+risk_e*2, None,
+                                                    EXPIRE_H["eski"])
+                                rec(R["eski_v2_tp1"], re_v2tp1)
+                                rec(R["eski_v2_tp2"], re_v2tp2)
                             if ema21_ok:                                  rec(R["eski_v3_btc_ema21"],re)
                             if dd <= -20:                                 rec(R["eski_v4_dd20"],     re)
                             if ap >= 2.0:                                 rec(R["eski_v5_atr2"],     re)
@@ -731,7 +743,9 @@ def report(R, symbols):
     print("  ESKİ CHOCH VARYASYONLAR")
     print("─"*W)
     row("V1.  + RSI<=35",                 R["eski_v1_rsi35"])
-    row("V2.  + Hacim spike (vol>=1.5x)", R["eski_v2_vol15"])
+    row("V2a. + vol>=1.5x  (½TP1+½TP2)", R["eski_v2_vol15"])
+    row("V2b. + vol>=1.5x  (tam TP1)",   R["eski_v2_tp1"])
+    row("V2c. + vol>=1.5x  (tam TP2)",   R["eski_v2_tp2"])
     row("V3.  + BTC EMA21 üzerinde",      R["eski_v3_btc_ema21"])
     row("V4.  + Drawdown<=-20%",          R["eski_v4_dd20"])
     row("V5.  + ATR>=2%",                 R["eski_v5_atr2"])
