@@ -761,13 +761,48 @@ def main():
         if "BTC/USDT" not in symbols:
             symbols = ["BTC/USDT"] + symbols
     elif args.no_fetch:
-        # Cache'deki pkl dosyalarından coin listesi oluştur
+        # Cache'deki geçerli coinleri oku (2022 öncesi verisi olanlar)
         pkls = [f for f in os.listdir(DATA_DIR) if f.endswith(".pkl")]
-        symbols = [f.replace("_", "/").replace(".pkl", "") for f in pkls]
-        symbols = [s for s in symbols if s.endswith("/USDT")]
+        cached = [f.replace("_", "/").replace(".pkl", "") for f in pkls]
+        cached = [s for s in cached if s.endswith("/USDT")]
+
+        # Hangilerinin 2022 öncesi verisi var kontrol et
+        valid = []
+        skipped = []
+        for s in cached:
+            path = os.path.join(DATA_DIR, s.replace("/","_")+".pkl")
+            try:
+                with open(path,"rb") as f:
+                    df_c = pickle.load(f)
+                if df_c is not None and df_c.index[0] < pd.Timestamp("2022-01-01", tz="UTC"):
+                    valid.append(s)
+                else:
+                    skipped.append(s)
+            except Exception:
+                skipped.append(s)
+
+        print(f"Cache: {len(valid)} geçerli, {len(skipped)} atlandı (2022 öncesi veri yok)")
+
+        # Eksik varsa CoinGecko'dan tamamla
+        need = args.n - len(valid)
+        if need > 0:
+            print(f"{need} coin eksik, CoinGecko'dan indiriliyor...")
+            cg_list = get_top_coins(250)
+            for sym in cg_list:
+                if need <= 0: break
+                if sym in valid or sym in skipped: continue
+                path = os.path.join(DATA_DIR, sym.replace("/","_")+".pkl")
+                print(f"  {sym} indiriliyor...", end=" ", flush=True)
+                df_new = load_or_fetch(sym)
+                if df_new is not None and df_new.index[0] < pd.Timestamp("2022-01-01", tz="UTC"):
+                    valid.append(sym); need -= 1; print("✓")
+                else:
+                    print("atlandı")
+
+        symbols = valid
         if "BTC/USDT" not in symbols:
             symbols.insert(0, "BTC/USDT")
-        print(f"Cache'den {len(symbols)} coin okundu")
+        print(f"Toplam {len(symbols)} coin ile devam ediliyor")
     else:
         print("Top coinler alınıyor...")
         symbols = get_top_coins(args.n)
