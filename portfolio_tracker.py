@@ -519,12 +519,12 @@ def calc_performance():
         "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
         "smc_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
-            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "bot_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
         # [SMC-ESKİ] Karşılaştırma — TOPLAM/breakdown'a dahil edilmez
@@ -664,7 +664,7 @@ def calc_performance():
                 elif _stop_pct < 0 and _dp <= _stop_pct:
                     sa["tp1_only"]["losses"] += 1; sa["tp1_only"]["pnl"] += _stop_pct
                 else:
-                    sa["tp1_only"]["expired"] += 1
+                    sa["tp1_only"]["expired"] += 1; sa["tp1_only"]["expired_pnl"] += _closed_pct
 
                 if _tp2_pct > 0:
                     sa["tp2_only"]["total"] += 1
@@ -673,7 +673,7 @@ def calc_performance():
                     elif _stop_pct < 0 and _dp <= _stop_pct:
                         sa["tp2_only"]["losses"] += 1; sa["tp2_only"]["pnl"] += _stop_pct
                     else:
-                        sa["tp2_only"]["expired"] += 1
+                        sa["tp2_only"]["expired"] += 1; sa["tp2_only"]["expired_pnl"] += _closed_pct
             else:
                 ba = result["bot_alt"]
                 ba["actual"]["total"] += 1
@@ -690,7 +690,7 @@ def calc_performance():
                 elif _stop_pct < 0 and _dp <= _stop_pct:
                     ba["tp1_only"]["losses"] += 1; ba["tp1_only"]["pnl"] += _stop_pct
                 else:
-                    ba["tp1_only"]["expired"] += 1
+                    ba["tp1_only"]["expired"] += 1; ba["tp1_only"]["expired_pnl"] += _closed_pct
 
     # Hayali senaryo hesabı (sadece kapanmış sinyaller — açık pozisyonlar dahil değil)
     for sig in all_sigs:
@@ -775,7 +775,7 @@ def calc_performance():
             dec = s["wins"] + s["losses"]
             s["wr"] = round(s["wins"] / dec * 100, 1) if dec > 0 else 0
             s["pnl"] = round(s["pnl"], 2)
-            if sk == "actual" and "expired_pnl" in s:
+            if "expired_pnl" in s:
                 s["expired_pnl"]  = round(s["expired_pnl"], 2)
                 s["win_loss_pnl"] = s["pnl"]
                 s["total_pnl"]    = round(s["pnl"] + s["expired_pnl"], 2)
@@ -1280,7 +1280,7 @@ def dashboard():
         if not data or data.get("total", 0) == 0:
             return '<td style="color:#3a4a5a;text-align:center" colspan="1">—</td>'
         wr_c = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
-        if is_actual and data.get("expired", 0) > 0 and "total_pnl" in data:
+        if "total_pnl" in data:
             tp = data.get("total_pnl", 0); wlp = data.get("win_loss_pnl", 0); ep = data.get("expired_pnl", 0)
             tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
             wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
