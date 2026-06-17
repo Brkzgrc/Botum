@@ -673,7 +673,11 @@ def calc_performance():
                     elif _stop_pct < 0 and _dp <= _stop_pct:
                         sa["tp2_only"]["losses"] += 1; sa["tp2_only"]["pnl"] += _stop_pct
                     else:
-                        sa["tp2_only"]["expired"] += 1; sa["tp2_only"]["expired_pnl"] += _closed_pct
+                        sa["tp2_only"]["expired"] += 1
+                        # TP1 vurulduysa close_pct blended'dır → ikinci yarı fiyatını geri hesapla
+                        _tp1_exit = sig.get("tp1_exit_pct")
+                        _exp_pct = round(2 * _closed_pct - _tp1_exit, 2) if _tp1_exit else _closed_pct
+                        sa["tp2_only"]["expired_pnl"] += _exp_pct
             else:
                 ba = result["bot_alt"]
                 ba["actual"]["total"] += 1
