@@ -180,6 +180,7 @@ def prepare_bars(df):
     # ROCKET: 24h değişim ve hacim oranı
     df["change_24h"]   = (c / c.shift(24) - 1) * 100
     df["vol_ratio_20"] = v / v.rolling(20).mean().shift(1)
+    df["vol_24h_usd"]  = (c * v).rolling(24).sum()
 
     return df.dropna(subset=["vol_ma", "atr", "close_prev"])
 
@@ -446,9 +447,8 @@ def run(symbols, btc_df, only=None):
         "bot_tp1":    empty_b(),                # Bot tümü — sadece TP1
         "sim_bot":    empty_sim(),
         "sim_smc":    empty_sim(),
-        "eski_disc":     empty_b(),
-        "eski_choch":    empty_b(),
-        "eski_choch_eng":empty_b(),
+        "eski_disc":  empty_b(),
+        "eski_choch": empty_b(),
     }
 
     total = len(symbols)
@@ -489,9 +489,11 @@ def run(symbols, btc_df, only=None):
             sl100     = df.iloc[max(0,i-99):i+1]  # SMC için son 100 bar
 
             entry_c = float(bar["close"])
+            vol_ok  = (not pd.isna(bar.get("vol_24h_usd")) and
+                       float(bar["vol_24h_usd"]) >= 5_000_000)
 
             # ── PANİK PUMP ───────────────────────────────────────────
-            if (only is None or "panik" in only) and ts_h - last["capit"] >= COOLDOWN_H["capit"]:
+            if (only is None or "panik" in only) and vol_ok and ts_h - last["capit"] >= COOLDOWN_H["capit"]:
                 cp = float(bar["close_prev"])
                 if cp > 0 and float(bar["vol_ma"]) > 0:
                     ret1 = (entry_c / cp - 1) * 100
@@ -511,7 +513,7 @@ def run(symbols, btc_df, only=None):
                             last["capit"] = ts_h
 
             # ── T72 ──────────────────────────────────────────────────
-            if (only is None or "t72" in only) and ts_h - last["t72"] >= COOLDOWN_H["t72"]:
+            if (only is None or "t72" in only) and vol_ok and ts_h - last["t72"] >= COOLDOWN_H["t72"]:
                 m5=bar.get("mom5_pct"); de=bar.get("dist_ema21")
                 dd=bar.get("coin_drawdown"); ms=bar.get("ma200_slope")
                 if all(v is not None and not pd.isna(v) for v in [m5,de,dd,ms]):
@@ -526,7 +528,7 @@ def run(symbols, btc_df, only=None):
                         last["t72"] = ts_h
 
             # ── T168 ─────────────────────────────────────────────────
-            if (only is None or "t168" in only) and ts_h - last["t168"] >= COOLDOWN_H["t168"]:
+            if (only is None or "t168" in only) and vol_ok and ts_h - last["t168"] >= COOLDOWN_H["t168"]:
                 dm=bar.get("dist_ma200"); d50=bar.get("dist_ma50")
                 m10=bar.get("mom10_pct"); dh=bar.get("days_since_high")
                 if all(v is not None and not pd.isna(v) for v in [dm,d50,m10,dh]):
@@ -541,7 +543,7 @@ def run(symbols, btc_df, only=None):
                         last["t168"] = ts_h
 
             # ── ROCKET ───────────────────────────────────────────────
-            if (only is None or "rocket" in only) and rocket_ok and ts_h - last["rocket"] >= COOLDOWN_H["rocket"]:
+            if (only is None or "rocket" in only) and vol_ok and rocket_ok and ts_h - last["rocket"] >= COOLDOWN_H["rocket"]:
                 ch24=bar.get("change_24h"); vr20=bar.get("vol_ratio_20")
                 adx=bar.get("adx"); dip=bar.get("di_plus"); dim=bar.get("di_minus")
                 if all(v is not None and not pd.isna(v) for v in [ch24,vr20,adx,dip,dim]):
@@ -569,7 +571,7 @@ def run(symbols, btc_df, only=None):
                         # Phase 1: Discount Zone
                         if (smc["in_discount"] and smc["depth"] >= P1_DEPTH and
                                 rsi is not None and rsi <= P1_RSI and
-                                ema21_ok and crash_ok and not paused and
+                                ema21_ok and crash_ok and not paused and vol_ok and
                                 ts_h - last["smc_disc"] >= COOLDOWN_H["smc"]):
                             disc_active  = True
                             disc_ts      = ts_h
@@ -584,7 +586,7 @@ def run(symbols, btc_df, only=None):
                         if disc_active and crash_ok and not paused:
                             bt, bd, _, cl, sw_low = detect_micro_choch(sl100)
                             if bt=="CHoCH" and bd=="BULLISH" and cl is not None:
-                                if _4h_confirm(sl100) and ts_h - last["smc"] >= COOLDOWN_H["smc"]:
+                                if _4h_confirm(sl100) and vol_ok and ts_h - last["smc"] >= COOLDOWN_H["smc"]:
                                     ep   = cl
                                     slp  = (sw_low * 0.995) if sw_low else ep * 0.95
                                     risk = ep - slp
@@ -604,7 +606,7 @@ def run(symbols, btc_df, only=None):
                         # Eski Discount
                         if (smc["discount_bottom"] > 0 and
                                 entry_c <= smc["discount_bottom"] * (1 + ESKI_DEPTH/100) and
-                                ts_h - last["eski_d"] >= COOLDOWN_H["eski"]):
+                                vol_ok and ts_h - last["eski_d"] >= COOLDOWN_H["eski"]):
                             atr_v = float(bar["atr"]) if not pd.isna(bar["atr"]) else entry_c*0.02
                             stop_e=entry_c-atr_v*4; tp1_e=entry_c+atr_v*4; tp2_e=entry_c+atr_v*6
                             if stop_e > 0:
@@ -615,8 +617,11 @@ def run(symbols, btc_df, only=None):
 
                         # Eski CHoCH
                         bt_e, bd_e, _, cl_e, sl_e = detect_micro_choch(sl100)
+                        vol_ok = (not pd.isna(bar.get("vol_24h_usd")) and
+                                  float(bar["vol_24h_usd"]) >= 5_000_000)
                         if (bt_e=="CHoCH" and bd_e=="BULLISH" and cl_e is not None and
-                                crash_ok and ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
+                                crash_ok and vol_ok and
+                                ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
                             slp_e = (sl_e * 0.995) if sl_e else cl_e * 0.95
                             risk_e = cl_e - slp_e
                             if risk_e <= 0: risk_e = cl_e * 0.05
@@ -626,25 +631,13 @@ def run(symbols, btc_df, only=None):
                             rec(R["eski_choch"], re)
                             last["eski_c"] = ts_h
 
-                            # Eski CHoCH + Engulfing
-                            if i >= 1:
-                                pb = df.iloc[i-1]
-                                engulfing = (
-                                    entry_c > float(bar["open"]) and
-                                    float(pb["close"]) < float(pb["open"]) and
-                                    entry_c > float(pb["open"]) and
-                                    float(bar["open"]) < float(pb["close"])
-                                )
-                                if engulfing:
-                                    rec(R["eski_choch_eng"], re)
-
             except Exception:
                 pass
 
     # Finalize
     for k in ("panik_pump","pump_orta","pump_uzun","rocket",
               "smc_choch","smc_tp1","smc_tp2","bot_actual","bot_tp1",
-              "eski_disc","eski_choch","eski_choch_eng"):
+              "eski_disc","eski_choch"):
         R[k] = fin(R[k])
     R["sim_bot"] = fin_sim(R["sim_bot"])
     R["sim_smc"] = fin_sim(R["sim_smc"])
@@ -699,9 +692,8 @@ def report(R, symbols):
     print("─"*W)
     print("  ESKİ SMC (Karşılaştırma)")
     print("─"*W)
-    row("13. Eski Discount",             R["eski_disc"])
-    row("14. Eski CHoCH",               R["eski_choch"])
-    row("15. Eski CHoCH + Engulfing",   R["eski_choch_eng"])
+    row("13. Eski Discount",        R["eski_disc"])
+    row("14. Eski CHoCH",           R["eski_choch"])
     print("═"*W + "\n")
 
 
