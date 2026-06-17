@@ -215,9 +215,9 @@ def build_btc_filters(btc_df):
 
     # 1H serisine yeniden eşle (ffill)
     idx = df.index
-    rocket_s  = df4h["rocket_ok"].reindex(idx, method="ffill").fillna(True)
-    crash_ok  = df4h["crash_ok"].reindex(idx,  method="ffill").fillna(True)
-    paused_s  = df4h["paused"].reindex(idx,    method="ffill").fillna(False)
+    rocket_s  = df4h["rocket_ok"].reindex(idx, method="ffill").fillna(True).astype(bool)
+    crash_ok  = df4h["crash_ok"].reindex(idx,  method="ffill").fillna(True).astype(bool)
+    paused_s  = df4h["paused"].reindex(idx,    method="ffill").fillna(False).astype(bool)
 
     return pd.DataFrame({
         "rocket_ok":    rocket_s.astype(bool),
