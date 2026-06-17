@@ -438,8 +438,9 @@ def run(symbols, btc_df):
         "bot_tp1":    empty_b(),                # Bot tümü — sadece TP1
         "sim_bot":    empty_sim(),
         "sim_smc":    empty_sim(),
-        "eski_disc":  empty_b(),
-        "eski_choch": empty_b(),
+        "eski_disc":     empty_b(),
+        "eski_choch":    empty_b(),
+        "eski_choch_eng":empty_b(),
     }
 
     total = len(symbols)
@@ -486,8 +487,7 @@ def run(symbols, btc_df):
                     ret1 = (entry_c / cp - 1) * 100
                     volr = float(bar["volume"]) / float(bar["vol_ma"])
                     if (CRASH_MIN <= ret1 <= CRASH_MAX and
-                            VOL_MIN <= volr <= VOL_MAX and
-                            entry_c >= float(bar["open"]) and i >= 5):
+                            VOL_MIN <= volr <= VOL_MAX and i >= 5):
                         c5 = float(df["close"].iloc[i-4])
                         if c5 <= 0 or (c5 - entry_c) / c5 * 100 < 4.0:
                             stop=entry_c*0.97; tp1=entry_c*1.05; tp2=entry_c*1.10; tp3=entry_c*1.15
@@ -614,13 +614,25 @@ def run(symbols, btc_df):
                         rec(R["eski_choch"], re)
                         last["eski_c"] = ts_h
 
+                        # Eski CHoCH + Engulfing filtresi
+                        if i >= 1:
+                            pb = df.iloc[i-1]
+                            engulfing = (
+                                entry_c > float(bar["open"]) and
+                                float(pb["close"]) < float(pb["open"]) and
+                                entry_c > float(pb["open"]) and
+                                float(bar["open"]) < float(pb["close"])
+                            )
+                            if engulfing:
+                                rec(R["eski_choch_eng"], re)
+
             except Exception:
                 pass
 
     # Finalize
     for k in ("panik_pump","pump_orta","pump_uzun","rocket",
               "smc_choch","smc_tp1","smc_tp2","bot_actual","bot_tp1",
-              "eski_disc","eski_choch"):
+              "eski_disc","eski_choch","eski_choch_eng"):
         R[k] = fin(R[k])
     R["sim_bot"] = fin_sim(R["sim_bot"])
     R["sim_smc"] = fin_sim(R["sim_smc"])
@@ -675,8 +687,9 @@ def report(R, symbols):
     print("─"*W)
     print("  ESKİ SMC (Karşılaştırma)")
     print("─"*W)
-    row("13. Eski Discount",        R["eski_disc"])
-    row("14. Eski CHoCH",           R["eski_choch"])
+    row("13. Eski Discount",             R["eski_disc"])
+    row("14. Eski CHoCH",               R["eski_choch"])
+    row("15. Eski CHoCH + Engulfing",   R["eski_choch_eng"])
     print("═"*W + "\n")
 
 
