@@ -11,7 +11,7 @@ Kullanım:
   python backtest.py --coins BTC/USDT ETH/USDT SOL/USDT
 """
 
-import argparse, json, os, pickle, time
+import argparse, json, os, pickle, time, urllib.request
 from datetime import datetime, timezone
 import ccxt, numpy as np, pandas as pd
 
@@ -65,23 +65,31 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 # ═══════════════════════════════════════════════════════════════════════
 # VERİ ÇEKME
 # ═══════════════════════════════════════════════════════════════════════
-def get_top_coins(n=50):
+def get_top_coins(n=100):
+    # CoinGecko'dan market cap sıralamasına göre top N çek
+    url = (f"https://api.coingecko.com/api/v3/coins/markets"
+           f"?vs_currency=usd&order=market_cap_desc&per_page={n}&page=1&sparkline=false")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = json.loads(r.read())
+
+    # Binance'ta işlem gören USDT çiftleriyle eşleştir
     ex = ccxt.binance({"enableRateLimit": True})
     ex.load_markets()
-    tickers = ex.fetch_tickers()
-    coins = []
-    for sym, t in tickers.items():
-        if not sym.endswith("/USDT"): continue
+    binance_pairs = set(ex.markets.keys())
+
+    result = []
+    for coin in data:
+        sym = coin["symbol"].upper() + "/USDT"
         if sym in IGNORED_COINS: continue
-        base = sym.replace("/USDT", "")
+        base = coin["symbol"].upper()
         if any(base.endswith(p) for p in LEVERAGED_PATTERNS): continue
-        vol = float(t.get("quoteVolume") or 0)
-        if vol >= MIN_VOL:
-            coins.append((sym, vol))
-    coins.sort(key=lambda x: x[1], reverse=True)
-    result = [s for s, _ in coins[:n]]
+        if sym not in binance_pairs: continue
+        result.append(sym)
+
     if "BTC/USDT" not in result:
         result.insert(0, "BTC/USDT")
+    print(f"CoinGecko top {n} → Binance'ta {len(result)} coin bulundu")
     return result
 
 
