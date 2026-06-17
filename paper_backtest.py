@@ -40,7 +40,7 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 
 
 # ─── VERİ ───────────────────────────────────────────────────────────────
-START_TS = int(_dt.datetime(2020, 1, 1, tzinfo=_dt.timezone.utc).timestamp() * 1000)
+START_TS = int(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc).timestamp() * 1000)
 
 
 def load_pkl(symbol):
@@ -116,7 +116,7 @@ def get_cached_symbols():
         try:
             with open(os.path.join(DATA_DIR, fname), "rb") as f:
                 df = pickle.load(f)
-            if df is None or df.index[0] >= pd.Timestamp("2022-01-01", tz="UTC"):
+            if df is None or len(df) < 300:
                 continue
         except Exception:
             continue
@@ -202,8 +202,6 @@ def collect_signals(symbols, btc_crash, fetch=True):
         df_raw = load_or_fetch(symbol) if fetch else load_pkl(symbol)
         if df_raw is None or len(df_raw) < 300:
             skipped += 1; continue
-        if df_raw.index[0] >= pd.Timestamp("2022-01-01", tz="UTC"):
-            print(f"    → 2022 öncesi veri yok, atlanıyor"); skipped += 1; continue
         df = prepare_bars(df_raw)
         if len(df) < 300:
             continue
