@@ -66,9 +66,9 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 # VERİ ÇEKME
 # ═══════════════════════════════════════════════════════════════════════
 def get_top_coins(n=100):
-    # CoinGecko'dan market cap sıralamasına göre top N çek
-    url = (f"https://api.coingecko.com/api/v3/coins/markets"
-           f"?vs_currency=usd&order=market_cap_desc&per_page={n}&page=1&sparkline=false")
+    # CoinGecko'dan market cap sıralamasına göre top 250 çek, n tane döndür
+    url = ("https://api.coingecko.com/api/v3/coins/markets"
+           "?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         data = json.loads(r.read())
@@ -89,7 +89,8 @@ def get_top_coins(n=100):
 
     if "BTC/USDT" not in result:
         result.insert(0, "BTC/USDT")
-    print(f"CoinGecko top {n} → Binance'ta {len(result)} coin bulundu")
+    result = result[:n]
+    print(f"CoinGecko top 250 → Binance'ta {len(result)} coin seçildi")
     return result
 
 
