@@ -471,7 +471,7 @@ def run(symbols, btc_df, only=None):
         df_raw = load_or_fetch(symbol)
         if df_raw is None or len(df_raw) < 300:
             print("  → Yetersiz veri, atlanıyor."); continue
-        if df_raw.index[0].year > 2022:
+        if df_raw.index[0] >= pd.Timestamp("2022-01-01", tz="UTC"):
             print(f"  → 2022 öncesi veri yok ({df_raw.index[0].date()}), atlanıyor."); continue
 
         df = prepare_bars(df_raw)
