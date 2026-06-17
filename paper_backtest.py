@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-Paper Trading Backtest — Eski CHoCH + V2 (vol_ratio >= 1.5)
+Paper Trading Backtest — Eski CHoCH + V2 (vol_ratio >= 1.5x)
+Çıkış: Tam pozisyon — TP1 veya TP2 hangisi önce gelirse (V2c strateji)
 $5000 portföy simülasyonu, 2025-01-01'den bugüne
 
 Kullanım:
   python paper_backtest.py              # cache'deki tüm geçerli coinler
-  python paper_backtest.py --n 30       # en fazla 30 coin
+  python paper_backtest.py --n 30
   python paper_backtest.py --capital 10000 --size 1000
   python paper_backtest.py --coins BTC/USDT ETH/USDT SOL/USDT
 
 Ön koşul:
-  Önce backtest.py ile veri çekilmiş olmalı:
-    python backtest.py --n 50 --only eski
+  python backtest.py --n 50 --only eski    (veri yoksa önce bunu çalıştır)
 """
 
 import argparse, heapq, json, os, pickle
+import datetime as _dt
 import numpy as np, pandas as pd
 
 # ─── AYARLAR ────────────────────────────────────────────────────────────
@@ -54,9 +55,10 @@ def get_cached_symbols(n):
     if not os.path.isdir(DATA_DIR):
         print(f"HATA: {DATA_DIR}/ bulunamadı. Önce backtest.py ile veri çek.")
         return []
-    pkls = [f for f in os.listdir(DATA_DIR) if f.endswith(".pkl")]
     symbols = []
-    for fname in pkls:
+    for fname in os.listdir(DATA_DIR):
+        if not fname.endswith(".pkl"):
+            continue
         sym = fname.replace(".pkl", "").replace("_", "/")
         if not sym.endswith("/USDT"):
             continue
@@ -73,7 +75,6 @@ def get_cached_symbols(n):
         except Exception:
             continue
         symbols.append(sym)
-    # BTC her zaman başa
     if "BTC/USDT" in symbols:
         symbols.remove("BTC/USDT")
     symbols.insert(0, "BTC/USDT")
@@ -83,8 +84,9 @@ def get_cached_symbols(n):
 # ─── İNDİKATÖRLER ───────────────────────────────────────────────────────
 def prepare_bars(df):
     df = df.copy()
-    c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
+    c, v = df["close"], df["volume"]
     df["vol_ma"]       = v.rolling(VOL_PERIOD).mean()
+    h, l = df["high"], df["low"]
     tr                 = pd.concat(
         [h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1
     ).max(axis=1)
@@ -114,31 +116,23 @@ def detect_micro_choch(df):
         ph = h[i - CHOCH_SW]; pl = l[i - CHOCH_SW]
         wh = max(h[i - CHOCH_SW + 1 : i + 1])
         wl = min(l[i - CHOCH_SW + 1 : i + 1])
-        if ph > wh:
-            cur = 0
-        elif pl < wl:
-            cur = 1
+        if ph > wh:   cur = 0
+        elif pl < wl: cur = 1
         legs[i] = cur
     sh = sl = None; shx = slx = True; trend = 0
     bt = bd = cl = sw_low = None
     for i in range(CHOCH_SW + 1, n):
         if legs[i] != legs[i - 1]:
-            if legs[i] == 1:
-                sl = l[i - CHOCH_SW]; slx = False; sw_low = sl
-            else:
-                sh = h[i - CHOCH_SW]; shx = False
+            if legs[i] == 1: sl = l[i - CHOCH_SW]; slx = False; sw_low = sl
+            else:             sh = h[i - CHOCH_SW]; shx = False
         if i < n - 1:
-            if sh is not None and not shx and c[i] > sh and c[i - 1] <= sh:
-                shx = True; trend = 1
-            if sl is not None and not slx and c[i] < sl and c[i - 1] >= sl:
-                slx = True; trend = -1
+            if sh is not None and not shx and c[i] > sh and c[i-1] <= sh: shx=True; trend=1
+            if sl is not None and not slx and c[i] < sl and c[i-1] >= sl: slx=True; trend=-1
         if i == n - 1:
-            if sh is not None and not shx and c[i] > sh and c[i - 1] <= sh:
-                bt = "CHoCH" if trend == -1 else "BOS"
-                bd = "BULLISH"; trend = 1; cl = sh
-            if sl is not None and not slx and c[i] < sl and c[i - 1] >= sl:
-                bt = "CHoCH" if trend == 1 else "BOS"
-                bd = "BEARISH"; trend = -1; cl = sl
+            if sh is not None and not shx and c[i] > sh and c[i-1] <= sh:
+                bt="CHoCH" if trend==-1 else "BOS"; bd="BULLISH"; trend=1; cl=sh
+            if sl is not None and not slx and c[i] < sl and c[i-1] >= sl:
+                bt="CHoCH" if trend==1 else "BOS"; bd="BEARISH"; trend=-1; cl=sl
     return bt, bd, trend, cl, sw_low
 
 
@@ -170,7 +164,6 @@ def collect_signals(symbols, btc_crash):
             if not bool(crash_s.iloc[i]):
                 continue
 
-            bar = df.iloc[i]
             sl100 = df.iloc[max(0, i - 99) : i + 1]
             try:
                 bt_e, bd_e, _, cl_e, sl_e = detect_micro_choch(sl100)
@@ -179,15 +172,14 @@ def collect_signals(symbols, btc_crash):
             if not (bt_e == "CHoCH" and bd_e == "BULLISH" and cl_e is not None):
                 continue
 
-            # V2: hacim spike >= 1.5x
-            vr = float(bar.get("vol_ratio_20") or 0)
+            vr = float(df.iloc[i].get("vol_ratio_20") or 0)
             if vr < 1.5:
                 continue
 
             slp_e  = (sl_e * 0.995) if sl_e else cl_e * 0.95
             risk_e = cl_e - slp_e
-            if risk_e <= 0:
-                risk_e = cl_e * 0.05
+            if risk_e <= 0: risk_e = cl_e * 0.05
+
             tp1_e = cl_e + risk_e
             tp2_e = cl_e + risk_e * 2
 
@@ -201,6 +193,7 @@ def collect_signals(symbols, btc_crash):
                 "tp2":        tp2_e,
                 "future":     future,
                 "vol_ratio":  vr,
+                "risk_pct":   round(risk_e / cl_e * 100, 2),
             })
             last_ts_h = ts_h
 
@@ -208,93 +201,53 @@ def collect_signals(symbols, btc_crash):
     return all_signals
 
 
-# ─── NAKİT AKIŞI HESAPLA ────────────────────────────────────────────────
-def compute_cash_events(sig, pos_size):
+# ─── ÇIKIŞ HESAPLA (V2c) ────────────────────────────────────────────────
+def compute_exit(sig, pos_size):
     """
-    Bir sinyal için nakit akışı olaylarını hesapla.
-    Döner: list of (timestamp, cash_amount, label, is_last_exit)
-
-    Half-exit: TP1'de %50, TP2'de kalan %50 (SMC.py ile birebir)
+    V2c: Tam pozisyon çıkışı.
+    Stop → stop fiyatından tam çıkış
+    TP1  → TP2'ye ulaşamadan TP1'e gelirse tam çıkış
+    TP2  → TP2'ye ulaşırsa tam çıkış
+    Expire → 168 saat sonunda market fiyatından çıkış
     """
-    entry = sig["entry"]
-    stop  = sig["stop"]
-    tp1   = sig["tp1"]
-    tp2   = sig["tp2"]
-    rows  = sig["future"]
-    half  = pos_size / 2.0
-
-    tp1_pct  = (tp1 - entry) / entry
-    tp2_pct  = (tp2 - entry) / entry
+    entry    = sig["entry"]
+    stop     = sig["stop"]
+    tp1      = sig["tp1"]
+    tp2      = sig["tp2"]
+    rows     = sig["future"]
     stop_pct = (stop - entry) / entry
-
-    tp1_hit      = False
-    tp1_hit_time = None
+    tp1_pct  = (tp1  - entry) / entry
+    tp2_pct  = (tp2  - entry) / entry
 
     for ts, row in rows.iloc[:EXPIRE_H].iterrows():
         h = float(row["high"])
         l = float(row["low"])
 
-        # Stop — en yüksek öncelik
         if l <= stop:
-            if tp1_hit:
-                # TP1'de yarısı çıktı, stop'ta kalan yarısı
-                return [
-                    (tp1_hit_time, half * (1 + tp1_pct),  "tp1",            False),
-                    (ts,           half * (1 + stop_pct), "stop_after_tp1", True),
-                ]
-            else:
-                return [(ts, pos_size * (1 + stop_pct), "stop", True)]
-
-        # TP2
+            return (ts, pos_size * (1 + stop_pct), "stop")
         if h >= tp2:
-            if tp1_hit:
-                return [
-                    (tp1_hit_time, half * (1 + tp1_pct), "tp1", False),
-                    (ts,           half * (1 + tp2_pct), "tp2", True),
-                ]
-            else:
-                # Aynı bar veya TP1 daha önce fark edilmedi
-                return [
-                    (ts, half * (1 + tp1_pct), "tp1", False),
-                    (ts, half * (1 + tp2_pct), "tp2", True),
-                ]
+            return (ts, pos_size * (1 + tp2_pct), "tp2")
+        if h >= tp1:
+            return (ts, pos_size * (1 + tp1_pct), "tp1")
 
-        # TP1
-        if not tp1_hit and h >= tp1:
-            tp1_hit      = True
-            tp1_hit_time = ts
-
-    # Expire
     if len(rows) > 0:
         last_idx = min(EXPIRE_H - 1, len(rows) - 1)
         last_c   = float(rows.iloc[last_idx]["close"])
-        exp_ts   = rows.index[last_idx]
         exp_pct  = (last_c - entry) / entry
-        if tp1_hit:
-            return [
-                (tp1_hit_time, half * (1 + tp1_pct), "tp1",        False),
-                (exp_ts,       half * (1 + exp_pct), "expire_tp1", True),
-            ]
-        else:
-            return [(exp_ts, pos_size * (1 + exp_pct), "expire", True)]
+        return (rows.index[last_idx], pos_size * (1 + exp_pct), "expire")
 
-    return [(sig["entry_time"], pos_size, "no_data", True)]
+    return (sig["entry_time"], pos_size, "no_data")
 
 
 # ─── PORTFÖY SİMÜLASYONU ────────────────────────────────────────────────
 def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
-    """
-    Event-driven portföy simülasyonu.
-    - Exits önce (aynı timestamp'ta), sonra signals
-    - Half-exit: TP1'de nakit kısmen serbest, TP2/stop'ta kalan
-    """
     cash       = initial_cap
     open_count = 0
     trade_log  = []
     equity_pts = [(START_DATE, initial_cap)]
 
-    # Öncelik: (unix_ts, priority, counter, etype, data)
-    # priority: 0=exit (önce), 1=signal (sonra)
+    # (unix_ts, priority, counter, type, data)
+    # priority: 0=exit önce, 1=signal sonra (aynı timestamp'ta)
     queue   = []
     counter = 0
     for sig in signals:
@@ -306,39 +259,33 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
         ts = pd.Timestamp(unix_ts, unit="s", tz="UTC")
 
         if etype == "signal":
-            sig = data
             if cash < pos_size or open_count >= max_positions:
                 continue
-
-            # Giriş
+            sig = data
             cash       -= pos_size
             open_count += 1
-            trade_id    = counter
-            counter    += 1
+            trade_id    = counter; counter += 1
 
-            cash_events = compute_cash_events(sig, pos_size)
-            stop_pct_v  = (sig["stop"] - sig["entry"]) / sig["entry"] * 100
-            tp1_pct_v   = (sig["tp1"]  - sig["entry"]) / sig["entry"] * 100
-            tp2_pct_v   = (sig["tp2"]  - sig["entry"]) / sig["entry"] * 100
-
-            for ev_ts, cash_ret, label, is_last in cash_events:
-                heapq.heappush(queue, (
-                    ev_ts.timestamp(), 0, counter, "exit",
-                    {
-                        "trade_id":   trade_id,
-                        "symbol":     sig["symbol"],
-                        "entry_time": sig["entry_time"],
-                        "entry":      sig["entry"],
-                        "cash_ret":   cash_ret,
-                        "label":      label,
-                        "is_last":    is_last,
-                        "stop_pct":   stop_pct_v,
-                        "tp1_pct":    tp1_pct_v,
-                        "tp2_pct":    tp2_pct_v,
-                        "pos_size":   pos_size,
-                    }
-                ))
-                counter += 1
+            exit_ts, cash_ret, label = compute_exit(sig, pos_size)
+            heapq.heappush(queue, (
+                exit_ts.timestamp(), 0, counter, "exit",
+                {
+                    "trade_id":   trade_id,
+                    "symbol":     sig["symbol"],
+                    "entry_time": sig["entry_time"],
+                    "entry":      sig["entry"],
+                    "stop":       sig["stop"],
+                    "tp1":        sig["tp1"],
+                    "tp2":        sig["tp2"],
+                    "cash_ret":   cash_ret,
+                    "label":      label,
+                    "stop_pct":   round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2),
+                    "tp1_pct":    round((sig["tp1"]  - sig["entry"]) / sig["entry"] * 100, 2),
+                    "tp2_pct":    round((sig["tp2"]  - sig["entry"]) / sig["entry"] * 100, 2),
+                    "risk_pct":   sig.get("risk_pct", 0),
+                }
+            ))
+            counter += 1
 
             trade_log.append({
                 "type":       "ENTRY",
@@ -346,14 +293,12 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
                 "symbol":     sig["symbol"],
                 "time":       str(ts)[:16],
                 "entry":      round(sig["entry"], 6),
-                "stop":       round(sig["stop"], 6),
-                "tp1":        round(sig["tp1"], 6),
-                "tp2":        round(sig["tp2"], 6),
-                "stop_pct":   round(stop_pct_v, 2),
-                "tp1_pct":    round(tp1_pct_v, 2),
-                "tp2_pct":    round(tp2_pct_v, 2),
-                "size":       pos_size,
+                "stop_pct":   round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2),
+                "tp1_pct":    round((sig["tp1"]  - sig["entry"]) / sig["entry"] * 100, 2),
+                "tp2_pct":    round((sig["tp2"]  - sig["entry"]) / sig["entry"] * 100, 2),
+                "risk_pct":   sig.get("risk_pct", 0),
                 "vol_ratio":  round(sig.get("vol_ratio", 0), 2),
+                "size":       pos_size,
                 "cash_after": round(cash, 2),
                 "open":       open_count,
             })
@@ -361,9 +306,10 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
 
         elif etype == "exit":
             d = data
-            cash += d["cash_ret"]
-            if d["is_last"]:
-                open_count -= 1
+            cash       += d["cash_ret"]
+            open_count -= 1
+            net_pnl     = d["cash_ret"] - pos_size
+
             trade_log.append({
                 "type":       "EXIT",
                 "trade_id":   d["trade_id"],
@@ -371,11 +317,15 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
                 "entry_time": str(d["entry_time"])[:16],
                 "time":       str(ts)[:16],
                 "label":      d["label"],
+                "net_pnl":    round(net_pnl, 2),
+                "net_pct":    round(net_pnl / pos_size * 100, 2),
                 "cash_ret":   round(d["cash_ret"], 2),
                 "cash_after": round(cash, 2),
-                "is_last":    d["is_last"],
                 "open":       open_count,
-                "pos_size":   d["pos_size"],
+                "tp1_pct":    d["tp1_pct"],
+                "tp2_pct":    d["tp2_pct"],
+                "stop_pct":   d["stop_pct"],
+                "risk_pct":   d["risk_pct"],
             })
             equity_pts.append((ts, cash))
 
@@ -383,72 +333,84 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
 
 
 # ─── RAPOR ──────────────────────────────────────────────────────────────
-def report(trade_log, equity_pts, initial_cap, symbols):
-    W = 92
+def report(trade_log, equity_pts, initial_cap, pos_size, symbols):
+    W = 94
 
     entries = [t for t in trade_log if t["type"] == "ENTRY"]
     exits   = [t for t in trade_log if t["type"] == "EXIT"]
 
-    # Per-trade net P&L
-    trade_cf = {}  # trade_id → net cash flow (- ödenen + alınan)
-    for t in trade_log:
-        if t["type"] == "ENTRY":
-            trade_cf[t["trade_id"]] = -t["size"]
-        elif t["type"] == "EXIT":
-            trade_cf[t["trade_id"]] = trade_cf.get(t["trade_id"], 0) + t["cash_ret"]
+    tp2_exits    = [e for e in exits if e["label"] == "tp2"]
+    tp1_exits    = [e for e in exits if e["label"] == "tp1"]
+    stop_exits   = [e for e in exits if e["label"] == "stop"]
+    expire_exits = [e for e in exits if e["label"] in ("expire", "no_data")]
 
-    wins = losses = neutral = 0
-    for pnl in trade_cf.values():
-        if pnl > 0.5:
-            wins += 1
-        elif pnl < -0.5:
-            losses += 1
-        else:
-            neutral += 1
+    wins    = len(tp2_exits) + len(tp1_exits)
+    losses  = len(stop_exits)
+    expires = len(expire_exits)
+    decided = wins + losses
+    wr      = wins / decided * 100 if decided > 0 else 0.0
 
-    total_trades = len(trade_cf)
-    decided      = wins + losses
-    wr           = wins / decided * 100 if decided > 0 else 0.0
-
-    final_cap     = equity_pts[-1][1] if equity_pts else initial_cap
-    total_return  = (final_cap - initial_cap) / initial_cap * 100
+    final_cap    = equity_pts[-1][1] if equity_pts else initial_cap
+    total_return = (final_cap - initial_cap) / initial_cap * 100
+    total_pnl_usd = final_cap - initial_cap
 
     # Max drawdown
     peak = initial_cap; max_dd = 0.0
     for _, cap in equity_pts:
-        if cap > peak:
-            peak = cap
+        if cap > peak: peak = cap
         dd = (cap - peak) / peak * 100 if peak > 0 else 0.0
-        if dd < max_dd:
-            max_dd = dd
+        if dd < max_dd: max_dd = dd
 
-    # Aylık son equity
-    monthly = {}
+    # Ortalama R kazanç / R kayıp
+    avg_win_pct  = sum(e["net_pct"] for e in tp2_exits+tp1_exits) / wins if wins else 0
+    avg_loss_pct = sum(e["net_pct"] for e in stop_exits) / losses if losses else 0
+    avg_tp2_pct  = sum(e["tp2_pct"] for e in tp2_exits) / len(tp2_exits) if tp2_exits else 0
+    avg_tp1_pct  = sum(e["tp1_pct"] for e in tp1_exits) / len(tp1_exits) if tp1_exits else 0
+
+    # Aylık ve haftalık son equity
+    monthly = {}; weekly = {}
     for ts, cap in equity_pts:
-        key = str(ts)[:7]
-        monthly[key] = cap
+        monthly[str(ts)[:7]] = cap
+        iso = ts.isocalendar()
+        weekly[f"{iso[0]}-W{iso[1]:02d}"] = cap
     months = sorted(monthly.keys())
+    weeks  = sorted(weekly.keys())
 
-    # Günde ortalama kaç sinyal (2025-01-01 → bugün)
-    import datetime as _dt
-    days_total = (_dt.datetime.utcnow() - _dt.datetime(2025, 1, 1)).days or 1
+    days_total   = (_dt.datetime.utcnow() - _dt.datetime(2025, 1, 1)).days or 1
     sigs_per_day = len(entries) / days_total
 
     print()
     print("═" * W)
-    print("  PAPER TRADING — Eski CHoCH + V2 (vol_ratio ≥ 1.5x)  |  ½TP1 + ½TP2 çıkış")
+    print("  PAPER TRADING — Eski CHoCH + V2 (vol ≥ 1.5x)")
+    print("  Çıkış: TP2 varsa tam TP2, yoksa tam TP1, yoksa stop/expire (V2c)")
     print(f"  Dönem: 2025-01-01 → bugün  |  {len(symbols)} coin  |  1H Binance")
     print("═" * W)
-    print(f"  Başlangıç:     ${initial_cap:>9,.2f}")
-    print(f"  Bitiş:         ${final_cap:>9,.2f}  ({total_return:+.1f}%)")
-    print(f"  Maks Drawdown: {max_dd:>9.1f}%")
-    print(f"  İşlem/trade:   ${POS_SIZE:>9,.0f}")
+    print(f"  Başlangıç:      ${initial_cap:>9,.2f}")
+    print(f"  Bitiş:          ${final_cap:>9,.2f}  ({total_return:+.1f}%)")
+    print(f"  Net Kâr:        ${total_pnl_usd:>+9,.2f}")
+    print(f"  Maks Drawdown:  {max_dd:>9.1f}%")
+    print(f"  İşlem başına:   ${pos_size:>9,.0f}")
     print("─" * W)
-    print(f"  Toplam trade:  {total_trades}  ({sigs_per_day:.1f}/gün ort)")
-    print(f"  Kârlı:         {wins}")
-    print(f"  Zararlı:       {losses}")
-    print(f"  Nötr/Exp:      {neutral}")
-    print(f"  WR:            %{wr:.1f}  (kesinleşen kâr/zarar bazında)")
+    print(f"  Toplam trade:   {len(entries)}  ({sigs_per_day:.1f}/gün ort.)")
+    print(f"  TP2 çıkış:      {len(tp2_exits)}  (ort. +{avg_tp2_pct:.1f}%)")
+    print(f"  TP1 çıkış:      {len(tp1_exits)}  (ort. +{avg_tp1_pct:.1f}%)")
+    print(f"  Stop:           {len(stop_exits)}  (ort. {avg_loss_pct:.1f}%)")
+    print(f"  Expire:         {expires}")
+    print(f"  WR:             %{wr:.1f}  |  Ort kazanç: {avg_win_pct:+.1f}%  Ort kayıp: {avg_loss_pct:.1f}%")
+    print("─" * W)
+
+    # Haftalık özet
+    print("  HAFTALIK ÖZET")
+    print("─" * W)
+    prev_cap = initial_cap
+    for w in weeks:
+        cap   = weekly[w]
+        w_ret = (cap - prev_cap) / prev_cap * 100 if prev_cap > 0 else 0.0
+        sign  = "+" if w_ret >= 0 else ""
+        bar   = "█" * min(int(abs(w_ret) * 5), 40)
+        arrow = "▲" if w_ret >= 0 else "▼"
+        print(f"  {w}  ${cap:>9,.2f}  {arrow} {sign}{w_ret:5.1f}%  {bar}")
+        prev_cap = cap
     print("─" * W)
 
     # Aylık özet
@@ -459,7 +421,7 @@ def report(trade_log, equity_pts, initial_cap, symbols):
         cap   = monthly[m]
         m_ret = (cap - prev_cap) / prev_cap * 100 if prev_cap > 0 else 0.0
         sign  = "+" if m_ret >= 0 else ""
-        bar   = "█" * min(int(abs(m_ret) * 3), 40)
+        bar   = "█" * min(int(abs(m_ret) * 3), 45)
         arrow = "▲" if m_ret >= 0 else "▼"
         print(f"  {m}  ${cap:>9,.2f}  {arrow} {sign}{m_ret:5.1f}%  {bar}")
         prev_cap = cap
@@ -468,35 +430,53 @@ def report(trade_log, equity_pts, initial_cap, symbols):
     # Son 30 giriş
     print("  SON 30 GİRİŞ")
     print("─" * W)
-    hdr = f"  {'Zaman':<17} {'Coin':<12} {'Giriş':>10} {'Stop%':>7} {'TP1%':>7} {'TP2%':>7} {'Vol':>5}  {'$Kalan':>9}"
-    print(hdr)
+    print(f"  {'Zaman':<17} {'Coin':<12} {'Giriş':>10} {'Stop%':>7} {'TP1%':>6} {'TP2%':>6} {'Risk':>5} {'Vol':>5}  {'$Kalan':>9}")
     for t in entries[-30:]:
         print(
             f"  {t['time']:<17} {t['symbol']:<12} {t['entry']:>10.5f} "
-            f"{t['stop_pct']:>7.1f} {t['tp1_pct']:>7.1f} {t['tp2_pct']:>7.1f} "
-            f"{t['vol_ratio']:>5.1f}x  ${t['cash_after']:>8,.0f}"
+            f"{t['stop_pct']:>7.1f} {t['tp1_pct']:>6.1f} {t['tp2_pct']:>6.1f} "
+            f"{t['risk_pct']:>5.1f}% {t['vol_ratio']:>5.1f}x  ${t['cash_after']:>8,.0f}"
+        )
+
+    # Son 30 çıkış
+    print("─" * W)
+    print("  SON 30 ÇIKIŞ")
+    print("─" * W)
+    emoji_map = {"tp2": "🚀", "tp1": "✅", "stop": "❌", "expire": "⏰", "no_data": "—"}
+    print(f"  {'Zaman':<17} {'Coin':<12} {'Sonuç':<6} {'Net%':>7} {'Net$':>8}  {'$Toplam':>9}")
+    for e in exits[-30:]:
+        em = emoji_map.get(e["label"], "?")
+        print(
+            f"  {e['time']:<17} {e['symbol']:<12} {em} {e['label']:<4} "
+            f"{e['net_pct']:>+7.1f}% ${e['net_pnl']:>+7.2f}  ${e['cash_after']:>8,.0f}"
         )
     print("═" * W)
 
-    # JSON kaydet
+    # JSON
     out = {
+        "strategy":         "Eski CHoCH + V2 (vol>=1.5x) — V2c full exit",
         "initial_capital":  initial_cap,
         "final_capital":    round(final_cap, 2),
         "total_return_pct": round(total_return, 2),
+        "total_pnl_usd":    round(total_pnl_usd, 2),
         "max_drawdown_pct": round(max_dd, 2),
-        "total_trades":     total_trades,
-        "wins":             wins,
-        "losses":           losses,
-        "neutral":          neutral,
+        "total_trades":     len(entries),
+        "tp2_exits":        len(tp2_exits),
+        "tp1_exits":        len(tp1_exits),
+        "stops":            len(stop_exits),
+        "expires":          expires,
         "win_rate_pct":     round(wr, 1),
+        "avg_win_pct":      round(avg_win_pct, 2),
+        "avg_loss_pct":     round(avg_loss_pct, 2),
         "avg_signals_per_day": round(sigs_per_day, 2),
+        "weekly":           {w: round(weekly[w], 2) for w in weeks},
         "monthly":          {m: round(monthly[m], 2) for m in months},
         "coins_used":       symbols,
         "trade_log":        trade_log,
     }
     with open("paper_results.json", "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, ensure_ascii=False)
-    print(f"\n  Detaylar kaydedildi → paper_results.json\n")
+    print(f"\n  Kaydedildi → paper_results.json\n")
 
 
 # ─── MAIN ───────────────────────────────────────────────────────────────
@@ -515,11 +495,10 @@ def main():
     POS_SIZE      = args.size
     MAX_POSITIONS = args.max_pos
 
-    # BTC verisi (crash filtresi için şart)
     btc_raw = load_pkl("BTC/USDT")
     if btc_raw is None:
         print("HATA: BTC/USDT cache'de yok.")
-        print("Önce şunu çalıştır: python backtest.py --coins BTC/USDT ETH/USDT SOL/USDT --only eski")
+        print("Önce: python backtest.py --coins BTC/USDT ETH/USDT SOL/USDT --only eski")
         return
     btc_crash = build_btc_crash_filter(btc_raw)
 
@@ -538,13 +517,13 @@ def main():
           f"${POS_SIZE:,.0f}/trade | max {MAX_POSITIONS} pozisyon")
     print(f"Sinyaller toplanıyor ({START_DATE.date()} → bugün)...")
     signals = collect_signals(symbols, btc_crash)
-    print(f"\n{len(signals)} sinyal bulundu — portföy simülasyonu başlıyor...")
+    print(f"\n{len(signals)} sinyal — portföy simülasyonu başlıyor...")
 
     trade_log, equity_pts, final_cash = simulate_portfolio(
         signals, INITIAL_CAP, POS_SIZE, MAX_POSITIONS
     )
 
-    report(trade_log, equity_pts, INITIAL_CAP, symbols)
+    report(trade_log, equity_pts, INITIAL_CAP, POS_SIZE, symbols)
 
 
 if __name__ == "__main__":
