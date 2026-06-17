@@ -423,7 +423,7 @@ def fin_sim(b):
 # ═══════════════════════════════════════════════════════════════════════
 # ANA BACKTEST
 # ═══════════════════════════════════════════════════════════════════════
-def run(symbols, btc_df):
+def run(symbols, btc_df, only=None):
     print("BTC filtre serisi hazırlanıyor...")
     btc_f = build_btc_filters(btc_df)
 
@@ -481,7 +481,7 @@ def run(symbols, btc_df):
             entry_c = float(bar["close"])
 
             # ── PANİK PUMP ───────────────────────────────────────────
-            if ts_h - last["capit"] >= COOLDOWN_H["capit"]:
+            if (only is None or "panik" in only) and ts_h - last["capit"] >= COOLDOWN_H["capit"]:
                 cp = float(bar["close_prev"])
                 if cp > 0 and float(bar["vol_ma"]) > 0:
                     ret1 = (entry_c / cp - 1) * 100
@@ -501,7 +501,7 @@ def run(symbols, btc_df):
                             last["capit"] = ts_h
 
             # ── T72 ──────────────────────────────────────────────────
-            if ts_h - last["t72"] >= COOLDOWN_H["t72"]:
+            if (only is None or "t72" in only) and ts_h - last["t72"] >= COOLDOWN_H["t72"]:
                 m5=bar.get("mom5_pct"); de=bar.get("dist_ema21")
                 dd=bar.get("coin_drawdown"); ms=bar.get("ma200_slope")
                 if all(v is not None and not pd.isna(v) for v in [m5,de,dd,ms]):
@@ -516,7 +516,7 @@ def run(symbols, btc_df):
                         last["t72"] = ts_h
 
             # ── T168 ─────────────────────────────────────────────────
-            if ts_h - last["t168"] >= COOLDOWN_H["t168"]:
+            if (only is None or "t168" in only) and ts_h - last["t168"] >= COOLDOWN_H["t168"]:
                 dm=bar.get("dist_ma200"); d50=bar.get("dist_ma50")
                 m10=bar.get("mom10_pct"); dh=bar.get("days_since_high")
                 if all(v is not None and not pd.isna(v) for v in [dm,d50,m10,dh]):
@@ -531,7 +531,7 @@ def run(symbols, btc_df):
                         last["t168"] = ts_h
 
             # ── ROCKET ───────────────────────────────────────────────
-            if rocket_ok and ts_h - last["rocket"] >= COOLDOWN_H["rocket"]:
+            if (only is None or "rocket" in only) and rocket_ok and ts_h - last["rocket"] >= COOLDOWN_H["rocket"]:
                 ch24=bar.get("change_24h"); vr20=bar.get("vol_ratio_20")
                 adx=bar.get("adx"); dip=bar.get("di_plus"); dim=bar.get("di_minus")
                 if all(v is not None and not pd.isna(v) for v in [ch24,vr20,adx,dip,dim]):
@@ -546,85 +546,87 @@ def run(symbols, btc_df):
                         last["rocket"] = ts_h
 
             # ── SMC Phase 1 & 2 ──────────────────────────────────────
+            run_smc  = only is None or "smc"  in only
+            run_eski = only is None or "eski" in only
+            if not run_smc and not run_eski:
+                continue
             try:
                 smc = luxalgo_smc(sl100)
                 if smc:
                     rsi = calc_rsi(sl100["close"].tolist())
-                    # Phase 1: Discount Zone
-                    if (smc["in_discount"] and smc["depth"] >= P1_DEPTH and
-                            rsi is not None and rsi <= P1_RSI and
-                            ema21_ok and crash_ok and not paused and
-                            ts_h - last["smc_disc"] >= COOLDOWN_H["smc"]):
-                        disc_active  = True
-                        disc_ts      = ts_h
-                        last["smc_disc"] = ts_h
-                        R["smc_disc"]["total"] += 1
 
-                    # Phase 1 çok eskiyse sıfırla (7 gün)
-                    if disc_active and ts_h - disc_ts > 168:
-                        disc_active = False
+                    if run_smc:
+                        # Phase 1: Discount Zone
+                        if (smc["in_discount"] and smc["depth"] >= P1_DEPTH and
+                                rsi is not None and rsi <= P1_RSI and
+                                ema21_ok and crash_ok and not paused and
+                                ts_h - last["smc_disc"] >= COOLDOWN_H["smc"]):
+                            disc_active  = True
+                            disc_ts      = ts_h
+                            last["smc_disc"] = ts_h
+                            R["smc_disc"]["total"] += 1
 
-                    # Phase 2: CHoCH
-                    if disc_active and crash_ok and not paused:
-                        bt, bd, _, cl, sw_low = detect_micro_choch(sl100)
-                        if bt=="CHoCH" and bd=="BULLISH" and cl is not None:
-                            if _4h_confirm(sl100) and ts_h - last["smc"] >= COOLDOWN_H["smc"]:
-                                ep   = cl
-                                slp  = (sw_low * 0.995) if sw_low else ep * 0.95
-                                risk = ep - slp
-                                if risk <= 0: risk = ep * 0.05
-                                tp1p = ep + risk; tp2p = ep + risk*2
+                        # Phase 1 çok eskiyse sıfırla (7 gün)
+                        if disc_active and ts_h - disc_ts > 168:
+                            disc_active = False
 
-                                # ½TP1 + ½TP2 (gerçek)
-                                ra = simulate(df_future, ep, slp, tp1p, tp2p, None,
-                                              EXPIRE_H["smc"], half_exit=True)
-                                rec(R["smc_choch"], ra); rec_sim(R["sim_smc"], ra)
-                                # Tam TP1
-                                r1 = simulate(df_future, ep, slp, tp1p, None, None, EXPIRE_H["smc"])
-                                rec(R["smc_tp1"], r1)
-                                # Tam TP2
-                                r2 = simulate(df_future, ep, slp, tp1p, tp2p, None, EXPIRE_H["smc"])
-                                rec(R["smc_tp2"], r2)
-                                disc_active  = False
-                                last["smc"]  = ts_h
+                        # Phase 2: CHoCH
+                        if disc_active and crash_ok and not paused:
+                            bt, bd, _, cl, sw_low = detect_micro_choch(sl100)
+                            if bt=="CHoCH" and bd=="BULLISH" and cl is not None:
+                                if _4h_confirm(sl100) and ts_h - last["smc"] >= COOLDOWN_H["smc"]:
+                                    ep   = cl
+                                    slp  = (sw_low * 0.995) if sw_low else ep * 0.95
+                                    risk = ep - slp
+                                    if risk <= 0: risk = ep * 0.05
+                                    tp1p = ep + risk; tp2p = ep + risk*2
+                                    ra = simulate(df_future, ep, slp, tp1p, tp2p, None,
+                                                  EXPIRE_H["smc"], half_exit=True)
+                                    rec(R["smc_choch"], ra); rec_sim(R["sim_smc"], ra)
+                                    r1 = simulate(df_future, ep, slp, tp1p, None, None, EXPIRE_H["smc"])
+                                    rec(R["smc_tp1"], r1)
+                                    r2 = simulate(df_future, ep, slp, tp1p, tp2p, None, EXPIRE_H["smc"])
+                                    rec(R["smc_tp2"], r2)
+                                    disc_active = False
+                                    last["smc"] = ts_h
 
-                    # ── ESKİ SMC ─────────────────────────────────────
-                    # Eski Discount
-                    if (smc["discount_bottom"] > 0 and
-                            entry_c <= smc["discount_bottom"] * (1 + ESKI_DEPTH/100) and
-                            ts_h - last["eski_d"] >= COOLDOWN_H["eski"]):
-                        atr_v = float(bar["atr"]) if not pd.isna(bar["atr"]) else entry_c*0.02
-                        stop_e=entry_c-atr_v*4; tp1_e=entry_c+atr_v*4; tp2_e=entry_c+atr_v*6
-                        if stop_e > 0:
-                            re = simulate(df_future, entry_c, stop_e, tp1_e, tp2_e, None,
-                                          EXPIRE_H["eski"], trailing=True)
-                            rec(R["eski_disc"], re)
-                            last["eski_d"] = ts_h
+                    if run_eski:
+                        # Eski Discount
+                        if (smc["discount_bottom"] > 0 and
+                                entry_c <= smc["discount_bottom"] * (1 + ESKI_DEPTH/100) and
+                                ts_h - last["eski_d"] >= COOLDOWN_H["eski"]):
+                            atr_v = float(bar["atr"]) if not pd.isna(bar["atr"]) else entry_c*0.02
+                            stop_e=entry_c-atr_v*4; tp1_e=entry_c+atr_v*4; tp2_e=entry_c+atr_v*6
+                            if stop_e > 0:
+                                re = simulate(df_future, entry_c, stop_e, tp1_e, tp2_e, None,
+                                              EXPIRE_H["eski"], trailing=True)
+                                rec(R["eski_disc"], re)
+                                last["eski_d"] = ts_h
 
-                    # Eski CHoCH
-                    bt_e, bd_e, _, cl_e, sl_e = detect_micro_choch(sl100)
-                    if (bt_e=="CHoCH" and bd_e=="BULLISH" and cl_e is not None and
-                            crash_ok and ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
-                        slp_e = (sl_e * 0.995) if sl_e else cl_e * 0.95
-                        risk_e = cl_e - slp_e
-                        if risk_e <= 0: risk_e = cl_e * 0.05
-                        re = simulate(df_future, cl_e, slp_e,
-                                      cl_e+risk_e, cl_e+risk_e*2, None,
-                                      EXPIRE_H["eski"], half_exit=True)
-                        rec(R["eski_choch"], re)
-                        last["eski_c"] = ts_h
+                        # Eski CHoCH
+                        bt_e, bd_e, _, cl_e, sl_e = detect_micro_choch(sl100)
+                        if (bt_e=="CHoCH" and bd_e=="BULLISH" and cl_e is not None and
+                                crash_ok and ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
+                            slp_e = (sl_e * 0.995) if sl_e else cl_e * 0.95
+                            risk_e = cl_e - slp_e
+                            if risk_e <= 0: risk_e = cl_e * 0.05
+                            re = simulate(df_future, cl_e, slp_e,
+                                          cl_e+risk_e, cl_e+risk_e*2, None,
+                                          EXPIRE_H["eski"], half_exit=True)
+                            rec(R["eski_choch"], re)
+                            last["eski_c"] = ts_h
 
-                        # Eski CHoCH + Engulfing filtresi
-                        if i >= 1:
-                            pb = df.iloc[i-1]
-                            engulfing = (
-                                entry_c > float(bar["open"]) and
-                                float(pb["close"]) < float(pb["open"]) and
-                                entry_c > float(pb["open"]) and
-                                float(bar["open"]) < float(pb["close"])
-                            )
-                            if engulfing:
-                                rec(R["eski_choch_eng"], re)
+                            # Eski CHoCH + Engulfing
+                            if i >= 1:
+                                pb = df.iloc[i-1]
+                                engulfing = (
+                                    entry_c > float(bar["open"]) and
+                                    float(pb["close"]) < float(pb["open"]) and
+                                    entry_c > float(pb["open"]) and
+                                    float(bar["open"]) < float(pb["close"])
+                                )
+                                if engulfing:
+                                    rec(R["eski_choch_eng"], re)
 
             except Exception:
                 pass
@@ -701,6 +703,7 @@ def main():
     ap.add_argument("--no-fetch",  action="store_true", help="Cache'i kullan, tekrar indirme")
     ap.add_argument("--coins",     nargs="*",           help="Belirli coinler")
     ap.add_argument("--n",         type=int, default=N_COINS, help=f"Coin sayısı (default:{N_COINS})")
+    ap.add_argument("--only",      nargs="*",           help="Sadece belirli senaryolar: panik t72 t168 rocket smc eski")
     args = ap.parse_args()
 
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -736,7 +739,7 @@ def main():
 
     print(f"\n--- Backtest Başlıyor ---")
     t0 = time.time()
-    R  = run(symbols, btc_df)
+    R  = run(symbols, btc_df, only=args.only)
     dt = time.time() - t0
     print(f"\nSüre: {dt/60:.1f} dakika")
 
