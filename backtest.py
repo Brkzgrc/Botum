@@ -715,6 +715,14 @@ def main():
         symbols = args.coins
         if "BTC/USDT" not in symbols:
             symbols = ["BTC/USDT"] + symbols
+    elif args.no_fetch:
+        # Cache'deki pkl dosyalarından coin listesi oluştur
+        pkls = [f for f in os.listdir(DATA_DIR) if f.endswith(".pkl")]
+        symbols = [f.replace("_", "/").replace(".pkl", "") for f in pkls]
+        symbols = [s for s in symbols if s.endswith("/USDT")]
+        if "BTC/USDT" not in symbols:
+            symbols.insert(0, "BTC/USDT")
+        print(f"Cache'den {len(symbols)} coin okundu")
     else:
         print("Top coinler alınıyor...")
         symbols = get_top_coins(args.n)
