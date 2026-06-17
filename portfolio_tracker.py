@@ -515,15 +515,15 @@ def calc_performance():
             "dikkat":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
             "riskli":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
         },
-        "sim_bot":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0},
-        "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0},
+        "sim_bot":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
+        "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
         "smc_alt": {
-            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
             "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
             "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
         },
         "bot_alt": {
-            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
             "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
         },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
@@ -656,7 +656,7 @@ def calc_performance():
                     else: sa["actual"]["losses"] += 1
                     sa["actual"]["pnl"] += _closed_pct
                 else:
-                    sa["actual"]["expired"] += 1
+                    sa["actual"]["expired"] += 1; sa["actual"]["expired_pnl"] += _closed_pct
 
                 sa["tp1_only"]["total"] += 1
                 if _tp1_pct > 0 and _pk >= _tp1_pct:
@@ -682,7 +682,7 @@ def calc_performance():
                 elif status == "loss":
                     ba["actual"]["losses"] += 1; ba["actual"]["pnl"] += _closed_pct
                 else:
-                    ba["actual"]["expired"] += 1
+                    ba["actual"]["expired"] += 1; ba["actual"]["expired_pnl"] += _closed_pct
 
                 ba["tp1_only"]["total"] += 1
                 if _tp1_pct > 0 and _pk >= _tp1_pct:
@@ -702,14 +702,19 @@ def calc_performance():
         bucket = result["sim_smc"] if is_smc else result["sim_bot"]
         pk = sig.get("peak_pct", 0) or 0
         dp = sig.get("low_pct", 0) or 0
+        _is_exp = sig.get("status") in ("expired", "half_expired")
         if pk >= SIM_TP2:
             bucket["tp2"] += 1; bucket["pnl"] += SIM_TP2
+            if _is_exp: bucket["exp_tp2"] += 1
         elif pk >= SIM_TP1 and dp > SIM_STOP:
             bucket["tp1"] += 1; bucket["pnl"] += SIM_TP1
+            if _is_exp: bucket["exp_tp1"] += 1
         elif dp <= SIM_STOP:
             bucket["stop"] += 1; bucket["pnl"] += SIM_STOP
+            if _is_exp: bucket["exp_stop"] += 1
         else:
             bucket["open"] += 1
+            if _is_exp: bucket["exp_open"] += 1
 
     # [SMC-ESKİ] Karşılaştırma istatistikleri — TOPLAM/breakdown'a dahil edilmez
     _eski_peaks = {"discount": [], "choch": []}
@@ -770,6 +775,10 @@ def calc_performance():
             dec = s["wins"] + s["losses"]
             s["wr"] = round(s["wins"] / dec * 100, 1) if dec > 0 else 0
             s["pnl"] = round(s["pnl"], 2)
+            if sk == "actual" and "expired_pnl" in s:
+                s["expired_pnl"]  = round(s["expired_pnl"], 2)
+                s["win_loss_pnl"] = s["pnl"]
+                s["total_pnl"]    = round(s["pnl"] + s["expired_pnl"], 2)
 
     for tk, ts in type_stats.items():
         closed = ts["wins"] + ts["losses"] + ts["expired"]
@@ -1123,6 +1132,20 @@ def dashboard():
         wr_c = "#2ecc71" if b["wr"] >= 55 else ("#f39c12" if b["wr"] >= 40 else "#e74c3c")
         pnl_c = "#2ecc71" if b["pnl"] > 0 else ("#e74c3c" if b["pnl"] < 0 else "#8a9bb0")
         return (b["tp2"], b["tp1"], b["stop"], b["open"], decided, b["wr"], wr_c, b["pnl"], pnl_c)
+    def _exp_subrow(b):
+        e2 = b.get("exp_tp2",0); e1 = b.get("exp_tp1",0)
+        es = b.get("exp_stop",0); eo = b.get("exp_open",0)
+        total_exp = e2 + e1 + es + eo
+        if total_exp == 0: return ""
+        return (f'<tr style="background:#04080e">'
+                f'<td style="color:#3a4a5a;font-size:.58rem;padding-left:14px">↳ Exp: {total_exp} sin.</td>'
+                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{total_exp}</td>'
+                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{e2 if e2 else "—"}</td>'
+                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{e1 if e1 else "—"}</td>'
+                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{es if es else "—"}</td>'
+                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{eo if eo else "—"}</td>'
+                f'<td colspan="2" style="color:#2a3540;font-size:.58rem;font-style:italic">gerçekte süresi doldu</td>'
+                f'</tr>')
     sb = perf.get("sim_bot", {}); ss = perf.get("sim_smc", {})
     sbt = _sim_row(sb) if sb else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
     sst = _sim_row(ss) if ss else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
@@ -1135,12 +1158,14 @@ def dashboard():
     st_pnl  = round(sbt[7] + sst[7], 1)
     st_wrc  = "#2ecc71" if st_wr >= 55 else ("#f39c12" if st_wr >= 40 else "#e74c3c")
     st_pnlc = "#2ecc71" if st_pnl > 0 else ("#e74c3c" if st_pnl < 0 else "#8a9bb0")
+    st_fake_b = {f"exp_{k}": sb.get(f"exp_{k}",0)+ss.get(f"exp_{k}",0) for k in ("tp2","tp1","stop","open")}
 
     _sim_section = f"""<div class="tp2-box">
     <details>
     <summary>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</summary>
     <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
-        Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.</p>
+        Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.<br>
+        <span style="color:#3a4a5a">↳ Exp satırları: o gruptaki sinyallerin kaçı gerçekte süresi dolmuştu?</span></p>
     <div class="table-wrap"><table style="font-size:.72rem"><thead><tr>
         <th></th>
         <th style="text-align:center;color:#8a9bb0">Sinyal</th>
@@ -1161,6 +1186,7 @@ def dashboard():
             <td style="text-align:center"><span style="color:{sbt[6]}">%{sbt[5]}</span></td>
             <td style="text-align:center"><span style="color:{sbt[8]}">{sbt[7]:+.2f}%</span></td>
         </tr>
+        {_exp_subrow(sb)}
         <tr>
             <td style="color:#e67e22">SMC Sinyalleri</td>
             <td style="text-align:center;color:#8a9bb0">{sst[0]+sst[1]+sst[2]+sst[3]}</td>
@@ -1171,6 +1197,7 @@ def dashboard():
             <td style="text-align:center"><span style="color:{sst[6]}">%{sst[5]}</span></td>
             <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.2f}%</span></td>
         </tr>
+        {_exp_subrow(ss)}
         <tr style="border-top:2px solid #1a3050">
             <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
             <td style="text-align:center;color:#8a9bb0;font-weight:bold">{st_tp2+st_tp1+st_stop+st_open}</td>
@@ -1181,6 +1208,7 @@ def dashboard():
             <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
             <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.2f}%</span></td>
         </tr>
+        {_exp_subrow(st_fake_b)}
     </tbody></table></div>
     </details>
 </div>"""
@@ -1248,16 +1276,27 @@ def dashboard():
     smc_a = perf.get("smc_alt", {})
     bot_a = perf.get("bot_alt", {})
 
-    def _alt_cell(data, color):
+    def _alt_cell(data, color, is_actual=False):
         if not data or data.get("total", 0) == 0:
             return '<td style="color:#3a4a5a;text-align:center" colspan="1">—</td>'
-        wr_c  = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
-        pnl_c = "#2ecc71" if data.get("pnl",0) > 0 else ("#e74c3c" if data.get("pnl",0) < 0 else "#8a9bb0")
+        wr_c = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
+        if is_actual and data.get("expired", 0) > 0 and "total_pnl" in data:
+            tp = data.get("total_pnl", 0); wlp = data.get("win_loss_pnl", 0); ep = data.get("expired_pnl", 0)
+            tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
+            wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
+            ep_c  = "#2ecc71" if ep > 0 else ("#e74c3c" if ep < 0 else "#8a9bb0")
+            pnl_td = (f'<td style="text-align:center;font-weight:bold"><span style="color:{tp_c}">{tp:+.2f}%</span>'
+                      f'<br><span style="font-size:.57rem;color:{wlp_c}">W/L:{wlp:+.2f}%</span>'
+                      f'<span style="font-size:.57rem;color:{ep_c}"> Exp:{ep:+.2f}%</span></td>')
+        else:
+            pnl = data.get("pnl", 0)
+            pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
+            pnl_td = f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{pnl:+.2f}%</span></td>'
         return (f'<td style="text-align:center"><span style="color:#2ecc71">{data.get("wins",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
                 f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
-                f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{data.get("pnl",0):+.2f}%</span></td>')
+                + pnl_td)
 
     _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
                '<th style="text-align:center;color:#2ecc71">Win</th>'
@@ -1275,7 +1314,7 @@ def dashboard():
             f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
             f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
             f'<tr><td style="color:#e67e22;white-space:nowrap">½ TP1 + ½ TP2 (gerçek)</td>'
-            f'{_alt_cell(smc_a.get("actual",{}), "#e67e22")}</tr>'
+            f'{_alt_cell(smc_a.get("actual",{}), "#e67e22", is_actual=True)}</tr>'
             f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
             f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
             f'<tr><td style="color:#2ecc71;white-space:nowrap">Tam TP2 (%100)</td>'
@@ -1295,7 +1334,7 @@ def dashboard():
             f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
             f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
             f'<tr><td style="color:#3498db;white-space:nowrap">Trailing %3 (gerçek)</td>'
-            f'{_alt_cell(bot_a.get("actual",{}), "#3498db")}</tr>'
+            f'{_alt_cell(bot_a.get("actual",{}), "#3498db", is_actual=True)}</tr>'
             f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
             f'{_alt_cell(bot_a.get("tp1_only",{}), "#f39c12")}</tr>'
             f'</tbody></table></div>'
