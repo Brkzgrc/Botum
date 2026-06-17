@@ -437,19 +437,32 @@ def run(symbols, btc_df, only=None):
     print("BTC filtre serisi hazırlanıyor...")
     btc_f = build_btc_filters(btc_df)
 
+    ESKI_VARS = [
+        "eski_v1_rsi35",       # RSI <= 35
+        "eski_v2_vol15",       # vol_ratio >= 1.5
+        "eski_v3_btc_ema21",   # BTC EMA21 üzerinde
+        "eski_v4_dd20",        # coin_drawdown <= -20%
+        "eski_v5_atr2",        # atr_pct >= 2%
+        "eski_v6_ema50",       # close < ema50
+        "eski_v7_slope",       # ma200_slope >= 0
+        "eski_v8_mom",         # mom5_pct >= 0
+        "eski_v9_adx20",       # adx >= 20
+        "eski_v10_dist200",    # dist_ma200 <= -10%
+    ]
     R = {
         "panik_pump": empty_b(), "pump_orta":  empty_b(),
         "pump_uzun":  empty_b(), "rocket":     empty_b(),
-        "smc_disc":   {"total":0},              # Phase 1 sayım
-        "smc_choch":  empty_b(),                # ½TP1 + ½TP2 (gerçek)
-        "smc_tp1":    empty_b(),                # Tam TP1
-        "smc_tp2":    empty_b(),                # Tam TP2
-        "bot_actual": empty_b(),                # Bot tümü — trailing
-        "bot_tp1":    empty_b(),                # Bot tümü — sadece TP1
+        "smc_disc":   {"total":0},
+        "smc_choch":  empty_b(),
+        "smc_tp1":    empty_b(),
+        "smc_tp2":    empty_b(),
+        "bot_actual": empty_b(),
+        "bot_tp1":    empty_b(),
         "sim_bot":    empty_sim(),
         "sim_smc":    empty_sim(),
         "eski_disc":  empty_b(),
         "eski_choch": empty_b(),
+        **{k: empty_b() for k in ESKI_VARS},
     }
 
     total = len(symbols)
@@ -618,11 +631,8 @@ def run(symbols, btc_df, only=None):
 
                         # Eski CHoCH
                         bt_e, bd_e, _, cl_e, sl_e = detect_micro_choch(sl100)
-                        vol_ok = (not pd.isna(bar.get("vol_24h_usd")) and
-                                  float(bar["vol_24h_usd"]) >= 5_000_000)
                         if (bt_e=="CHoCH" and bd_e=="BULLISH" and cl_e is not None and
-                                crash_ok and vol_ok and
-                                ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
+                                crash_ok and ts_h - last["eski_c"] >= COOLDOWN_H["eski"]):
                             slp_e = (sl_e * 0.995) if sl_e else cl_e * 0.95
                             risk_e = cl_e - slp_e
                             if risk_e <= 0: risk_e = cl_e * 0.05
@@ -632,13 +642,35 @@ def run(symbols, btc_df, only=None):
                             rec(R["eski_choch"], re)
                             last["eski_c"] = ts_h
 
+                            # 10 Varyasyon
+                            rsi_e  = calc_rsi(sl100["close"].tolist())
+                            vr     = float(bar.get("vol_ratio_20") or 0)
+                            dd     = float(bar.get("coin_drawdown") or 0)
+                            ap     = float(bar.get("atr_pct") or 0)
+                            e50    = float(bar.get("ema50") or entry_c)
+                            slp_v  = float(bar.get("ma200_slope") or 0)
+                            mom    = float(bar.get("mom5_pct") or 0)
+                            adx_v  = float(bar.get("adx") or 0)
+                            d200   = float(bar.get("dist_ma200") or 0)
+
+                            if rsi_e is not None and rsi_e <= 35:        rec(R["eski_v1_rsi35"],    re)
+                            if vr >= 1.5:                                 rec(R["eski_v2_vol15"],    re)
+                            if ema21_ok:                                  rec(R["eski_v3_btc_ema21"],re)
+                            if dd <= -20:                                 rec(R["eski_v4_dd20"],     re)
+                            if ap >= 2.0:                                 rec(R["eski_v5_atr2"],     re)
+                            if entry_c < e50:                             rec(R["eski_v6_ema50"],    re)
+                            if slp_v >= 0:                                rec(R["eski_v7_slope"],    re)
+                            if mom >= 0:                                  rec(R["eski_v8_mom"],      re)
+                            if adx_v >= 20:                               rec(R["eski_v9_adx20"],    re)
+                            if d200 <= -10:                               rec(R["eski_v10_dist200"], re)
+
             except Exception:
                 pass
 
     # Finalize
     for k in ("panik_pump","pump_orta","pump_uzun","rocket",
               "smc_choch","smc_tp1","smc_tp2","bot_actual","bot_tp1",
-              "eski_disc","eski_choch"):
+              "eski_disc","eski_choch", *ESKI_VARS):
         R[k] = fin(R[k])
     R["sim_bot"] = fin_sim(R["sim_bot"])
     R["sim_smc"] = fin_sim(R["sim_smc"])
@@ -693,8 +725,21 @@ def report(R, symbols):
     print("─"*W)
     print("  ESKİ SMC (Karşılaştırma)")
     print("─"*W)
-    row("13. Eski Discount",        R["eski_disc"])
-    row("14. Eski CHoCH",           R["eski_choch"])
+    row("13. Eski Discount",              R["eski_disc"])
+    row("14. Eski CHoCH (baseline)",      R["eski_choch"])
+    print("─"*W)
+    print("  ESKİ CHOCH VARYASYONLAR")
+    print("─"*W)
+    row("V1.  + RSI<=35",                 R["eski_v1_rsi35"])
+    row("V2.  + Hacim spike (vol>=1.5x)", R["eski_v2_vol15"])
+    row("V3.  + BTC EMA21 üzerinde",      R["eski_v3_btc_ema21"])
+    row("V4.  + Drawdown<=-20%",          R["eski_v4_dd20"])
+    row("V5.  + ATR>=2%",                 R["eski_v5_atr2"])
+    row("V6.  + Close<EMA50",             R["eski_v6_ema50"])
+    row("V7.  + MA200 slope>=0",          R["eski_v7_slope"])
+    row("V8.  + mom5_pct>=0",             R["eski_v8_mom"])
+    row("V9.  + ADX>=20",                 R["eski_v9_adx20"])
+    row("V10. + dist_ma200<=-10%",        R["eski_v10_dist200"])
     print("═"*W + "\n")
 
 
