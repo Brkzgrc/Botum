@@ -5,16 +5,13 @@ Paper Trading Backtest — Eski CHoCH + V2 (vol_ratio >= 1.5x)
 $5000 portföy simülasyonu, 2025-01-01'den bugüne
 
 Kullanım:
-  python paper_backtest.py              # cache'deki tüm geçerli coinler
-  python paper_backtest.py --n 30
+  python paper_backtest.py                   # Binance spot tümü (veri indirir)
+  python paper_backtest.py --no-fetch        # sadece cache'deki coinler
   python paper_backtest.py --capital 10000 --size 1000
   python paper_backtest.py --coins BTC/USDT ETH/USDT SOL/USDT
-
-Ön koşul:
-  python backtest.py --n 50 --only eski    (veri yoksa önce bunu çalıştır)
 """
 
-import argparse, heapq, json, os, pickle
+import argparse, heapq, json, os, pickle, time
 import datetime as _dt
 import numpy as np, pandas as pd
 
@@ -43,6 +40,9 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 
 
 # ─── VERİ ───────────────────────────────────────────────────────────────
+START_TS = int(_dt.datetime(2020, 1, 1, tzinfo=_dt.timezone.utc).timestamp() * 1000)
+
+
 def load_pkl(symbol):
     path = os.path.join(DATA_DIR, symbol.replace("/", "_") + ".pkl")
     if not os.path.exists(path):
@@ -51,22 +51,68 @@ def load_pkl(symbol):
         return pickle.load(f)
 
 
-def get_cached_symbols(n):
+def fetch_and_save(symbol):
+    try:
+        import ccxt
+        ex = ccxt.binance({"enableRateLimit": True})
+        bars = []; since = START_TS
+        while True:
+            batch = ex.fetch_ohlcv(symbol, "1h", since=since, limit=1000)
+            if not batch: break
+            bars.extend(batch)
+            if len(batch) < 1000: break
+            since = batch[-1][0] + 1
+            time.sleep(0.2)
+        if not bars: return None
+        df = pd.DataFrame(bars, columns=["timestamp","open","high","low","close","volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
+        df = df[~df.index.duplicated(keep="first")]
+        os.makedirs(DATA_DIR, exist_ok=True)
+        path = os.path.join(DATA_DIR, symbol.replace("/","_") + ".pkl")
+        with open(path, "wb") as f:
+            pickle.dump(df, f)
+        return df
+    except Exception as e:
+        print(f"    ! {symbol} indirilemedi: {e}")
+        return None
+
+
+def get_all_binance_symbols():
+    """Binance'taki tüm spot USDT çiftlerini döndürür (ignore + leveraged filtreli)."""
+    try:
+        import ccxt
+        ex = ccxt.binance({"enableRateLimit": True})
+        ex.load_markets()
+        result = []
+        for sym in ex.markets:
+            if not sym.endswith("/USDT"): continue
+            if ex.markets[sym].get("type") != "spot": continue
+            if sym in IGNORED_COINS: continue
+            base = sym.split("/")[0]
+            if any(base.endswith(p) for p in LEVERAGED_PATTERNS): continue
+            result.append(sym)
+        if "BTC/USDT" in result:
+            result.remove("BTC/USDT")
+        result.insert(0, "BTC/USDT")
+        return result
+    except Exception as e:
+        print(f"Binance market listesi alınamadı: {e}")
+        return []
+
+
+def get_cached_symbols():
+    """Cache'deki geçerli coinleri döndürür (2022 öncesi verisi olanlar)."""
     if not os.path.isdir(DATA_DIR):
-        print(f"HATA: {DATA_DIR}/ bulunamadı. Önce backtest.py ile veri çek.")
         return []
     symbols = []
     for fname in os.listdir(DATA_DIR):
-        if not fname.endswith(".pkl"):
-            continue
+        if not fname.endswith(".pkl"): continue
         sym = fname.replace(".pkl", "").replace("_", "/")
-        if not sym.endswith("/USDT"):
-            continue
-        if sym in IGNORED_COINS:
-            continue
+        if not sym.endswith("/USDT"): continue
+        if sym in IGNORED_COINS: continue
         base = sym.split("/")[0]
-        if any(base.endswith(p) for p in LEVERAGED_PATTERNS):
-            continue
+        if any(base.endswith(p) for p in LEVERAGED_PATTERNS): continue
         try:
             with open(os.path.join(DATA_DIR, fname), "rb") as f:
                 df = pickle.load(f)
@@ -78,7 +124,18 @@ def get_cached_symbols(n):
     if "BTC/USDT" in symbols:
         symbols.remove("BTC/USDT")
     symbols.insert(0, "BTC/USDT")
-    return symbols[:n]
+    return symbols
+
+
+def load_or_fetch(symbol):
+    df = load_pkl(symbol)
+    if df is not None:
+        return df
+    print(f"    ↓ {symbol} indiriliyor...", end=" ", flush=True)
+    df = fetch_and_save(symbol)
+    if df is not None:
+        print("✓")
+    return df
 
 
 # ─── İNDİKATÖRLER ───────────────────────────────────────────────────────
@@ -137,15 +194,16 @@ def detect_micro_choch(df):
 
 
 # ─── SİNYAL TOPLAMA ─────────────────────────────────────────────────────
-def collect_signals(symbols, btc_crash):
+def collect_signals(symbols, btc_crash, fetch=True):
     all_signals = []
+    skipped = 0
     for sym_i, symbol in enumerate(symbols, 1):
         print(f"  [{sym_i}/{len(symbols)}] {symbol}", flush=True)
-        df_raw = load_pkl(symbol)
+        df_raw = load_or_fetch(symbol) if fetch else load_pkl(symbol)
         if df_raw is None or len(df_raw) < 300:
-            continue
+            skipped += 1; continue
         if df_raw.index[0] >= pd.Timestamp("2022-01-01", tz="UTC"):
-            continue
+            print(f"    → 2022 öncesi veri yok, atlanıyor"); skipped += 1; continue
         df = prepare_bars(df_raw)
         if len(df) < 300:
             continue
@@ -197,6 +255,8 @@ def collect_signals(symbols, btc_crash):
             })
             last_ts_h = ts_h
 
+    if skipped:
+        print(f"  ({skipped} coin atlandı — veri yok / 2022 öncesi yok)")
     all_signals.sort(key=lambda x: x["entry_time"].timestamp())
     return all_signals
 
@@ -484,21 +544,22 @@ def main():
     global INITIAL_CAP, POS_SIZE, MAX_POSITIONS
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n",       type=int,   default=50,           help="Max coin sayısı")
-    ap.add_argument("--capital", type=float, default=INITIAL_CAP,  help="Başlangıç sermaye ($)")
-    ap.add_argument("--size",    type=float, default=POS_SIZE,     help="Trade başına miktar ($)")
-    ap.add_argument("--max-pos", type=int,   default=MAX_POSITIONS,help="Max açık pozisyon")
-    ap.add_argument("--coins",   nargs="*",                        help="Belirli coinler")
+    ap.add_argument("--no-fetch", action="store_true", help="Sadece cache'deki coinler, indirme")
+    ap.add_argument("--capital",  type=float, default=INITIAL_CAP,  help="Başlangıç sermaye ($)")
+    ap.add_argument("--size",     type=float, default=POS_SIZE,     help="Trade başına miktar ($)")
+    ap.add_argument("--max-pos",  type=int,   default=MAX_POSITIONS,help="Max açık pozisyon")
+    ap.add_argument("--coins",    nargs="*",                        help="Belirli coinler")
     args = ap.parse_args()
 
     INITIAL_CAP   = args.capital
     POS_SIZE      = args.size
     MAX_POSITIONS = args.max_pos
+    do_fetch      = not args.no_fetch
 
-    btc_raw = load_pkl("BTC/USDT")
+    # BTC verisi — önce cache, yoksa indir
+    btc_raw = load_or_fetch("BTC/USDT") if do_fetch else load_pkl("BTC/USDT")
     if btc_raw is None:
-        print("HATA: BTC/USDT cache'de yok.")
-        print("Önce: python backtest.py --coins BTC/USDT ETH/USDT SOL/USDT --only eski")
+        print("HATA: BTC/USDT verisi yok ve indirilemedi.")
         return
     btc_crash = build_btc_crash_filter(btc_raw)
 
@@ -506,17 +567,24 @@ def main():
         symbols = list(args.coins)
         if "BTC/USDT" not in symbols:
             symbols.insert(0, "BTC/USDT")
+    elif args.no_fetch:
+        symbols = get_cached_symbols()
     else:
-        symbols = get_cached_symbols(args.n)
+        print("Binance spot USDT listesi alınıyor...")
+        symbols = get_all_binance_symbols()
+        if not symbols:
+            print("Binance'a ulaşılamadı, cache kullanılıyor...")
+            symbols = get_cached_symbols()
 
     if not symbols:
-        print("Geçerli coin bulunamadı. Önce backtest.py ile veri çek.")
+        print("Geçerli coin bulunamadı.")
         return
 
-    print(f"\n{len(symbols)} coin | ${INITIAL_CAP:,.0f} sermaye | "
+    mode = "cache" if args.no_fetch else "Binance spot tümü"
+    print(f"\n{len(symbols)} coin ({mode}) | ${INITIAL_CAP:,.0f} sermaye | "
           f"${POS_SIZE:,.0f}/trade | max {MAX_POSITIONS} pozisyon")
     print(f"Sinyaller toplanıyor ({START_DATE.date()} → bugün)...")
-    signals = collect_signals(symbols, btc_crash)
+    signals = collect_signals(symbols, btc_crash, fetch=do_fetch)
     print(f"\n{len(signals)} sinyal — portföy simülasyonu başlıyor...")
 
     trade_log, equity_pts, final_cash = simulate_portfolio(
