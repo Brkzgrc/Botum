@@ -519,12 +519,12 @@ def calc_performance():
         "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
         "smc_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
-            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "bot_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0},
+            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
         # [SMC-ESKİ] Karşılaştırma — TOPLAM/breakdown'a dahil edilmez
@@ -664,7 +664,7 @@ def calc_performance():
                 elif _stop_pct < 0 and _dp <= _stop_pct:
                     sa["tp1_only"]["losses"] += 1; sa["tp1_only"]["pnl"] += _stop_pct
                 else:
-                    sa["tp1_only"]["expired"] += 1  # sim eşiğine ulaşmadı — actual exit karıştırılmaz
+                    sa["tp1_only"]["expired"] += 1; sa["tp1_only"]["expired_pnl"] += _closed_pct
 
                 if _tp2_pct > 0:
                     sa["tp2_only"]["total"] += 1
@@ -673,7 +673,7 @@ def calc_performance():
                     elif _stop_pct < 0 and _dp <= _stop_pct:
                         sa["tp2_only"]["losses"] += 1; sa["tp2_only"]["pnl"] += _stop_pct
                     else:
-                        sa["tp2_only"]["expired"] += 1  # sim eşiğine ulaşmadı — actual exit karıştırılmaz
+                        sa["tp2_only"]["expired"] += 1; sa["tp2_only"]["expired_pnl"] += _closed_pct
             else:
                 ba = result["bot_alt"]
                 ba["actual"]["total"] += 1
@@ -690,7 +690,7 @@ def calc_performance():
                 elif _stop_pct < 0 and _dp <= _stop_pct:
                     ba["tp1_only"]["losses"] += 1; ba["tp1_only"]["pnl"] += _stop_pct
                 else:
-                    ba["tp1_only"]["expired"] += 1  # sim eşiğine ulaşmadı — actual exit karıştırılmaz
+                    ba["tp1_only"]["expired"] += 1; ba["tp1_only"]["expired_pnl"] += _closed_pct
 
     # Hayali senaryo hesabı (sadece kapanmış sinyaller — açık pozisyonlar dahil değil)
     for sig in all_sigs:
@@ -1280,21 +1280,18 @@ def dashboard():
         if not data or data.get("total", 0) == 0:
             return '<td colspan="3" style="color:#3a4a5a;text-align:center">—</td>'
         wr_c = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
-        has_exp = "expired_pnl" in data  # sadece actual row'da True — tp1/tp2 saf sim P&L
         wlp = data.get("win_loss_pnl", data.get("pnl", 0))
         ep  = data.get("expired_pnl", 0)
         tp  = data.get("total_pnl", data.get("pnl", 0))
         wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
         ep_c  = "#2ecc71" if ep > 0 else ("#e74c3c" if ep < 0 else "#8a9bb0")
         tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
-        ep_td = (f'<td style="text-align:center"><span style="color:{ep_c}">{ep:+.2f}%</span></td>'
-                 if has_exp else '<td style="text-align:center;color:#3a4a5a">—</td>')
         return (f'<td style="text-align:center"><span style="color:#2ecc71">{data.get("wins",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
                 f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:{wlp_c}">{wlp:+.2f}%</span></td>'
-                + ep_td +
+                f'<td style="text-align:center"><span style="color:{ep_c}">{ep:+.2f}%</span></td>'
                 f'<td style="text-align:center;font-weight:bold"><span style="color:{tp_c}">{tp:+.2f}%</span></td>')
 
     _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
