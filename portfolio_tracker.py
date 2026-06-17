@@ -1278,32 +1278,30 @@ def dashboard():
 
     def _alt_cell(data, color, is_actual=False):
         if not data or data.get("total", 0) == 0:
-            return '<td style="color:#3a4a5a;text-align:center" colspan="1">—</td>'
+            return '<td colspan="3" style="color:#3a4a5a;text-align:center">—</td>'
         wr_c = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
-        if "total_pnl" in data:
-            tp = data.get("total_pnl", 0); wlp = data.get("win_loss_pnl", 0); ep = data.get("expired_pnl", 0)
-            tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
-            wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
-            ep_c  = "#2ecc71" if ep > 0 else ("#e74c3c" if ep < 0 else "#8a9bb0")
-            pnl_td = (f'<td style="text-align:center;font-weight:bold"><span style="color:{tp_c}">{tp:+.2f}%</span>'
-                      f'<br><span style="font-size:.57rem;color:{wlp_c}">W/L:{wlp:+.2f}%</span>'
-                      f'<span style="font-size:.57rem;color:{ep_c}"> Exp:{ep:+.2f}%</span></td>')
-        else:
-            pnl = data.get("pnl", 0)
-            pnl_c = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else "#8a9bb0")
-            pnl_td = f'<td style="text-align:center;font-weight:bold"><span style="color:{pnl_c}">{pnl:+.2f}%</span></td>'
+        tp  = data.get("total_pnl", data.get("pnl", 0))
+        wlp = data.get("win_loss_pnl", data.get("pnl", 0))
+        ep  = data.get("expired_pnl", 0)
+        tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
+        wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
+        ep_c  = "#2ecc71" if ep > 0 else ("#e74c3c" if ep < 0 else "#8a9bb0")
         return (f'<td style="text-align:center"><span style="color:#2ecc71">{data.get("wins",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
                 f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
                 f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
-                + pnl_td)
+                f'<td style="text-align:center"><span style="color:{wlp_c}">{wlp:+.2f}%</span></td>'
+                f'<td style="text-align:center"><span style="color:{ep_c}">{ep:+.2f}%</span></td>'
+                f'<td style="text-align:center;font-weight:bold"><span style="color:{tp_c}">{tp:+.2f}%</span></td>')
 
     _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
                '<th style="text-align:center;color:#2ecc71">Win</th>'
                '<th style="text-align:center;color:#e74c3c">Loss</th>'
                '<th style="text-align:center;color:#f39c12">Exp</th>'
                '<th style="text-align:center;color:#8a9bb0">WR</th>'
-               '<th style="text-align:center;color:#8a9bb0">P&amp;L</th>')
+               '<th style="text-align:center;color:#8a9bb0">W/L P&amp;L</th>'
+               '<th style="text-align:center;color:#8a9bb0">Exp P&amp;L</th>'
+               '<th style="text-align:center;color:#8a9bb0">Toplam P&amp;L</th>')
 
     _smc_alt_section = ""
     if smc_a and smc_a.get("actual", {}).get("total", 0) > 0:
