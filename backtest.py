@@ -69,6 +69,7 @@ def get_top_coins(n=50):
         base = sym.replace("/USDT", "")
         if base in IGNORE_BASES: continue
         if any(x in base for x in ("UP", "DOWN", "BULL", "BEAR")): continue
+        if base.startswith("USD") or base.endswith("USD"): continue
         vol = float(t.get("quoteVolume") or 0)
         if vol >= MIN_VOL:
             coins.append((sym, vol))
