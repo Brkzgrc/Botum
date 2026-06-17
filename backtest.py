@@ -50,11 +50,16 @@ SWING_LEN = 50; CHOCH_SW = 5; P1_RSI = 30; P1_DEPTH = 85; ESKI_DEPTH = 5
 # Hayali senaryo (portfolio_tracker.py ile aynı)
 SIM_TP1 = 5.0; SIM_TP2 = 10.0; SIM_STOP = -2.5
 
-IGNORE_BASES = {
-    "UP","DOWN","BULL","BEAR","USDC","TUSD","FDUSD","DAI","USDP","USDE",
-    "BUSD","FRAX","PAXG","XAUT","WBTC","WETH","WBNB","BETH","BTCB","HBTC",
-    "UST","USTC","USDS","USDD","RLUSD","VAI","BIDR","EUR","TRY","GBP",
+IGNORED_COINS = {
+    "UP/USDT", "DOWN/USDT", "BEAR/USDT", "BULL/USDT",
+    "USDC/USDT", "TUSD/USDT", "FDUSD/USDT", "DAI/USDT", "USDP/USDT",
+    "USDE/USDT", "UST/USDT", "USD/USDT", "XUSD/USDT", "USD1/USDT", "BFUSD/USDT",
+    "USTC/USDT", "BUSD/USDT", "FRAX/USDT", "LUSD/USDT", "GUSD/USDT", "SUSD/USDT",
+    "USDS/USDT", "USDX/USDT", "USDD/USDT", "CUSD/USDT", "OUSD/USDT", "MUSD/USDT",
+    "RLUSD/USDT", "U/USDT",
+    "EUR/USDT", "TRY/USDT", "GBP/USDT", "BRL/USDT", "RUB/USDT",
 }
+LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","10L","10S"]
 
 # ═══════════════════════════════════════════════════════════════════════
 # VERİ ÇEKME
@@ -66,10 +71,9 @@ def get_top_coins(n=50):
     coins = []
     for sym, t in tickers.items():
         if not sym.endswith("/USDT"): continue
+        if sym in IGNORED_COINS: continue
         base = sym.replace("/USDT", "")
-        if base in IGNORE_BASES: continue
-        if any(x in base for x in ("UP", "DOWN", "BULL", "BEAR")): continue
-        if base.startswith("USD") or base.endswith("USD"): continue
+        if any(base.endswith(p) for p in LEVERAGED_PATTERNS): continue
         vol = float(t.get("quoteVolume") or 0)
         if vol >= MIN_VOL:
             coins.append((sym, vol))
