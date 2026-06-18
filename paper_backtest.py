@@ -307,6 +307,7 @@ def compute_exit(sig, pos_size):
 # ─── PORTFÖY SİMÜLASYONU ────────────────────────────────────────────────────
 def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
     cash = initial_cap; open_count = 0
+    open_positions = {}  # trade_id → pos_size (açık pozisyon maliyeti)
     trade_log = []; equity_pts = [(START_DATE, initial_cap)]
     queue = []; counter = 0
     for sig in signals:
@@ -317,18 +318,18 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
         ts = pd.Timestamp(unix_ts, unit="s", tz="UTC")
         if etype == "signal":
             if open_count >= max_positions: continue
-            # Dinamik pozisyon boyutu: mevcut cash / max slot sayısı
             pos_size = cash / max_positions
             if cash < pos_size or pos_size < 1: continue
             sig = data; cash -= pos_size; open_count += 1
             trade_id = counter; counter += 1
+            open_positions[trade_id] = pos_size
             exit_ts, cash_ret, label = compute_exit(sig, pos_size)
             heapq.heappush(queue, (exit_ts.timestamp(), 0, counter, "exit", {
                 "trade_id":   trade_id,   "symbol":     sig["symbol"],
                 "entry_time": sig["entry_time"], "entry": sig["entry"],
                 "stop":       sig["stop"], "tp1": sig["tp1"], "tp2": sig["tp2"],
                 "cash_ret":   cash_ret,   "label":  label,
-                "pos_size":   pos_size,   # giriş anındaki boyut
+                "pos_size":   pos_size,
                 "stop_pct":   round((sig["stop"]-sig["entry"])/sig["entry"]*100,2),
                 "tp1_pct":    round((sig["tp1"]-sig["entry"])/sig["entry"]*100,2),
                 "tp2_pct":    round((sig["tp2"]-sig["entry"])/sig["entry"]*100,2),
@@ -344,10 +345,13 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
                 "risk_pct":sig.get("risk_pct",0),"vol_ratio":round(sig.get("vol_ratio",0),2),
                 "size":pos_size,"cash_after":round(cash,2),"open":open_count,
             })
-            equity_pts.append((ts, cash))
+            # Toplam equity = cash + açık pozisyon maliyetleri (cost basis)
+            total_eq = cash + sum(open_positions.values())
+            equity_pts.append((ts, total_eq))
         elif etype == "exit":
             d = data; cash += d["cash_ret"]; open_count -= 1
-            entry_size = d["pos_size"]   # giriş anındaki gerçek pos_size
+            open_positions.pop(d["trade_id"], None)
+            entry_size = d["pos_size"]
             net_pnl = d["cash_ret"] - entry_size
             trade_log.append({
                 "type":"EXIT","trade_id":d["trade_id"],"symbol":d["symbol"],
@@ -358,7 +362,8 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
                 "tp1_pct":d["tp1_pct"],"tp2_pct":d["tp2_pct"],
                 "stop_pct":d["stop_pct"],"risk_pct":d["risk_pct"],
             })
-            equity_pts.append((ts, cash))
+            total_eq = cash + sum(open_positions.values())
+            equity_pts.append((ts, total_eq))
     return trade_log, equity_pts, cash
 
 
