@@ -234,11 +234,13 @@ def exit_tp2(sig, pos_size):
     entry=sig["entry"]; stop=sig["stop"]; tp1=sig["tp1"]; tp2=sig["tp2"]
     rows=sig["future"]; expire_h=sig.get("expire_h",EXPIRE_H)
     sp=(stop-entry)/entry; t1p=(tp1-entry)/entry; t2p=(tp2-entry)/entry
-    for ts,row in rows.iloc[:expire_h].iterrows():
-        h=float(row["high"]); l=float(row["low"])
+    for i,(ts,row) in enumerate(rows.iloc[:expire_h].iterrows()):
+        h=float(row["high"]); l=float(row["low"]); c=float(row["close"])
         if l<=stop: return ts,pos_size*(1+sp),"stop"
         if h>=tp2:  return ts,pos_size*(1+t2p),"tp2"
         if h>=tp1:  return ts,pos_size*(1+t1p),"tp1"
+        if i==11 and c<entry:
+            return ts,pos_size*(1+(c-entry)/entry),"time_stop"
     if len(rows)>0:
         idx=min(expire_h-1,len(rows)-1)
         exp_pct=(float(rows.iloc[idx]["close"])-entry)/entry
@@ -354,7 +356,7 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
 
 # ─── PORTFÖY SİMÜLASYONU ────────────────────────────────────────────────────
 def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=MAX_POSITIONS):
-    cash=initial_cap; open_count=0; open_positions={}
+    cash=initial_cap; open_count=0; open_positions={}; max_open=0
     trade_log=[]; equity_pts=[(START_DATE, initial_cap)]
     queue=[]; counter=0
     for sig in signals:
@@ -368,6 +370,7 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
             pos_size=min(cash/max_positions, MAX_POS_SIZE)
             if pos_size<1: continue
             sig=data; cash-=pos_size; open_count+=1
+            if open_count>max_open: max_open=open_count
             trade_id=counter; counter+=1
             open_positions[trade_id]=pos_size
             exit_ts,cash_ret,label = exit_fn(sig,pos_size)
@@ -406,14 +409,14 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
                 "stop_pct":d["stop_pct"],"risk_pct":d["risk_pct"],
             })
             equity_pts.append((ts,cash+sum(open_positions.values())))
-    return trade_log, equity_pts, cash
+    return trade_log, equity_pts, cash, max_open
 
 
 # ─── İSTATİSTİK ─────────────────────────────────────────────────────────────
 def system_stats(trade_log, equity_pts):
     exits   = [t for t in trade_log if t["type"]=="EXIT"]
     wins    = [e for e in exits if e["label"] in ("tp2","tp1","trail","win")]
-    stops   = [e for e in exits if e["label"]=="stop"]
+    stops   = [e for e in exits if e["label"] in ("stop","time_stop")]
     expires = [e for e in exits if e["label"]=="expire"]
     dec     = len(wins)+len(stops)
     wr      = len(wins)/dec*100 if dec>0 else 0.0
@@ -439,9 +442,11 @@ def system_stats(trade_log, equity_pts):
         except Exception:
             pass
 
+    time_stops = len([e for e in exits if e["label"]=="time_stop"])
     return {
         "trades":len([t for t in trade_log if t["type"]=="ENTRY"]),
-        "wins":len(wins),"losses":len(stops),"expires":len(expires),"wr":round(wr,1),
+        "wins":len(wins),"losses":len(stops),"time_stops":time_stops,
+        "expires":len(expires),"wr":round(wr,1),
         "final":round(final,2),"ret":round(ret,2),"max_dd":round(max_dd,2),
         "avg_win":round(avg_win,2),"avg_loss":round(avg_loss,2),
         "stop_early":stop_early,"stop_mid":stop_mid,"stop_late":stop_late,
@@ -553,10 +558,11 @@ def print_report(results, n_coins, active_scenarios=None):
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
         avg_win=st.get("avg_win",0); avg_loss=st.get("avg_loss",0); max_dd=st.get("max_dd",0)
         se=st.get("stop_early",0); sm=st.get("stop_mid",0); sl=st.get("stop_late",0)
+        ts_cnt=st.get("time_stops",0); max_open=st.get("max_open",0)
         n_sigs=r.get("n_sigs",0)
         label=f"{sys_name} — {mode}"
         print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wins:7d} {losses:6d} {expires:7d} {wr:6.1f}% {avg_win:+8.2f}% {avg_loss:+8.2f}% {max_dd:7.1f}% {ret:+9.1f}% ${final:12,.2f}")
-        print(f"  {'':45}  Stop zamanlaması → <24H: {se} ({se/losses*100:.1f}%)  24-48H: {sm} ({sm/losses*100:.1f}%)  >48H: {sl} ({sl/losses*100:.1f}%)" if losses else "")
+        print(f"  {'':45}  Max eş zamanlı: {max_open} | Time stop: {ts_cnt} | Stop zamanlaması → <24H: {se} ({se/losses*100:.1f}%)  24-48H: {sm} ({sm/losses*100:.1f}%)  >48H: {sl} ({sl/losses*100:.1f}%)" if losses else "")
     print("═"*W+"\n")
 
 
@@ -606,8 +612,9 @@ def main():
     for key, sig_sys, exit_fn_key, *_ in active_scenarios:
         sig_list = sigs[sig_sys]
         fn       = EXIT_FNS[exit_fn_key]
-        log, eq, final_cash = simulate_portfolio(sig_list, fn)
+        log, eq, final_cash, max_open = simulate_portfolio(sig_list, fn)
         st = system_stats(log, eq)
+        st["max_open"] = max_open
         results[key] = {"log":log,"equity":eq,"final":final_cash,"stats":st,"n_sigs":len(sig_list)}
 
     print_report(results, len(symbols), active_scenarios)
