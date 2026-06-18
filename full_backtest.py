@@ -976,9 +976,8 @@ function showGroup(grp) {{
 # ═══════════════════════════════════════════════════════════════
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--no-fetch", action="store_true")
     ap.add_argument("--coins", nargs="*")
-    ap.add_argument("--n", type=int, default=50)
+    ap.add_argument("--n", type=int, default=150)
     ap.add_argument("--out", default="full_backtest_result.html")
     args = ap.parse_args()
 
@@ -986,7 +985,8 @@ def main():
 
     if args.coins:
         symbols = [s if "/" in s else s + "/USDT" for s in args.coins]
-    elif args.no_fetch:
+    elif os.path.isdir(DATA_DIR) and any(f.endswith(".pkl") for f in os.listdir(DATA_DIR)):
+        # Cache varsa tümünü kullan — argüman gerekmez
         pkls = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".pkl"))
         symbols = [f[:-4].replace("_", "/", 1) for f in pkls
                    if f[:-4].replace("_","/",1).endswith("/USDT")
@@ -1002,7 +1002,8 @@ def main():
     btc_raw = load_or_fetch("BTC/USDT")
     if btc_raw is None: print("BTC verisi alınamadı!"); return
 
-    if not args.no_fetch:
+    needs_fetch = not (os.path.isdir(DATA_DIR) and any(f.endswith(".pkl") for f in os.listdir(DATA_DIR)))
+    if needs_fetch:
         print(f"\n--- Veri İndirme ({len(symbols)} coin) ---")
         for i, sym in enumerate(symbols, 1):
             if sym == "BTC/USDT": continue
@@ -1010,8 +1011,8 @@ def main():
             if os.path.exists(p):
                 print(f"  [{i}/{len(symbols)}] {sym} — cache var"); continue
             print(f"  [{i}/{len(symbols)}] {sym} indiriliyor...", end=" ", flush=True)
-            df = load_or_fetch(sym)
-            print(f"✓ ({len(df)} bar)" if df is not None else "HATA")
+            df_tmp = load_or_fetch(sym)
+            print(f"✓ ({len(df_tmp)} bar)" if df_tmp is not None else "HATA")
             time.sleep(0.1)
 
     print("\n--- BTC filtreleri hesaplanıyor ---")
