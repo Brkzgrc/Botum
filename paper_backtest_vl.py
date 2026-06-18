@@ -294,9 +294,9 @@ def exit_half(sig, pos_size):
 EXIT_FNS = {"half": exit_half, "tp1": exit_tp1, "tp2": exit_tp2}
 
 
-# ─── SİNYAL TOPLAMA (SMC sistemleri) ────────────────────────────────────────
+# ─── SİNYAL TOPLAMA (sadece eski_v2) ───────────────────────────────────────
 def collect_smc_signals(symbols, btc_filters, fetch=True):
-    sigs = {k:[] for k in ["eski_choch","eski_v2","smc_orig"]}
+    sigs = {"eski_v2": []}
 
     for sym_i, symbol in enumerate(symbols, 1):
         if symbol == "BTC/USDT": continue
@@ -312,93 +312,48 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
         df = df_raw.dropna(subset=["vol_24h_usd"]).copy()
         if len(df) < 300: continue
 
-        atr_v, rsi_v = compute_rsi_atr(df)
-        disc_top, disc_bot, depth_arr = compute_luxalgo_incremental(df)
-
         btc_al = btc_filters.reindex(df.index, method="ffill")
-
-        try:
-            df4 = df.resample("4h",label="right",closed="right").agg(
-                {"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna()
-            ema21_4h = df4["close"].ewm(span=21,adjust=False).mean()
-            _tmp = (df4["close"]>ema21_4h).reindex(df.index,method="ffill")
-            above_4h_ema = pd.Series(np.where(_tmp.isna(),True,_tmp.values),index=df.index,dtype=bool)
-        except Exception:
-            above_4h_ema = pd.Series(True, index=df.index)
-
         bts, bds, cls_, swls = run_choch_incremental(df)
 
-        h_arr=df["high"].values; l_arr=df["low"].values
         c_arr=df["close"].values
         vol24=df["vol_24h_usd"].values; volr20=df["vol_ratio_20"].values
         n=len(df)
-
-        last  = {k:0.0 for k in ["base","v2","orig"]}
-        disc_active = False
+        last_v2 = 0.0
 
         for i in range(250, n-1):
             ts = df.index[i]
             if ts < START_DATE: continue
             price = c_arr[i]
             if np.isnan(price) or price <= 0: continue
-
-            ts_h     = ts.timestamp() / 3600
-            bf_crash = bool(btc_al["crash_ok"].iloc[i])
-            bf_down  = bool(btc_al["downtrend_ok"].iloc[i])
-
             if np.isnan(vol24[i]) or vol24[i] < MIN_VOL_24H: continue
+
             vr = float(volr20[i]) if not np.isnan(volr20[i]) else 0.0
+            if vr < 1.5: continue
 
-            is_choch  = (bts[i]=="CHoCH" and bds[i]=="BULLISH")
+            if not (bts[i]=="CHoCH" and bds[i]=="BULLISH"): continue
+            if not bool(btc_al["crash_ok"].iloc[i]): continue
+            if not bool(btc_al["downtrend_ok"].iloc[i]): continue
+
+            ts_h = ts.timestamp() / 3600
+            if ts_h - last_v2 < COOLDOWN_H: continue
+
             choch_lvl = cls_[i]; sw_low = swls[i]
-            atr = float(atr_v[i]) if not np.isnan(atr_v[i]) else price*0.05
+            entry = choch_lvl if choch_lvl else price
+            stop  = sw_low*0.995 if sw_low else entry*0.95
+            if stop >= entry: stop = entry*0.95
+            risk  = max(entry-stop, entry*0.01)
+            tp1   = entry+risk; tp2 = entry+risk*2
 
-            future_df = df.iloc[i+1:i+1+EXPIRE_H+10][["high","low","close"]].copy()
+            sigs["eski_v2"].append({
+                "symbol":symbol,"entry_time":ts,"entry":entry,
+                "stop":stop,"tp1":tp1,"tp2":tp2,
+                "future":df.iloc[i+1:i+1+EXPIRE_H][["high","low","close"]].copy(),
+                "expire_h":EXPIRE_H,"vol_ratio":vr,
+                "risk_pct":round(risk/entry*100,2),
+            })
+            last_v2 = ts_h
 
-            # ── 1 & 2. Eski CHoCH + V2 ───────────────────────────────────
-            if is_choch and bf_crash and bf_down:
-                entry = choch_lvl if choch_lvl else price
-                stop  = sw_low*0.995 if sw_low else entry*0.95
-                if stop >= entry: stop = entry*0.95
-                risk  = max(entry-stop, entry*0.01)
-                tp1   = entry+risk; tp2 = entry+risk*2
-                sig   = {
-                    "symbol":symbol,"entry_time":ts,"entry":entry,
-                    "stop":stop,"tp1":tp1,"tp2":tp2,
-                    "future":future_df.iloc[:EXPIRE_H].copy(),
-                    "expire_h":EXPIRE_H,"vol_ratio":vr,
-                    "risk_pct":round(risk/entry*100,2),
-                }
-                if ts_h-last["base"] >= COOLDOWN_H:
-                    sigs["eski_choch"].append(sig.copy()); last["base"]=ts_h
-                if vr>=1.5 and ts_h-last["v2"] >= COOLDOWN_H:
-                    sigs["eski_v2"].append(sig.copy()); last["v2"]=ts_h
-
-            # ── 3. SMC Original CHoCH ────────────────────────────────────
-            rsi_i = float(rsi_v[i]) if not np.isnan(rsi_v[i]) else 50.0
-            if (not np.isnan(depth_arr[i]) and not np.isnan(disc_top[i]) and
-                    price<=disc_top[i] and depth_arr[i]>=PHASE1_DEPTH and
-                    rsi_i<=PHASE1_RSI and bf_crash):
-                disc_active = True
-
-            if (disc_active and is_choch and bf_crash and
-                    bool(above_4h_ema.iloc[i]) and ts_h-last["orig"] >= COOLDOWN_H):
-                entry = choch_lvl if choch_lvl else price
-                stop  = sw_low*0.995 if sw_low else entry*0.95
-                if stop >= entry: stop = entry*0.95
-                risk  = max(entry-stop, entry*0.01)
-                tp1   = entry+risk; tp2 = entry+risk*2
-                sigs["smc_orig"].append({
-                    "symbol":symbol,"entry_time":ts,"entry":entry,
-                    "stop":stop,"tp1":tp1,"tp2":tp2,
-                    "future":future_df.iloc[:EXPIRE_H].copy(),
-                    "expire_h":EXPIRE_H,"vol_ratio":vr,
-                    "risk_pct":round(risk/entry*100,2),
-                })
-                last["orig"]=ts_h; disc_active=False
-
-    for k in sigs:
-        sigs[k].sort(key=lambda x: (x["entry_time"].timestamp(), -x["vol_ratio"]))
+    sigs["eski_v2"].sort(key=lambda x: (x["entry_time"].timestamp(), -x["vol_ratio"]))
     return sigs
 
 
