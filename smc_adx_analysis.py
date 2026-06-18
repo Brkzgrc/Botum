@@ -151,7 +151,7 @@ def main():
         print(f"API hatası: {e}", flush=True)
         return
 
-    SMC_SOURCES     = ("smc", "smc-original", "smc-trailing", "smc-momentum")
+    SMC_SOURCES     = ("smc", "smc-original", "smc-trailing", "smc-momentum", "smc-v2")
     CLOSED_STATUSES = ("loss", "win_tp1", "win_tp2", "win_trail", "win_partial",
                        "half_stopped", "half_expired", "expired")
     WIN_STATUSES    = ("win_tp1", "win_tp2", "win_trail", "win_partial")
