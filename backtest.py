@@ -455,7 +455,7 @@ def run(symbols, btc_df):
             df4 = df.resample("4h",label="right",closed="right").agg(
                 {"open":"first","high":"max","low":"min","close":"last","volume":"sum"}).dropna()
             ema21_4h = df4["close"].ewm(span=21,adjust=False).mean()
-            above_4h_ema = (df4["close"]>ema21_4h).reindex(df.index,method="ffill").fillna(True).infer_objects(copy=False)
+            above_4h_ema = (df4["close"]>ema21_4h).reindex(df.index,method="ffill").fillna(True).astype(bool)
         except Exception:
             above_4h_ema = pd.Series(True, index=df.index)
 
