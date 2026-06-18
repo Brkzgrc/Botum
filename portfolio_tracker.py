@@ -47,7 +47,7 @@ SIM_STOP   = -2.5
 # [SMC-ESKİ] Karşılaştırma sinyalleri — TOPLAM/breakdown'a dahil edilmez,
 # SMC bölümünde ayrı bir özet tablosuyla gösterilir. Kaldırmak için bu
 # satırı ve aşağıdaki "+ SMC_ESKI_SOURCES" eklerini silmek yeterli.
-SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch")
+SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch", "smc-eski-choch-v2")
 
 # Kaldırılmış sinyal tipleri — veritabanında kalır (Analyzer geçmiş veri
 # olarak kullanabilir), ama portfolyo panelinde/snapshot'ta gösterilmez.
@@ -531,6 +531,7 @@ def calc_performance():
         "smc_eski": {
             "discount": {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "win_loss_pnl": 0.0, "expired_pnl": 0.0, "avg_peak": 0.0},
             "choch":    {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "win_loss_pnl": 0.0, "expired_pnl": 0.0, "avg_peak": 0.0},
+            "choch_v2": {"total": 0, "closed": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0, "total_pnl": 0.0, "win_loss_pnl": 0.0, "expired_pnl": 0.0, "avg_peak": 0.0},
         },
     }
 
@@ -721,12 +722,17 @@ def calc_performance():
             if _is_exp: bucket["exp_open"] += 1
 
     # [SMC-ESKİ] Karşılaştırma istatistikleri — TOPLAM/breakdown'a dahil edilmez
-    _eski_peaks = {"discount": [], "choch": []}
+    _eski_peaks = {"discount": [], "choch": [], "choch_v2": []}
     for sig in all_sigs:
         source = sig.get("source", "bot")
         if source not in SMC_ESKI_SOURCES:
             continue
-        key = "discount" if source == "smc-eski-discount" else "choch"
+        if source == "smc-eski-discount":
+            key = "discount"
+        elif source == "smc-eski-choch-v2":
+            key = "choch_v2"
+        else:
+            key = "choch"
         eb = result["smc_eski"][key]
         eb["total"] += 1
         status = sig.get("status", "open")
@@ -1422,9 +1428,10 @@ def dashboard():
     # [SMC-ESKİ] Karşılaştırma tablosu — TOPLAM/breakdown'a dahil değil
     _smc_eski_section = ""
     _eski = perf.get("smc_eski", {})
-    _eski_d = _eski.get("discount", {})
-    _eski_c = _eski.get("choch", {})
-    if _eski_d.get("total", 0) > 0 or _eski_c.get("total", 0) > 0:
+    _eski_d  = _eski.get("discount", {})
+    _eski_c  = _eski.get("choch", {})
+    _eski_v2 = _eski.get("choch_v2", {})
+    if _eski_d.get("total", 0) > 0 or _eski_c.get("total", 0) > 0 or _eski_v2.get("total", 0) > 0:
         def _eski_row(label, b):
             wr = b.get("win_rate", 0)
             wr_c = "#2ecc71" if wr >= 60 else ("#f39c12" if wr >= 40 else "#e74c3c")
@@ -1453,7 +1460,7 @@ def dashboard():
         <th>Tür</th><th>Toplam</th><th>Kapanan</th><th>Win</th><th>Loss</th><th>Exp.</th>
         <th>Win Rate</th><th>W/L P&L</th><th>Exp P&L</th><th>Toplam P&L</th><th>Ort. Peak</th>
     </tr></thead><tbody>
-        {_eski_row("Eski Discount", _eski_d)}{_eski_row("Eski CHoCH", _eski_c)}
+        {_eski_row("Eski Discount", _eski_d)}{_eski_row("Eski CHoCH", _eski_c)}{_eski_row("Eski CHoCH V2 (vol≥1.5x)", _eski_v2)}
     </tbody></table></div>
     </details>
 </div>"""
