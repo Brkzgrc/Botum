@@ -323,7 +323,7 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
             if np.isnan(vol24[i]) or vol24[i] < MIN_VOL_24H: continue
 
             vr = float(volr20[i]) if not np.isnan(volr20[i]) else 0.0
-            if vr < 1.5: continue
+            if vr < 2.0: continue
 
             if not (bts[i]=="CHoCH" and bds[i]=="BULLISH"): continue
             if not bool(btc_al["crash_ok"].iloc[i]): continue
