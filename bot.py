@@ -67,12 +67,6 @@ WS_STREAM_CHUNK       = int(os.getenv("WS_STREAM_CHUNK",         "120"))
 BOOTSTRAP_BARS        = int(os.getenv("BOOTSTRAP_BARS",          "750"))
 KEEP_BARS             = int(os.getenv("KEEP_BARS",               "720"))
 
-# --- Eski CHoCH V2 (BULLISH CHoCH + vol≥1.5x) ---
-CHOCH_SWING      = 5       # SMC.py ile aynı (LuxAlgo uyumlu)
-CHOCH_KEEP_BARS  = 2500    # CHoCH tespiti penceresi (SMC.py ile aynı)
-ESKI_V2_COOLDOWN = 86400   # 24 saat — SMC.py PHASE2_COOLDOWN ile aynı
-ESKI_V2_MIN_VOL  = 1.5     # vol_ratio eşiği
-
 TR_TZ = timezone(timedelta(hours=3))
 
 IGNORED_COINS = {
@@ -107,11 +101,8 @@ funding_cache:  dict = {}
 last_signal_ts:  dict = {}
 last_pump_ts:    dict = {}
 last_rocket_ts: dict = {}
-last_eski_v2_ts: dict = {}          # {symbol: datetime} — 24s cooldown
-bars_choch:      dict = {}          # {symbol: pd.DataFrame} — 2500 bar CHoCH buffer
 all_signals:     list = []
 btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
-btc_v2_state:   dict = {"crashing": False, "downtrend": False}
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
 _recent_signal_times:    list = []
@@ -348,148 +339,6 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
     }
 
 # ============================================================
-# ESKİ CHOCH V2 — CHOCH TESPİT FONKSİYONLARI
-# (SMC.py kopyası — SMC.py'ye dokunmadan bağımsız çalışır)
-# ============================================================
-def _detect_choch_v2(df, choch_swing=CHOCH_SWING):
-    highs  = df["high"].values
-    lows   = df["low"].values
-    closes = df["close"].values
-    n = len(df)
-    if n < choch_swing + 10:
-        return None, None, 0, None, None
-    legs = [0] * n
-    current_leg = 0
-    for i in range(choch_swing, n):
-        pivot_bar_high = highs[i - choch_swing]
-        pivot_bar_low  = lows[i - choch_swing]
-        window_high = max(highs[i - choch_swing + 1 : i + 1])
-        window_low  = min(lows[i - choch_swing + 1 : i + 1])
-        if pivot_bar_high > window_high:
-            current_leg = 0
-        elif pivot_bar_low < window_low:
-            current_leg = 1
-        legs[i] = current_leg
-    swing_high_level = None; swing_high_crossed = True
-    swing_low_level  = None; swing_low_crossed  = True
-    swing_trend = 0
-    break_type = None; break_direction = None
-    choch_level = None
-    for i in range(choch_swing + 1, n):
-        prev_leg = legs[i - 1]; curr_leg = legs[i]
-        if curr_leg != prev_leg:
-            if curr_leg == 1:
-                swing_low_level   = lows[i - choch_swing]
-                swing_low_crossed = False
-            elif curr_leg == 0:
-                swing_high_level   = highs[i - choch_swing]
-                swing_high_crossed = False
-        if i < n - 1:
-            c = closes[i]; c_prev = closes[i - 1]
-            if (swing_high_level is not None and not swing_high_crossed
-                    and c > swing_high_level and c_prev <= swing_high_level):
-                swing_high_crossed = True; swing_trend = 1
-            if (swing_low_level is not None and not swing_low_crossed
-                    and c < swing_low_level and c_prev >= swing_low_level):
-                swing_low_crossed = True; swing_trend = -1
-        if i == n - 1:
-            c = closes[i]; c_prev = closes[i - 1]
-            if (swing_high_level is not None and not swing_high_crossed
-                    and c > swing_high_level and c_prev <= swing_high_level):
-                break_type      = "CHoCH" if swing_trend == -1 else "BOS"
-                break_direction = "BULLISH"
-                swing_trend     = 1
-                choch_level     = swing_high_level
-            if (swing_low_level is not None and not swing_low_crossed
-                    and c < swing_low_level and c_prev >= swing_low_level):
-                break_type      = "CHoCH" if swing_trend == 1 else "BOS"
-                break_direction = "BEARISH"
-                swing_trend     = -1
-                choch_level     = swing_low_level
-    return break_type, break_direction, swing_trend, choch_level, swing_low_level
-
-
-def _swing_lows_trend_v2(df, choch_swing=CHOCH_SWING):
-    highs  = df["high"].values
-    lows   = df["low"].values
-    closes = df["close"].values
-    n = len(df)
-    if n < choch_swing + 10:
-        return 0, None, None
-    legs = [0] * n
-    current_leg = 0
-    for i in range(choch_swing, n):
-        pivot_high  = highs[i - choch_swing]
-        pivot_low   = lows[i - choch_swing]
-        window_high = max(highs[i - choch_swing + 1 : i + 1])
-        window_low  = min(lows[i - choch_swing + 1 : i + 1])
-        if pivot_high > window_high:
-            current_leg = 0
-        elif pivot_low < window_low:
-            current_leg = 1
-        legs[i] = current_leg
-    swing_high_level = None; swing_high_crossed = True
-    swing_low_level  = None; swing_low_crossed  = True
-    prev_swing_low   = None
-    swing_trend = 0
-    for i in range(choch_swing + 1, n):
-        if legs[i] != legs[i - 1]:
-            if legs[i] == 1:
-                prev_swing_low    = swing_low_level
-                swing_low_level   = lows[i - choch_swing]
-                swing_low_crossed = False
-            else:
-                swing_high_level   = highs[i - choch_swing]
-                swing_high_crossed = False
-        c, c_prev = closes[i], closes[i - 1]
-        if (swing_high_level is not None and not swing_high_crossed
-                and c > swing_high_level and c_prev <= swing_high_level):
-            swing_high_crossed = True; swing_trend = 1
-        if (swing_low_level is not None and not swing_low_crossed
-                and c < swing_low_level and c_prev >= swing_low_level):
-            swing_low_crossed = True; swing_trend = -1
-    return swing_trend, swing_low_level, prev_swing_low
-
-
-def check_eski_choch_v2(choch_df: pd.DataFrame, df_1h: pd.DataFrame, symbol: str) -> dict | None:
-    """BULLISH CHoCH + vol_ratio >= 1.5 + BTC filtreleri."""
-    if len(choch_df) < CHOCH_SWING + 10: return None
-
-    bt, bd, _, choch_level, swing_low = _detect_choch_v2(choch_df, CHOCH_SWING)
-    if bt != "CHoCH" or bd != "BULLISH": return None
-
-    # Vol filtresi — 1h barların son satırındaki vol_ma kullan
-    bar = df_1h.iloc[-1]
-    vol_now = bar.get("volume", np.nan)
-    vol_ma  = bar.get("vol_ma", np.nan)
-    if vol_now is None or vol_ma is None: return None
-    vol_now = float(vol_now); vol_ma = float(vol_ma)
-    if np.isnan(vol_now) or np.isnan(vol_ma) or vol_ma == 0: return None
-    vol_ratio = vol_now / vol_ma
-    if vol_ratio < ESKI_V2_MIN_VOL: return None
-
-    # BTC filtreleri
-    if btc_v2_state.get("crashing") or btc_v2_state.get("downtrend"): return None
-
-    entry = float(choch_level) if choch_level is not None else float(bar["close"])
-    stop  = round(float(swing_low) * 0.995, 10) if swing_low is not None else round(entry * 0.97, 8)
-    risk  = entry - stop
-    if risk <= 0: return None
-
-    return {
-        "symbol":    symbol,
-        "type":      "eski_choch_v2",
-        "entry":     round(entry, 8),
-        "stop":      round(stop, 8),
-        "tp1":       round(entry + risk * 1.0, 8),
-        "tp2":       round(entry + risk * 2.0, 8),
-        "tp3":       round(entry + risk * 3.0, 8),
-        "vol_ratio": round(vol_ratio, 2),
-        "risk_pct":  round(risk / entry * 100, 2),
-    }
-
-
-# ============================================================
 # SİSTEM 2 — KISA VADE (T24)
 # ============================================================
 def check_t24_signal(df: pd.DataFrame, symbol: str) -> dict | None:
@@ -677,7 +526,7 @@ async def refresh_funding_cache(symbols):
 
 async def refresh_btc_4h():
     try:
-        df = await fetch_df("BTC/USDT", "4h", 200)
+        df = await fetch_df("BTC/USDT", "4h", 100)
         if df is None or len(df) < 50: return
         df = prepare_bars(df)
         lc=float(df["close"].iloc[-1]); le50=float(df["ema50"].iloc[-1]); le200=float(df["ema200"].iloc[-1])
@@ -688,13 +537,6 @@ async def refresh_btc_4h():
         btc_4h_cache.update({"trend": trend, "ema50": le50, "close": lc,
                               "updated": datetime.now(timezone.utc).strftime("%H:%M")})
         print(f"BTC 4H: {trend} | Fiyat:{lc:.0f} EMA50:{le50:.0f}", flush=True)
-        # Eski CHoCH V2 BTC filtreleri
-        if len(df) >= 2:
-            prev_c = float(df["close"].iloc[-2])
-            change_pct = (lc - prev_c) / prev_c * 100
-            btc_v2_state["crashing"] = change_pct <= -3.0
-        swing_trend, last_low, prev_low = _swing_lows_trend_v2(df, CHOCH_SWING)
-        btc_v2_state["downtrend"] = (swing_trend == -1 and (prev_low is None or last_low <= prev_low))
     except Exception as e:
         print(f"BTC 4H hata: {e}", flush=True)
 
@@ -865,32 +707,6 @@ def build_rocket_message(r, tr_time, sig_num):
     ]
     return "\n".join(lines)
 
-def build_eski_choch_v2_message(r, tr_time, sig_num):
-    sym      = r["symbol"].replace("/USDT", "")
-    e        = r["entry"]
-    stop_pct = round((r["stop"] / e - 1) * 100, 1)
-    tp1_pct  = round((r["tp1"]  / e - 1) * 100, 1)
-    tp2_pct  = round((r["tp2"]  / e - 1) * 100, 1)
-    lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
-        "",
-        f"🟣 <b>#{sym}/USDT  •  ESKİ CHOCH V2  •  1H</b>",
-        _sep(),
-        f"💵 <b>Giriş</b>    {fmt_price(e)}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  ({stop_pct:+.1f}%)",
-        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  ({tp1_pct:+.1f}%)",
-        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  ({tp2_pct:+.1f}%)",
-        _sep(),
-        "📊 <b>Göstergeler</b>",
-        f"📊 Hacim: <b>{r['vol_ratio']:.2f}x</b> ortalama  (≥1.5x filtresi)",
-        f"📐 Risk: %{r['risk_pct']:.1f}  |  RR: 1:2",
-        _sep(),
-        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
-        _sep(),
-        f"⏱ Backtest WR ~%64  |  #{sig_num} sinyal",
-    ]
-    return "\n".join(lines)
-
 # ============================================================
 # GÖNDERIM
 # ============================================================
@@ -913,7 +729,7 @@ def _notify_trailing_activated(entry, old_stop):
     try:
         sym  = entry["symbol"].replace("/USDT", "")
         raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
-        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE", "eski_choch_v2": "ESKİ CHOCH V2"}.get(raw, raw)
+        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(raw, raw)
         e        = entry["entry"]
         old_pct  = round((old_stop / e - 1) * 100, 1)
         new_pct  = round((entry["stop"] / e - 1) * 100, 1)
@@ -934,7 +750,7 @@ def _notify_trailing_close(entry, close_price, close_ret):
     try:
         sym  = entry["symbol"].replace("/USDT", "")
         raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
-        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE", "eski_choch_v2": "ESKİ CHOCH V2"}.get(raw, raw)
+        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(raw, raw)
         msg = (
             f"✅ <b>Trailing Stop — Kâr Kapatıldı</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -949,12 +765,11 @@ def _notify_trailing_close(entry, close_price, close_ret):
 
 # sig_type → portfolio type eşleştirmesi
 _SIG_TYPE_MAP = {
-    "capit":         "panik_pump",
-    "t24":           "pump_kisa",
-    "t72":           "pump_orta",
-    "t168":          "pump_uzun",
-    "rocket":        "rocket",
-    "eski_choch_v2": "eski_choch_v2",
+    "capit":      "panik_pump",
+    "t24":        "pump_kisa",
+    "t72":        "pump_orta",
+    "t168":       "pump_uzun",
+    "rocket":     "rocket",
 }
 
 def send_to_portfolio(result):
@@ -1525,7 +1340,7 @@ async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
             return
         sym        = result["symbol"].replace("/USDT", "")
         sig_type   = result.get("type", "capit")
-        type_short = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE", "rocket": "ROCKET", "eski_choch_v2": "ESKİ CHOCH V2"}.get(sig_type, sig_type)
+        type_short = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE", "rocket": "ROCKET"}.get(sig_type, sig_type)
         msg = (
             f"🤖 <b>CLAUDE — #{sym}/USDT [{type_short}] #{sig_num}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1628,7 +1443,7 @@ def _build_scan_line(sym):
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = os.path.join(os.getenv("DATA_DIR", "/tmp"), "signal_log.json")
-_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "rocket": 48, "eski_choch_v2": 48}
+_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "rocket": 48}
 
 def load_signal_log():
     try:
@@ -1769,12 +1584,10 @@ def perf_summary():
 # ============================================================
 async def bootstrap_symbol(symbol):
     try:
-        fetch_n = max(BOOTSTRAP_BARS, CHOCH_KEEP_BARS)
-        df = await fetch_df(symbol, "1h", fetch_n)
+        df = await fetch_df(symbol, "1h", BOOTSTRAP_BARS)
         if df is None or len(df) < 60: return False
         df = prepare_bars(df)
-        bars_1h[symbol]    = df.iloc[-KEEP_BARS:]      if len(df) > KEEP_BARS      else df
-        bars_choch[symbol] = df.iloc[-CHOCH_KEEP_BARS:] if len(df) > CHOCH_KEEP_BARS else df
+        bars_1h[symbol] = df.iloc[-KEEP_BARS:] if len(df) > KEEP_BARS else df
         return True
     except Exception:
         return False
@@ -1889,12 +1702,6 @@ async def signal_worker(candidate_queue):
                       f" | ADX:{result['adx']:.0f}"
                       f" | vol:{result['vol_ratio']:.2f}x"
                       f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            elif sig_type == "eski_choch_v2":
-                msg = build_eski_choch_v2_message(result, tr_time, signal_counter + 1)
-                print(f"SİNYAL 🟣 [ESKİ CHOCH V2] {symbol}"
-                      f" | vol:{result['vol_ratio']:.2f}x"
-                      f" | risk:%{result['risk_pct']:.1f}"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
             else:
                 continue
 
@@ -1923,8 +1730,6 @@ async def signal_worker(candidate_queue):
             # Cooldown güncelle
             if sig_type == "capit":
                 last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
-            elif sig_type == "eski_choch_v2":
-                last_eski_v2_ts[symbol] = tr_time.replace(tzinfo=None)
             else:
                 last_pump_ts[(symbol, sig_type)] = tr_time.replace(tzinfo=None)
 
@@ -1963,14 +1768,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     if len(df) > KEEP_BARS: df = df.iloc[-KEEP_BARS:]
     df = prepare_bars(df)
     bars_1h[symbol] = df
-
-    # CHoCH buffer güncelle (2500 bar)
-    choch_df = bars_choch.get(symbol)
-    if choch_df is not None:
-        choch_df.loc[tstamp, ["open", "high", "low", "close", "volume"]] = [o, h, l, c, v]
-        choch_df = choch_df.sort_index()
-        if len(choch_df) > CHOCH_KEEP_BARS: choch_df = choch_df.iloc[-CHOCH_KEEP_BARS:]
-        bars_choch[symbol] = choch_df
 
     tr_time = datetime.now(timezone.utc).astimezone(TR_TZ)
 
@@ -2015,19 +1812,6 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
         result = check_t168_signal(df, symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
-
-    # --- Sistem 5: Eski CHoCH V2 (BULLISH CHoCH + vol≥1.5x) ---
-    if symbol in bars_choch:
-        last_v2 = last_eski_v2_ts.get(symbol)
-        v2_ok = True
-        if last_v2 is not None:
-            elapsed = (tr_time.replace(tzinfo=None) - last_v2.replace(tzinfo=None)).total_seconds()
-            if elapsed < ESKI_V2_COOLDOWN:
-                v2_ok = False
-        if v2_ok:
-            result_v2 = check_eski_choch_v2(bars_choch[symbol], df, symbol)
-            if result_v2:
-                await candidate_queue.put(SignalCandidate(symbol, result_v2, tr_time))
 
 async def on_15m_close(symbol, o, h, l, c, v, ts_ms):
     if symbol not in bars_15m:
@@ -2126,12 +1910,11 @@ def clean_json(obj):
     return obj
 
 _TYPE_LABEL = {
-    "capit":         ("🔴", "PANİK PUMP",      "#ff4444"),
-    "t24":           ("🔴", "KISA VADE",       "#ff8800"),
-    "t72":           ("🟡", "ORTA VADE",       "#ffcc00"),
-    "t168":          ("🟢", "UZUN VADE",       "#00cc66"),
-    "rocket":        ("📈", "ROCKET",          "#00ccaa"),
-    "eski_choch_v2": ("🟣", "ESKİ CHOCH V2",  "#a855f7"),
+    "capit":     ("🔴", "PANİK PUMP",        "#ff4444"),
+    "t24":       ("🔴", "KISA VADE",         "#ff8800"),
+    "t72":       ("🟡", "ORTA VADE",         "#ffcc00"),
+    "t168":      ("🟢", "UZUN VADE",         "#00cc66"),
+    "rocket":    ("📈", "ROCKET",            "#00ccaa"),
 }
 
 @flask_app.route("/")
