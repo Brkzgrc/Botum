@@ -476,11 +476,25 @@ def system_stats(trade_log, equity_pts):
         if dd<max_dd: max_dd=dd
     avg_win  = sum(e["net_pct"] for e in wins)/len(wins)   if wins   else 0.0
     avg_loss = sum(e["net_pct"] for e in stops)/len(stops) if stops  else 0.0
+
+    stop_early = stop_mid = stop_late = 0
+    for s in stops:
+        try:
+            entry_t = pd.Timestamp(s["entry_time"])
+            exit_t  = pd.Timestamp(s["time"])
+            hours   = (exit_t - entry_t).total_seconds() / 3600
+            if hours < 24:   stop_early += 1
+            elif hours < 48: stop_mid   += 1
+            else:            stop_late  += 1
+        except Exception:
+            pass
+
     return {
         "trades":len([t for t in trade_log if t["type"]=="ENTRY"]),
         "wins":len(wins),"losses":len(stops),"expires":len(expires),"wr":round(wr,1),
         "final":round(final,2),"ret":round(ret,2),"max_dd":round(max_dd,2),
         "avg_win":round(avg_win,2),"avg_loss":round(avg_loss,2),
+        "stop_early":stop_early,"stop_mid":stop_mid,"stop_late":stop_late,
     }
 
 
@@ -588,9 +602,11 @@ def print_report(results, n_coins, active_scenarios=None):
         wins=st.get("wins",0); losses=st.get("losses",0); expires=st.get("expires",0)
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
         avg_win=st.get("avg_win",0); avg_loss=st.get("avg_loss",0); max_dd=st.get("max_dd",0)
+        se=st.get("stop_early",0); sm=st.get("stop_mid",0); sl=st.get("stop_late",0)
         n_sigs=r.get("n_sigs",0)
         label=f"{sys_name} — {mode}"
         print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wins:7d} {losses:6d} {expires:7d} {wr:6.1f}% {avg_win:+8.2f}% {avg_loss:+8.2f}% {max_dd:7.1f}% {ret:+9.1f}% ${final:12,.2f}")
+        print(f"  {'':45}  Stop zamanlaması → <24H: {se} ({se/losses*100:.1f}%)  24-48H: {sm} ({sm/losses*100:.1f}%)  >48H: {sl} ({sl/losses*100:.1f}%)" if losses else "")
     print("═"*W+"\n")
 
 
