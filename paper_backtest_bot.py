@@ -45,12 +45,12 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 # ─── SİSTEM PARAMETRELERİ ───────────────────────────────────────────────────
 PP_CRASH_MIN  = -15.0;  PP_CRASH_MAX  = -7.0
 PP_VOL_MIN    = 1.5;    PP_V2_VOL_MIN = 2.0;  PP_VOL_MAX = 3.0
-PP_TRAIL_PCT  = 3.0;    PP_COOLDOWN_H = 4;    PP_EXPIRE_H = 168
+PP_TRAIL_PCT  = 3.0;    PP_COOLDOWN_H = 4;    PP_EXPIRE_H = 24
 
 RK_CHANGE_24H = 10.0
 RK_VOL_MIN    = 1.2;    RK_V2_VOL_MIN = 2.0
 RK_ADX_MIN    = 25;     RK_V2_ADX_MIN = 30
-RK_TRAIL_PCT  = 3.0;    RK_COOLDOWN_H = 4;    RK_EXPIRE_H = 168
+RK_TRAIL_PCT  = 3.0;    RK_COOLDOWN_H = 12;   RK_EXPIRE_H = 48
 
 T72_MOM5  = 2.740; T72_DEMA21 = -2.737; T72_DRAWDOWN = -26.796; T72_MA200S = 1.028
 T72_COOLDOWN_H = 4; T72_EXPIRE_H = 72
@@ -166,13 +166,13 @@ def compute_btc_filters(btc_1h):
         if trend4==-1 and (prev_sl4 is None or (sl4 is not None and sl4<=prev_sl4)):
             downtrend[i]=True
     df4["crash_ok"]=crash_ok; df4["downtrend"]=downtrend
-    # BTC EMA50 — Rocket filtresi için
-    df4["ema50_ok"] = df4["close"] > df4["close"].ewm(span=50,adjust=False).mean()
+    # BTC EMA200 (4H) — Rocket filtresi: bot.py close<EMA200 ise "🔴 Düşüş" → sinyal yok
+    df4["ema200_ok"] = df4["close"] > df4["close"].ewm(span=200,adjust=False).mean()
     idx=btc_1h.index
     crash_s     = df4["crash_ok"].reindex(idx,method="ffill").fillna(True).astype(bool)
     downtrend_s = df4["downtrend"].reindex(idx,method="ffill").fillna(False).astype(bool)
-    ema50_s     = df4["ema50_ok"].reindex(idx,method="ffill").fillna(True).astype(bool)
-    return pd.DataFrame({"crash_ok":crash_s,"downtrend_ok":~downtrend_s,"ema50_ok":ema50_s},index=idx)
+    ema200_s    = df4["ema200_ok"].reindex(idx,method="ffill").fillna(True).astype(bool)
+    return pd.DataFrame({"crash_ok":crash_s,"downtrend_ok":~downtrend_s,"ema200_ok":ema200_s},index=idx)
 
 
 # ─── ADX + DI ───────────────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
 
             crash_ok    = bool(btc["crash_ok"].iloc[i])
             downtrend_ok= bool(btc["downtrend_ok"].iloc[i])
-            ema50_ok    = bool(btc["ema50_ok"].iloc[i])
+            ema200_ok   = bool(btc["ema200_ok"].iloc[i])
 
             # ── PANİK PUMP ──────────────────────────────────────────────────
             if (PP_CRASH_MIN <= ret1 <= PP_CRASH_MAX and not np.isnan(vol_ratio)):
@@ -357,7 +357,7 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
             pdi_val    = float(pdi_arr[i])
             ndi_val    = float(ndi_arr[i])
             if (not np.isnan(change_24h) and change_24h >= RK_CHANGE_24H
-                    and not np.isnan(vol_ratio) and pdi_val > ndi_val and ema50_ok):
+                    and not np.isnan(vol_ratio) and pdi_val > ndi_val and ema200_ok):
                 entry = price
                 stop  = round(entry * 0.95, 10)
                 tp1   = round(entry * 1.08, 10)
