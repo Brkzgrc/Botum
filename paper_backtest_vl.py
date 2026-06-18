@@ -339,6 +339,7 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
             stop  = entry * 0.95   # sabit %5 stop
             tp1   = entry * 1.10   # sabit %10 TP1
             tp2   = entry * 1.20   # sabit %20 TP2
+            risk  = entry - stop
 
             sigs["eski_v2"].append({
                 "symbol":symbol,"entry_time":ts,"entry":entry,
