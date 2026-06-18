@@ -10,13 +10,9 @@ SİSTEM 1: PANİK PUMP (Kapitülasyon)
 
 SİSTEM 2: PUMP SİNYALİ — KISA VADE (T24)  *** DEVRE DIŞI ***
 
-SİSTEM 3: PUMP SİNYALİ — ORTA VADE (T72)
-  mom5_pct>=2.740 & dist_ema21<=-2.737 & coin_drawdown>=-26.796 & ma200_slope>=1.028
-  Stop: -5% | TP: +10% | 3 gün | Backtest WR: %54
+SİSTEM 3: PUMP SİNYALİ — ORTA VADE (T72)  *** DEVRE DIŞI ***
 
-SİSTEM 4: PUMP SİNYALİ — UZUN VADE (T168)
-  dist_ma200>=5.657 & dist_ma50<=-5.045 & mom10_pct>=3.941 & days_since_high<=677
-  Stop: -8% | TP: +25% | 7 gün | Backtest WR: %40
+SİSTEM 4: PUMP SİNYALİ — UZUN VADE (T168)  *** DEVRE DIŞI ***
 ════════════════════════════════════════════════════════
 """
 
@@ -1786,29 +1782,11 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
     # T24 backtest: WR %%10, ort getiri -%%1.7 -> para kaybettiriyor
     pass  # T24 disabled
 
-    # --- Sistem 3: T72 ---
-    last_t72 = last_pump_ts.get((symbol, "t72"))
-    t72_ok = True
-    if last_t72 is not None:
-        elapsed = (tr_time.replace(tzinfo=None) - last_t72.replace(tzinfo=None)).total_seconds() / 3600
-        if elapsed < PUMP_COOLDOWN_HOURS:
-            t72_ok = False
-    if t72_ok:
-        result = check_t72_signal(df, symbol)
-        if result:
-            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+    # --- Sistem 3: T72 --- (DEVRE DIŞI - 2026-06-18 backtest WR %27, ret -%5.7)
+    pass  # T72 disabled
 
-    # --- Sistem 4: T168 ---
-    last_t168 = last_pump_ts.get((symbol, "t168"))
-    t168_ok = True
-    if last_t168 is not None:
-        elapsed = (tr_time.replace(tzinfo=None) - last_t168.replace(tzinfo=None)).total_seconds() / 3600
-        if elapsed < PUMP_COOLDOWN_HOURS:
-            t168_ok = False
-    if t168_ok:
-        result = check_t168_signal(df, symbol)
-        if result:
-            await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
+    # --- Sistem 4: T168 --- (DEVRE DIŞI - 2026-06-18 backtest WR %32, ret +%2.2)
+    pass  # T168 disabled
 
 async def on_15m_close(symbol, o, h, l, c, v, ts_ms):
     if symbol not in bars_15m:
@@ -1971,8 +1949,8 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <div class="info">
   🔴 PANİK PUMP: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% | Hacim {VOL_MIN:.1f}x-{VOL_MAX:.1f}x | Stop -3% | TP +5/10/15% | WR ~%84<br>
   ⛔ KISA VADE (T24): DEVRE DIŞI<br>
-  🟡 ORTA VADE (T72): Mom pozitif + EMA21 altı + Sağlıklı drawdown + MA200 yukarı | Stop -5% | TP +10% | WR %54<br>
-  🟢 UZUN VADE (T168): MA200 üstü + MA50 altı + Mom pozitif + Yakın zirve | Stop -8% | TP +25% | WR %40<br>
+  ⛔ ORTA VADE (T72): DEVRE DIŞI<br>
+  ⛔ UZUN VADE (T168): DEVRE DIŞI<br>
   📈 ROCKET: 24s değişim + ADX(14) Yükseliş + Hacim artışı | Stop -5% | TP +8/15/25%<br>
   BTC 4H: {btc_4h_cache.get("trend","?")}
 </div>
@@ -2158,8 +2136,8 @@ async def main():
     print("Pump Scanner v6.0 başlatılıyor — 5 Sistem (T24 devre dışı)", flush=True)
     print(f"  [1] PANİK PUMP  : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
     print(f"  [2] T24         : *** DEVRE DIŞI ***", flush=True)
-    print(f"  [3] ORTA VADE   : T72 | Stop -5% | TP +10% | WR %54", flush=True)
-    print(f"  [4] UZUN VADE   : T168 | Stop -8% | TP +25% | WR %40", flush=True)
+    print(f"  [3] ORTA VADE   : *** DEVRE DIŞI ***", flush=True)
+    print(f"  [4] UZUN VADE   : *** DEVRE DIŞI ***", flush=True)
     print(f"  [5] ROCKET      : Momentum devam + hacim artışı | Stop ~-5% | TP +8/15/25%", flush=True)
     pp_tok = "VAR" if PUMP_PROBABILITY_TOKEN else "YOK (fallback: ana bot)"
     print(f"       → ROCKET Telegram token (PUMP_PROBABILITY_TOKEN): {pp_tok}", flush=True)
