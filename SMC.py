@@ -487,8 +487,9 @@ def _analyze_symbol(symbol):
             scan_stats["no_choch"] += 1
             return
 
-        # Hacim filtresi: son bar / 20 bar MA >= VOL_RATIO_MIN
-        vol_ma_20 = df["volume"].rolling(20).mean().iloc[-1]
+        # Hacim filtresi: son bar / önceki 20 bar MA >= VOL_RATIO_MIN
+        # shift(1): mevcut barı MA hesabından dışarıda bırak (backtest ile eşleşir)
+        vol_ma_20 = df["volume"].rolling(20).mean().iloc[-2]
         if not vol_ma_20 or vol_ma_20 <= 0:
             return
         vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
