@@ -336,10 +336,10 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
 
             choch_lvl = cls_[i]; sw_low = swls[i]
             entry = choch_lvl if choch_lvl else price
-            stop  = entry * 0.95   # sabit %5 stop
-            tp1   = entry * 1.10   # sabit %10 TP1
-            tp2   = entry * 1.20   # sabit %20 TP2
-            risk  = entry - stop
+            stop  = sw_low*0.995 if sw_low else entry*0.95
+            if stop >= entry: stop = entry*0.95
+            risk  = max(entry-stop, entry*0.01)
+            tp1   = entry+risk; tp2 = entry+risk*2
 
             sigs["eski_v2"].append({
                 "symbol":symbol,"entry_time":ts,"entry":entry,
