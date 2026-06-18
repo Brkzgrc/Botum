@@ -958,6 +958,20 @@ def _analyze_symbol(symbol):
                 send_to_portfolio(symbol, eski_entry, atr_val, "choch", "smc-eski-choch", eski_break, stop_price=eski_stop)
                 mark_sent(symbol, "choch", "smc-eski-choch")
                 print(f"🚀 [ESKİ-CHoCH] {symbol} | CHoCH:{eski_entry:.8g}", flush=True)
+
+        # Eski CHoCH V2: aynı koşullar + vol_ratio >= 1.5 (backtest'te daha yüksek WR)
+        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash() and not check_btc_downtrend_active():
+            vol_ma_20 = df["volume"].rolling(20).mean().iloc[-1]
+            if vol_ma_20 and vol_ma_20 > 0:
+                vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
+                if vol_ratio >= 1.5:
+                    last_eski_v2 = get_last_sent(symbol, "choch_v2", "smc-eski-choch-v2")
+                    if now - last_eski_v2 > PHASE2_COOLDOWN:
+                        eski_entry = eski_choch_level if eski_choch_level is not None else price
+                        eski_stop  = round(eski_swing_low * 0.995, 10) if eski_swing_low is not None else None
+                        send_to_portfolio(symbol, eski_entry, atr_val, "choch_v2", "smc-eski-choch-v2", eski_break, stop_price=eski_stop)
+                        mark_sent(symbol, "choch_v2", "smc-eski-choch-v2")
+                        print(f"🟣 [ESKİ-CHoCH-V2] {symbol} | CHoCH:{eski_entry:.8g} | vol:{vol_ratio:.2f}x", flush=True)
         # ============================================================
         # [SMC-ESKİ] BİTİŞ
         # ============================================================
