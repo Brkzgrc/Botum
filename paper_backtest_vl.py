@@ -20,8 +20,8 @@ import numpy as np, pandas as pd
 DATA_DIR      = "backtest_data"
 START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
-MAX_POSITIONS = 20
-MAX_POS_SIZE  = 10_000.0   # pozisyon başına maksimum dolar
+MAX_POSITIONS = 5
+MAX_POS_SIZE  = 20_000.0   # pozisyon başına maksimum dolar
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
 CHOCH_SWING   = 5
