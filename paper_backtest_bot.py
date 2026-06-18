@@ -302,9 +302,10 @@ def calc_adx_di(arr_h, arr_l, arr_c, period=14):
     pdm_s = wilder(pdm, period)
     ndm_s = wilder(ndm, period)
 
-    pdi = np.where(atr_s > 0, 100 * pdm_s / atr_s, 0.0)
-    ndi = np.where(atr_s > 0, 100 * ndm_s / atr_s, 0.0)
-    dx  = np.where(pdi + ndi > 0, 100 * np.abs(pdi - ndi) / (pdi + ndi), 0.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pdi = np.where(atr_s > 0, 100 * pdm_s / atr_s, 0.0)
+        ndi = np.where(atr_s > 0, 100 * ndm_s / atr_s, 0.0)
+        dx  = np.where(pdi + ndi > 0, 100 * np.abs(pdi - ndi) / (pdi + ndi), 0.0)
 
     adx = np.zeros(n)
     start = period * 2
