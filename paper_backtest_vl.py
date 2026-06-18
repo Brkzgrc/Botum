@@ -86,11 +86,6 @@ def fetch_and_save(symbol):
 def load_or_fetch(symbol):
     df = load_pkl(symbol)
     if df is not None:
-        # Cache 2022'den 6 ay+ sonra başlıyorsa eski indirme — yeniden indir
-        if df.index[0] > START_DATE + pd.Timedelta(days=180):
-            print(f"    ↻ {symbol} cache {df.index[0].date()} başlıyor, yeniden indiriliyor...", end=" ", flush=True)
-            df = fetch_and_save(symbol)
-            if df is not None: print("✓")
         return df
     print(f"    ↓ {symbol} indiriliyor...", end=" ", flush=True)
     df = fetch_and_save(symbol)
