@@ -491,8 +491,7 @@ def collect_all_signals(symbols, btc_filters, fetch=True):
             if (not np.isnan(close_prev) and close_prev>0 and
                     ts_h-last["panik"] >= PANIK_COOL_H):
                 ret1 = (price/close_prev-1)*100
-                if (PANIK_MIN<=ret1<=PANIK_MAX and PANIK_VOL_MIN<=vr<=PANIK_VOL_MAX
-                        and price>=o_arr[i]):
+                if (PANIK_MIN<=ret1<=PANIK_MAX and PANIK_VOL_MIN<=vr<=PANIK_VOL_MAX):
                     c5 = c_arr[i-5] if i>=5 else price
                     if c5<=0 or (c5-price)/c5*100<4.0:
                         entry=price; stop=entry*0.97; tp1=entry*1.05; tp2=entry*1.10
