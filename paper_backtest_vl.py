@@ -21,6 +21,7 @@ DATA_DIR      = "backtest_data"
 START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
 MAX_POSITIONS = 10
+MAX_POS_SIZE  = 10_000.0   # pozisyon başına maksimum dolar
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
 CHOCH_SWING   = 5
@@ -414,8 +415,8 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
         ts = pd.Timestamp(unix_ts,unit="s",tz="UTC")
         if etype=="signal":
             if open_count>=max_positions: continue
-            pos_size=cash/max_positions
-            if cash<pos_size or pos_size<1: continue
+            pos_size=min(cash/max_positions, MAX_POS_SIZE)
+            if pos_size<1: continue
             sig=data; cash-=pos_size; open_count+=1
             trade_id=counter; counter+=1
             open_positions[trade_id]=pos_size
@@ -460,23 +461,24 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
 
 # ─── İSTATİSTİK ─────────────────────────────────────────────────────────────
 def system_stats(trade_log, equity_pts):
-    exits  = [t for t in trade_log if t["type"]=="EXIT"]
-    wins   = [e for e in exits if e["label"] in ("tp2","tp1","trail","win")]
-    losses = [e for e in exits if e["label"]=="stop"]
-    dec    = len(wins)+len(losses)
-    wr     = len(wins)/dec*100 if dec>0 else 0.0
-    final  = equity_pts[-1][1] if equity_pts else INITIAL_CAP
-    ret    = (final-INITIAL_CAP)/INITIAL_CAP*100
-    peak   = INITIAL_CAP; max_dd=0.0
+    exits   = [t for t in trade_log if t["type"]=="EXIT"]
+    wins    = [e for e in exits if e["label"] in ("tp2","tp1","trail","win")]
+    stops   = [e for e in exits if e["label"]=="stop"]
+    expires = [e for e in exits if e["label"]=="expire"]
+    dec     = len(wins)+len(stops)
+    wr      = len(wins)/dec*100 if dec>0 else 0.0
+    final   = equity_pts[-1][1] if equity_pts else INITIAL_CAP
+    ret     = (final-INITIAL_CAP)/INITIAL_CAP*100
+    peak    = INITIAL_CAP; max_dd=0.0
     for _,cap in equity_pts:
         if cap>peak: peak=cap
         dd=(cap-peak)/peak*100
         if dd<max_dd: max_dd=dd
-    avg_win  = sum(e["net_pct"] for e in wins)/len(wins) if wins else 0.0
-    avg_loss = sum(e["net_pct"] for e in losses)/len(losses) if losses else 0.0
+    avg_win  = sum(e["net_pct"] for e in wins)/len(wins)   if wins   else 0.0
+    avg_loss = sum(e["net_pct"] for e in stops)/len(stops) if stops  else 0.0
     return {
         "trades":len([t for t in trade_log if t["type"]=="ENTRY"]),
-        "wins":len(wins),"losses":len(losses),"wr":round(wr,1),
+        "wins":len(wins),"losses":len(stops),"expires":len(expires),"wr":round(wr,1),
         "final":round(final,2),"ret":round(ret,2),"max_dd":round(max_dd,2),
         "avg_win":round(avg_win,2),"avg_loss":round(avg_loss,2),
     }
@@ -496,9 +498,10 @@ PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]
 
 
 # ─── HTML ÇIKTI ─────────────────────────────────────────────────────────────
-def generate_html(results, n_coins):
+def generate_html(results, n_coins, active_scenarios=None):
+    if active_scenarios is None: active_scenarios = SCENARIO_META
     rows=""; datasets=[]
-    for idx,(key,_sig,_efn,sys_name,mode) in enumerate(SCENARIO_META):
+    for idx,(key,_sig,_efn,sys_name,mode) in enumerate(active_scenarios):
         r=results.get(key,{}); st=r.get("stats",{})
         trades=st.get("trades",0); wr=st.get("wr",0)
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
@@ -576,29 +579,32 @@ function hideAll(){{ch.data.datasets.forEach(d=>d.hidden=true);document.querySel
 
 
 # ─── RAPOR ──────────────────────────────────────────────────────────────────
-def print_report(results, n_coins):
-    W=108
+def print_report(results, n_coins, active_scenarios=None):
+    if active_scenarios is None: active_scenarios = SCENARIO_META
+    W=120
     print("\n"+"═"*W)
-    print(f"  SMC BACKTEST — 5 Senaryo | {n_coins} coin | 2022→bugün | ${INITIAL_CAP:,.0f} başlangıç")
+    print(f"  SMC BACKTEST | {n_coins} coin | 2022→bugün | ${INITIAL_CAP:,.0f} başlangıç | Pozisyon max ${MAX_POS_SIZE:,.0f}")
     print("═"*W)
-    print(f"  {'Senaryo':<45} {'Sinyal':>7} {'Trade':>6} {'WR%':>6} {'AvgWin':>8} {'MaxDD':>7} {'Getiri':>8} {'Son Sermaye':>12}")
+    print(f"  {'Senaryo':<45} {'Sinyal':>7} {'Trade':>6} {'Kazanç':>7} {'Stop':>6} {'Expire':>7} {'WR%':>6} {'AvgWin':>8} {'AvgLoss':>8} {'MaxDD':>7} {'Getiri':>9} {'Son Sermaye':>13}")
     print("─"*W)
-    for key,_sig,_efn,sys_name,mode in SCENARIO_META:
+    for key,_sig,_efn,sys_name,mode in active_scenarios:
         r=results.get(key,{}); st=r.get("stats",{})
         trades=st.get("trades",0); wr=st.get("wr",0)
+        wins=st.get("wins",0); losses=st.get("losses",0); expires=st.get("expires",0)
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
-        avg_win=st.get("avg_win",0); max_dd=st.get("max_dd",0)
+        avg_win=st.get("avg_win",0); avg_loss=st.get("avg_loss",0); max_dd=st.get("max_dd",0)
         n_sigs=r.get("n_sigs",0)
         label=f"{sys_name} — {mode}"
-        print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wr:6.1f}% {avg_win:+8.2f}% {max_dd:7.1f}% {ret:+8.1f}% ${final:11,.2f}")
+        print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wins:7d} {losses:6d} {expires:7d} {wr:6.1f}% {avg_win:+8.2f}% {avg_loss:+8.2f}% {max_dd:7.1f}% {ret:+9.1f}% ${final:12,.2f}")
     print("═"*W+"\n")
 
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--no-fetch", action="store_true")
-    ap.add_argument("--coins",    nargs="*")
+    ap.add_argument("--no-fetch",  action="store_true")
+    ap.add_argument("--coins",     nargs="*")
+    ap.add_argument("--scenarios", nargs="*", help="Çalıştırılacak senaryo key'leri (örn: eski_v2_tp2)")
     args = ap.parse_args()
 
     do_fetch = not args.no_fetch
@@ -628,18 +634,24 @@ def main():
     for sys_name, sig_list in sigs.items():
         print(f"  {sys_name}: {len(sig_list)} sinyal")
 
+    active_scenarios = SCENARIO_META
+    if args.scenarios:
+        active_scenarios = [s for s in SCENARIO_META if s[0] in args.scenarios]
+        if not active_scenarios:
+            print(f"Senaryo bulunamadı: {args.scenarios}"); return
+
     print("\nPortföy simülasyonları çalışıyor...")
     results = {}
-    for key, sig_sys, exit_fn_key, *_ in SCENARIO_META:
+    for key, sig_sys, exit_fn_key, *_ in active_scenarios:
         sig_list = sigs[sig_sys]
         fn       = EXIT_FNS[exit_fn_key]
         log, eq, final_cash = simulate_portfolio(sig_list, fn)
         st = system_stats(log, eq)
         results[key] = {"log":log,"equity":eq,"final":final_cash,"stats":st,"n_sigs":len(sig_list)}
 
-    print_report(results, len(symbols))
+    print_report(results, len(symbols), active_scenarios)
 
-    html = generate_html(results, len(symbols))
+    html = generate_html(results, len(symbols), active_scenarios)
     with open("backtest_results.html","w",encoding="utf-8") as f: f.write(html)
     print("✓ backtest_results.html kaydedildi")
 
