@@ -1368,7 +1368,6 @@ def dashboard():
     )
 
     _smc_eski_section = ""
-            exp_pnl_c  = "#2ecc71" if exp_pnl > 0 else ("#e74c3c" if exp_pnl < 0 else "#8a9bb0")
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip v2.8</title>
