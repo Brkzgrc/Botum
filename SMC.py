@@ -509,7 +509,7 @@ def _analyze_symbol(symbol):
         stop   = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
         if stop >= entry:
             stop = round(entry * 0.95, 10)
-        risk   = entry - stop
+        risk   = max(entry - stop, entry * 0.01)
         tp1    = round(entry + risk * 1.0, 10)
         tp2    = round(entry + risk * 2.0, 10)
 
