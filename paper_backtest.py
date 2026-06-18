@@ -316,7 +316,10 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
         unix_ts, _, _, etype, data = heapq.heappop(queue)
         ts = pd.Timestamp(unix_ts, unit="s", tz="UTC")
         if etype == "signal":
-            if cash < pos_size or open_count >= max_positions: continue
+            if open_count >= max_positions: continue
+            # Dinamik pozisyon boyutu: mevcut cash / max slot sayısı
+            pos_size = cash / max_positions
+            if cash < pos_size or pos_size < 1: continue
             sig = data; cash -= pos_size; open_count += 1
             trade_id = counter; counter += 1
             exit_ts, cash_ret, label = compute_exit(sig, pos_size)
@@ -325,6 +328,7 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
                 "entry_time": sig["entry_time"], "entry": sig["entry"],
                 "stop":       sig["stop"], "tp1": sig["tp1"], "tp2": sig["tp2"],
                 "cash_ret":   cash_ret,   "label":  label,
+                "pos_size":   pos_size,   # giriş anındaki boyut
                 "stop_pct":   round((sig["stop"]-sig["entry"])/sig["entry"]*100,2),
                 "tp1_pct":    round((sig["tp1"]-sig["entry"])/sig["entry"]*100,2),
                 "tp2_pct":    round((sig["tp2"]-sig["entry"])/sig["entry"]*100,2),
@@ -343,12 +347,13 @@ def simulate_portfolio(signals, initial_cap, pos_size, max_positions):
             equity_pts.append((ts, cash))
         elif etype == "exit":
             d = data; cash += d["cash_ret"]; open_count -= 1
-            net_pnl = d["cash_ret"] - pos_size
+            entry_size = d["pos_size"]   # giriş anındaki gerçek pos_size
+            net_pnl = d["cash_ret"] - entry_size
             trade_log.append({
                 "type":"EXIT","trade_id":d["trade_id"],"symbol":d["symbol"],
                 "entry_time":str(d["entry_time"])[:16],"time":str(ts)[:16],
                 "label":d["label"],"net_pnl":round(net_pnl,2),
-                "net_pct":round(net_pnl/pos_size*100,2),"cash_ret":round(d["cash_ret"],2),
+                "net_pct":round(net_pnl/entry_size*100,2),"cash_ret":round(d["cash_ret"],2),
                 "cash_after":round(cash,2),"open":open_count,
                 "tp1_pct":d["tp1_pct"],"tp2_pct":d["tp2_pct"],
                 "stop_pct":d["stop_pct"],"risk_pct":d["risk_pct"],
