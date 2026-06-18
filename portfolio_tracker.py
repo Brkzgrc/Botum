@@ -44,10 +44,11 @@ SIM_TP1    = 5.0   # Hayali senaryo parametreleri (sabit)
 SIM_TP2    = 10.0
 SIM_STOP   = -2.5
 
-# [SMC-ESKİ] Karşılaştırma sinyalleri — TOPLAM/breakdown'a dahil edilmez,
-# SMC bölümünde ayrı bir özet tablosuyla gösterilir. Kaldırmak için bu
-# satırı ve aşağıdaki "+ SMC_ESKI_SOURCES" eklerini silmek yeterli.
+# Eski karşılaştırma sinyalleri — veritabanında kalır ama ana toplamdan ayrı tutulur
 SMC_ESKI_SOURCES = ("smc-eski-discount", "smc-eski-choch", "smc-eski-choch-v2")
+
+# Ana SMC kaynak listesi — "smc-v2" artık tek aktif SMC sinyali
+SMC_MAIN_SOURCES = ("smc", "smc-original", "smc-trailing", "smc-momentum", "smc-v2")
 
 # Kaldırılmış sinyal tipleri — veritabanında kalır (Analyzer geçmiş veri
 # olarak kullanabilir), ama portfolyo panelinde/snapshot'ta gösterilmez.
@@ -127,7 +128,7 @@ def _migrate_signals():
             sig["tp2_shadow"] = "not_reached"
             fixed += 1
         # Bot sinyalleri: tp2 vurulmadıysa shadow izleme gereksiz
-        _is_bot = sig.get("source", "bot") not in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
+        _is_bot = sig.get("source", "bot") not in SMC_MAIN_SOURCES + SMC_ESKI_SOURCES
         if (_is_bot and sig.get("tp2_shadow") == "watching"
                 and sig.get("status") not in ("open", "half_open")
                 and sig.get("status") != "win_tp2"):
@@ -298,7 +299,7 @@ def check_open_positions():
             sig["last_check"] = now.isoformat()
             sig["checks"] = sig.get("checks", 0) + 1
 
-            is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
+            is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES + SMC_ESKI_SOURCES
             close_reason = None; close_price = None
 
             if is_smc:
@@ -560,6 +561,8 @@ def calc_performance():
             phase = sig.get('phase', '')
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
             type_key = f"SMC-M {phase_label}"
+        elif source == "smc-v2":
+            type_key = "SMC V2"
         elif source in ("smc", "smc-original"):
             phase = sig.get('phase', '')
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
@@ -637,7 +640,7 @@ def calc_performance():
 
         # Alternatif senaryo hesabı (sadece kapanmış sinyaller)
         if status not in ("open", "half_open"):
-            _is_smc = source in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+            _is_smc = source in SMC_MAIN_SOURCES
             _entry = sig.get("entry", 0) or 0
             _tp1p = sig.get("tp1"); _tp2p = sig.get("tp2"); _stopp = sig.get("stop")
             _tp1_pct = round((_tp1p - _entry) / _entry * 100, 2) if _tp1p and _entry else 0
@@ -703,7 +706,7 @@ def calc_performance():
             continue
         if sig.get("source", "bot") in SMC_ESKI_SOURCES:
             continue  # [SMC-ESKİ] hayali senaryoya dahil değil
-        is_smc = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum")
+        is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
         bucket = result["sim_smc"] if is_smc else result["sim_bot"]
         pk = sig.get("peak_pct", 0) or 0
         dp = sig.get("low_pct", 0) or 0
@@ -972,11 +975,12 @@ def type_badge(sig):
     sig_type = sig.get("sig_type", "unknown")
     sub = sig.get("sub_type", "")
     source = sig.get("source", "bot")
-    if source in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES:
+    if source in SMC_MAIN_SOURCES + SMC_ESKI_SOURCES:
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
         src_label = ("SMC-T" if source == "smc-trailing" else
                       "SMC-M" if source == "smc-momentum" else
+                      "SMC V2" if source == "smc-v2" else
                       "SMC-Eski" if source in SMC_ESKI_SOURCES else "SMC")
         return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{src_label} {phase_label}</span>'
     colors = {
@@ -1046,7 +1050,7 @@ def dashboard():
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
         # Dinamik trailing stop: peak * %97
-        is_smc_sig = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
+        is_smc_sig = sig.get("source", "bot") in SMC_MAIN_SOURCES + SMC_ESKI_SOURCES
         if not is_smc_sig:
             trail_stop_v = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
             trail_ret_v  = round((trail_stop_v - sig["entry"]) / sig["entry"] * 100, 1)
@@ -1093,7 +1097,7 @@ def dashboard():
         if sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
-        _is_smc_closed = sig.get("source", "bot") in ("smc", "smc-original", "smc-trailing", "smc-momentum") + SMC_ESKI_SOURCES
+        _is_smc_closed = sig.get("source", "bot") in SMC_MAIN_SOURCES + SMC_ESKI_SOURCES
         tp3_cell = tp3_shadow_badge(sig) if _is_smc_closed else '<span style="color:#2a3a4a;font-size:.6rem">—</span>'
 
         closed_rows += f"""<tr>

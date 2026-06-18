@@ -22,12 +22,10 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
-    active = len([s for s, v in discount_active.items() if v])
-    btc_ema = "BTC EMA21 ✅" if btc_ema21_cache.get("above") else "BTC EMA21 ❌"
-    struc = "4H PAUSE 🚨" if btc_4h_structural_cache.get("paused") else "4H OK ✅"
+    btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
     btc_dt = "BTC DÜŞÜŞ 🔻" if btc_downtrend_cache.get("active") else "BTC YAPI OK ✅"
-    return (f"SMC v20 WS — 4H Crash + CHoCH 4H Teyit + EMA21 | {boot_status} | {cached} coin cached | "
-            f"{active} discount aktif | {btc_ema} | {struc} | {btc_dt} | {ws_1h_closes} bar kapandı"), 200
+    return (f"SMC v21 — Eski CHoCH V2 ≥2.0x | {boot_status} | {cached} coin cached | "
+            f"{btc_cr} | {btc_dt} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -42,19 +40,15 @@ PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TIMEFRAME        = "1h"
-MIN_VOLUME_24H   = float(os.getenv("MIN_VOLUME_24H", "5000000"))  # Render env'den kontrol
+MIN_VOLUME_24H   = float(os.getenv("MIN_VOLUME_24H", "5000000"))
 
-SWING_LENGTH     = 50   # Discount zone hesabı için (makro)
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
+VOL_RATIO_MIN    = 2.0  # Hacim filtresi: son bar / 20 bar MA
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
 
-PHASE1_RSI       = 30
-PHASE1_DEPTH     = 85
-PHASE1_COOLDOWN  = 86400
-
-PHASE2_COOLDOWN  = 86400
+PHASE2_COOLDOWN  = 86400  # 24 saat cooldown
 
 SIGNALS_FILE     = "sent_signals.json"
 WS_STREAM_CHUNK  = 120
@@ -81,9 +75,6 @@ ws_1h_closes = 0
 # ============================================================
 bars_cache = {}
 bootstrap_done = False
-
-discount_active      = {}
-discount_active_lock = threading.Lock()
 
 def fetch_bars_sync(symbol, limit=BOOTSTRAP_BARS):
     all_bars = []
@@ -134,46 +125,17 @@ async def bootstrap_all(symbols):
             print(f"  → {idx}/{len(symbols)}...", flush=True)
     print(f"✅ Bootstrap bitti: {ok}/{len(symbols)} coin yüklendi", flush=True)
 
-    detected = 0
-    for sym, df in bars_cache.items():
-        try:
-            smc = luxalgo_smc(df, SWING_LENGTH)
-            if smc and smc['in_discount']:
-                with discount_active_lock:
-                    discount_active[sym] = True
-                detected += 1
-        except Exception:
-            pass
-    if detected:
-        print(f"📍 Bootstrap: {detected} coin discount zone'da → bayrak set edildi", flush=True)
-
     bootstrap_done = True
 
 # ============================================================
 # 1c) BTC FİLTRELERİ
 # ============================================================
 btc_crash_cache = {"crashing": False, "updated": 0}
-btc_ema21_cache = {"above": False, "updated": 0}
-
 BTC_CRASH_PCT = 3.0
 BTC_CRASH_TTL = 1800
-BTC_EMA21_TTL = 1800
 
-# [SMC-ESKİ] BTC 4H düşüş yapısı cache — Eski CHoCH filtresi için
 btc_downtrend_cache = {"active": False, "updated": 0}
 BTC_DOWNTREND_TTL = 3600
-
-# ── YENİ: 4H Yapısal Kırılma Cache ──────────────────────────────
-# Level 1 (paused=True):
-#   Son 2 kapanmış 4H mum EMA21 altında (2. daha düşük) +
-#   en son mumun çoğunluğu (>%50) EMA50 altında
-#   → Yeni sinyal üretilmez
-#
-# Level 2 (send_alert=True):
-#   Level 1 + önceki mumun da çoğunluğu EMA50 altında
-#   → Telegram'a bir kez uyarı gönderilir
-btc_4h_structural_cache = {"paused": False, "level2_alerted": False, "updated": 0}
-BTC_4H_STRUCTURAL_TTL = 3600  # Saatte bir kontrol
 
 def check_btc_crash():
     now = time.time()
@@ -199,40 +161,10 @@ def check_btc_crash():
     btc_crash_cache["updated"] = now
     return btc_crash_cache["crashing"]
 
-def check_btc_ema21():
-    now = time.time()
-    if now - btc_ema21_cache["updated"] < BTC_EMA21_TTL:
-        return btc_ema21_cache["above"]
-    try:
-        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="1h", limit=30)
-        if len(bars) < 22:
-            btc_ema21_cache["above"] = False
-        else:
-            closes = [float(b[4]) for b in bars]
-            k = 2 / (21 + 1)
-            ema = closes[0]
-            for c in closes[1:]:
-                ema = c * k + ema * (1 - k)
-            price = closes[-1]
-            above = price > ema
-            btc_ema21_cache["above"] = above
-            status = "üzerinde ✅" if above else "altında ❌"
-            print(f"📊 BTC EMA21: {ema:.1f} | Fiyat: {price:.1f} | {status}", flush=True)
-    except Exception as e:
-        print(f"BTC EMA21 check hata: {e}", flush=True)
-        btc_ema21_cache["above"] = False
-    btc_ema21_cache["updated"] = now
-    return btc_ema21_cache["above"]
-
 def check_btc_downtrend_active():
     """
-    [SMC-ESKİ] BTC 4H'de aktif düşüş yapısı var mı?
-
-    Son swing kırılımı düşen dip (swing_trend == -1) VE en son swing dip,
-    ondan önceki swing dipten daha YÜKSEK değilse (henüz "yükselen dip"
-    oluşmadı, düşüş duraklamadı) → True (aktif düşüş, Eski CHoCH engellenir).
-
-    EMA'ya dayanmaz — sadece swing yapısına (düşen/yükselen dip dizilimi) bakar.
+    BTC 4H'de aktif düşüş yapısı var mı?
+    Son swing kırılımı düşen dip (swing_trend == -1) VE son dip öncekinden yüksek değilse → True.
     """
     now = time.time()
     if now - btc_downtrend_cache["updated"] < BTC_DOWNTREND_TTL:
@@ -254,101 +186,6 @@ def check_btc_downtrend_active():
     btc_downtrend_cache["active"]  = active
     btc_downtrend_cache["updated"] = now
     return active
-
-def check_btc_4h_structural():
-    """
-    BTC 4H yapısal kırılma tespiti.
-
-    Döner: (paused: bool, send_alert: bool)
-      paused     = True  → Yeni sinyal üretme (Level 1)
-      send_alert = True  → Telegram uyarısı gönder (Level 2, sadece ilk tespit)
-
-    Level 1 şartları:
-      1. Son 2 kapanmış 4H mum kapanışı EMA21 altında
-      2. 2. (en son) mum 1.'den (önceki) daha düşük kapandı
-      3. En son mumun çoğunluğu (>%50) EMA50 altında
-         Formül: (EMA50 - low) / (high - low) > 0.5
-
-    Level 2 şartları (Level 1 +):
-      4. Önceki mumun da çoğunluğu EMA50 altında (aynı formül)
-    """
-    now = time.time()
-    if now - btc_4h_structural_cache["updated"] < BTC_4H_STRUCTURAL_TTL:
-        # Cached sonuç — alert yeni değil
-        return btc_4h_structural_cache["paused"], False, None
-
-    paused     = False
-    send_alert = False
-    levels     = None
-
-    try:
-        bars = exchange.fetch_ohlcv("BTC/USDT", timeframe="4h", limit=60)
-        if len(bars) < 55:
-            btc_4h_structural_cache["updated"] = now
-            return False, False
-
-        closes = pd.Series([float(b[4]) for b in bars])
-        ema21  = closes.ewm(span=21, adjust=False).mean()
-        ema50  = closes.ewm(span=50, adjust=False).mean()
-
-        # Son 2 KAPANMIŞ bar:
-        #   bars[-1] → halen açık olabilecek mevcut 4H bar (kullanma)
-        #   bars[-2] → en son kapanmış 4H bar  (c1)
-        #   bars[-3] → 2. en son kapanmış 4H bar (c2)
-        c1_h, c1_l, c1_c = float(bars[-2][2]), float(bars[-2][3]), float(bars[-2][4])
-        c2_h, c2_l, c2_c = float(bars[-3][2]), float(bars[-3][3]), float(bars[-3][4])
-        e21_c1, e21_c2 = float(ema21.iloc[-2]), float(ema21.iloc[-3])
-        e50_c1, e50_c2 = float(ema50.iloc[-2]), float(ema50.iloc[-3])
-        levels = {"btc": c1_c, "ema21": e21_c1, "ema50": e50_c1}
-
-        # Koşul 1: Her iki kapanış EMA21 altında
-        cond_ema21 = (c1_c < e21_c1) and (c2_c < e21_c2)
-
-        # Koşul 2: En son mum öncekinden daha düşük kapandı
-        cond_lower = c1_c < c2_c
-
-        # Koşul 3: c1 mumunun çoğunluğu EMA50 altında
-        range1 = c1_h - c1_l
-        if range1 > 0:
-            cond_maj_c1 = (e50_c1 - c1_l) / range1 > 0.5
-        else:
-            cond_maj_c1 = c1_c < e50_c1
-
-        # Koşul 4 (Level 2): c2 mumunun da çoğunluğu EMA50 altında
-        range2 = c2_h - c2_l
-        if range2 > 0:
-            cond_maj_c2 = (e50_c2 - c2_l) / range2 > 0.5
-        else:
-            cond_maj_c2 = c2_c < e50_c2
-
-        level1 = cond_ema21 and cond_lower and cond_maj_c1
-        level2 = level1 and cond_maj_c2
-
-        paused = level1
-
-        # Alert mantığı: level2 ilk kez tetiklendiyse gönder
-        was_alerted = btc_4h_structural_cache["level2_alerted"]
-        if level2 and not was_alerted:
-            send_alert = True
-            btc_4h_structural_cache["level2_alerted"] = True
-        elif not level1:
-            # Şart kalktı → sonraki tetiklenme için sıfırla
-            btc_4h_structural_cache["level2_alerted"] = False
-
-        status = f"Level{'2' if level2 else '1'} — PAUSE 🚨" if level1 else "NORMAL ✅"
-        print(
-            f"🔍 BTC 4H Yapısal: {status} | "
-            f"c1={c1_c:.0f} EMA21={e21_c1:.0f} EMA50={e50_c1:.0f} | "
-            f"c2={c2_c:.0f} EMA21={e21_c2:.0f}",
-            flush=True
-        )
-
-    except Exception as e:
-        print(f"BTC 4H structural check hata: {e}", flush=True)
-
-    btc_4h_structural_cache["paused"]  = paused
-    btc_4h_structural_cache["updated"] = now
-    return paused, send_alert, levels
 
 # ============================================================
 # 2) SİNYAL HAFIZASI
@@ -411,16 +248,14 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
             risk = entry_price - stop
             tp1  = round(entry_price + risk * 1.0, 10)
             tp2  = round(entry_price + risk * 2.0, 10)
-            tp3  = round(entry_price + risk * 3.0, 10)
         else:
-            # Fallback: stop = entry - ATR×4
-            stop = round(entry_price - atr_val * 4.0, 10)
-            tp1  = round(entry_price + atr_val * 4.0, 10)
-            tp2  = round(entry_price + atr_val * 6.0, 10)
-            tp3  = None
+            stop = round(entry_price * 0.95, 10)
+            risk = entry_price - stop
+            tp1  = round(entry_price + risk * 1.0, 10)
+            tp2  = round(entry_price + risk * 2.0, 10)
         payload = {
             "symbol": symbol, "entry": entry_price, "stop": stop,
-            "tp1": tp1, "tp2": tp2, "tp3": tp3, "sig_type": "smc",
+            "tp1": tp1, "tp2": tp2, "tp3": None, "sig_type": "smc",
             "sub_type": break_type, "source": source, "phase": phase,
         }
         headers = {"Content-Type": "application/json"}
@@ -500,134 +335,7 @@ def calc_rsi(df, period=14):
     return 100 - (100 / (1 + rs))
 
 # ============================================================
-# 6) MUM FORMASYONU TESPİTİ
-# ============================================================
-def detect_candle_patterns(df):
-    result = {"hammer": False, "engulfing": False, "doji": False, "morning_star": False}
-    if len(df) < 4:
-        return result
-    c0 = df.iloc[-2]; c1 = df.iloc[-3]; c2 = df.iloc[-4]
-    o0, h0, l0, cl0 = float(c0["open"]), float(c0["high"]), float(c0["low"]), float(c0["close"])
-    o1, h1, l1, cl1 = float(c1["open"]), float(c1["high"]), float(c1["low"]), float(c1["close"])
-    o2, h2, l2, cl2 = float(c2["open"]), float(c2["high"]), float(c2["low"]), float(c2["close"])
-    body0 = abs(cl0 - o0); body1 = abs(cl1 - o1); body2 = abs(cl2 - o2)
-    range0 = h0 - l0
-    if range0 <= 0:
-        return result
-    upper_wick0 = h0 - max(cl0, o0)
-    lower_wick0 = min(cl0, o0) - l0
-    if body0 > 0 and lower_wick0 >= body0 * 2.0 and upper_wick0 <= body0 * 0.5 and (min(cl0, o0) - l0) / range0 >= 0.55:
-        result["hammer"] = True
-    if cl1 < o1 and cl0 > o0 and o0 <= cl1 and cl0 >= o1 and body0 >= body1 * 0.8:
-        result["engulfing"] = True
-    if body0 <= range0 * 0.08:
-        result["doji"] = True
-    avg_body = (body0 + body1 + body2) / 3 if (body0 + body1 + body2) > 0 else 1
-    c2_mid = o2 - body2 / 2
-    if cl2 < o2 and body2 >= avg_body and body1 <= avg_body * 0.5 and cl0 > o0 and body0 >= avg_body and cl0 >= c2_mid:
-        result["morning_star"] = True
-    return result
-
-def candle_pattern_summary(patterns):
-    found = []
-    if patterns.get("morning_star"): found.append("🌅 Morning Star")
-    if patterns.get("engulfing"):    found.append("🟢 Bullish Engulfing")
-    if patterns.get("hammer"):       found.append("🔨 Hammer")
-    if patterns.get("doji"):         found.append("⚖️ Doji")
-    if not found:
-        return ""
-    if patterns.get("morning_star") or len(found) >= 2:
-        power = "⚡⚡ ÇOK GÜÇLÜ TEYİT"
-    elif patterns.get("engulfing"):
-        power = "⚡ GÜÇLÜ TEYİT"
-    else:
-        power = "✅ TEYİT"
-    return f"{power}: {' + '.join(found)}"
-
-# ============================================================
-# 7a) LuxAlgo SMC — Makro (discount zone, SWING_LENGTH=50)
-# ============================================================
-def luxalgo_smc(df, swing_length=SWING_LENGTH):
-    highs  = df["high"].values
-    lows   = df["low"].values
-    closes = df["close"].values
-    n = len(df)
-
-    if n < swing_length + 10:
-        return None
-
-    legs = [0] * n
-    current_leg = 0
-    for i in range(swing_length, n):
-        pivot_bar_high = highs[i - swing_length]
-        pivot_bar_low  = lows[i - swing_length]
-        window_high = max(highs[i - swing_length + 1 : i + 1])
-        window_low  = min(lows[i - swing_length + 1 : i + 1])
-        if pivot_bar_high > window_high:
-            current_leg = 0
-        elif pivot_bar_low < window_low:
-            current_leg = 1
-        legs[i] = current_leg
-
-    swing_high_level = None; swing_high_crossed = True
-    swing_low_level  = None; swing_low_crossed  = True
-    swing_trend = 0
-    trailing_top = None; trailing_bottom = None
-
-    for i in range(swing_length, n):
-        prev_leg = legs[i - 1] if i > 0 else 0; curr_leg = legs[i]
-        if curr_leg != prev_leg:
-            if curr_leg == 1:
-                swing_low_level   = lows[i - swing_length]
-                swing_low_crossed = False
-                trailing_bottom   = swing_low_level
-            elif curr_leg == 0:
-                swing_high_level   = highs[i - swing_length]
-                swing_high_crossed = False
-                trailing_top       = swing_high_level
-        if trailing_top    is not None and highs[i] > trailing_top:    trailing_top    = highs[i]
-        if trailing_bottom is not None and lows[i]  < trailing_bottom: trailing_bottom = lows[i]
-
-        if i < n - 1:
-            c = closes[i]; c_prev = closes[i - 1]
-            if (swing_high_level is not None and not swing_high_crossed
-                    and c > swing_high_level and c_prev <= swing_high_level):
-                swing_high_crossed = True
-                swing_trend = 1
-            if (swing_low_level is not None and not swing_low_crossed
-                    and c < swing_low_level and c_prev >= swing_low_level):
-                swing_low_crossed = True
-                swing_trend = -1
-
-    top    = trailing_top    if trailing_top    is not None else max(highs)
-    bottom = trailing_bottom if trailing_bottom is not None else min(lows)
-
-    if top == bottom:
-        return None
-
-    depth = (top - closes[-1]) / (top - bottom) * 100
-    discount_top    = 0.55 * top + 0.45 * bottom
-    discount_bottom = bottom
-
-    return {
-        'top':             top,
-        'bottom':          bottom,
-        'equilibrium':     round(0.5 * top + 0.5 * bottom, 10),
-        'discount_top':    round(discount_top, 10),
-        'discount_bottom': round(discount_bottom, 10),
-        'premium_top':     round(top, 10),
-        'premium_bottom':  round(0.95 * top + 0.05 * bottom, 10),
-        'depth':           round(depth, 2),
-        'in_discount':     closes[-1] <= discount_top,
-        'swing_high':      swing_high_level,
-        'swing_low':       swing_low_level,
-        'swing_trend':     swing_trend,
-        'break_type':      None,
-        'break_direction': None,
-    }
-
-# ============================================================
-# 7b) Micro CHoCH tespiti (CHOCH_SWING=5, LuxAlgo uyumlu)
+# 6) Micro CHoCH tespiti (CHOCH_SWING=5, LuxAlgo uyumlu)
 # ============================================================
 def detect_micro_choch(df, choch_swing=CHOCH_SWING):
     """
@@ -755,115 +463,7 @@ def _swing_lows_trend(df, choch_swing=CHOCH_SWING):
     return swing_trend, swing_low_level, prev_swing_low
 
 # ============================================================
-# 7c) 4H Bullish Teyit (1H veriden resample)
-# ============================================================
-def _4h_bullish_confirm(df_1h):
-    """
-    1H bar verisini 4H'e resample edip coinin 4H swing trendini ve EMA21 konumunu kontrol eder.
-    Sinyal için iki şart: swing_trend bearish değil VE son close > 4H EMA21.
-    Döner: True → sinyale izin ver | False → CHoCH sinyali engelle
-    """
-    try:
-        df_4h = df_1h.resample("4h", label="right", closed="right").agg({
-            "open": "first", "high": "max", "low": "min",
-            "close": "last", "volume": "sum"
-        }).dropna()
-        df_4h = df_4h.iloc[:-1]  # Henüz kapanmamış son 4H bar'ı çıkar
-        if len(df_4h) < 21:
-            return True  # Yetersiz veri → engelleme
-        _, _, swing_trend_4h, _, _ = detect_micro_choch(df_4h, choch_swing=5)
-        if swing_trend_4h < 0:
-            return False  # Bearish swing → engelle
-        ema21 = df_4h["close"].ewm(span=21, adjust=False).mean().iloc[-1]
-        return df_4h["close"].iloc[-1] > ema21  # Fiyat 4H EMA21 üstünde mi?
-    except Exception:
-        return True  # Hata durumunda sinyal engelleme
-
-# ============================================================
-# 8) MESAJ ŞABLONLARI
-# ============================================================
-def build_phase2_msg(symbol, coin_name, choch_price, bar_close, ma200, dist_ma,
-                     rsi, raw_atr, atr_ratio, depth, smc_data,
-                     strategy_label, strategy_note, patterns, source_label, atr_val=None, **kwargs):
-    """
-    choch_price : CHoCH seviyesi (kırılan swing high = LuxAlgo çizgisi) — GİRİŞ FİYATI
-    bar_close   : CHoCH barının kapanışı — bilgi amaçlı
-    """
-    base = symbol.split("/")[0]
-    bt = smc_data['break_type']
-    icon = "✅" if bt == "CHoCH" else "🔄"
-    strength = ("🔥 <b>GÜÇLÜ — CHoCH (Trend Döndü)</b>" if bt == "CHoCH"
-                else "💪 <b>ORTA — BOS (Trend Devam)</b>")
-
-    cp_str  = f"{choch_price:.10f}".rstrip("0").rstrip(".")
-    bc_str  = f"{bar_close:.10f}".rstrip("0").rstrip(".")
-    m_str   = f"{ma200:.10f}".rstrip("0").rstrip(".")
-
-    if atr_val:
-        _stop_arg = kwargs.get("stop_val") if kwargs else None
-        if _stop_arg is not None:
-            stop_val = round(_stop_arg, 10)
-            _risk    = choch_price - stop_val
-            tp1_val  = round(choch_price + _risk * 1.0, 10)
-            tp2_val  = round(choch_price + _risk * 2.0, 10)
-            tp3_val  = round(choch_price + _risk * 3.0, 10)
-        else:
-            stop_val = round(choch_price - atr_val * 4.0, 10)
-            tp1_val  = round(choch_price + atr_val * 4.0, 10)
-            tp2_val  = round(choch_price + atr_val * 6.0, 10)
-            tp3_val  = None
-        stop_str = f"{stop_val:.10f}".rstrip("0").rstrip(".")
-        tp1_str  = f"{tp1_val:.10f}".rstrip("0").rstrip(".")
-        tp2_str  = f"{tp2_val:.10f}".rstrip("0").rstrip(".")
-        tp3_line = ""
-        if tp3_val:
-            tp3_str = f"{tp3_val:.10f}".rstrip("0").rstrip(".")
-            tp3_line = f"🌟 <b>TP3 (shadow %2.5):</b> <code>{tp3_str}</code>\n"
-        tp_block = (f"🎯 <b>TP1 (%50 çıkış):</b> <code>{tp1_str}</code>\n"
-                    f"🚀 <b>TP2 (kapat):</b> <code>{tp2_str}</code>\n"
-                    f"{tp3_line}"
-                    f"🛑 <b>STOP:</b> <code>{stop_str}</code>\n")
-    else:
-        tp_block = ""
-
-    dt = smc_data['discount_top']
-    db = smc_data['discount_bottom']
-    dt_str = f"{dt:.10f}".rstrip("0").rstrip(".")
-    db_str = f"{db:.10f}".rstrip("0").rstrip(".")
-
-    pattern_line = candle_pattern_summary(patterns)
-    pattern_block = ""
-    if pattern_line:
-        pattern_block = (f"\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-                         f"📊 <b>MUM FORMASYONU</b>\n<b>{pattern_line}</b>\n"
-                         f"<i>Yapısal kırılım mum formasyonuyla teyit edildi.</i>")
-
-    entry_msg = ("🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma." if bt == "CHoCH"
-                 else "⚠️ <b>DİKKATLİ OL:</b> BOS — trend hâlâ devam ediyordu.")
-    if pattern_line and bt == "CHoCH":
-        entry_msg = "🟢🟢 <b>GÜÇLÜ GİRİŞ SİNYALİ!</b> Formasyon + CHoCH kombinasyonu."
-
-    return (
-        f"🚀🚀🚀 <b>CHoCH / BOS</b> 🚀🚀🚀\n<b>#{base}</b>  <i>{coin_name}</i>\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n⚡ <b>AŞAMA 2 — YAPISAL KIRILIM</b>\n"
-        f"🎯 <b>SİNYAL GÜCÜ:</b> {strength}\n"
-        f"🏷 <b>KAYNAK:</b> {source_label}\n"
-        f"📈 <b>STRATEJİ:</b> {strategy_label}\n<code>━━━━━━━━━━━━━━━━━━━━</code>\n\n"
-        f"📍 <b>CHoCH Seviyesi:</b> <code>{cp_str}</code>\n"
-        f"💵 <b>Bar kapanış:</b> <code>{bc_str}</code>\n"
-        f"{tp_block}"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-        f"📊 <b>200 MA:</b> <code>{m_str}</code> (<b>%{round(dist_ma, 1)}</b>)\n"
-        f"🌀 <b>RSI (14):</b> <b>{round(rsi, 2)}</b>\n"
-        f"🌋 <b>ATR:</b> <code>{raw_atr}</code> (%{round(atr_ratio, 2)})\n"
-        f"📉 <b>DISCOUNT ZONE:</b> <code>{db_str}</code> — <code>{dt_str}</code>\n\n"
-        f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-        f"{icon} <b>{bt}:</b> Swing yapısal kırılım ({smc_data['break_direction']})\n"
-        f"📐 <b>Swing Trend:</b> {'BULLISH' if smc_data['swing_trend']==1 else 'BEARISH'}"
-        f"{pattern_block}\n\n{strategy_note}\n\n{entry_msg}")
-
-# ============================================================
-# 9) ANALİZ — Bar kapanışında çalışır
+# 8) ANALİZ — Bar kapanışında çalışır
 # ============================================================
 def _analyze_symbol(symbol):
     try:
@@ -872,229 +472,95 @@ def _analyze_symbol(symbol):
         if df is None or len(df) < 200:
             return
 
-        coin_name = get_coin_name(symbol)
-
-        # ── 4H Yapısal Kırılma Kontrolü (YENİ v17) ───────────────────────
-        # Sadece 1 saatte bir API çağrısı yapar (TTL ile cache'lenir).
-        # paused_4h  = True → Level 1: yeni sinyal üretme
-        # send_4h_alert = True → Level 2: Telegram uyarısı gönder (ilk tetiklenme)
-        paused_4h, send_4h_alert, levels_4h = check_btc_4h_structural()
-
-        if send_4h_alert:
-            lvl_str = ""
-            if levels_4h:
-                lvl_str = (
-                    f"📊 BTC: <b>${levels_4h['btc']:,.0f}</b> | "
-                    f"EMA21: ${levels_4h['ema21']:,.0f} | "
-                    f"EMA50: ${levels_4h['ema50']:,.0f}\n\n"
-                )
-            alert_msg = (
-                "🚨 <b>BTC 4H YAPISAL KIRILMA — DİKKAT!</b>\n\n"
-                + lvl_str +
-                "⚠️ İki ardışık 4H mum <b>EMA21 altında</b> kapandı (2. daha dip)\n"
-                "⚠️ Her iki mumun <b>çoğunluğu EMA50 altında</b>\n\n"
-                "🔴 Yeni sinyaller <b>duraklatıldı</b>\n"
-                "📌 Açık pozisyonlar için stoplar devrede\n"
-                "👁 Manuel takip önerilir"
-            )
-            send_telegram_msg(alert_msg)
-            print("🚨 BTC 4H Yapısal Kırılma (Level 2) — Telegram uyarısı gönderildi", flush=True)
-
-        df["atr"]   = calc_atr(df, 14)
-        df["rsi"]   = calc_rsi(df, 14)
-        df["ma200"] = df["close"].rolling(200).mean()
-
-        price   = float(df["close"].iloc[-1])   # Bar kapanışı (referans)
-        atr_val = float(df["atr"].iloc[-1])
-        rsi     = float(df["rsi"].iloc[-1])
-        ma200   = float(df["ma200"].iloc[-1])
-
-        if any(pd.isna(x) for x in [atr_val, ma200]):
-            return
-
-        raw_atr   = f"{atr_val:.12f}".rstrip("0").rstrip(".")
-        atr_ratio = (atr_val / price) * 100
-        dist_ma   = ((price - ma200) / ma200) * 100
-
-        if price > ma200:
-            s_label = "⏳ <b>UZUN SÜRELİ (Trend Güçlü)</b>"
-            s_note  = "👉 <i>Trend arkanda, kârı koşturmaya odaklan.</i>"
-        else:
-            s_label = "⚡ <b>KISA SÜRELİ (Vur-Kaç)</b>"
-            s_note  = "👉 <i>Trend zayıf, dirençlerde hızlı kâr al.</i>"
-
-        smc_data = luxalgo_smc(df, SWING_LENGTH)
-        if smc_data is None:
-            scan_stats["no_pivots"] += 1
-            return
-
-        depth       = smc_data['depth']
-        in_discount = smc_data['in_discount']
-        patterns    = detect_candle_patterns(df)
-
-        # ============================================================
-        # [SMC-ESKİ] Karşılaştırma sinyalleri — v20 öncesi gevşek koşullar
-        # Telegram YOK, sadece portfolyoya gönderilir. Totale dahil değil.
-        # Kaldırmak için bu bloğu (BAŞLA—BİTİŞ) tamamen silmek yeterli.
-        # ============================================================
-        ESKI_DISCOUNT_DEPTH = 5  # [SMC-ESKİ] discount dibinin (bottom) en fazla %X üzeri
-
-        # Eski Discount: fiyat, discount dibinin (bottom) en fazla %5 üzerinde (RSI/EMA21/4H filtresi yok)
-        if price <= smc_data['discount_bottom'] * (1 + ESKI_DISCOUNT_DEPTH / 100):
-            last_eski_p1 = get_last_sent(symbol, "discount", "smc-eski-discount")
-            if now - last_eski_p1 > PHASE1_COOLDOWN:
-                send_to_portfolio(symbol, price, atr_val, "discount", "smc-eski-discount")
-                mark_sent(symbol, "discount", "smc-eski-discount")
-                print(f"📉 [ESKİ-DISCOUNT] {symbol} | Depth:%{round(depth,1)}", flush=True)
-
-        # Eski CHoCH: yeşil CHoCH + BTC çakılış koruması + BTC düşüş yapısı koruması
-        # (discount_active/4H/RSI/EMA şartı yok — sadece BTC'nin swing yapısına bakılır)
-        eski_break, eski_dir, _, eski_choch_level, eski_swing_low = detect_micro_choch(df, CHOCH_SWING)
-        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash() and not check_btc_downtrend_active():
-            last_eski_p2 = get_last_sent(symbol, "choch", "smc-eski-choch")
-            if now - last_eski_p2 > PHASE2_COOLDOWN:
-                eski_entry = eski_choch_level if eski_choch_level is not None else price
-                eski_stop  = round(eski_swing_low * 0.995, 10) if eski_swing_low is not None else None
-                send_to_portfolio(symbol, eski_entry, atr_val, "choch", "smc-eski-choch", eski_break, stop_price=eski_stop)
-                mark_sent(symbol, "choch", "smc-eski-choch")
-                print(f"🚀 [ESKİ-CHoCH] {symbol} | CHoCH:{eski_entry:.8g}", flush=True)
-
-        # Eski CHoCH V2: aynı koşullar + vol_ratio >= 1.5 (backtest'te daha yüksek WR)
-        if eski_break == "CHoCH" and eski_dir == "BULLISH" and not check_btc_crash() and not check_btc_downtrend_active():
-            vol_ma_20 = df["volume"].rolling(20).mean().iloc[-1]
-            if vol_ma_20 and vol_ma_20 > 0:
-                vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
-                if vol_ratio >= 1.5:
-                    last_eski_v2 = get_last_sent(symbol, "choch_v2", "smc-eski-choch-v2")
-                    if now - last_eski_v2 > PHASE2_COOLDOWN:
-                        eski_entry = eski_choch_level if eski_choch_level is not None else price
-                        eski_stop  = round(eski_swing_low * 0.995, 10) if eski_swing_low is not None else None
-                        send_to_portfolio(symbol, eski_entry, atr_val, "choch_v2", "smc-eski-choch-v2", eski_break, stop_price=eski_stop)
-                        mark_sent(symbol, "choch_v2", "smc-eski-choch-v2")
-                        print(f"🟣 [ESKİ-CHoCH-V2] {symbol} | CHoCH:{eski_entry:.8g} | vol:{vol_ratio:.2f}x", flush=True)
-        # ============================================================
-        # [SMC-ESKİ] BİTİŞ
-        # ============================================================
-
-        # ── AŞAMA 1: Discount Zone Bildirimi ──────────────────────────────
-        if in_discount:
-            scan_stats["in_discount"] += 1
-            # paused_4h = True → 4H yapısal kırılma var, Phase 1 de beklet
-            if depth >= PHASE1_DEPTH and rsi <= PHASE1_RSI and not check_btc_crash() and check_btc_ema21() and not paused_4h:
-                with discount_active_lock:
-                    discount_active[symbol] = True
-                last_p1 = get_last_sent(symbol, "discount", "smc-original")
-                if now - last_p1 > PHASE1_COOLDOWN:
-                    base = symbol.split("/")[0]
-                    dt_str = f"{smc_data['discount_top']:.10f}".rstrip("0").rstrip(".")
-                    db_str = f"{smc_data['discount_bottom']:.10f}".rstrip("0").rstrip(".")
-                    msg = (f"📉 <b>#{base}</b> — Discount Zone\n"
-                           f"💵 <code>{price:.8g}</code> | "
-                           f"🌀 RSI: <b>{round(rsi, 1)}</b> | "
-                           f"📊 Depth: %<b>{round(depth, 1)}</b>\n"
-                           f"🗺 Zone: <code>{db_str}</code> — <code>{dt_str}</code>")
-                    send_telegram_msg(msg)
-                    mark_sent(symbol, "discount", "smc-original")
-                    scan_stats["signal_phase1_smc-original"] += 1
-                    print(f"📉 [DISCOUNT] {symbol} | Depth:%{round(depth,1)} | RSI:{round(rsi,1)}", flush=True)
-        else:
-            scan_stats["not_in_discount"] += 1
-
-        # ── AŞAMA 2: Micro CHoCH (sadece discount_active olanlar) ─────────
-        with discount_active_lock:
-            is_active = discount_active.get(symbol, False)
-
-        if not is_active:
-            return
-
+        # BTC filtreleri
         if check_btc_crash():
             scan_stats["btc_crash_skip"] += 1
             return
-
-        # 4H yapısal kırılma → Phase 2 sinyali üretme
-        if paused_4h:
-            scan_stats["btc_4h_pause_skip"] += 1
+        if check_btc_downtrend_active():
+            scan_stats["btc_downtrend_skip"] += 1
             return
 
-        micro_break, micro_dir, micro_trend, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
+        # CHoCH tespiti
+        micro_break, micro_dir, _, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
 
-        if micro_break == "CHoCH" and micro_dir == "BULLISH":
-            scan_stats["choch_found"] += 1
+        if micro_break != "CHoCH" or micro_dir != "BULLISH":
+            scan_stats["no_choch"] += 1
+            return
 
-            # 4H yapısal teyit: coinin 4H swing trendi bearish ise CHoCH sinyalini engelle
-            if not _4h_bullish_confirm(df):
-                scan_stats["4h_bearish_skip"] += 1
-                print(f"⛔ [4H BEARISH] {symbol} | 4H trend bearish → CHoCH engellendi", flush=True)
-                return
+        # Hacim filtresi: son bar / 20 bar MA >= VOL_RATIO_MIN
+        vol_ma_20 = df["volume"].rolling(20).mean().iloc[-1]
+        if not vol_ma_20 or vol_ma_20 <= 0:
+            return
+        vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
+        if vol_ratio < VOL_RATIO_MIN:
+            scan_stats["vol_filter_skip"] += 1
+            return
 
-            last_p2 = get_last_sent(symbol, "choch", "smc-original")
-            if now - last_p2 > PHASE2_COOLDOWN:
-                # choch_level yoksa (beklenmedik durum) bar kapanışını kullan
-                entry_price = choch_level if choch_level is not None else price
+        # Cooldown kontrolü (24 saat)
+        last_sent = get_last_sent(symbol, "choch_v2", "smc-v2")
+        if now - last_sent < PHASE2_COOLDOWN:
+            scan_stats["cooldown_skip"] += 1
+            return
 
-                # Stop: swing low'un %0.5 altı. Swing low yoksa eski ATR×4 yöntemi (fallback)
-                stop_price = round(swing_low * 0.995, 10) if swing_low is not None else None
+        # Sinyal hesaplamaları
+        price  = float(df["close"].iloc[-1])
+        entry  = choch_level if choch_level is not None else price
+        stop   = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
+        if stop >= entry:
+            stop = round(entry * 0.95, 10)
+        risk   = entry - stop
+        tp1    = round(entry + risk * 1.0, 10)
+        tp2    = round(entry + risk * 2.0, 10)
 
-                smc_data['break_type']      = micro_break
-                smc_data['break_direction'] = micro_dir
-                smc_data['swing_trend']     = micro_trend
+        base      = symbol.split("/")[0]
+        coin_name = get_coin_name(symbol)
+        e_str  = f"{entry:.10f}".rstrip("0").rstrip(".")
+        s_str  = f"{stop:.10f}".rstrip("0").rstrip(".")
+        t1_str = f"{tp1:.10f}".rstrip("0").rstrip(".")
+        t2_str = f"{tp2:.10f}".rstrip("0").rstrip(".")
 
-                msg = build_phase2_msg(
-                    symbol, coin_name,
-                    choch_price=entry_price,
-                    bar_close=price,
-                    ma200=ma200, dist_ma=dist_ma,
-                    rsi=rsi, raw_atr=raw_atr, atr_ratio=atr_ratio,
-                    depth=depth, smc_data=smc_data,
-                    strategy_label=s_label, strategy_note=s_note,
-                    patterns=patterns, source_label="SMC", atr_val=atr_val,
-                    stop_val=stop_price)
+        msg = (
+            f"🚀 <b>CHoCH — SMC V2</b>\n"
+            f"<b>#{base}</b>  <i>{coin_name}</i>\n"
+            f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
+            f"📍 <b>Giriş (CHoCH):</b> <code>{e_str}</code>\n"
+            f"🎯 <b>TP1 (%50 çıkış):</b> <code>{t1_str}</code>\n"
+            f"🚀 <b>TP2 (kapat):</b> <code>{t2_str}</code>\n"
+            f"🛑 <b>STOP:</b> <code>{s_str}</code>\n"
+            f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
+            f"📊 <b>Hacim:</b> {vol_ratio:.2f}x (20 bar MA)\n"
+            f"🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma."
+        )
+        send_telegram_msg(msg)
 
-                send_telegram_msg(msg)
-                mark_sent(symbol, "choch", "smc-original")
-                _portfolio_id = send_to_portfolio(symbol, entry_price, atr_val, "choch", "smc-original", micro_break,
-                                  stop_price=stop_price)
+        portfolio_id = send_to_portfolio(
+            symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop
+        )
+        mark_sent(symbol, "choch_v2", "smc-v2")
 
-                if PORTFOLIO_URL and _portfolio_id:
-                    try:
-                        _stop = stop_price if stop_price else round(entry_price - atr_val * 4.0, 10)
-                        _risk = entry_price - _stop
-                        _sig  = {
-                            "symbol": symbol, "type": "smc", "source": "smc",
-                            "entry":  entry_price, "stop": _stop,
-                            "tp1":    round(entry_price + _risk * 1.0, 10),
-                            "tp2":    round(entry_price + _risk * 2.0, 10),
-                            "tp3":    round(entry_price + _risk * 3.0, 10),
-                            "break_type": micro_break,
-                            "rsi":    round(rsi, 2),
-                            "atr_pct": round(atr_ratio, 2),
-                            "dist_ma200": round(dist_ma, 2),
-                        }
-                        _hdrs = {"Content-Type": "application/json"}
-                        if PORTFOLIO_TOKEN:
-                            _hdrs["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
-                        requests.post(
-                            f"{PORTFOLIO_URL}/api/analyze",
-                            json={"signal": _sig, "recent_count": 0, "sig_num": 0,
-                                  "portfolio_id": _portfolio_id},
-                            headers=_hdrs, timeout=10,
-                        )
-                    except Exception as _ae:
-                        print(f"[SMC ANALYZER] {_ae}", flush=True)
+        if PORTFOLIO_URL and portfolio_id:
+            try:
+                sig = {
+                    "symbol":     symbol, "type": "smc", "source": "smc",
+                    "entry":      entry,  "stop": stop,
+                    "tp1":        tp1,    "tp2": tp2,
+                    "vol_ratio":  round(vol_ratio, 2),
+                    "break_type": micro_break,
+                }
+                hdrs = {"Content-Type": "application/json"}
+                if PORTFOLIO_TOKEN:
+                    hdrs["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+                requests.post(
+                    f"{PORTFOLIO_URL}/api/analyze",
+                    json={"signal": sig, "recent_count": 0, "sig_num": 0,
+                          "portfolio_id": portfolio_id},
+                    headers=hdrs, timeout=10,
+                )
+            except Exception as ae:
+                print(f"[SMC ANALYZER] {ae}", flush=True)
 
-                scan_stats["signal_phase2_smc-original"] += 1
-                pat_log = candle_pattern_summary(patterns)
-                print(f"🚀 [CHoCH] {symbol} | CHoCH:{entry_price:.8g} | Close:{price:.8g} | RSI:{round(rsi,1)}"
-                      + (f" | {pat_log}" if pat_log else ""), flush=True)
-                with discount_active_lock:
-                    discount_active[symbol] = False
-            else:
-                scan_stats["cooldown_p2_smc-original"] += 1
-
-        elif micro_break == "BOS" and micro_dir == "BULLISH":
-            scan_stats["bos_found"] += 1
-        else:
-            scan_stats["no_break"] += 1
+        scan_stats["signal_v2"] += 1
+        print(f"🟣 [SMC-V2] {symbol} | entry:{entry:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}", flush=True)
@@ -1187,25 +653,15 @@ async def periodic_summary():
     global ws_1h_closes
     await asyncio.sleep(3600)
     while True:
-        with discount_active_lock:
-            active_count = len([s for s, v in discount_active.items() if v])
-        total_signals = (
-            scan_stats.get("signal_phase1_smc-original", 0) +
-            scan_stats.get("signal_phase2_smc-original", 0)
-        )
         print(f"\n--- SMC TARAMA ÖZETİ ---", flush=True)
         print(f"Cached coin      : {len(bars_cache)}", flush=True)
         print(f"WS bar kapandı   : {ws_1h_closes}", flush=True)
-        print(f"Discount aktif   : {active_count} (CHoCH bekleniyor)", flush=True)
-        print(f"Discount'ta      : {scan_stats.get('in_discount', 0)}", flush=True)
-        print(f"Zone dışında     : {scan_stats.get('not_in_discount', 0)}", flush=True)
-        print(f"Pivot yok        : {scan_stats.get('no_pivots', 0)}", flush=True)
-        print(f"CHoCH:{scan_stats.get('choch_found', 0)}  BOS:{scan_stats.get('bos_found', 0)}  Kırılım yok:{scan_stats.get('no_break', 0)}", flush=True)
-        print(f"Cooldown P1:{scan_stats.get('cooldown_p1_smc-original', 0)}  P2:{scan_stats.get('cooldown_p2_smc-original', 0)}", flush=True)
+        print(f"CHoCH yok        : {scan_stats.get('no_choch', 0)}", flush=True)
+        print(f"Hacim filtresi   : {scan_stats.get('vol_filter_skip', 0)}", flush=True)
+        print(f"Cooldown skip    : {scan_stats.get('cooldown_skip', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
-        print(f"BTC 4H pause skip: {scan_stats.get('btc_4h_pause_skip', 0)}", flush=True)
-        print(f"CHoCH 4H bearish : {scan_stats.get('4h_bearish_skip', 0)}", flush=True)
-        print(f"Toplam sinyal    : {total_signals}", flush=True)
+        print(f"BTC düşüş skip   : {scan_stats.get('btc_downtrend_skip', 0)}", flush=True)
+        print(f"Sinyal (V2)      : {scan_stats.get('signal_v2', 0)}", flush=True)
         print(f"------------------------\n", flush=True)
         scan_stats.clear()
         ws_1h_closes = 0
@@ -1221,23 +677,17 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v18 — 4H Yapısal Crash Filter + CHoCH 4H Teyit")
+    print("🚀  SMC v21 — Eski CHoCH V2 ≥2.0x Hacim")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
-    print(f"  Swing (Discount): {SWING_LENGTH} bar (makro)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
     print(f"  Min Hacim       : {MIN_VOLUME_24H/1e6:.0f}M USDT/24h (env: MIN_VOLUME_24H)")
-    print(f"  Giriş Fiyatı    : CHoCH Seviyesi (kırılan swing high)")
-    print(f"  Bar kapanışı    : Referans olarak mesajda gösterilir")
-    print(f"  Aşama 1         : Discount + Depth>%{PHASE1_DEPTH} + RSI<{PHASE1_RSI} + BTC EMA21")
-    print(f"  Aşama 2         : Micro CHoCH → Tam sinyal + Portfolio")
-    print(f"  4H BTC Filter   : 2 kapanmış 4H mum EMA21 altı (2.↓) + çoğunluk EMA50 altı")
-    print(f"           Level 1 : Sinyal dur (paused)")
-    print(f"           Level 2 : Level 1 + önceki mum da EMA50 çoğunluk altı → Telegram uyarı")
-    print(f"  [YENİ] CHoCH 4H : Coin 4H swing trend bearish ise CHoCH sinyali engellenir")
-    print(f"  [YENİ] TP Yapısı: TP1=risk×1.0 (50%) | TP2=risk×1.5 (kapat) | TP3=risk×2.5 (shadow)")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash/downtrend yok")
+    print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
+    print(f"  TP Yapısı       : TP1=risk×1.0 (50%) | TP2=risk×2.0 (kapat)")
+    print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
     print("=" * 60 + "\n")
 
     for attempt in range(3):
