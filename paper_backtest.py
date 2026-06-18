@@ -277,8 +277,9 @@ def collect_signals(symbols, btc_filters, fetch=True):
                 sigs_b.append(sig.copy())
                 last_b = ts_h
 
-    sigs_a.sort(key=lambda x: x["entry_time"].timestamp())
-    sigs_b.sort(key=lambda x: x["entry_time"].timestamp())
+    # Aynı timestamp'ta birden fazla sinyal varsa vol_ratio yükseği önce
+    sigs_a.sort(key=lambda x: (x["entry_time"].timestamp(), -x["vol_ratio"]))
+    sigs_b.sort(key=lambda x: (x["entry_time"].timestamp(), -x["vol_ratio"]))
     return sigs_a, sigs_b
 
 
