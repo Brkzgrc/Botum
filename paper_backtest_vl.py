@@ -239,7 +239,7 @@ def exit_tp2(sig, pos_size):
         if l<=stop: return ts,pos_size*(1+sp),"stop"
         if h>=tp2:  return ts,pos_size*(1+t2p),"tp2"
         if h>=tp1:  return ts,pos_size*(1+t1p),"tp1"
-        if i==11 and c<entry:
+        if i==23 and c<entry:
             return ts,pos_size*(1+(c-entry)/entry),"time_stop"
     if len(rows)>0:
         idx=min(expire_h-1,len(rows)-1)
