@@ -318,9 +318,6 @@ def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
         stats["filtered_crash"] += 1; return None
     if not (VOL_MIN <= vol_ratio <= VOL_MAX):
         stats["filtered_vol"] += 1; return None
-    open_now = gv("open")
-    if open_now is not None and close_now < open_now:
-        stats["filtered_f4t"] += 1; return None
     c5ago = float(df["close"].iloc[-5])
     if c5ago > 0 and (c5ago - close_now) / c5ago * 100 >= 4.0:
         stats["filtered_f5t"] += 1; return None
