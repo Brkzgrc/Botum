@@ -486,12 +486,7 @@ def system_stats(trade_log, equity_pts):
 
 # ─── 5 SENARYO ───────────────────────────────────────────────────────────────
 SCENARIO_META = [
-    # (key, signal_sys, exit_fn_key, display_name, exit_display)
-    ("eski_v2_tp2",    "eski_v2",    "tp2",  "Eski CHoCH V2 ≥1.5x", "TP2 Only"),
-    ("eski_choch_tp2", "eski_choch", "tp2",  "Eski CHoCH",           "TP2 Only"),
-    ("eski_v2_half",   "eski_v2",    "half", "Eski CHoCH V2 ≥1.5x", "actual (SMC trail)"),
-    ("eski_choch_half","eski_choch", "half", "Eski CHoCH",           "actual (SMC trail)"),
-    ("smc_orig_tp2",   "smc_orig",   "tp2",  "SMC Original CHoCH",   "TP2 Only"),
+    ("eski_v2_tp2", "eski_v2", "tp2", "Eski CHoCH V2 ≥1.5x", "TP2 Only"),
 ]
 
 PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]
