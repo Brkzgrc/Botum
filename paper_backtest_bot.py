@@ -370,7 +370,7 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
                 if vol_ratio >= RK_VOL_MIN and adx_val >= RK_ADX_MIN:
                     if ts_h - last["rocket"] >= RK_COOLDOWN_H:
                         sigs["rocket"].append(base.copy()); last["rocket"] = ts_h
-                if vol_ratio >= RK_V2_VOL_MIN and adx_val >= RK_V2_ADX_MIN:
+                if vol_ratio >= RK_V2_VOL_MIN and adx_val >= RK_V2_ADX_MIN and crash_ok and downtrend_ok:
                     if ts_h - last["rocket_v2"] >= RK_COOLDOWN_H:
                         sigs["rocket_v2"].append(base.copy()); last["rocket_v2"] = ts_h
 
