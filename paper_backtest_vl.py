@@ -239,8 +239,6 @@ def exit_tp2(sig, pos_size):
         if l<=stop: return ts,pos_size*(1+sp),"stop"
         if h>=tp2:  return ts,pos_size*(1+t2p),"tp2"
         if h>=tp1:  return ts,pos_size*(1+t1p),"tp1"
-        if i==23 and c<entry:
-            return ts,pos_size*(1+(c-entry)/entry),"time_stop"
     if len(rows)>0:
         idx=min(expire_h-1,len(rows)-1)
         exp_pct=(float(rows.iloc[idx]["close"])-entry)/entry
@@ -455,7 +453,7 @@ def system_stats(trade_log, equity_pts):
 
 # ─── 5 SENARYO ───────────────────────────────────────────────────────────────
 SCENARIO_META = [
-    ("eski_v2_tp2", "eski_v2", "tp2", "Eski CHoCH V2 ≥1.5x", "TP2 Only"),
+    ("eski_v2_tp2", "eski_v2", "tp2", "Eski CHoCH V2 ≥2.0x", "TP2 Only"),
 ]
 
 PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]

@@ -487,8 +487,9 @@ def _analyze_symbol(symbol):
             scan_stats["no_choch"] += 1
             return
 
-        # Hacim filtresi: son bar / 20 bar MA >= VOL_RATIO_MIN
-        vol_ma_20 = df["volume"].rolling(20).mean().iloc[-1]
+        # Hacim filtresi: son bar / önceki 20 bar MA >= VOL_RATIO_MIN
+        # shift(1): mevcut barı MA hesabından dışarıda bırak (backtest ile eşleşir)
+        vol_ma_20 = df["volume"].rolling(20).mean().iloc[-2]
         if not vol_ma_20 or vol_ma_20 <= 0:
             return
         vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
@@ -508,7 +509,7 @@ def _analyze_symbol(symbol):
         stop   = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
         if stop >= entry:
             stop = round(entry * 0.95, 10)
-        risk   = entry - stop
+        risk   = max(entry - stop, entry * 0.01)
         tp1    = round(entry + risk * 1.0, 10)
         tp2    = round(entry + risk * 2.0, 10)
 
