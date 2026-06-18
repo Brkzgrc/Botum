@@ -20,7 +20,7 @@ import numpy as np, pandas as pd
 DATA_DIR      = "backtest_data"
 START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
-MAX_POSITIONS = 10
+MAX_POSITIONS = 20
 MAX_POS_SIZE  = 10_000.0   # pozisyon başına maksimum dolar
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
@@ -336,10 +336,9 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
 
             choch_lvl = cls_[i]; sw_low = swls[i]
             entry = choch_lvl if choch_lvl else price
-            stop  = entry * 0.95  # sabit %5 stop
-            sl_stop = sw_low*0.995 if sw_low else entry*0.95
-            if sl_stop >= entry: sl_stop = entry*0.95
-            risk  = max(entry-sl_stop, entry*0.01)  # TP swing low'a göre
+            stop  = sw_low*0.995 if sw_low else entry*0.95
+            if stop >= entry: stop = entry*0.95
+            risk  = max(entry-stop, entry*0.01)
             tp1   = entry+risk; tp2 = entry+risk*2
 
             sigs["eski_v2"].append({
