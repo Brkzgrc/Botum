@@ -3,6 +3,7 @@
 ## Kritik Kurallar
 
 - **SMC.py'ye kesinlikle dokunma** — kullanıcı açıkça söylemedikçe
+- **SMC_original.py'ye kesinlikle dokunma** — referans kopya, hiçbir koşulda değiştirilemez
 - **Onay almadan kod yazma** — her implementasyon öncesi onay gerekli
 - **portfolio_tracker_PASİF.py** — sadece referans, üretim kodu değil
 - **claude_analyzer.py** — AKTİF üretim kodu (portfolio_tracker.py içinde çalışır, `/api/analyze` üzerinden bot.py sinyallerini değerlendirir)
