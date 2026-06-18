@@ -45,23 +45,32 @@ LEVERAGED_PATTERNS = ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","1
 # ═══════════════════════════════════════════════════════════════════════
 # VERİ ÇEKME
 # ═══════════════════════════════════════════════════════════════════════
-def get_all_binance_usdt():
-    """Tüm Binance spot USDT çiftlerini getir (ignore + leveraged filtreli)"""
+def get_top_coins(n=50):
+    """CoinGecko market cap sıralamasına göre top N coin (Binance'ta işlem gören)"""
+    import urllib.request
+    url = ("https://api.coingecko.com/api/v3/coins/markets"
+           "?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false")
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = __import__("json").loads(r.read())
+
     ex = ccxt.binance({"enableRateLimit": True})
     ex.load_markets()
+    binance_pairs = set(ex.markets.keys())
+
     result = []
-    for sym, mkt in ex.markets.items():
-        if not (mkt.get("spot") and mkt.get("active") and sym.endswith("/USDT")):
-            continue
-        if sym in IGNORED_COINS:
-            continue
-        base = sym.split("/")[0]
-        if any(p in base for p in LEVERAGED_PATTERNS):
-            continue
+    for coin in data:
+        sym = coin["symbol"].upper() + "/USDT"
+        if sym in IGNORED_COINS: continue
+        base = coin["symbol"].upper()
+        if any(p in base for p in LEVERAGED_PATTERNS): continue
+        if sym not in binance_pairs: continue
         result.append(sym)
+        if len(result) >= n: break
+
     if "BTC/USDT" not in result:
         result.insert(0, "BTC/USDT")
-    print(f"Binance spot USDT: {len(result)} coin bulundu")
+    print(f"CoinGecko top {n} (Binance'ta): {len(result)} coin seçildi")
     return result
 
 
@@ -503,19 +512,17 @@ def main():
 
     os.makedirs(DATA_DIR, exist_ok=True)
 
+    N = args.n or 50
+
     if args.coins:
         symbols = [s if "/" in s else s + "/USDT" for s in args.coins]
     elif args.no_fetch:
         pkls = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".pkl"))
         symbols = [f[:-4].replace("_", "/", 1) for f in pkls]
         symbols = [s for s in symbols if s.endswith("/USDT") and s not in IGNORED_COINS]
-        if args.n:
-            symbols = symbols[:args.n]
         print(f"Cache'den {len(symbols)} coin yüklendi")
     else:
-        symbols = get_all_binance_usdt()
-        if args.n:
-            symbols = symbols[:args.n]
+        symbols = get_top_coins(N)
 
     if "BTC/USDT" in symbols:
         symbols.remove("BTC/USDT")
