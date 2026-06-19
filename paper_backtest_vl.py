@@ -21,7 +21,7 @@ DATA_DIR      = "backtest_data"
 START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
 MAX_POSITIONS = 5
-MAX_POS_SIZE  = 20_000.0   # başlangıç pozisyon limiti (kademeli büyür)
+MAX_POS_SIZE  = 20_000.0   # pozisyon başına maksimum dolar
 COMMISSION    = 0.001      # 0.1% giriş + 0.1% çıkış (Binance spot maker/taker)
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
@@ -368,16 +368,7 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
             if open_count>=max_positions: continue
             # Equity-based equal sizing: toplam portföy / slot sayısı
             total_equity = cash + sum(open_positions.values())
-            # Kademeli pozisyon limiti: portföy büyüdükçe limit artar
-            if total_equity >= 2_000_000:
-                _cap = 100_000.0
-            elif total_equity >= 1_000_000:
-                _cap = 50_000.0
-            elif total_equity >= 250_000:
-                _cap = 30_000.0
-            else:
-                _cap = MAX_POS_SIZE  # 20_000
-            pos_size = min(total_equity / max_positions, _cap)
+            pos_size = min(total_equity / max_positions, MAX_POS_SIZE)
             pos_size = min(pos_size, cash)  # eldeki nakit yetmeli
             if pos_size < 1: continue
             sig=data
