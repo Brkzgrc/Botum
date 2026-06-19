@@ -431,7 +431,7 @@ def calc_performance():
         "smc_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
             "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp2_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "half":     {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "bot_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
@@ -571,18 +571,24 @@ def calc_performance():
                 else:
                     sa["tp1_only"]["expired"] += 1; sa["tp1_only"]["expired_pnl"] += _closed_pct
 
-                if _tp2_pct > 0:
-                    sa["tp2_only"]["total"] += 1
-                    if _pk >= _tp2_pct:
-                        sa["tp2_only"]["wins"] += 1; sa["tp2_only"]["pnl"] += _tp2_pct
+                # ½TP1 + ½TP2: her iki hedef vurulduysa ortalama, vurulmadıysa ½TP1 + ½kapanış
+                sa["half"]["total"] += 1
+                if _tp1_pct > 0 and _pk >= _tp1_pct:
+                    if _tp2_pct > 0 and _pk >= _tp2_pct:
+                        _half_pct = round((_tp1_pct + _tp2_pct) / 2, 2)
+                        sa["half"]["wins"] += 1; sa["half"]["pnl"] += _half_pct
                     elif _stop_pct < 0 and _dp <= _stop_pct:
-                        sa["tp2_only"]["losses"] += 1; sa["tp2_only"]["pnl"] += _stop_pct
+                        _half_pct = round((_tp1_pct + _stop_pct) / 2, 2)
+                        if _half_pct > 0: sa["half"]["wins"] += 1
+                        else: sa["half"]["losses"] += 1
+                        sa["half"]["pnl"] += _half_pct
                     else:
-                        sa["tp2_only"]["expired"] += 1
-                        # TP1 vurulduysa close_pct blended'dır → ikinci yarı fiyatını geri hesapla
-                        _tp1_exit = sig.get("tp1_exit_pct")
-                        _exp_pct = round(2 * _closed_pct - _tp1_exit, 2) if _tp1_exit else _closed_pct
-                        sa["tp2_only"]["expired_pnl"] += _exp_pct
+                        _half_pct = round((_tp1_pct + _closed_pct) / 2, 2)
+                        sa["half"]["expired"] += 1; sa["half"]["expired_pnl"] += _half_pct
+                elif _stop_pct < 0 and _dp <= _stop_pct:
+                    sa["half"]["losses"] += 1; sa["half"]["pnl"] += _stop_pct
+                else:
+                    sa["half"]["expired"] += 1; sa["half"]["expired_pnl"] += _closed_pct
             else:
                 ba = result["bot_alt"]
                 ba["actual"]["total"] += 1
@@ -1185,12 +1191,12 @@ def dashboard():
             f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
             f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
             f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
-            f'<tr><td style="color:#e67e22;white-space:nowrap">½ TP1 + ½ TP2 (gerçek)</td>'
-            f'{_alt_cell(smc_a.get("actual",{}), "#e67e22", is_actual=True)}</tr>'
-            f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
+            f'<tr><td style="color:#2ecc71;white-space:nowrap">TP2 direkt (gerçek)</td>'
+            f'{_alt_cell(smc_a.get("actual",{}), "#2ecc71", is_actual=True)}</tr>'
+            f'<tr><td style="color:#f39c12;white-space:nowrap">Sadece TP1</td>'
             f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
-            f'<tr><td style="color:#2ecc71;white-space:nowrap">Tam TP2 (%100)</td>'
-            f'{_alt_cell(smc_a.get("tp2_only",{}), "#2ecc71")}</tr>'
+            f'<tr><td style="color:#e67e22;white-space:nowrap">½ TP1 + ½ TP2</td>'
+            f'{_alt_cell(smc_a.get("half",{}), "#e67e22")}</tr>'
             f'</tbody></table></div>'
             f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
             f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
