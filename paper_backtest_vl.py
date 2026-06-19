@@ -453,7 +453,8 @@ def system_stats(trade_log, equity_pts):
 
 # ─── 5 SENARYO ───────────────────────────────────────────────────────────────
 SCENARIO_META = [
-    ("eski_v2_tp2", "eski_v2", "tp2", "Eski CHoCH V2 ≥2.0x", "TP2 Only"),
+    ("eski_v2_tp2",  "eski_v2", "tp2",  "Eski CHoCH V2 ≥2.0x", "TP2 Only"),
+    ("eski_v2_half", "eski_v2", "half", "Eski CHoCH V2 ≥2.0x", "TP1 + Trail (live sistem)"),
 ]
 
 PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]
