@@ -290,22 +290,30 @@ def check_open_positions():
             close_reason = None; close_price = None
 
             if is_smc:
-                # SMC: stop kontrolü önce, TP1'de yarı çıkış
+                # SMC: stop → loss, TP2 → win_tp2 direkt. TP1 sadece milestone.
                 if low <= stop:
                     close_reason = "stop"; close_price = stop
                     sig["status"] = "loss"
                     sig["tp2_shadow"] = "not_reached"
-                elif high >= tp1 and tp2:
-                    tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
-                    sig["status"] = "half_open"
-                    sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                    sig["tp1_exit_price"] = round(tp1, 8)
-                    sig["tp1_exit_pct"] = tp1_pct_v
-                    sig["tp2_peak_after_tp1"] = sig.get("peak_pct", 0)
-                    close_reason = None
-                    need_save = True
-                    print(f"  🎯 TP1 YARI ÇIKIŞ: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 takipte", flush=True)
+                elif tp2 and high >= tp2:
+                    tp2_pct_v = round((tp2 - entry) / entry * 100, 2)
+                    close_reason = "tp2"; close_price = tp2
+                    sig["status"] = "win_tp2"
+                    sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
+                    sig["tp2_shadow"] = "hit"
+                    tp3_val = sig.get("tp3")
+                    if tp3_val and tp3_val > tp2:
+                        sig["tp3_shadow"] = "watching"
+                        sig["tp3_trail_peak"] = tp2
+                        print(f"  🌟 TP3 SHADOW BAŞLADI: {symbol.replace('/USDT','')} | Hedef: {tp3_val:.8g}", flush=True)
                 else:
+                    if tp1 and high >= tp1 and not sig.get("tp1_hit"):
+                        tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
+                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                        sig["tp1_exit_price"] = round(tp1, 8)
+                        sig["tp1_exit_pct"] = tp1_pct_v
+                        need_save = True
+                        print(f"  🎯 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 bekleniyor", flush=True)
                     open_time = datetime.fromisoformat(sig["open_time"])
                     if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                     if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
@@ -351,88 +359,6 @@ def check_open_positions():
                 except Exception as _ae:
                     print(f"[ARCHIVE] {_ae}", flush=True)
 
-        elif sig["status"] == "half_open":
-            # SMC yarı çıkış — TP1'de %50 kapatıldı, TP2 veya stop'a kadar takip
-            tp2 = sig.get("tp2"); stop = sig["stop"]
-            tp1_exit_pct = sig.get("tp1_exit_pct", 0)
-            if high > sig["peak_price"]:
-                sig["peak_price"] = high
-                sig["peak_pct"] = round((high - entry) / entry * 100, 2)
-                sig["tp2_peak_after_tp1"] = sig["peak_pct"]
-            if low < sig["low_price"]:
-                sig["low_price"] = low
-                sig["low_pct"] = round((low - entry) / entry * 100, 2)
-            sig["current_price"] = close
-            sig["current_pct"] = round((close - entry) / entry * 100, 2)
-            sig["last_check"] = now.isoformat()
-            sig["checks"] = sig.get("checks", 0) + 1
-
-            trail_stop = round(sig["peak_price"] * (1 - SMC_TRAIL_PCT / 100), 8)
-
-            if tp2 and high >= tp2:
-                tp2_pct = round((tp2 - entry) / entry * 100, 2)
-                combined_pct = round((tp1_exit_pct + tp2_pct) / 2, 2)
-                sig["status"] = "win_tp2"
-                sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
-                sig["tp2_shadow"] = "hit"
-                sig["close_time"] = now.isoformat()
-                sig["close_price"] = round(tp2, 8)
-                sig["close_reason"] = "tp2"
-                sig["close_pct"] = combined_pct
-                need_save = True; closed_count += 1
-                print(f"  🎯🎯 TP2 KAPANDI: {symbol.replace('/USDT','')} | TP2:+{tp2_pct}% | Ort:+{combined_pct}%", flush=True)
-                # TP3 shadow takibini başlat
-                tp3_val = sig.get("tp3")
-                if tp3_val and tp3_val > tp2:
-                    sig["tp3_shadow"] = "watching"
-                    sig["tp3_trail_peak"] = tp2
-                    print(f"  🌟 TP3 SHADOW BAŞLADI: {symbol.replace('/USDT','')} | Hedef: {tp3_val:.8g} | Trailing: %{sig.get('tp3_trail_stop_pct', 2.0)}", flush=True)
-                try:
-                    _update_archive_outcome(sig.get("id", ""), "tp2",
-                                            combined_pct, sig["peak_pct"], sig["open_time"])
-                except Exception as _ae:
-                    print(f"[ARCHIVE] {_ae}", flush=True)
-            elif low <= trail_stop:
-                trail_pct = round((trail_stop - entry) / entry * 100, 2)
-                combined_pct = round((tp1_exit_pct + trail_pct) / 2, 2)
-                sig["status"] = "win_trail" if combined_pct > 0 else "half_stopped"
-                sig["close_time"] = now.isoformat()
-                sig["close_price"] = round(trail_stop, 8)
-                sig["close_reason"] = "trailing_after_tp1"
-                sig["close_pct"] = combined_pct
-                sig["tp2_shadow"] = "trailed"
-                need_save = True; closed_count += 1
-                emoji2 = "💰" if combined_pct > 0 else "🔴"
-                print(f"  {emoji2} TRAIL ÇIKIŞ (TP1 sonrası): {symbol.replace('/USDT','')} | TP1:+{tp1_exit_pct}% Trail:{trail_pct:+.2f}% | Ort:{combined_pct:+.2f}%", flush=True)
-                try:
-                    _update_archive_outcome(sig.get("id", ""), "trailing_after_tp1",
-                                            combined_pct, sig["peak_pct"], sig["open_time"])
-                except Exception as _ae:
-                    print(f"[ARCHIVE] {_ae}", flush=True)
-            else:
-                tp1_time_str = sig.get("tp1_time", sig["open_time"])
-                try:
-                    tp1_dt = datetime.fromisoformat(tp1_time_str)
-                    if tp1_dt.tzinfo is None: tp1_dt = tp1_dt.replace(tzinfo=TR_TZ)
-                    elapsed_since_tp1 = (now - tp1_dt).total_seconds() / 3600
-                except Exception:
-                    elapsed_since_tp1 = 0
-                if elapsed_since_tp1 >= SHADOW_EXPIRE_HOURS:
-                    close_pct_now = round((close - entry) / entry * 100, 2)
-                    combined_pct = round((tp1_exit_pct + close_pct_now) / 2, 2)
-                    sig["status"] = "half_expired"
-                    sig["close_time"] = now.isoformat()
-                    sig["close_price"] = round(close, 8)
-                    sig["close_reason"] = "expired_after_tp1"
-                    sig["close_pct"] = combined_pct
-                    sig["tp2_shadow"] = "missed"
-                    need_save = True; closed_count += 1
-                    print(f"  ⏰ YARIM EXPİRE: {symbol.replace('/USDT','')} | Ort:{combined_pct:+.2f}%", flush=True)
-                    try:
-                        _update_archive_outcome(sig.get("id", ""), "expired_after_tp1",
-                                                combined_pct, sig["peak_pct"], sig["open_time"])
-                    except Exception as _ae:
-                        print(f"[ARCHIVE] {_ae}", flush=True)
 
         # TP3 shadow takibi (SMC sinyali TP2'de kapandıktan sonra TP3 izleme)
         elif sig.get("tp3_shadow") == "watching" and sig.get("status") == "win_tp2":
