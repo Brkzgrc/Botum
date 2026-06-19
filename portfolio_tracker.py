@@ -314,10 +314,6 @@ def check_open_positions():
                         sig["tp1_exit_pct"] = tp1_pct_v
                         need_save = True
                         print(f"  🎯 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 bekleniyor", flush=True)
-                    open_time = datetime.fromisoformat(sig["open_time"])
-                    if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
-                    if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
-                        close_reason = "expired"; close_price = close; sig["status"] = "expired"
             else:
                 # Bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
                 trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
