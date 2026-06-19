@@ -21,7 +21,7 @@ DATA_DIR      = "backtest_data"
 START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
 MAX_POSITIONS = 5
-MAX_POS_SIZE  = 20_000.0   # pozisyon başına maksimum dolar
+MAX_POS_SIZE  = float("inf")  # limit yok — tam equity-based compounding
 COMMISSION    = 0.001      # 0.1% giriş + 0.1% çıkış (Binance spot maker/taker)
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
