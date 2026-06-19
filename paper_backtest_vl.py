@@ -22,6 +22,7 @@ START_DATE    = pd.Timestamp("2022-01-01", tz="UTC")
 INITIAL_CAP   = 5_000.0
 MAX_POSITIONS = 5
 MAX_POS_SIZE  = 20_000.0   # pozisyon başına maksimum dolar
+COMMISSION    = 0.001      # 0.1% giriş + 0.1% çıkış (Binance spot maker/taker)
 COOLDOWN_H    = 24
 EXPIRE_H      = 168
 CHOCH_SWING   = 5
@@ -365,10 +366,17 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
         ts = pd.Timestamp(unix_ts,unit="s",tz="UTC")
         if etype=="signal":
             if open_count>=max_positions: continue
-            pos_size=min(cash/max_positions, MAX_POS_SIZE)
-            if pos_size<1: continue
-            sig=data; cash-=pos_size; open_count+=1
-            if open_count>max_open: max_open=open_count
+            # Equity-based equal sizing: toplam portföy / slot sayısı
+            total_equity = cash + sum(open_positions.values())
+            pos_size = min(total_equity / max_positions, MAX_POS_SIZE)
+            pos_size = min(pos_size, cash)  # eldeki nakit yetmeli
+            if pos_size < 1: continue
+            sig=data
+            # Giriş komisyonu: pos_size'ın %0.1'i nakit'ten düşülür
+            entry_fee = pos_size * COMMISSION
+            cash -= pos_size + entry_fee
+            open_count += 1
+            if open_count > max_open: max_open = open_count
             trade_id=counter; counter+=1
             open_positions[trade_id]=pos_size
             exit_ts,cash_ret,label = exit_fn(sig,pos_size)
@@ -377,6 +385,7 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
                 "entry_time":sig["entry_time"],"entry":sig["entry"],
                 "stop":sig["stop"],"tp1":sig["tp1"],"tp2":sig["tp2"],
                 "cash_ret":cash_ret,"label":label,"pos_size":pos_size,
+                "entry_fee":entry_fee,
                 "stop_pct":round((sig["stop"]-sig["entry"])/sig["entry"]*100,2),
                 "tp1_pct":round((sig["tp1"]-sig["entry"])/sig["entry"]*100,2),
                 "tp2_pct":round((sig["tp2"]-sig["entry"])/sig["entry"]*100,2),
@@ -392,21 +401,28 @@ def simulate_portfolio(signals, exit_fn, initial_cap=INITIAL_CAP, max_positions=
                 "risk_pct":sig.get("risk_pct",0),"vol_ratio":round(sig.get("vol_ratio",0),2),
                 "size":pos_size,"cash_after":round(cash,2),"open":open_count,
             })
-            equity_pts.append((ts,cash+sum(open_positions.values())))
+            equity_pts.append((ts, cash + sum(open_positions.values())))
         elif etype=="exit":
-            d=data; cash+=d["cash_ret"]; open_count-=1
-            open_positions.pop(d["trade_id"],None)
-            net_pnl=d["cash_ret"]-d["pos_size"]
+            d=data
+            # Çıkış komisyonu: alınan tutarın %0.1'i kesilir
+            exit_fee = d["cash_ret"] * COMMISSION
+            actual_recv = d["cash_ret"] - exit_fee
+            cash += actual_recv
+            open_count -= 1
+            open_positions.pop(d["trade_id"], None)
+            # Net P&L: giriş komisyonu da dahil gerçek maliyet vs alınan tutar
+            total_cost = d["pos_size"] + d["entry_fee"]
+            net_pnl = actual_recv - total_cost
             trade_log.append({
                 "type":"EXIT","trade_id":d["trade_id"],"symbol":d["symbol"],
                 "entry_time":str(d["entry_time"])[:16],"time":str(ts)[:16],
                 "label":d["label"],"net_pnl":round(net_pnl,2),
-                "net_pct":round(net_pnl/d["pos_size"]*100,2),"cash_ret":round(d["cash_ret"],2),
+                "net_pct":round(net_pnl/d["pos_size"]*100,2),"cash_ret":round(actual_recv,2),
                 "cash_after":round(cash,2),"open":open_count,
                 "tp1_pct":d["tp1_pct"],"tp2_pct":d["tp2_pct"],
                 "stop_pct":d["stop_pct"],"risk_pct":d["risk_pct"],
             })
-            equity_pts.append((ts,cash+sum(open_positions.values())))
+            equity_pts.append((ts, cash + sum(open_positions.values())))
     return trade_log, equity_pts, cash, max_open
 
 
@@ -428,6 +444,11 @@ def system_stats(trade_log, equity_pts):
     avg_win  = sum(e["net_pct"] for e in wins)/len(wins)   if wins   else 0.0
     avg_loss = sum(e["net_pct"] for e in stops)/len(stops) if stops  else 0.0
 
+    # Profit Factor: brüt kazanç / brüt kayıp
+    gross_profit = sum(e["net_pct"] for e in exits if e["net_pct"] > 0)
+    gross_loss   = abs(sum(e["net_pct"] for e in exits if e["net_pct"] < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0.0
+
     stop_early = stop_mid = stop_late = 0
     for s in stops:
         try:
@@ -440,6 +461,36 @@ def system_stats(trade_log, equity_pts):
         except Exception:
             pass
 
+    # Yıllık kırılım (kapanış tarihine göre)
+    yearly = {}
+    for e in exits:
+        try:
+            year = str(pd.Timestamp(e["time"]).year)
+        except Exception:
+            continue
+        if year not in yearly:
+            yearly[year] = {"trades":0,"wins":0,"losses":0,"pnl":0.0}
+        yearly[year]["trades"] += 1
+        yearly[year]["pnl"]    += e.get("net_pct", 0)
+        if e["label"] in ("tp2","tp1","trail","win"):
+            yearly[year]["wins"] += 1
+        elif e["label"] in ("stop","time_stop"):
+            yearly[year]["losses"] += 1
+
+    # Yıl başı / yıl sonu equity → yıllık getiri %
+    yearly_eq = {}
+    for ts, cap in equity_pts:
+        try:
+            yr = str(ts.year)
+            if yr not in yearly_eq:
+                yearly_eq[yr] = {"start": cap, "end": cap}
+            yearly_eq[yr]["end"] = cap
+        except Exception:
+            pass
+    for yr, eq in yearly_eq.items():
+        if yr in yearly:
+            yearly[yr]["equity_ret"] = round((eq["end"]/eq["start"]-1)*100, 1)
+
     time_stops = len([e for e in exits if e["label"]=="time_stop"])
     return {
         "trades":len([t for t in trade_log if t["type"]=="ENTRY"]),
@@ -447,7 +498,9 @@ def system_stats(trade_log, equity_pts):
         "expires":len(expires),"wr":round(wr,1),
         "final":round(final,2),"ret":round(ret,2),"max_dd":round(max_dd,2),
         "avg_win":round(avg_win,2),"avg_loss":round(avg_loss,2),
+        "profit_factor":profit_factor,
         "stop_early":stop_early,"stop_mid":stop_mid,"stop_late":stop_late,
+        "yearly":yearly,
     }
 
 
@@ -463,19 +516,22 @@ PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]
 # ─── HTML ÇIKTI ─────────────────────────────────────────────────────────────
 def generate_html(results, n_coins, active_scenarios=None):
     if active_scenarios is None: active_scenarios = SCENARIO_META
-    rows=""; datasets=[]
+    rows=""; datasets=[]; yearly_rows=""
     for idx,(key,_sig,_efn,sys_name,mode) in enumerate(active_scenarios):
         r=results.get(key,{}); st=r.get("stats",{})
         trades=st.get("trades",0); wr=st.get("wr",0)
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
         avg_win=st.get("avg_win",0); max_dd=st.get("max_dd",0)
+        pf=st.get("profit_factor",0)
         n_sigs=r.get("n_sigs",0)
         color_ret="#00c853" if ret>=0 else "#d32f2f"
+        pf_c="#00c853" if pf>=1.5 else ("#f9a825" if pf>=1.0 else "#d32f2f")
         rows+=(f'<tr>'
                f'<td>{sys_name} — {mode}</td>'
                f'<td>{n_sigs}</td><td>{trades}</td><td>{wr:.0f}%</td>'
                f'<td style="color:{color_ret}">{avg_win:+.2f}%</td>'
                f'<td style="color:{color_ret}">{max_dd:.1f}%</td>'
+               f'<td style="color:{pf_c}">{pf:.2f}</td>'
                f'<td style="color:{color_ret}">{ret:+.1f}%</td>'
                f'<td style="color:{color_ret}">${final:,.0f}</td>'
                f'<td><input type="checkbox" class="tog" data-idx="{idx}" checked></td></tr>')
@@ -486,16 +542,34 @@ def generate_html(results, n_coins, active_scenarios=None):
             datasets.append(f'{{"label":{json.dumps(f"{sys_name} — {mode}")},"data":{json.dumps(pts)},'
                             f'"borderColor":"{color}","backgroundColor":"{color}20",'
                             f'"borderWidth":2,"pointRadius":0,"fill":false,"tension":0.1}}')
+        # Yıllık kırılım satırları
+        yearly=st.get("yearly",{})
+        for yr in sorted(yearly.keys()):
+            y=yearly[yr]; dec_y=y["wins"]+y["losses"]
+            wr_y=round(y["wins"]/dec_y*100,1) if dec_y>0 else 0
+            pnl_y=y.get("pnl",0); eq_ret=y.get("equity_ret","—")
+            pnl_c_y="#00c853" if pnl_y>=0 else "#d32f2f"
+            eq_c_y=("#00c853" if isinstance(eq_ret,float) and eq_ret>=0
+                    else "#d32f2f" if isinstance(eq_ret,float) else "#8b949e")
+            eq_str=f"{eq_ret:+.1f}%" if isinstance(eq_ret,float) else "—"
+            yearly_rows+=(f'<tr><td style="color:#8b949e;font-size:.75rem">{sys_name} — {mode}</td>'
+                          f'<td>{yr}</td><td>{y["trades"]}</td>'
+                          f'<td style="color:#00c853">{y["wins"]}</td>'
+                          f'<td style="color:#d32f2f">{y["losses"]}</td>'
+                          f'<td>{wr_y:.0f}%</td>'
+                          f'<td style="color:{pnl_c_y}">{pnl_y:+.1f}%</td>'
+                          f'<td style="color:{eq_c_y};font-weight:bold">{eq_str}</td></tr>')
 
     ds_js="["+",".join(datasets)+"]"
     run_date=_dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>SMC Backtest 2022 — 5 Senaryo</title>
+<meta charset="UTF-8"><title>SMC Backtest 2022 — Senaryo Karşılaştırma</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#0d1117;color:#c9d1d9;font-family:-apple-system,monospace;padding:20px}}
 h1{{color:#58a6ff;font-size:1.4rem;margin-bottom:6px}}
+h2{{color:#58a6ff;font-size:1rem;margin:0 0 10px}}
 .meta{{color:#8b949e;font-size:0.8rem;background:#161b22;padding:10px;border-radius:6px;border:1px solid #30363d;margin-bottom:16px}}
 .card{{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:16px;overflow-x:auto}}
 table{{width:100%;border-collapse:collapse;font-size:0.82rem;min-width:700px}}
@@ -508,17 +582,24 @@ button{{background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:5px 12
 button:hover{{background:#30363d}}
 input[type=checkbox]{{cursor:pointer;accent-color:#58a6ff}}
 </style></head><body>
-<h1>📊 SMC Backtest — 5 Senaryo (2022 → bugün)</h1>
-<div class="meta">{run_date} | {n_coins} coin | 1H Binance | ${INITIAL_CAP:,.0f} başlangıç | Maks {MAX_POSITIONS} pozisyon | Dinamik boyutlama</div>
-<div class="card"><table>
-<thead><tr><th>Senaryo</th><th>Sinyal</th><th>Trade</th><th>WR%</th><th>Ort Kazanç</th><th>MaxDD</th><th>Getiri%</th><th>Son Sermaye</th><th>Graf.</th></tr></thead>
+<h1>📊 SMC Backtest — Senaryo Karşılaştırma (2022 → bugün)</h1>
+<div class="meta">{run_date} | {n_coins} coin | 1H Binance | ${INITIAL_CAP:,.0f} başlangıç | Maks {MAX_POSITIONS} pozisyon | Komisyon %{COMMISSION*100:.1f} giriş+çıkış | Equity-based sizing</div>
+<div class="card">
+<h2>Özet</h2>
+<table>
+<thead><tr><th>Senaryo</th><th>Sinyal</th><th>Trade</th><th>WR%</th><th>Ort Kazanç</th><th>MaxDD</th><th>Profit Factor</th><th>Getiri%</th><th>Son Sermaye</th><th>Graf.</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <div class="card">
 <div class="ctrl">
-  <button onclick="showAll()">Tümü</button>
+  <button onclick="showAll()">Tümü Göster</button>
   <button onclick="hideAll()">Gizle</button>
 </div>
 <canvas id="ec"></canvas></div>
+<div class="card">
+<h2>📅 Yıllık Kırılım</h2>
+<table>
+<thead><tr><th>Senaryo</th><th>Yıl</th><th>Trade</th><th>Win</th><th>Loss</th><th>WR%</th><th>Trade P&amp;L</th><th>Portföy Getiri</th></tr></thead>
+<tbody>{yearly_rows if yearly_rows else "<tr><td colspan='8' style='color:#555'>—</td></tr>"}</tbody></table></div>
 <script>
 const ds={ds_js};
 const ch=new Chart(document.getElementById('ec'),{{type:'line',data:{{datasets:ds}},options:{{
@@ -544,24 +625,37 @@ function hideAll(){{ch.data.datasets.forEach(d=>d.hidden=true);document.querySel
 # ─── RAPOR ──────────────────────────────────────────────────────────────────
 def print_report(results, n_coins, active_scenarios=None):
     if active_scenarios is None: active_scenarios = SCENARIO_META
-    W=120
+    W=130
     print("\n"+"═"*W)
-    print(f"  SMC BACKTEST | {n_coins} coin | 2022→bugün | ${INITIAL_CAP:,.0f} başlangıç | Pozisyon max ${MAX_POS_SIZE:,.0f}")
+    print(f"  SMC BACKTEST | {n_coins} coin | 2022→bugün | ${INITIAL_CAP:,.0f} başlangıç | Komisyon %{COMMISSION*100:.1f}+%{COMMISSION*100:.1f} | Equity-based sizing")
     print("═"*W)
-    print(f"  {'Senaryo':<45} {'Sinyal':>7} {'Trade':>6} {'Kazanç':>7} {'Stop':>6} {'Expire':>7} {'WR%':>6} {'AvgWin':>8} {'AvgLoss':>8} {'MaxDD':>7} {'Getiri':>9} {'Son Sermaye':>13}")
+    print(f"  {'Senaryo':<45} {'Sinyal':>7} {'Trade':>6} {'Kazanç':>7} {'Stop':>6} {'Expire':>7} {'WR%':>6} {'AvgWin':>8} {'AvgLoss':>8} {'PF':>6} {'MaxDD':>7} {'Getiri':>9} {'Son Sermaye':>13}")
     print("─"*W)
     for key,_sig,_efn,sys_name,mode in active_scenarios:
         r=results.get(key,{}); st=r.get("stats",{})
         trades=st.get("trades",0); wr=st.get("wr",0)
         wins=st.get("wins",0); losses=st.get("losses",0); expires=st.get("expires",0)
         final=st.get("final",INITIAL_CAP); ret=st.get("ret",0)
-        avg_win=st.get("avg_win",0); avg_loss=st.get("avg_loss",0); max_dd=st.get("max_dd",0)
+        avg_win=st.get("avg_win",0); avg_loss=st.get("avg_loss",0)
+        max_dd=st.get("max_dd",0); pf=st.get("profit_factor",0)
         se=st.get("stop_early",0); sm=st.get("stop_mid",0); sl=st.get("stop_late",0)
         ts_cnt=st.get("time_stops",0); max_open=st.get("max_open",0)
         n_sigs=r.get("n_sigs",0)
         label=f"{sys_name} — {mode}"
-        print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wins:7d} {losses:6d} {expires:7d} {wr:6.1f}% {avg_win:+8.2f}% {avg_loss:+8.2f}% {max_dd:7.1f}% {ret:+9.1f}% ${final:12,.2f}")
-        print(f"  {'':45}  Max eş zamanlı: {max_open} | Time stop: {ts_cnt} | Stop zamanlaması → <24H: {se} ({se/losses*100:.1f}%)  24-48H: {sm} ({sm/losses*100:.1f}%)  >48H: {sl} ({sl/losses*100:.1f}%)" if losses else "")
+        print(f"  {label:<45} {n_sigs:7d} {trades:6d} {wins:7d} {losses:6d} {expires:7d} {wr:6.1f}% {avg_win:+8.2f}% {avg_loss:+8.2f}% {pf:6.2f} {max_dd:7.1f}% {ret:+9.1f}% ${final:12,.2f}")
+        if losses:
+            print(f"  {'':45}  Max eş zamanlı: {max_open} | Time stop: {ts_cnt} | Stop zamanlaması → <24H: {se} ({se/losses*100:.1f}%)  24-48H: {sm} ({sm/losses*100:.1f}%)  >48H: {sl} ({sl/losses*100:.1f}%)")
+        # Yıllık kırılım
+        yearly=st.get("yearly",{})
+        if yearly:
+            print(f"  {'':45}  Yıllık → ", end="")
+            for yr in sorted(yearly.keys()):
+                y=yearly[yr]; dec_y=y["wins"]+y["losses"]
+                wr_y=round(y["wins"]/dec_y*100,1) if dec_y>0 else 0
+                eq_ret=y.get("equity_ret","?")
+                eq_str=f"{eq_ret:+.1f}%" if isinstance(eq_ret,float) else "?"
+                print(f"{yr}: {y['trades']}T WR{wr_y:.0f}% Eq{eq_str}  ", end="")
+            print()
     print("═"*W+"\n")
 
 
