@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-19 13:47:44",
+  "updated_at": "2026-06-19 13:50:41",
   "performance": {
     "total": 4,
     "open": 3,
@@ -85,16 +85,16 @@
         "win_loss_pnl": 8.92,
         "total_pnl": 8.92
       },
-      "tp2_only": {
+      "half": {
         "wins": 0,
         "losses": 0,
         "expired": 1,
         "total": 1,
         "pnl": 0.0,
-        "expired_pnl": 7.0,
+        "expired_pnl": 8.44,
         "wr": 0,
         "win_loss_pnl": 0.0,
-        "total_pnl": 7.0
+        "total_pnl": 8.44
       }
     },
     "bot_alt": {
@@ -192,8 +192,8 @@
       "peak_pct": 2.38,
       "low_price": 1.653,
       "low_pct": -4.01,
-      "current_price": 1.656,
-      "current_pct": -3.83,
+      "current_price": 1.66,
+      "current_pct": -3.6,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -218,7 +218,7 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.173401+03:00",
-      "last_check": "2026-06-19T13:46:44.862174+03:00",
+      "last_check": "2026-06-19T13:49:41.608043+03:00",
       "checks": 109,
       "extra": {
         "tp3": null
@@ -248,8 +248,8 @@
       "peak_pct": 1.61,
       "low_price": 71.98,
       "low_pct": -4.05,
-      "current_price": 72.25,
-      "current_pct": -3.69,
+      "current_price": 72.46,
+      "current_pct": -3.41,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -274,7 +274,7 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.189515+03:00",
-      "last_check": "2026-06-19T13:46:44.862174+03:00",
+      "last_check": "2026-06-19T13:49:41.608043+03:00",
       "checks": 109,
       "extra": {
         "tp3": null
@@ -304,8 +304,8 @@
       "peak_pct": 0.6,
       "low_price": 2.996,
       "low_pct": -6.14,
-      "current_price": 3.04,
-      "current_pct": -4.76,
+      "current_price": 3.046,
+      "current_pct": -4.57,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -330,7 +330,7 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T03:00:11.980056+03:00",
-      "last_check": "2026-06-19T13:46:44.862174+03:00",
+      "last_check": "2026-06-19T13:49:41.608043+03:00",
       "checks": 121,
       "extra": {
         "tp3": null
