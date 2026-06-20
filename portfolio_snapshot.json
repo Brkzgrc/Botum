@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-20 16:52:48",
+  "updated_at": "2026-06-20 17:22:51",
   "performance": {
     "total": 5,
     "open": 3,
@@ -217,8 +217,8 @@
       "peak_pct": 3.08,
       "low_price": 1.653,
       "low_pct": -4.01,
-      "current_price": 1.723,
-      "current_pct": 0.06,
+      "current_price": 1.707,
+      "current_pct": -0.87,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -243,8 +243,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.173401+03:00",
-      "last_check": "2026-06-20T16:51:14.327697+03:00",
-      "checks": 432,
+      "last_check": "2026-06-20T17:21:21.483740+03:00",
+      "checks": 438,
       "extra": {
         "tp3": null
       }
@@ -273,8 +273,8 @@
       "peak_pct": 1.61,
       "low_price": 71.86,
       "low_pct": -4.21,
-      "current_price": 74.19,
-      "current_pct": -1.11,
+      "current_price": 73.89,
+      "current_pct": -1.51,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -299,8 +299,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.189515+03:00",
-      "last_check": "2026-06-20T16:51:14.327697+03:00",
-      "checks": 432,
+      "last_check": "2026-06-20T17:21:21.483740+03:00",
+      "checks": 438,
       "extra": {
         "tp3": null
       }
@@ -327,10 +327,10 @@
       "close_pct": null,
       "peak_price": 3.211,
       "peak_pct": 0.6,
-      "low_price": 2.97,
-      "low_pct": -6.95,
-      "current_price": 2.987,
-      "current_pct": -6.42,
+      "low_price": 2.951,
+      "low_pct": -7.55,
+      "current_price": 2.977,
+      "current_pct": -6.74,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -355,8 +355,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T03:00:11.980056+03:00",
-      "last_check": "2026-06-20T16:51:14.327697+03:00",
-      "checks": 444,
+      "last_check": "2026-06-20T17:21:21.483740+03:00",
+      "checks": 450,
       "extra": {
         "tp3": null
       }
