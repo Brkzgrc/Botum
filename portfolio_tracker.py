@@ -72,7 +72,7 @@ def _restore_archive_from_github():
         headers = {"Authorization": f"token {GITHUB_TOKEN}",
                    "Accept": "application/vnd.github+json"}
         r = requests.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json",
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json?ref=data",
             headers=headers, timeout=10)
         if r.status_code == 200:
             import base64
@@ -1820,7 +1820,7 @@ def push_snapshot_to_github():
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
 
-        payload = {"message": f"snapshot {tr_now_str()}", "content": encoded, "branch": "main"}
+        payload = {"message": f"snapshot {tr_now_str()}", "content": encoded, "branch": "data"}
         if sha:
             payload["sha"] = sha
 
@@ -1847,7 +1847,7 @@ def push_archive_to_github():
         api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json"
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
-        payload = {"message": f"archive {tr_now_str()}", "content": encoded, "branch": "main"}
+        payload = {"message": f"archive {tr_now_str()}", "content": encoded, "branch": "data"}
         if sha:
             payload["sha"] = sha
         r = requests.put(api_url, headers=headers, json=payload, timeout=15)
