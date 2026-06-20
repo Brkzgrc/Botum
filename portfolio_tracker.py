@@ -957,14 +957,14 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 </style>
 </head><body>
 <div class="header">
-  <h1>📊 PORTFÖY TAKİP</h1>
-  <div style="display:flex;align-items:center;gap:12px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>📊 PORTFÖY TAKİP</h1>
     <div class="tabs">
       <a href="/" class="tab">Portföy</a>
       <a href="/market" class="tab active">Piyasa</a>
     </div>
-    <span class="time">{now} | v2.8</span>
   </div>
+  <span class="time">{now} | v2.8</span>
 </div>
 
 <div class="stats-bar">
@@ -1583,6 +1583,8 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .btn-clear{{background:#c0392b22;color:#e74c3c;border:1px solid #e74c3c44;border-radius:4px;
   padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
 .btn-clear:hover{{background:#c0392b55;}}
+.nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
+.nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
 .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;color:var(--accent);display:block;margin-bottom:4px;}}
@@ -1644,9 +1646,14 @@ tr:hover td{{background:var(--card);}}
 </head><body>
 
 <div class="header">
-    <h1>📊 PORTFÖY TAKİP</h1>
+    <div style="display:flex;align-items:center;gap:16px">
+        <h1>📊 PORTFÖY TAKİP</h1>
+        <div style="display:flex;gap:6px">
+            <a href="/" class="nav-tab active">Portföy</a>
+            <a href="/market" class="nav-tab">Piyasa</a>
+        </div>
+    </div>
     <span class="time">
-        <a href="/market" style="background:#0f1319;border:1px solid #1a2030;color:#5a6a7a;padding:3px 12px;border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:1px;margin-right:6px;transition:all .15s" onmouseover="this.style.borderColor='#00b4d8';this.style.color='#00b4d8'" onmouseout="this.style.borderColor='#1a2030';this.style.color='#5a6a7a'">🌍 Piyasa</a>
         {now} | v2.8
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
