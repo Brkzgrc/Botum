@@ -1,20 +1,20 @@
 {
-  "updated_at": "2026-06-20 04:51:51",
+  "updated_at": "2026-06-20 05:21:53",
   "performance": {
-    "total": 4,
+    "total": 5,
     "open": 3,
-    "closed": 1,
+    "closed": 2,
     "wins": 1,
     "win_partial": 0,
-    "losses": 0,
+    "losses": 1,
     "expired": 0,
     "tp1_hits": 1,
-    "total_pnl": 7.96,
-    "win_loss_pnl": 7.96,
+    "total_pnl": 7.09,
+    "win_loss_pnl": 7.09,
     "expired_pnl": 0.0,
-    "avg_peak": 9.73,
-    "win_rate": 100.0,
-    "real_win_rate": 100.0,
+    "avg_peak": 5.96,
+    "win_rate": 50.0,
+    "real_win_rate": 50.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -31,18 +31,18 @@
         "wr": 0
       },
       "riskli": {
-        "total": 1,
+        "total": 2,
         "wins": 1,
-        "losses": 0,
-        "pnl": 7.96,
-        "wr": 100.0
+        "losses": 1,
+        "pnl": 7.09,
+        "wr": 50.0
       }
     },
     "sim_bot": {
       "tp2": 0,
       "tp1": 0,
       "stop": 0,
-      "open": 0,
+      "open": 1,
       "pnl": 0.0,
       "exp_tp2": 0,
       "exp_tp1": 0,
@@ -100,28 +100,47 @@
     "bot_alt": {
       "actual": {
         "wins": 0,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
-        "total": 0,
-        "pnl": 0.0,
+        "total": 1,
+        "pnl": -0.87,
         "expired_pnl": 0.0,
-        "wr": 0,
-        "win_loss_pnl": 0.0,
-        "total_pnl": 0.0
+        "wr": 0.0,
+        "win_loss_pnl": -0.87,
+        "total_pnl": -0.87
       },
       "tp1_only": {
         "wins": 0,
         "losses": 0,
-        "expired": 0,
-        "total": 0,
+        "expired": 1,
+        "total": 1,
         "pnl": 0.0,
-        "expired_pnl": 0.0,
+        "expired_pnl": -0.87,
         "wr": 0,
         "win_loss_pnl": 0.0,
-        "total_pnl": 0.0
+        "total_pnl": -0.87
       }
     },
     "by_type": {
+      "PANIK_PUMP": {
+        "total": 1,
+        "open": 0,
+        "wins": 0,
+        "win_partial": 0,
+        "losses": 1,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": -0.87,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "tp2_stopped": 0,
+        "win_rate": 0.0,
+        "avg_peak": 2.2,
+        "tp2_rate": 0,
+        "expired_pnl": 0.0,
+        "win_loss_pnl": -0.87
+      },
       "SMC V2": {
         "total": 4,
         "open": 3,
@@ -143,6 +162,12 @@
       }
     },
     "daily": {
+      "2026-06-20": {
+        "trades": 1,
+        "pnl": -0.87,
+        "wins": 0,
+        "losses": 1
+      },
       "2026-06-19": {
         "trades": 4,
         "pnl": 7.96,
@@ -152,18 +177,18 @@
     },
     "weekly": {
       "2026-W24": {
-        "trades": 4,
-        "pnl": 7.96,
+        "trades": 5,
+        "pnl": 7.09,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       }
     },
     "monthly": {
       "2026-06": {
-        "trades": 4,
-        "pnl": 7.96,
+        "trades": 5,
+        "pnl": 7.09,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       }
     }
   },
@@ -192,8 +217,8 @@
       "peak_pct": 2.5,
       "low_price": 1.653,
       "low_pct": -4.01,
-      "current_price": 1.758,
-      "current_pct": 2.09,
+      "current_price": 1.747,
+      "current_pct": 1.45,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -218,8 +243,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.173401+03:00",
-      "last_check": "2026-06-20T04:48:18.011183+03:00",
-      "checks": 288,
+      "last_check": "2026-06-20T05:18:25.913940+03:00",
+      "checks": 294,
       "extra": {
         "tp3": null
       }
@@ -248,8 +273,8 @@
       "peak_pct": 1.61,
       "low_price": 71.86,
       "low_pct": -4.21,
-      "current_price": 74.49,
-      "current_pct": -0.71,
+      "current_price": 73.23,
+      "current_pct": -2.39,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -274,8 +299,8 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T04:00:09.189515+03:00",
-      "last_check": "2026-06-20T04:48:18.011183+03:00",
-      "checks": 288,
+      "last_check": "2026-06-20T05:18:25.913940+03:00",
+      "checks": 294,
       "extra": {
         "tp3": null
       }
@@ -304,8 +329,8 @@
       "peak_pct": 0.6,
       "low_price": 2.996,
       "low_pct": -6.14,
-      "current_price": 3.044,
-      "current_pct": -4.64,
+      "current_price": 3.015,
+      "current_pct": -5.55,
       "tp1_hit": false,
       "tp1_time": null,
       "tp2_shadow": "watching",
@@ -330,14 +355,69 @@
       "expire_trailing_exit_pct": null,
       "analyzer_decision": "🚫 RİSKLİ",
       "analyzer_time": "2026-06-19T03:00:11.980056+03:00",
-      "last_check": "2026-06-20T04:48:18.011183+03:00",
-      "checks": 300,
+      "last_check": "2026-06-20T05:18:25.913940+03:00",
+      "checks": 306,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "BICO_USDT_1781920805",
+      "symbol": "BICO/USDT",
+      "entry": 0.0364,
+      "stop": 0.035308,
+      "tp1": 0.03822,
+      "tp2": 0.04004,
+      "tp3": null,
+      "sig_type": "panik_pump",
+      "sub_type": "",
+      "source": "bot",
+      "phase": "",
+      "candle": "",
+      "funding_neg": true,
+      "status": "loss",
+      "open_time": "2026-06-20T05:00:05.140714+03:00",
+      "close_time": "2026-06-20T05:08:23.145749+03:00",
+      "close_price": 0.036084,
+      "close_reason": "trailing",
+      "close_pct": -0.87,
+      "peak_price": 0.0372,
+      "peak_pct": 2.2,
+      "low_price": 0.0359,
+      "low_pct": -1.37,
+      "current_price": 0.0365,
+      "current_pct": 0.27,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "tp2_shadow": "not_reached",
+      "tp2_hit": false,
+      "tp2_time": null,
+      "tp2_peak_after_tp1": 0.0,
+      "tp2_shadow_end": null,
+      "tp3_shadow": null,
+      "tp3_trail_peak": 0.0,
+      "tp3_trail_stop_pct": 2.5,
+      "tp3_hit_time": null,
+      "trailing_shadow": "watching",
+      "trailing_peak": 0.0,
+      "trailing_stop_pct": 2.0,
+      "trailing_exit_price": null,
+      "trailing_exit_pct": null,
+      "trailing_shadow_end": null,
+      "expire_trailing_active": false,
+      "expire_trailing_peak": 0.0,
+      "expire_trailing_stop_pct": 2.0,
+      "expire_trailing_exit_price": null,
+      "expire_trailing_exit_pct": null,
+      "analyzer_decision": "🚫 RİSKLİ",
+      "analyzer_time": "2026-06-20T05:00:11.706444+03:00",
+      "last_check": "2026-06-20T05:08:23.145749+03:00",
+      "checks": 2,
+      "extra": {},
+      "trail_stop": 0.036084
+    },
     {
       "id": "DEXE_USDT_1781830804",
       "symbol": "DEXE/USDT",
