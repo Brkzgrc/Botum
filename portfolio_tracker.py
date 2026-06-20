@@ -922,6 +922,8 @@ def market_dashboard():
 
     btc_price_fmt = f"${btc_p:,.0f}" if btc_p else "—"
     eth_price_fmt = f"${eth_p:,.0f}" if eth_p else "—"
+    eth_btc_ratio = round(eth_p / btc_p, 5) if (eth_p and btc_p) else None
+    eth_btc_fmt = f"{eth_btc_ratio}" if eth_btc_ratio else "—"
     vol_fmt = _mcap_fmt(btc_vol)
 
     return f"""<!DOCTYPE html><html lang="tr"><head>
@@ -988,6 +990,11 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="lbl">Total Market Cap</div>
     <div class="val" style="font-size:.85rem">{_mcap_fmt(total_mc)}</div>
     <div class="sub" style="color:var(--dim)">tüm kripto</div>
+  </div>
+  <div class="stat-card">
+    <div class="lbl">ETH/BTC Oranı</div>
+    <div class="val" style="font-size:.9rem">{eth_btc_fmt}</div>
+    <div class="sub" style="color:var(--dim)">altcoin sezonu göstergesi</div>
   </div>
   <div class="stat-card">
     <div class="lbl">BTC 24s Hacim</div>
