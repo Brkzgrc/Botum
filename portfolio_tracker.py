@@ -813,12 +813,13 @@ def _fetch_market_pulse():
     except Exception as e:
         print(f"[MARKET] F&G hata: {e}", flush=True)
     try:
-        r3 = requests.get("https://api.coingecko.com/api/v3/global", timeout=8)
-        cg = r3.json()["data"]
-        out["btc_dominance"] = round(cg["market_cap_percentage"].get("btc", 0), 1)
-        out["total_mcap"]    = cg["total_market_cap"].get("usd", 0)
+        r3 = requests.get("https://api.coinlore.net/api/global/",
+                          headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
+        gl = r3.json()[0]
+        out["btc_dominance"] = round(float(gl.get("btc_d", "0").replace("%", "")), 1)
+        out["total_mcap"]    = float(gl.get("total_mcap", 0))
     except Exception as e:
-        print(f"[MARKET] CoinGecko hata: {e}", flush=True)
+        print(f"[MARKET] CoinLore hata: {e}", flush=True)
     _market_cache["data"] = out
     _market_cache["ts"]   = now_ts
     return out
@@ -833,7 +834,7 @@ def api_market_data():
 def api_btc_candles():
     tf    = request.args.get("tf", "1h")
     limit = min(int(request.args.get("limit", "200")), 500)
-    if tf not in {"1h", "4h", "1d", "1w"}: tf = "1h"
+    if tf not in {"1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"}: tf = "1h"
     try:
         r = requests.get(
             "https://api.binance.com/api/v3/klines",
@@ -1007,10 +1008,14 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   <div class="card">
     <h3>BTC / USDT</h3>
     <div class="tf-bar">
-      <button class="tf-btn active" onclick="loadChart('1h',this)">1S</button>
-      <button class="tf-btn" onclick="loadChart('4h',this)">4S</button>
-      <button class="tf-btn" onclick="loadChart('1d',this)">1G</button>
-      <button class="tf-btn" onclick="loadChart('1w',this)">1H</button>
+      <button class="tf-btn" onclick="loadChart('1m',this,300)">1D</button>
+      <button class="tf-btn" onclick="loadChart('5m',this,300)">5D</button>
+      <button class="tf-btn" onclick="loadChart('15m',this,200)">15D</button>
+      <button class="tf-btn active" onclick="loadChart('1h',this,300)">1S</button>
+      <button class="tf-btn" onclick="loadChart('4h',this,300)">4S</button>
+      <button class="tf-btn" onclick="loadChart('1d',this,300)">1G</button>
+      <button class="tf-btn" onclick="loadChart('1w',this,200)">1H</button>
+      <button class="tf-btn" onclick="loadChart('1M',this,60)">1A</button>
     </div>
     <div id="chart-container"></div>
   </div>
@@ -1035,18 +1040,18 @@ function initChart() {{
   }});
   new ResizeObserver(()=>chart.applyOptions({{width:el.clientWidth}})).observe(el);
 }}
-async function loadChart(tf, btn) {{
+async function loadChart(tf, btn, limit) {{
   document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
   try {{
-    const res = await fetch('/api/btc-candles?tf='+tf+'&limit=300');
+    const res = await fetch('/api/btc-candles?tf='+tf+'&limit='+(limit||300));
     const data = await res.json();
     candleSeries.setData(data);
     chart.timeScale().fitContent();
   }} catch(e) {{ console.error(e); }}
 }}
 initChart();
-loadChart('1h', document.querySelector('.tf-btn'));
+loadChart('1h', document.querySelector('.tf-btn.active'), 300);
 </script>
 </body></html>"""
 
