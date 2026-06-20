@@ -779,8 +779,278 @@ def clear_all_signals_ui():
     return jsonify({"ok": True, "removed": count})
 
 # ============================================================
-# HTML DASHBOARD
+# PİYASA VERİSİ API
 # ============================================================
+_market_cache = {"data": None, "ts": 0}
+_MARKET_CACHE_TTL = 180  # saniye
+
+def _fetch_market_pulse():
+    """BTC/ETH fiyat, F&G, dominans, market cap — 3 dk cache."""
+    now_ts = time.time()
+    if _market_cache["data"] and now_ts - _market_cache["ts"] < _MARKET_CACHE_TTL:
+        return _market_cache["data"]
+    out = {}
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={"symbols": '["BTCUSDT","ETHUSDT"]'}, timeout=5)
+        for t in r.json():
+            sym = t["symbol"]
+            if sym == "BTCUSDT":
+                out["btc_price"]  = float(t["lastPrice"])
+                out["btc_change"] = float(t["priceChangePercent"])
+                out["btc_volume"] = float(t["quoteVolume"])
+            elif sym == "ETHUSDT":
+                out["eth_price"]  = float(t["lastPrice"])
+                out["eth_change"] = float(t["priceChangePercent"])
+    except Exception as e:
+        print(f"[MARKET] Binance ticker hata: {e}", flush=True)
+    try:
+        r2 = requests.get("https://api.alternative.me/fng/", timeout=5)
+        d = r2.json()["data"][0]
+        out["fng_value"] = int(d["value"])
+        out["fng_class"] = d["value_classification"]
+    except Exception as e:
+        print(f"[MARKET] F&G hata: {e}", flush=True)
+    try:
+        r3 = requests.get("https://api.coingecko.com/api/v3/global", timeout=8)
+        cg = r3.json()["data"]
+        out["btc_dominance"] = round(cg["market_cap_percentage"].get("btc", 0), 1)
+        out["total_mcap"]    = cg["total_market_cap"].get("usd", 0)
+    except Exception as e:
+        print(f"[MARKET] CoinGecko hata: {e}", flush=True)
+    _market_cache["data"] = out
+    _market_cache["ts"]   = now_ts
+    return out
+
+
+@app.route("/api/market-data")
+def api_market_data():
+    return jsonify(_fetch_market_pulse())
+
+
+@app.route("/api/btc-candles")
+def api_btc_candles():
+    tf    = request.args.get("tf", "1h")
+    limit = min(int(request.args.get("limit", "200")), 500)
+    if tf not in {"1h", "4h", "1d", "1w"}: tf = "1h"
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": "BTCUSDT", "interval": tf, "limit": limit},
+            timeout=10)
+        candles = [{"time": int(k[0])//1000,
+                    "open":  float(k[1]), "high": float(k[2]),
+                    "low":   float(k[3]), "close": float(k[4]),
+                    "volume": float(k[5])} for k in r.json()]
+        return jsonify(candles)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/market")
+def market_dashboard():
+    mp = _fetch_market_pulse()
+    now = tr_now_str()
+
+    def _stat(val, fmt=".2f", prefix="$"):
+        if val is None: return "—"
+        return f"{prefix}{val:{fmt}}"
+    def _chg(val):
+        if val is None: return "—", "#8a9bb0"
+        c = "#2ecc71" if val >= 0 else "#e74c3c"
+        return f"{val:+.2f}%", c
+
+    btc_p = mp.get("btc_price"); eth_p = mp.get("eth_price")
+    btc_vol = mp.get("btc_volume", 0)
+    btc_cs, btc_cc = _chg(mp.get("btc_change"))
+    eth_cs, eth_cc = _chg(mp.get("eth_change"))
+    fng_v = mp.get("fng_value"); fng_c = mp.get("fng_class", "—")
+    btc_dom = mp.get("btc_dominance"); total_mc = mp.get("total_mcap")
+
+    def _mcap_fmt(v):
+        if not v: return "—"
+        if v >= 1e12: return f"${v/1e12:.2f}T"
+        if v >= 1e9:  return f"${v/1e9:.1f}B"
+        return f"${v/1e6:.0f}M"
+
+    # F&G gauge SVG
+    def _fng_gauge(value):
+        if value is None: return '<div style="color:#3a4a5a">—</div>'
+        # needle açısı: 0→180°(sol), 100→0°(sağ)
+        import math
+        ang = math.radians(180 - value * 1.8)
+        nx = round(100 + 75 * math.cos(ang), 1)
+        ny = round(100 - 75 * math.sin(ang), 1)
+        # renk
+        if value <= 25:   needle_c = "#e74c3c"
+        elif value <= 45: needle_c = "#e67e22"
+        elif value <= 55: needle_c = "#f1c40f"
+        elif value <= 75: needle_c = "#a8e063"
+        else:             needle_c = "#2ecc71"
+        return f"""<svg viewBox="0 0 200 115" style="width:200px;height:115px">
+  <defs><linearGradient id="arc-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#e74c3c"/>
+    <stop offset="25%"  stop-color="#e67e22"/>
+    <stop offset="50%"  stop-color="#f1c40f"/>
+    <stop offset="75%"  stop-color="#a8e063"/>
+    <stop offset="100%" stop-color="#2ecc71"/>
+  </linearGradient></defs>
+  <!-- arka plan ark -->
+  <path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="#1a2535" stroke-width="14"/>
+  <!-- renkli ark -->
+  <path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="url(#arc-grad)" stroke-width="10" stroke-linecap="round"/>
+  <!-- iğne -->
+  <line x1="100" y1="100" x2="{nx}" y2="{ny}" stroke="{needle_c}" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="5" fill="{needle_c}"/>
+  <!-- değer -->
+  <text x="100" y="88" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{value}</text>
+  <text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="9" font-family="monospace">KORKU &amp; HIR&#x15E;</text>
+</svg>"""
+
+    fng_gauge_html = _fng_gauge(fng_v)
+
+    # F&G etiket rengi
+    fng_colors = {
+        "Extreme Fear": "#e74c3c", "Fear": "#e67e22",
+        "Neutral": "#f1c40f", "Greed": "#a8e063", "Extreme Greed": "#2ecc71"
+    }
+    fng_label_c = fng_colors.get(fng_c, "#8a9bb0")
+    fng_label_tr = {"Extreme Fear": "Aşırı Korku", "Fear": "Korku",
+                    "Neutral": "Nötr", "Greed": "Hırs", "Extreme Greed": "Aşırı Hırs"}.get(fng_c, fng_c)
+
+    btc_price_fmt = f"${btc_p:,.0f}" if btc_p else "—"
+    eth_price_fmt = f"${eth_p:,.0f}" if eth_p else "—"
+    vol_fmt = _mcap_fmt(btc_vol)
+
+    return f"""<!DOCTYPE html><html lang="tr"><head>
+<meta charset="UTF-8"><title>Piyasa Durumu</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="120">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--dim:#5a6a7a;--accent:#00b4d8;}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira Code',monospace;padding:20px;max-width:1200px;margin:0 auto}}
+.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}}
+.header h1{{color:var(--accent);font-size:1.1rem;letter-spacing:3px}}
+.tabs{{display:flex;gap:6px}}
+.tab{{background:#0f1319;border:1px solid var(--border);color:var(--dim);padding:5px 16px;border-radius:4px;text-decoration:none;font-size:.72rem;letter-spacing:1px;transition:all .15s}}
+.tab:hover,.tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811}}
+.stats-bar{{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}}
+.stat-card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px}}
+.stat-card .lbl{{font-size:.55rem;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}}
+.stat-card .val{{font-size:1.05rem;font-weight:bold;color:#ecf0f1}}
+.stat-card .sub{{font-size:.65rem;margin-top:3px}}
+.grid2{{display:grid;grid-template-columns:220px 1fr;gap:16px;margin-bottom:20px}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}}
+.card h3{{color:var(--accent);font-size:.8rem;letter-spacing:1.5px;margin-bottom:14px}}
+.tf-bar{{display:flex;gap:6px;margin-bottom:12px}}
+.tf-btn{{background:#0a0e14;border:1px solid var(--border);color:var(--dim);padding:3px 10px;border-radius:3px;cursor:pointer;font-size:.65rem;font-family:inherit;transition:all .12s}}
+.tf-btn:hover,.tf-btn.active{{border-color:var(--accent);color:var(--accent)}}
+#chart-container{{height:380px;border-radius:4px;overflow:hidden}}
+.fng-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:8px}}
+.fng-label{{font-size:1rem;font-weight:bold;margin-top:4px}}
+.fng-sub{{font-size:.6rem;color:var(--dim);margin-top:2px}}
+.time{{color:var(--dim);font-size:.7rem}}
+@media(max-width:700px){{.grid2{{grid-template-columns:1fr}}}}
+</style>
+</head><body>
+<div class="header">
+  <h1>📊 PORTFÖY TAKİP</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="tabs">
+      <a href="/" class="tab">Portföy</a>
+      <a href="/market" class="tab active">Piyasa</a>
+    </div>
+    <span class="time">{now} | v2.8</span>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="lbl">BTC Fiyat</div>
+    <div class="val">{btc_price_fmt}</div>
+    <div class="sub" style="color:{btc_cc}">{btc_cs}</div>
+  </div>
+  <div class="stat-card">
+    <div class="lbl">ETH Fiyat</div>
+    <div class="val">{eth_price_fmt}</div>
+    <div class="sub" style="color:{eth_cc}">{eth_cs}</div>
+  </div>
+  <div class="stat-card">
+    <div class="lbl">BTC Dominans</div>
+    <div class="val">%{btc_dom if btc_dom else "—"}</div>
+    <div class="sub" style="color:var(--dim)">toplam pay</div>
+  </div>
+  <div class="stat-card">
+    <div class="lbl">Total Market Cap</div>
+    <div class="val" style="font-size:.85rem">{_mcap_fmt(total_mc)}</div>
+    <div class="sub" style="color:var(--dim)">tüm kripto</div>
+  </div>
+  <div class="stat-card">
+    <div class="lbl">BTC 24s Hacim</div>
+    <div class="val" style="font-size:.85rem">{vol_fmt}</div>
+    <div class="sub" style="color:var(--dim)">USDT</div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>KORKU &amp; HIR&#x15E; ENDEKSİ</h3>
+    <div class="fng-wrap">
+      {fng_gauge_html}
+      <div class="fng-label" style="color:{fng_label_c}">{fng_label_tr}</div>
+      <div class="fng-sub">alternative.me · günlük güncellenir</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>BTC / USDT</h3>
+    <div class="tf-bar">
+      <button class="tf-btn active" onclick="loadChart('1h',this)">1S</button>
+      <button class="tf-btn" onclick="loadChart('4h',this)">4S</button>
+      <button class="tf-btn" onclick="loadChart('1d',this)">1G</button>
+      <button class="tf-btn" onclick="loadChart('1w',this)">1H</button>
+    </div>
+    <div id="chart-container"></div>
+  </div>
+</div>
+
+<script>
+let chart, candleSeries, volSeries;
+function initChart() {{
+  const el = document.getElementById('chart-container');
+  chart = LightweightCharts.createChart(el, {{
+    layout: {{ background:{{color:'#0a0e14'}}, textColor:'#8a9bb0' }},
+    grid:   {{ vertLines:{{color:'#1a2030'}}, horzLines:{{color:'#1a2030'}} }},
+    crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
+    rightPriceScale: {{ borderColor:'#1a2030' }},
+    timeScale: {{ borderColor:'#1a2030', timeVisible:true, secondsVisible:false }},
+    width: el.clientWidth, height: el.clientHeight,
+  }});
+  candleSeries = chart.addCandlestickSeries({{
+    upColor:'#2ecc71', downColor:'#e74c3c',
+    borderUpColor:'#2ecc71', borderDownColor:'#e74c3c',
+    wickUpColor:'#2ecc71', wickDownColor:'#e74c3c',
+  }});
+  new ResizeObserver(()=>chart.applyOptions({{width:el.clientWidth}})).observe(el);
+}}
+async function loadChart(tf, btn) {{
+  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  try {{
+    const res = await fetch('/api/btc-candles?tf='+tf+'&limit=300');
+    const data = await res.json();
+    candleSeries.setData(data);
+    chart.timeScale().fitContent();
+  }} catch(e) {{ console.error(e); }}
+}}
+initChart();
+loadChart('1h', document.querySelector('.tf-btn'));
+</script>
+</body></html>"""
+
+
 def fmt_price(p):
     if p is None: return "—"
     p = float(p)
@@ -1376,6 +1646,7 @@ tr:hover td{{background:var(--card);}}
 <div class="header">
     <h1>📊 PORTFÖY TAKİP</h1>
     <span class="time">
+        <a href="/market" style="background:#0f1319;border:1px solid #1a2030;color:#5a6a7a;padding:3px 12px;border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:1px;margin-right:6px;transition:all .15s" onmouseover="this.style.borderColor='#00b4d8';this.style.color='#00b4d8'" onmouseout="this.style.borderColor='#1a2030';this.style.color='#5a6a7a'">🌍 Piyasa</a>
         {now} | v2.8
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
