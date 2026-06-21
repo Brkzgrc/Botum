@@ -58,6 +58,16 @@ T72_COOLDOWN_H = 4; T72_EXPIRE_H = 72
 T168_DMA200 = 5.657; T168_DMA50 = -5.045; T168_MOM10 = 3.941; T168_DAYS = 677
 T168_COOLDOWN_H = 4; T168_EXPIRE_H = 168
 
+# Early Pump (EP) — bear'da girmez, +25% pump'ı başında yakalar
+EP_CHANGE_MIN  =  5.0   # 24h değişim alt sınır (erken giriş)
+EP_CHANGE_MAX  = 25.0   # 24h değişim üst sınır (geç değil)
+EP_VOL_MIN     =  2.0   # Hacim spike — kurumsal onay
+EP_ADX_MIN     = 20     # Minimum trend gücü
+EP_MA200S_MIN  =  0.0   # MA200 yükseliyor (pozitif eğim)
+EP_TRAIL_PCT   =  5.0   # TP1 sonrası trailing stop %
+EP_COOLDOWN_H  = 12     # Aynı coin için minimum bekleme
+EP_EXPIRE_H    = 168    # 7 gün
+
 
 # ─── VERİ ───────────────────────────────────────────────────────────────────
 def load_pkl(symbol):
@@ -230,6 +240,11 @@ def exit_trail_rk(sig, pos_size):
     return _exit_trail(sig, pos_size, trail_pct=RK_TRAIL_PCT)
 
 
+def exit_trail_ep(sig, pos_size):
+    """Early Pump: TP1 +10% milestone → trailing -%5 peak → TP2 +25% tam çıkış."""
+    return _exit_trail(sig, pos_size, trail_pct=EP_TRAIL_PCT)
+
+
 def _exit_trail(sig, pos_size, trail_pct):
     entry=sig["entry"]; stop=sig["stop"]; tp1=sig["tp1"]; tp2=sig["tp2"]
     rows=sig["future"]; expire_h=sig.get("expire_h",168)
@@ -257,13 +272,14 @@ def _exit_trail(sig, pos_size, trail_pct):
 EXIT_FNS = {
     "trail_pp": exit_trail_pp,
     "trail_rk": exit_trail_rk,
+    "trail_ep": exit_trail_ep,
     "tp2":      exit_tp2,
 }
 
 
 # ─── SİNYAL TOPLAMA ─────────────────────────────────────────────────────────
 def collect_bot_signals(symbols, btc_filters, fetch=True):
-    sigs = {k:[] for k in ["pp","pp_v2","pp_adx40","pp_adx40_deep","rocket","rocket_v2","t72","t72_v2","t168","t168_v2"]}
+    sigs = {k:[] for k in ["pp","pp_v2","pp_adx40","pp_adx40_deep","rocket","rocket_v2","t72","t72_v2","t168","t168_v2","ep"]}
 
     for sym_i, symbol in enumerate(symbols, 1):
         if symbol == "BTC/USDT": continue
@@ -419,6 +435,31 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
                     if ts_h - last["t168_v2"] >= T168_COOLDOWN_H:
                         sigs["t168_v2"].append(base.copy()); last["t168_v2"] = ts_h
 
+            # ── EARLY PUMP (EP) ──────────────────────────────────────────────
+            # Bear'da girmez | +25% pump'ı başında yakalar
+            # ma200s T72 bloğundan gelir, dm200 T168 bloğundan gelir
+            if (not any(np.isnan(v) for v in [change_24h, vol_ratio, dm200, ma200s])
+                    and EP_CHANGE_MIN <= change_24h <= EP_CHANGE_MAX
+                    and vol_ratio >= EP_VOL_MIN
+                    and dm200 >= 0                    # coin MA200 üstünde
+                    and ma200s >= EP_MA200S_MIN       # MA200 yükseliyor
+                    and pdi_val > ndi_val             # yön yukarı
+                    and adx_val >= EP_ADX_MIN         # yeterli trend gücü
+                    and ema200_ok and crash_ok):      # BTC bull + 4h crash yok
+                entry = price
+                stop  = round(entry * 0.92, 10)    # -8%
+                tp1   = round(entry * 1.10, 10)    # +10% milestone → trail başlar
+                tp2   = round(entry * 1.25, 10)    # +25% hedef
+                base  = dict(symbol=symbol, entry_time=ts, entry=entry,
+                             stop=stop, tp1=tp1, tp2=tp2,
+                             future=df.iloc[i+1:i+1+EP_EXPIRE_H][["high","low","close"]].copy(),
+                             expire_h=EP_EXPIRE_H,
+                             vol_ratio=round(vol_ratio, 2),
+                             change_24h=round(change_24h, 2),
+                             adx=round(adx_val, 1))
+                if ts_h - last["ep"] >= EP_COOLDOWN_H:
+                    sigs["ep"].append(base.copy()); last["ep"] = ts_h
+
     for k in sigs:
         sigs[k].sort(key=lambda x: x["entry_time"].timestamp())
     return sigs
@@ -521,6 +562,7 @@ SCENARIO_META = [
     ("pp_v2",           "pp_v2",           "trail_pp", "Panik Pump V2",      "vol 2.0-3.0x + BTC"),
     ("pp_adx40",        "pp_adx40",        "trail_pp", "Panik Pump ADX≥40",  "vol 1.5-3.0x + ADX≥40"),
     ("pp_adx40_deep",   "pp_adx40_deep",   "trail_pp", "Panik Pump ADX≥40+", "vol 1.5-3.0x + ADX≥40 + düşüş≤-8%"),
+    ("ep",              "ep",              "trail_ep", "Early Pump",         "24h +5-25% + vol≥2x + MA200↑ + BTC bull"),
     ("rocket",          "rocket",          "trail_rk", "Rocket",             "vol 1.2x ADX≥25"),
     ("rocket_v2",       "rocket_v2",       "trail_rk", "Rocket V2",          "vol 2.0x ADX≥30"),
     ("t72",             "t72",             "tp2",      "T72",                "orijinal"),
