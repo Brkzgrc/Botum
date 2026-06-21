@@ -250,6 +250,40 @@ def _vol_ratio(volumes, period=20):
     avg = np.mean(volumes[-period - 1:-1])
     return round(float(volumes[-1]) / avg, 2) if avg > 0 else None
 
+def _adx_calc(highs, lows, closes, period=14):
+    """Standart Wilder ADX (0-100 aralığı) — backtest: ADX>=40+drop<=-8% → WR %92."""
+    if len(closes) < period * 3:
+        return None
+    h = np.array(highs, dtype=float)
+    l = np.array(lows,  dtype=float)
+    c = np.array(closes, dtype=float)
+    n = len(c)
+    tr   = np.zeros(n); dm_p = np.zeros(n); dm_m = np.zeros(n)
+    for i in range(1, n):
+        tr[i]   = max(h[i] - l[i], abs(h[i] - c[i-1]), abs(l[i] - c[i-1]))
+        up, dn  = h[i] - h[i-1], l[i-1] - l[i]
+        dm_p[i] = up if (up > dn and up > 0) else 0.0
+        dm_m[i] = dn if (dn > up and dn > 0) else 0.0
+    # Wilder sum-smoothing for TR / DM
+    atr = np.zeros(n); smp = np.zeros(n); smm = np.zeros(n)
+    atr[period] = tr[1:period+1].sum()
+    smp[period] = dm_p[1:period+1].sum()
+    smm[period] = dm_m[1:period+1].sum()
+    for i in range(period + 1, n):
+        atr[i] = atr[i-1] - atr[i-1] / period + tr[i]
+        smp[i] = smp[i-1] - smp[i-1] / period + dm_p[i]
+        smm[i] = smm[i-1] - smm[i-1] / period + dm_m[i]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dip = np.where(atr > 0, smp / atr * 100, 0.0)
+        dim = np.where(atr > 0, smm / atr * 100, 0.0)
+        dx  = np.where((dip + dim) > 0, np.abs(dip - dim) / (dip + dim) * 100, 0.0)
+    # Wilder average-smoothing for ADX (gives 0-100 range)
+    adx = np.zeros(n)
+    adx[2 * period - 1] = dx[period: 2 * period].mean()
+    for i in range(2 * period, n):
+        adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
+    return round(float(adx[-1]), 1)
+
 def _tf_summary(symbol: str, interval: str, limit: int) -> dict | None:
     data = _fetch_klines(symbol, interval, limit)
     if not data:
@@ -262,6 +296,7 @@ def _tf_summary(symbol: str, interval: str, limit: int) -> dict | None:
         "ema50":     _ema(c, 50),
         "ema200":    _ema(c, 200),
         "vol_ratio": _vol_ratio(v),
+        "adx":       _adx_calc(data["highs"], data["lows"], c),
     }
 
 def _tf_line(label: str, d: dict | None) -> str:
@@ -272,6 +307,7 @@ def _tf_line(label: str, d: dict | None) -> str:
     if d.get("ema50")     is not None: parts.append(f"EMA50 {d['ema50']}")
     if d.get("ema200")    is not None: parts.append(f"EMA200 {d['ema200']}")
     if d.get("vol_ratio") is not None: parts.append(f"Hacim {d['vol_ratio']}x")
+    if d.get("adx")       is not None: parts.append(f"ADX {d['adx']}")
     return f"  {label}: Fiyat {d['close']} | {' | '.join(parts)}"
 
 def _fetch_all_tf(symbol: str) -> dict:
@@ -776,7 +812,8 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
 
     # Piyasa koşulları — arşiv eşleştirmesi için
-    btc_4h = tf_data.get("btc_4h") or {}
+    btc_4h   = tf_data.get("btc_4h") or {}
+    coin_1h  = tf_data.get("coin_1h") or {}
     conditions = {
         "fg":              fg_val,
         "fg_label":        fg_label,
@@ -786,6 +823,7 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
         "dominance":       dom.get("current") if dom else None,
         "dom_trend":       dom.get("trend_dir") if dom else None,
         "tma_trend":       tma.get("trend") if tma else None,
+        "adx_1h":          coin_1h.get("adx"),
     }
     archive_ctx = _archive_condition_context(conditions)
 
@@ -824,13 +862,28 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     else:
         sweep_str = "\n[LİKİDİTE SWEEP — Son 24S]\nBelirgin sweep yok."
 
+    # PANİK PUMP için ADX kalite notu (backtest: ADX≥40+drop≤-8% → WR%92)
+    adx_note = ""
+    if sig_type == "capit":
+        adx_val  = coin_1h.get("adx")
+        ret1_val = float(signal.get("ret1") or 0)
+        if adx_val is not None:
+            if adx_val >= 40 and ret1_val <= -8:
+                adx_note = f"\nADX KALİTE: {adx_val:.0f} ✅ Güçlü trend + derin düşüş — backtest WR %92 segmenti"
+            elif adx_val >= 40:
+                adx_note = f"\nADX KALİTE: {adx_val:.0f} ✅ Güçlü trend — backtest WR %74+ segmenti"
+            elif adx_val >= 25:
+                adx_note = f"\nADX KALİTE: {adx_val:.0f} 🟡 Orta güç — backtest WR %57 segmenti"
+            else:
+                adx_note = f"\nADX KALİTE: {adx_val:.0f} ⚠️ Zayıf trend — backtest WR %50 segmenti"
+
     prompt = f"""Sen deneyimli bir kripto risk analistisisin. Ham verileri kendin yorumla.
 
 [SİNYAL]
 Kaynak: {_SOURCE_NAMES.get(source, source)}
 Coin: #{symbol.replace('/USDT','')} | {_TYPE_NAMES.get(sig_type, sig_type)}
 Giriş: {_fmt(signal.get('entry'))} | Stop: {_fmt(signal.get('stop'))} | TP1: {_fmt(signal.get('tp1'))}
-{_build_sig_data(signal)}
+{_build_sig_data(signal)}{adx_note}
 
 [KOİN — ÇOKLU ZAMAN DİLİMİ]
 {coin_block}
