@@ -263,7 +263,7 @@ EXIT_FNS = {
 
 # ─── SİNYAL TOPLAMA ─────────────────────────────────────────────────────────
 def collect_bot_signals(symbols, btc_filters, fetch=True):
-    sigs = {k:[] for k in ["pp","pp_v2","rocket","rocket_v2","t72","t72_v2","t168","t168_v2"]}
+    sigs = {k:[] for k in ["pp","pp_v2","pp_adx40","pp_adx40_deep","rocket","rocket_v2","t72","t72_v2","t168","t168_v2"]}
 
     for sym_i, symbol in enumerate(symbols, 1):
         if symbol == "BTC/USDT": continue
@@ -331,6 +331,8 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
             crash_ok    = bool(btc["crash_ok"].iloc[i])
             downtrend_ok= bool(btc["downtrend_ok"].iloc[i])
             ema200_ok   = bool(btc["ema200_ok"].iloc[i])
+            adx_val     = float(adx_arr[i])
+            pdi_val     = float(pdi_arr[i])
 
             # ── PANİK PUMP ──────────────────────────────────────────────────
             if (PP_CRASH_MIN <= ret1 <= PP_CRASH_MAX and not np.isnan(vol_ratio)):
@@ -343,18 +345,23 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
                     base  = dict(symbol=symbol, entry_time=ts, entry=entry,
                                  stop=stop, tp1=tp1, tp2=tp2,
                                  future=df.iloc[i+1:i+1+PP_EXPIRE_H][["high","low","close"]].copy(),
-                                 expire_h=PP_EXPIRE_H, vol_ratio=round(vol_ratio,2), ret1=round(ret1,2))
+                                 expire_h=PP_EXPIRE_H, vol_ratio=round(vol_ratio,2), ret1=round(ret1,2),
+                                 adx=round(adx_val,1))
                     if PP_VOL_MIN <= vol_ratio <= PP_VOL_MAX:
                         if ts_h - last["pp"] >= PP_COOLDOWN_H:
                             sigs["pp"].append(base.copy()); last["pp"] = ts_h
                     if PP_V2_VOL_MIN <= vol_ratio <= PP_VOL_MAX and crash_ok and downtrend_ok:
                         if ts_h - last["pp_v2"] >= PP_COOLDOWN_H:
                             sigs["pp_v2"].append(base.copy()); last["pp_v2"] = ts_h
+                    if PP_VOL_MIN <= vol_ratio <= PP_VOL_MAX and adx_val >= 40:
+                        if ts_h - last["pp_adx40"] >= PP_COOLDOWN_H:
+                            sigs["pp_adx40"].append(base.copy()); last["pp_adx40"] = ts_h
+                    if PP_VOL_MIN <= vol_ratio <= PP_VOL_MAX and adx_val >= 40 and ret1 <= -8.0:
+                        if ts_h - last["pp_adx40_deep"] >= PP_COOLDOWN_H:
+                            sigs["pp_adx40_deep"].append(base.copy()); last["pp_adx40_deep"] = ts_h
 
             # ── ROCKET ──────────────────────────────────────────────────────
             change_24h = float(df["change_24h"].iloc[i])
-            adx_val    = float(adx_arr[i])
-            pdi_val    = float(pdi_arr[i])
             ndi_val    = float(ndi_arr[i])
             if (not np.isnan(change_24h) and change_24h >= RK_CHANGE_24H
                     and not np.isnan(vol_ratio) and pdi_val > ndi_val and ema200_ok):
@@ -510,14 +517,16 @@ def system_stats(trade_log, equity_pts):
 
 # ─── SENARYOLAR ─────────────────────────────────────────────────────────────
 SCENARIO_META = [
-    ("pp",         "pp",         "trail_pp", "Panik Pump",    "vol 1.5-3.0x"),
-    ("pp_v2",      "pp_v2",      "trail_pp", "Panik Pump V2", "vol 2.0-3.0x + BTC"),
-    ("rocket",     "rocket",     "trail_rk", "Rocket",        "vol 1.2x ADX≥25"),
-    ("rocket_v2",  "rocket_v2",  "trail_rk", "Rocket V2",     "vol 2.0x ADX≥30"),
-    ("t72",        "t72",        "tp2",      "T72",           "orijinal"),
-    ("t72_v2",     "t72_v2",     "tp2",      "T72 V2",        "orijinal + BTC"),
-    ("t168",       "t168",       "tp2",      "T168",          "orijinal"),
-    ("t168_v2",    "t168_v2",    "tp2",      "T168 V2",       "orijinal + BTC"),
+    ("pp",              "pp",              "trail_pp", "Panik Pump",         "vol 1.5-3.0x"),
+    ("pp_v2",           "pp_v2",           "trail_pp", "Panik Pump V2",      "vol 2.0-3.0x + BTC"),
+    ("pp_adx40",        "pp_adx40",        "trail_pp", "Panik Pump ADX≥40",  "vol 1.5-3.0x + ADX≥40"),
+    ("pp_adx40_deep",   "pp_adx40_deep",   "trail_pp", "Panik Pump ADX≥40+", "vol 1.5-3.0x + ADX≥40 + düşüş≤-8%"),
+    ("rocket",          "rocket",          "trail_rk", "Rocket",             "vol 1.2x ADX≥25"),
+    ("rocket_v2",       "rocket_v2",       "trail_rk", "Rocket V2",          "vol 2.0x ADX≥30"),
+    ("t72",             "t72",             "tp2",      "T72",                "orijinal"),
+    ("t72_v2",          "t72_v2",          "tp2",      "T72 V2",             "orijinal + BTC"),
+    ("t168",            "t168",            "tp2",      "T168",               "orijinal"),
+    ("t168_v2",         "t168_v2",         "tp2",      "T168 V2",            "orijinal + BTC"),
 ]
 
 PALETTE = ["#e63946","#f4a261","#457b9d","#2a9d8f","#e9c46a","#264653","#9b59b6","#1abc9c"]
@@ -570,7 +579,7 @@ button{{background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:5px 12
 button:hover{{background:#30363d}}
 input[type=checkbox]{{cursor:pointer;accent-color:#58a6ff}}
 </style></head><body>
-<h1>📊 Bot Backtest — 8 Senaryo (2022 → bugün)</h1>
+<h1>📊 Bot Backtest — 10 Senaryo (2022 → bugün)</h1>
 <div class="meta">{run_date} | {n_coins} coin | 1H Binance | ${INITIAL_CAP:,.0f} başlangıç | Maks {MAX_POSITIONS} pozisyon | Dinamik boyutlama</div>
 <div class="card"><table>
 <thead><tr><th>Senaryo</th><th>Sinyal</th><th>Trade</th><th>WR%</th><th>Ort Kazanç</th><th>MaxDD</th><th>Getiri%</th><th>Son Sermaye</th><th>Graf.</th></tr></thead>
