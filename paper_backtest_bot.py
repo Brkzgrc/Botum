@@ -68,6 +68,16 @@ EP_TRAIL_PCT   =  5.0   # TP1 sonrası trailing stop %
 EP_COOLDOWN_H  = 12     # Aynı coin için minimum bekleme
 EP_EXPIRE_H    = 168    # 7 gün
 
+# EMA21 / MA50 Kırılım Sistemleri
+EMA_STOP       = 0.95   # -5%
+EMA_TP1        = 1.10   # +10% milestone
+EMA_TP2        = 1.25   # +25% hedef
+EMA_TRAIL_PCT  = 5.0
+EMA_VOL_LO     = 1.5    # Gevşek hacim filtresi
+EMA_VOL_HI     = 2.0    # Sıkı hacim filtresi
+EMA_COOLDOWN_H = 12
+EMA_EXPIRE_H   = 168
+
 
 # ─── VERİ ───────────────────────────────────────────────────────────────────
 def load_pkl(symbol):
@@ -245,6 +255,11 @@ def exit_trail_ep(sig, pos_size):
     return _exit_trail(sig, pos_size, trail_pct=EP_TRAIL_PCT)
 
 
+def exit_trail_ema(sig, pos_size):
+    """EMA kırılım sistemleri: stop -5%, TP1 +10%, TP2 +25%, trail -%5."""
+    return _exit_trail(sig, pos_size, trail_pct=EMA_TRAIL_PCT)
+
+
 def _exit_trail(sig, pos_size, trail_pct):
     entry=sig["entry"]; stop=sig["stop"]; tp1=sig["tp1"]; tp2=sig["tp2"]
     rows=sig["future"]; expire_h=sig.get("expire_h",168)
@@ -270,16 +285,18 @@ def _exit_trail(sig, pos_size, trail_pct):
 
 
 EXIT_FNS = {
-    "trail_pp": exit_trail_pp,
-    "trail_rk": exit_trail_rk,
-    "trail_ep": exit_trail_ep,
-    "tp2":      exit_tp2,
+    "trail_pp":  exit_trail_pp,
+    "trail_rk":  exit_trail_rk,
+    "trail_ep":  exit_trail_ep,
+    "trail_ema": exit_trail_ema,
+    "tp2":       exit_tp2,
 }
 
 
 # ─── SİNYAL TOPLAMA ─────────────────────────────────────────────────────────
 def collect_bot_signals(symbols, btc_filters, fetch=True):
-    sigs = {k:[] for k in ["pp","pp_v2","pp_adx40","pp_adx40_deep","rocket","rocket_v2","t72","t72_v2","t168","t168_v2","ep"]}
+    sigs = {k:[] for k in ["pp","pp_v2","pp_adx40","pp_adx40_deep","rocket","rocket_v2","t72","t72_v2","t168","t168_v2","ep",
+                            "ema21_x","ema21_x2","ema21_tg","ma50_x"]}
 
     for sym_i, symbol in enumerate(symbols, 1):
         if symbol == "BTC/USDT": continue
@@ -460,6 +477,50 @@ def collect_bot_signals(symbols, btc_filters, fetch=True):
                 if ts_h - last["ep"] >= EP_COOLDOWN_H:
                     sigs["ep"].append(base.copy()); last["ep"] = ts_h
 
+            # ── EMA21 / MA50 KIRILIM SİSTEMLERİ ────────────────────────────
+            de21      = float(df["dist_ema21"].iloc[i])
+            de21_prev = float(df["dist_ema21"].iloc[i - 1])
+            dm50_curr = float(df["dist_ma50"].iloc[i])
+            dm50_prev = float(df["dist_ma50"].iloc[i - 1])
+            mom5_val  = float(df["mom5_pct"].iloc[i])
+
+            if not any(np.isnan(v) for v in [de21, de21_prev, dm50_curr, dm50_prev, mom5_val, vol_ratio]) and crash_ok:
+                ema_base = dict(
+                    entry=price, stop=round(price * EMA_STOP, 10),
+                    tp1=round(price * EMA_TP1, 10), tp2=round(price * EMA_TP2, 10),
+                    expire_h=EMA_EXPIRE_H, vol_ratio=round(vol_ratio, 2),
+                    de21=round(de21, 2), mom5=round(mom5_val, 2),
+                )
+
+                # EMA21 kırılım — alttan üste geçiş, vol ≥ 1.5x
+                if de21_prev < 0 and de21 >= 0 and mom5_val > 0:
+                    base = dict(symbol=symbol, entry_time=ts,
+                                future=df.iloc[i+1:i+1+EMA_EXPIRE_H][["high","low","close"]].copy(),
+                                **ema_base)
+                    if vol_ratio >= EMA_VOL_LO:
+                        if ts_h - last["ema21_x"] >= EMA_COOLDOWN_H:
+                            sigs["ema21_x"].append(base.copy()); last["ema21_x"] = ts_h
+                    if vol_ratio >= EMA_VOL_HI:
+                        if ts_h - last["ema21_x2"] >= EMA_COOLDOWN_H:
+                            sigs["ema21_x2"].append(base.copy()); last["ema21_x2"] = ts_h
+
+                # EMA21 dokunuş & bounce — üstte 0-4%, yükseliyor, vol ≥ 1.5x
+                if (0 <= de21 <= 4 and de21 > de21_prev and de21_prev >= 0
+                        and mom5_val > 0 and vol_ratio >= EMA_VOL_LO):
+                    base = dict(symbol=symbol, entry_time=ts,
+                                future=df.iloc[i+1:i+1+EMA_EXPIRE_H][["high","low","close"]].copy(),
+                                **ema_base)
+                    if ts_h - last["ema21_tg"] >= EMA_COOLDOWN_H:
+                        sigs["ema21_tg"].append(base.copy()); last["ema21_tg"] = ts_h
+
+                # MA50 kırılım — alttan üste geçiş, vol ≥ 1.5x
+                if dm50_prev < 0 and dm50_curr >= 0 and mom5_val > 0 and vol_ratio >= EMA_VOL_LO:
+                    base = dict(symbol=symbol, entry_time=ts,
+                                future=df.iloc[i+1:i+1+EMA_EXPIRE_H][["high","low","close"]].copy(),
+                                **ema_base)
+                    if ts_h - last["ma50_x"] >= EMA_COOLDOWN_H:
+                        sigs["ma50_x"].append(base.copy()); last["ma50_x"] = ts_h
+
     for k in sigs:
         sigs[k].sort(key=lambda x: x["entry_time"].timestamp())
     return sigs
@@ -562,7 +623,11 @@ SCENARIO_META = [
     ("pp_v2",           "pp_v2",           "trail_pp", "Panik Pump V2",      "vol 2.0-3.0x + BTC"),
     ("pp_adx40",        "pp_adx40",        "trail_pp", "Panik Pump ADX≥40",  "vol 1.5-3.0x + ADX≥40"),
     ("pp_adx40_deep",   "pp_adx40_deep",   "trail_pp", "Panik Pump ADX≥40+", "vol 1.5-3.0x + ADX≥40 + düşüş≤-8%"),
-    ("ep",              "ep",              "trail_ep", "Early Pump",         "24h +5-25% + vol≥2x + MA200↑ + BTC bull"),
+    ("ep",              "ep",              "trail_ep",  "Early Pump",         "24h +5-25% + vol≥2x + MA200↑ + BTC bull"),
+    ("ema21_x",         "ema21_x",         "trail_ema", "EMA21 Kırılım",      "alttan üste + vol≥1.5x + mom5>0"),
+    ("ema21_x2",        "ema21_x2",        "trail_ema", "EMA21 Kırılım Sıkı", "alttan üste + vol≥2.0x + mom5>0"),
+    ("ema21_tg",        "ema21_tg",        "trail_ema", "EMA21 Touch&Go",     "bounce 0-4% üst + vol≥1.5x"),
+    ("ma50_x",          "ma50_x",          "trail_ema", "MA50 Kırılım",       "alttan üste + vol≥1.5x + mom5>0"),
     ("rocket",          "rocket",          "trail_rk", "Rocket",             "vol 1.2x ADX≥25"),
     ("rocket_v2",       "rocket_v2",       "trail_rk", "Rocket V2",          "vol 2.0x ADX≥30"),
     ("t72",             "t72",             "tp2",      "T72",                "orijinal"),
