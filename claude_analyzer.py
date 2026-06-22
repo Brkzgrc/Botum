@@ -184,17 +184,19 @@ def send_decision(text: str, thread_id: int | None = 38):
     if not token or not TELEGRAM_CHAT_ID:
         print("[ANALYZER] Token veya chat_id eksik, mesaj gönderilemedi.", flush=True)
         return
+    chunks = [text[i:i+4096] for i in range(0, len(text), 4096)]
     try:
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                   "parse_mode": "HTML", "disable_web_page_preview": True}
-        if thread_id:
-            payload["message_thread_id"] = thread_id
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json=payload, timeout=10,
-        )
-        if r.status_code != 200:
-            print(f"[ANALYZER TG] {r.status_code}: {r.text[:80]}", flush=True)
+        for chunk in chunks:
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk,
+                       "parse_mode": "HTML", "disable_web_page_preview": True}
+            if thread_id:
+                payload["message_thread_id"] = thread_id
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json=payload, timeout=10,
+            )
+            if r.status_code != 200:
+                print(f"[ANALYZER TG] {r.status_code}: {r.text[:80]}", flush=True)
     except Exception as e:
         print(f"[ANALYZER TG] Hata: {e}", flush=True)
 

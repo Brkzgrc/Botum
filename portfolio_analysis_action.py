@@ -27,12 +27,15 @@ def send_telegram(text):
     if not (TG_TOKEN and TG_CHAT):
         print("[TG] Token/chat yok — sadece log.")
         return
-    r = requests.post(
-        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        json={"chat_id": TG_CHAT, "text": text, "parse_mode": "HTML"},
-        timeout=10,
-    )
-    print(f"[TG] status={r.status_code}")
+    chunks = [text[i:i+4096] for i in range(0, len(text), 4096)]
+    for chunk in chunks:
+        payload = {"chat_id": TG_CHAT, "text": chunk, "parse_mode": "HTML",
+                   "message_thread_id": 38}
+        r = requests.post(
+            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+            json=payload, timeout=10,
+        )
+        print(f"[TG] status={r.status_code}")
 
 
 def main():
