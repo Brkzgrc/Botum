@@ -122,7 +122,12 @@ PİYASA:
 
 {f"Tetikleyici not: {TRIGGER_NOTE}" if TRIGGER_NOTE else ""}
 
-Değerlendirmen 3-5 cümle olsun. Varsa dikkat edilmesi gereken önemli bir durum belirt. Türkçe yaz. Gereksiz selamlama ve kapanış cümlesi yok. Markdown kullanma, düz metin yaz."""
+Çıktı formatı:
+- Her nokta ayrı satırda olsun
+- Maksimum 4 satır
+- Her satır tek cümle, kısa ve net
+- Varsa aksiyon önerisi son satırda
+- Markdown yok, sembol yok, düz metin"""
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
     resp = client.messages.create(
