@@ -29,11 +29,10 @@ def send_telegram(text):
         return
     chunks = [text[i:i+4096] for i in range(0, len(text), 4096)]
     for chunk in chunks:
-        payload = {"chat_id": TG_CHAT, "text": chunk, "parse_mode": "HTML",
-                   "message_thread_id": 38}
         r = requests.post(
             f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-            json=payload, timeout=10,
+            json={"chat_id": TG_CHAT, "text": chunk, "parse_mode": "HTML"},
+            timeout=10,
         )
         print(f"[TG] status={r.status_code}")
 
