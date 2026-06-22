@@ -16,7 +16,7 @@
 
 ## Geliştirme Branch
 
-`claude/github-bot-file-changes-5u6V5` — her değişiklik buraya + main'e push
+Her değişiklik direkt **main**'e push edilir.
 
 ## SMC Entegrasyonu (Bekleyen Görev)
 
