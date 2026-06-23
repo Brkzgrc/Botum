@@ -1427,9 +1427,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 </div>
 
 <div class="card" style="padding:10px">
-  <div style="font-size:.6rem;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-family:monospace">
-    BTC Spot ETF Net Flow &nbsp;<span style="color:var(--dim);font-size:.5rem;letter-spacing:0">theblock.co · günlük</span>
-  </div>
   <iframe width="100%" height="400" frameborder="0"
     src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-flows/embed"
     title="Spot Bitcoin ETF Flows"
