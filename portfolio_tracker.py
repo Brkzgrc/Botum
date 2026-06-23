@@ -832,7 +832,18 @@ def _fetch_market_pulse():
         out["usdt_dominance"] = round(float(mcp.get("usdt", 0)), 1)
     except Exception as e:
         print(f"[MARKET] CoinGecko hata: {e}", flush=True)
-    # Total3 fallback — BTC/ETH fiyat × dolaşımdaki arz
+    # USDT Dom fallback — CoinPaprika (CoinGecko rate-limit yaparsa)
+    if "usdt_dominance" not in out:
+        try:
+            r_cp = requests.get(
+                "https://api.coinpaprika.com/v1/tickers/usdt-tether",
+                params={"quotes": "USD"}, timeout=6)
+            usdt_mcap = r_cp.json().get("quotes", {}).get("USD", {}).get("market_cap", 0)
+            tot_mc    = out.get("total_mcap", 0)
+            if usdt_mcap and tot_mc:
+                out["usdt_dominance"] = round(float(usdt_mcap) / float(tot_mc) * 100, 1)
+        except Exception as e:
+            print(f"[MARKET] USDT Dom fallback hata: {e}", flush=True)
     if "total3" not in out:
         bp = out.get("btc_price", 0)
         ep = out.get("eth_price", 0)
@@ -853,7 +864,7 @@ def _fetch_market_pulse():
                     for key in ("value", "index", "score", "altcoin_season", "altcoinSeason"):
                         if key in d:
                             val = int(d[key])
-                            if 0 < val <= 100:
+                            if 5 <= val <= 100:
                                 out["altcoin_season"] = val
                                 acs_found = True
                                 break
@@ -874,7 +885,7 @@ def _fetch_market_pulse():
                 m = _re.search(pat, r5.text, _re.IGNORECASE | _re.DOTALL)
                 if m:
                     val = int(m.group(1))
-                    if 0 < val <= 100:
+                    if 5 <= val <= 100:
                         out["altcoin_season"] = val
                         break
     except Exception as e:
