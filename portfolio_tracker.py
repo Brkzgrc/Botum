@@ -1195,7 +1195,7 @@ def market_dashboard():
         if fr < -0.01:
             fr_label, fr_lc = "short baskı", "#2ecc71"
         elif fr < 0.01:
-            fr_label, fr_lc = "dengeli", "#5a6a7a"
+            fr_label, fr_lc = "dengeli", "#ecf0f1"
         elif fr < 0.05:
             fr_label, fr_lc = "longa baskı", "#f1c40f"
         else:
