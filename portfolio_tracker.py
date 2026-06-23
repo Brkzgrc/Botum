@@ -970,37 +970,43 @@ def _fetch_market_pulse():
     except Exception as e:
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
     try:
-        etf_ok = False
-        etf_endpoints = [
-            ("https://sosovalue.com/api/etf/us-bitcoin-spot-etf-fund-flow",
-             {"User-Agent": "Mozilla/5.0", "Referer": "https://sosovalue.com"}),
-            ("https://sosovalue.xyz/api/etf/us-bitcoin-spot-etf-fund-flow",
-             {"User-Agent": "Mozilla/5.0"}),
-            ("https://open-api.coinglass.com/public/v2/etf/flow",
-             {"User-Agent": "Mozilla/5.0"}),
-        ]
-        for url, hdrs in etf_endpoints:
-            try:
-                r8 = requests.get(url, headers=hdrs, timeout=10)
-                if not r8.ok:
-                    continue
-                raw   = r8.json()
-                items = raw.get("data", raw) if isinstance(raw, dict) else raw
-                if isinstance(items, list) and items:
-                    flows = []
-                    for item in items[-30:]:
-                        v = (item.get("totalNetFlow") or item.get("netFlow") or
-                             item.get("flow") or item.get("total_net_flow") or 0)
-                        flows.append(round(float(v) / 1e6, 1))
-                    if flows:
-                        out["etf_flows"] = flows
-                        out["etf_today"] = flows[-1]
-                        etf_ok = True
-                        break
-            except Exception:
-                pass
-        if not etf_ok:
-            print("[MARKET] ETF flow: tüm kaynaklar başarısız", flush=True)
+        import re as _re2
+        _fs = requests.get(
+            "https://farside.co.uk/bitcoin-etf-flow-all-data/",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                     "Accept-Language": "en-US,en;q=0.9"},
+            timeout=20)
+        if _fs.ok:
+            tbl_m = _re2.search(r'<table[^>]*>(.*?)</table>', _fs.text, _re2.DOTALL | _re2.IGNORECASE)
+            if tbl_m:
+                rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', tbl_m.group(1), _re2.DOTALL | _re2.IGNORECASE)
+                total_idx = None
+                etf_flows = []
+                for row in rows:
+                    cells = _re2.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, _re2.DOTALL | _re2.IGNORECASE)
+                    clean = [_re2.sub(r'<[^>]+>', '', c).strip() for c in cells]
+                    if not clean:
+                        continue
+                    if total_idx is None:
+                        for i, h in enumerate(clean):
+                            if h.lower() == "total":
+                                total_idx = i
+                                break
+                        continue
+                    if len(clean) <= total_idx:
+                        continue
+                    raw_val = clean[total_idx].replace(",", "").replace("\xa0", "").strip()
+                    try:
+                        etf_flows.append(round(float(raw_val), 1))
+                    except ValueError:
+                        pass
+                if len(etf_flows) >= 5:
+                    out["etf_flows"] = etf_flows[-30:]
+                    out["etf_today"] = etf_flows[-1]
+                    print(f"[MARKET] ETF Farside: {len(etf_flows)} gün OK", flush=True)
+                else:
+                    print(f"[MARKET] ETF Farside: yetersiz veri ({len(etf_flows)})", flush=True)
     except Exception as e:
         print(f"[MARKET] ETF flow hata: {e}", flush=True)
     _market_cache["data"] = out
