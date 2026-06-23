@@ -1220,6 +1220,62 @@ def market_dashboard():
         else:
             ls_label, ls_lc = "dengeli", "#5a6a7a"
 
+    # ── Funding Rate bar SVG ──
+    _FR_RANGE = 0.10
+    if fr is not None:
+        _fr_cl  = max(-_FR_RANGE, min(_FR_RANGE, fr))
+        _fr_dx  = round(12 + (_fr_cl + _FR_RANGE) / (2 * _FR_RANGE) * 176, 1)
+        _fr_tx  = max(24, min(176, _fr_dx))
+        fr_bar_svg = (
+            '<svg viewBox="0 0 200 68" style="width:100%;height:auto">'
+            '<defs><linearGradient id="frg" x1="0%" y1="0%" x2="100%" y2="0%">'
+            '<stop offset="0%" stop-color="#e74c3c"/>'
+            '<stop offset="35%" stop-color="#e67e22"/>'
+            '<stop offset="50%" stop-color="#2ecc71"/>'
+            '<stop offset="65%" stop-color="#e67e22"/>'
+            '<stop offset="100%" stop-color="#e74c3c"/>'
+            '</linearGradient></defs>'
+            '<rect x="12" y="30" width="176" height="11" rx="5" fill="#1a2535"/>'
+            '<rect x="12" y="30" width="176" height="11" rx="5" fill="url(#frg)"/>'
+            '<line x1="100" y1="26" x2="100" y2="44" stroke="#5a6a7a" stroke-width="1" stroke-dasharray="2,2"/>'
+            f'<text x="{_fr_tx}" y="20" text-anchor="middle" fill="#ecf0f1" font-size="13" font-weight="bold" font-family="monospace">{fr_fmt}</text>'
+            f'<circle cx="{_fr_dx}" cy="36" r="7" fill="#ecf0f1" stroke="#0d1421" stroke-width="2"/>'
+            '<text x="12" y="56" text-anchor="start" fill="#8a9bb0" font-size="7" font-family="monospace">-0.1%</text>'
+            '<text x="100" y="56" text-anchor="middle" fill="#2ecc71" font-size="7" font-family="monospace">0%</text>'
+            '<text x="188" y="56" text-anchor="end" fill="#8a9bb0" font-size="7" font-family="monospace">+0.1%</text>'
+            f'<text x="100" y="67" text-anchor="middle" fill="{fr_lc}" font-size="7" font-family="monospace">{fr_label}</text>'
+            '</svg>'
+        )
+    else:
+        fr_bar_svg = ('<svg viewBox="0 0 200 68" style="width:100%;height:auto">'
+                      '<text x="100" y="38" text-anchor="middle" fill="#5a6a7a" font-size="18" font-family="monospace">—</text></svg>')
+
+    # ── Long/Short bar SVG ──
+    if lr is not None and sr is not None:
+        _ls_dx = round(12 + (lr / 100) * 176, 1)
+        _ls_tx = max(24, min(176, _ls_dx))
+        ls_bar_svg = (
+            '<svg viewBox="0 0 200 68" style="width:100%;height:auto">'
+            '<defs><linearGradient id="lsg" x1="0%" y1="0%" x2="100%" y2="0%">'
+            '<stop offset="0%" stop-color="#e74c3c"/>'
+            '<stop offset="45%" stop-color="#5a6a7a"/>'
+            '<stop offset="55%" stop-color="#5a6a7a"/>'
+            '<stop offset="100%" stop-color="#2ecc71"/>'
+            '</linearGradient></defs>'
+            '<rect x="12" y="30" width="176" height="11" rx="5" fill="#1a2535"/>'
+            '<rect x="12" y="30" width="176" height="11" rx="5" fill="url(#lsg)"/>'
+            '<line x1="100" y1="26" x2="100" y2="44" stroke="#5a6a7a" stroke-width="1" stroke-dasharray="2,2"/>'
+            f'<text x="{_ls_tx}" y="20" text-anchor="middle" fill="#ecf0f1" font-size="13" font-weight="bold" font-family="monospace">{ls_fmt}</text>'
+            f'<circle cx="{_ls_dx}" cy="36" r="7" fill="#ecf0f1" stroke="#0d1421" stroke-width="2"/>'
+            f'<text x="12" y="56" text-anchor="start" fill="#e74c3c" font-size="7" font-family="monospace">Short {sr_fmt}</text>'
+            f'<text x="188" y="56" text-anchor="end" fill="#2ecc71" font-size="7" font-family="monospace">Long {lr_fmt}</text>'
+            f'<text x="100" y="67" text-anchor="middle" fill="{ls_lc}" font-size="7" font-family="monospace">{ls_label}</text>'
+            '</svg>'
+        )
+    else:
+        ls_bar_svg = ('<svg viewBox="0 0 200 68" style="width:100%;height:auto">'
+                      '<text x="100" y="38" text-anchor="middle" fill="#5a6a7a" font-size="18" font-family="monospace">—</text></svg>')
+
     # ── Gauges ──
     fng_v = mp.get("fng_value")
     fng_c = mp.get("fng_class", "")
@@ -1408,20 +1464,13 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
     <div>
       <h3>Funding Rate</h3>
-      <div class="stat-card-inner">
-        <div style="font-size:1.2rem;font-weight:bold;color:{fr_lc}">{fr_fmt}</div>
-        <div style="font-size:.5rem;color:var(--dim);margin-top:3px">8 saatlik · Binance BTCUSDT</div>
-        <div style="font-size:.68rem;font-weight:bold;color:{fr_lc};margin-top:6px">{fr_label}</div>
-      </div>
+      {fr_bar_svg}
+      <div style="font-size:.45rem;color:var(--dim);margin-top:2px;text-align:center">8 saatlik · Binance BTCUSDT</div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
       <h3>Long / Short</h3>
-      <div class="stat-card-inner">
-        <div style="font-size:1.2rem;font-weight:bold;color:{ls_lc}">{ls_fmt}</div>
-        <div style="font-size:.5rem;color:var(--dim);margin-top:3px">Long {lr_fmt} · Short {sr_fmt}</div>
-        <div style="font-size:.68rem;font-weight:bold;color:{ls_lc};margin-top:6px">{ls_label}</div>
-        <div style="font-size:.45rem;color:var(--dim);margin-top:2px">Binance · hesap bazlı · 1s</div>
-      </div>
+      {ls_bar_svg}
+      <div style="font-size:.45rem;color:var(--dim);margin-top:2px;text-align:center">Binance · hesap bazlı · 1s</div>
     </div>
   </div>
 </div>
