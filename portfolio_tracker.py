@@ -784,6 +784,8 @@ def clear_all_signals_ui():
 # ============================================================
 _market_cache = {"data": None, "ts": 0}
 _MARKET_CACHE_TTL = 180  # saniye
+_dom_anchor   = {"others_d": None, "ts": 0}
+_DOM_ANCHOR_TTL = 86400  # 24 saat
 
 def _fetch_market_pulse():
     """BTC/ETH fiyat, F&G, dominans, MVRV, ETF, Altcoin Season — 3 dk cache."""
@@ -806,6 +808,12 @@ def _fetch_market_pulse():
             btc_d = float(gd.get("btc_dominance", 0))
             out["eth_dominance"] = round(eth_d, 1)
             out["total3"] = out["total_mcap"] * (1 - (btc_d + eth_d) / 100)
+            _btc_dc = gd.get("btc_dominance_24h_percentage_change")
+            _eth_dc = gd.get("eth_dominance_24h_percentage_change")
+            if _btc_dc is not None:
+                out["btc_dom_change"] = round(float(_btc_dc), 2)
+            if _eth_dc is not None:
+                out["eth_dom_change"] = round(float(_eth_dc), 2)
         except Exception as e:
             print(f"[MARKET] CMC global hata: {e}", flush=True)
         # USDT dominance via USDT quote (more reliable)
@@ -1044,6 +1052,17 @@ def _fetch_market_pulse():
             print("[MARKET] SoSoValue: buildId bulunamadı", flush=True)
     except Exception as e:
         print(f"[MARKET] ETF flow hata: {e}", flush=True)
+    # others_d hesapla ve 24h anchor güncelle
+    _bd = out.get("btc_dominance")
+    _ed = out.get("eth_dominance")
+    _ud = out.get("usdt_dominance", 0) or 0
+    if _bd is not None and _ed is not None:
+        _od = round(100 - _bd - _ed - _ud, 1)
+        out["others_d"] = _od
+        if _dom_anchor["others_d"] is None or (now_ts - _dom_anchor["ts"] > _DOM_ANCHOR_TTL):
+            _dom_anchor["others_d"] = _od
+            _dom_anchor["ts"] = now_ts
+        out["others_d_change"] = round(_od - _dom_anchor["others_d"], 1)
     _market_cache["data"] = out
     _market_cache["ts"]   = now_ts
     return out
@@ -1137,6 +1156,12 @@ def market_dashboard():
 
         return f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">{"".join(parts)}</svg>'
 
+    def _arrow(delta):
+        if delta is None: return "", "#5a6a7a"
+        if delta > 0:     return "↑", "#2ecc71"
+        if delta < 0:     return "↓", "#e74c3c"
+        return "→", "#5a6a7a"
+
     # ── BTC ──
     btc_p   = mp.get("btc_price")
     eth_p   = mp.get("eth_price")
@@ -1153,6 +1178,7 @@ def market_dashboard():
                      else "dengeli" if btc_dom and btc_dom >= 50 else "altcoin sezonu")
     btc_dom_lc    = ("#e67e22" if btc_dom and btc_dom >= 58
                      else "#5a6a7a" if btc_dom and btc_dom >= 50 else "#2ecc71")
+    btc_dom_ar, btc_dom_arc = _arrow(mp.get("btc_dom_change"))
 
     # ── ETH ──
     eth_btc = round(eth_p / btc_p, 5) if (eth_p and btc_p) else None
@@ -1167,13 +1193,13 @@ def market_dashboard():
     total3_fmt = _mcap_fmt(total3) if total3 else "—"
     eth_dom    = mp.get("eth_dominance")
     eth_dom_fmt = f"%{eth_dom}" if eth_dom is not None else "—"
-    _usdt_d    = mp.get("usdt_dominance") or 0
-    others_d   = (round(100 - (btc_dom or 0) - (eth_dom or 0) - _usdt_d, 1)
-                  if (btc_dom is not None and eth_dom is not None) else None)
+    eth_dom_ar, eth_dom_arc = _arrow(mp.get("eth_dom_change"))
+    others_d   = mp.get("others_d")
     others_d_fmt = f"%{others_d}" if others_d is not None else "—"
     others_d_lc  = ("#2ecc71" if others_d and others_d >= 35
                     else "#f1c40f" if others_d and others_d >= 25
                     else "#e67e22" if others_d is not None else "#5a6a7a")
+    others_d_ar, others_d_arc = _arrow(mp.get("others_d_change"))
     acs        = mp.get("altcoin_season")
     acs_label  = ("altcoin sezonu" if acs is not None and acs >= 75
                   else "dengeli" if acs is not None and acs >= 25
@@ -1396,7 +1422,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div class="m-sub" style="color:{btc_cc}">{btc_cs}</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">Dominans</div><div class="m-value">{btc_dom_fmt}</div></div>
+        <div><div class="m-label">Dominans</div><div class="m-value">{btc_dom_fmt} <span style="font-size:.7rem;color:{btc_dom_arc}">{btc_dom_ar}</span></div></div>
         <div class="m-sub" style="color:{btc_dom_lc}">{btc_dom_label}</div>
       </div>
       <div class="metric">
@@ -1426,11 +1452,11 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div class="m-sub" style="color:var(--dim)">BTC+ETH hariç</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">ETH Dom</div><div class="m-value">{eth_dom_fmt}</div></div>
+        <div><div class="m-label">ETH Dom</div><div class="m-value">{eth_dom_fmt} <span style="font-size:.7rem;color:{eth_dom_arc}">{eth_dom_ar}</span></div></div>
         <div class="m-sub" style="color:var(--dim)">ETH dominans</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">OTHERS.D</div><div class="m-value" style="color:{others_d_lc}">{others_d_fmt}</div></div>
+        <div><div class="m-label">OTHERS.D</div><div class="m-value" style="color:{others_d_lc}">{others_d_fmt} <span style="font-size:.7rem;color:{others_d_arc}">{others_d_ar}</span></div></div>
         <div class="m-sub" style="color:{others_d_lc}">top10 dışı altcoin</div>
       </div>
     </div>
