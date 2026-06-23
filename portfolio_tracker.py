@@ -816,34 +816,67 @@ def _fetch_market_pulse():
         r3 = requests.get("https://api.coinlore.net/api/global/",
                           headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
         gl = r3.json()[0]
-        out["btc_dominance"]  = round(float(gl.get("btc_d",   "0").replace("%", "")), 1)
-        out["usdt_dominance"] = round(float(gl.get("usdt_d",  "0").replace("%", "")), 1)
-        out["total_mcap"]     = float(gl.get("total_mcap", 0))
+        out["btc_dominance"] = round(float(gl.get("btc_d", "0").replace("%", "")), 1)
+        out["total_mcap"]    = float(gl.get("total_mcap", 0))
     except Exception as e:
         print(f"[MARKET] CoinLore hata: {e}", flush=True)
     try:
-        r4 = requests.get("https://api.coingecko.com/api/v3/global", timeout=8)
+        r4 = requests.get("https://api.coingecko.com/api/v3/global",
+                          headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
         gd = r4.json()["data"]
         total_usd = gd["total_market_cap"]["usd"]
-        btc_pct   = gd["market_cap_percentage"].get("btc", 0)
-        eth_pct   = gd["market_cap_percentage"].get("eth", 0)
-        out["total3"] = total_usd * (1 - (btc_pct + eth_pct) / 100)
+        mcp       = gd["market_cap_percentage"]
+        btc_pct   = mcp.get("btc", 0)
+        eth_pct   = mcp.get("eth", 0)
+        out["total3"]         = total_usd * (1 - (btc_pct + eth_pct) / 100)
+        out["usdt_dominance"] = round(float(mcp.get("usdt", 0)), 1)
     except Exception as e:
         print(f"[MARKET] CoinGecko hata: {e}", flush=True)
+    # Total3 fallback — BTC/ETH fiyat × dolaşımdaki arz
+    if "total3" not in out:
+        bp = out.get("btc_price", 0)
+        ep = out.get("eth_price", 0)
+        tm = out.get("total_mcap", 0)
+        if bp and ep and tm:
+            est = tm - bp * 19_650_000 - ep * 120_000_000
+            if est > 0:
+                out["total3"] = est
     try:
         import re as _re
-        r5 = requests.get(
-            "https://www.blockchaincenter.net/altcoin-season-index/",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-            timeout=10)
-        for pat in [r'"altcoinSeason"\s*:\s*(\d+)', r'"value"\s*:\s*(\d+)',
-                    r'season[_-]?index[^0-9]{0,20}(\d{1,2})\b', r'(\d{1,2})\s*/\s*100']:
-            m = _re.search(pat, r5.text, _re.IGNORECASE)
-            if m:
-                val = int(m.group(1))
-                if 0 <= val <= 100:
-                    out["altcoin_season"] = val
+        acs_found = False
+        for url in ["https://api.blockchaincenter.net/altcoin-season/",
+                    "https://www.blockchaincenter.net/altcoin-season-index/api/"]:
+            try:
+                ra = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+                if ra.ok and ra.headers.get("content-type", "").startswith("application/json"):
+                    d = ra.json()
+                    for key in ("value", "index", "score", "altcoin_season", "altcoinSeason"):
+                        if key in d:
+                            val = int(d[key])
+                            if 0 < val <= 100:
+                                out["altcoin_season"] = val
+                                acs_found = True
+                                break
+                if acs_found:
                     break
+            except Exception:
+                pass
+        if not acs_found:
+            r5 = requests.get(
+                "https://www.blockchaincenter.net/altcoin-season-index/",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                         "Accept-Language": "en-US,en;q=0.9"},
+                timeout=12)
+            for pat in [r'"altcoinSeasonIndex"\s*:\s*(\d+)', r'"altcoinSeason"\s*:\s*(\d+)',
+                        r'"value"\s*:\s*(\d+)', r'season_index[^0-9]{0,20}(\d{1,3})',
+                        r'seasonValue[^0-9]{0,10}(\d{1,3})', r'id="season"[^>]*>(\d+)',
+                        r'class="gauge[^"]*"[^>]*>.*?(\d{1,3})', r'index[^0-9]{0,15}(\d{1,2})\b']:
+                m = _re.search(pat, r5.text, _re.IGNORECASE | _re.DOTALL)
+                if m:
+                    val = int(m.group(1))
+                    if 0 < val <= 100:
+                        out["altcoin_season"] = val
+                        break
     except Exception as e:
         print(f"[MARKET] Altcoin Season hata: {e}", flush=True)
     try:
@@ -865,21 +898,37 @@ def _fetch_market_pulse():
     except Exception as e:
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
     try:
-        r8 = requests.get(
-            "https://sosovalue.com/api/etf/us-bitcoin-spot-etf-fund-flow",
-            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://sosovalue.com"},
-            timeout=10)
-        raw   = r8.json()
-        items = raw.get("data", raw) if isinstance(raw, dict) else raw
-        if isinstance(items, list):
-            flows = []
-            for item in items[-30:]:
-                v = (item.get("totalNetFlow") or item.get("netFlow") or
-                     item.get("flow") or item.get("total_net_flow") or 0)
-                flows.append(round(float(v) / 1e6, 1))
-            if flows:
-                out["etf_flows"] = flows
-                out["etf_today"] = flows[-1]
+        etf_ok = False
+        etf_endpoints = [
+            ("https://sosovalue.com/api/etf/us-bitcoin-spot-etf-fund-flow",
+             {"User-Agent": "Mozilla/5.0", "Referer": "https://sosovalue.com"}),
+            ("https://sosovalue.xyz/api/etf/us-bitcoin-spot-etf-fund-flow",
+             {"User-Agent": "Mozilla/5.0"}),
+            ("https://open-api.coinglass.com/public/v2/etf/flow",
+             {"User-Agent": "Mozilla/5.0"}),
+        ]
+        for url, hdrs in etf_endpoints:
+            try:
+                r8 = requests.get(url, headers=hdrs, timeout=10)
+                if not r8.ok:
+                    continue
+                raw   = r8.json()
+                items = raw.get("data", raw) if isinstance(raw, dict) else raw
+                if isinstance(items, list) and items:
+                    flows = []
+                    for item in items[-30:]:
+                        v = (item.get("totalNetFlow") or item.get("netFlow") or
+                             item.get("flow") or item.get("total_net_flow") or 0)
+                        flows.append(round(float(v) / 1e6, 1))
+                    if flows:
+                        out["etf_flows"] = flows
+                        out["etf_today"] = flows[-1]
+                        etf_ok = True
+                        break
+            except Exception:
+                pass
+        if not etf_ok:
+            print("[MARKET] ETF flow: tüm kaynaklar başarısız", flush=True)
     except Exception as e:
         print(f"[MARKET] ETF flow hata: {e}", flush=True)
     _market_cache["data"] = out
@@ -990,11 +1039,15 @@ def market_dashboard():
     total_mc     = mp.get("total_mcap")
     total_mc_fmt = _mcap_fmt(total_mc) if total_mc else "—"
     usdt_dom     = mp.get("usdt_dominance")
-    usdt_dom_fmt = f"%{usdt_dom}" if usdt_dom else "—"
-    usdt_dom_label = ("kaçış var" if usdt_dom and usdt_dom >= 7
-                      else "yüksek" if usdt_dom and usdt_dom >= 5 else "normal")
-    usdt_dom_lc    = ("#e67e22" if usdt_dom and usdt_dom >= 7
-                      else "#f1c40f" if usdt_dom and usdt_dom >= 5 else "#5a6a7a")
+    usdt_dom_fmt = f"%{usdt_dom}" if usdt_dom is not None else "—"
+    if usdt_dom is None:
+        usdt_dom_label, usdt_dom_lc = "—", "#5a6a7a"
+    elif usdt_dom >= 7:
+        usdt_dom_label, usdt_dom_lc = "kaçış var", "#e67e22"
+    elif usdt_dom >= 5:
+        usdt_dom_label, usdt_dom_lc = "yüksek", "#f1c40f"
+    else:
+        usdt_dom_label, usdt_dom_lc = "normal", "#5a6a7a"
 
     # ── Funding Rate ──
     fr = mp.get("funding_rate")
