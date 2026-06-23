@@ -1048,10 +1048,8 @@ def market_dashboard():
         if val is None: return "—", "#8a9bb0"
         return f"{val:+.2f}%", ("#2ecc71" if val >= 0 else "#e74c3c")
 
-    def _gauge_svg(value, sectors, label_text):
-        """Speedometer gauge with colored annular sectors.
-        sectors: [(end_val, color), ...] — e.g. [(25,'#e74c3c'),(100,'#2ecc71')]
-        """
+    def _gauge_svg(value, stops, label_text):
+        """Speedometer with smooth gradient arc. stops: [("0%",color),("50%",color),...]"""
         cx, cy = 100, 103
         ro, ri = 80, 57
 
@@ -1059,53 +1057,44 @@ def market_dashboard():
             return (round(cx + r * _math.cos(ang), 2),
                     round(cy - r * _math.sin(ang), 2))
 
-        def _v2a(v):
-            return _math.pi * (1 - v / 100)
+        gid = "gg" + label_text[:4].replace(" ", "").replace("&", "").replace(";", "")
+        s_html = "".join(f'<stop offset="{p}" stop-color="{c}"/>' for p, c in stops)
 
-        def _sector(v1, v2):
-            a1, a2 = _v2a(v1), _v2a(v2)
-            ox1, oy1 = _pt(a1, ro)
-            ox2, oy2 = _pt(a2, ro)
-            ix2, iy2 = _pt(a2, ri)
-            ix1, iy1 = _pt(a1, ri)
-            laf = '1' if (v2 - v1) > 50 else '0'
-            return (f'M {ox1},{oy1} A {ro},{ro} 0 {laf},1 {ox2},{oy2} '
-                    f'L {ix2},{iy2} A {ri},{ri} 0 {laf},0 {ix1},{iy1} Z')
+        ox0, oy0 = _pt(_math.pi, ro)
+        ox1, oy1 = _pt(0,        ro)
+        ix1, iy1 = _pt(0,        ri)
+        ix0, iy0 = _pt(_math.pi, ri)
+        arc = (f'M {ox0},{oy0} A {ro},{ro} 0 0,1 {ox1},{oy1} '
+               f'L {ix1},{iy1} A {ri},{ri} 0 0,0 {ix0},{iy0} Z')
 
-        parts = []
-        v_prev = 0
-        for v_end, color in sectors:
-            parts.append(f'<path d="{_sector(v_prev, v_end)}" fill="{color}" opacity="0.82"/>')
-            v_prev = v_end
-
-        # divider lines
-        for v_end, _ in sectors[:-1]:
-            ang = _v2a(v_end)
-            x1, y1 = _pt(ang, ri - 2)
-            x2, y2 = _pt(ang, ro + 2)
-            parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#0d1421" stroke-width="2"/>')
-
-        # needle
+        # Needle + cap color: nearest gradient stop to current value
+        nc = "#5a6a7a"
         if value is not None:
-            ang = _v2a(max(0, min(100, value)))
+            best = 200
+            for off_str, col in stops:
+                d = abs(float(off_str.strip('%')) - value)
+                if d < best:
+                    best, nc = d, col
+
+        parts = [
+            f'<defs><linearGradient id="{gid}" x1="0%" y1="0%" x2="100%" y2="0%">'
+            f'{s_html}</linearGradient></defs>',
+            f'<path d="{arc}" fill="#1a2535"/>',
+            f'<path d="{arc}" fill="url(#{gid})"/>',
+        ]
+
+        if value is not None:
+            ang = _math.pi * (1 - max(0, min(100, value)) / 100)
             nx, ny = _pt(ang, ro - 5)
-            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>')
+            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="{nc}" stroke-width="3" stroke-linecap="round"/>')
 
-        # center cap — color of current zone
-        cap_c = "#5a6a7a"
-        if value is not None:
-            for v_end, color in sectors:
-                if value <= v_end:
-                    cap_c = color
-                    break
-        parts.append(f'<circle cx="{cx}" cy="{cy}" r="6" fill="{cap_c}" stroke="#0d1421" stroke-width="1.5"/>')
+        parts.append(f'<circle cx="{cx}" cy="{cy}" r="5" fill="{nc}"/>')
 
         vt = str(value) if value is not None else "—"
         parts.append(f'<text x="100" y="86" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{vt}</text>')
         parts.append(f'<text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="8" font-family="monospace">{label_text}</text>')
 
-        body = "".join(parts)
-        return f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">{body}</svg>'
+        return f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">{"".join(parts)}</svg>'
 
     # ── BTC ──
     btc_p   = mp.get("btc_price")
@@ -1203,8 +1192,8 @@ def market_dashboard():
                   else "#f1c40f" if btc_dom and btc_dom < 58 else "#e67e22")
 
     fng_svg = _gauge_svg(fng_v,
-                         [(25,"#e74c3c"),(45,"#e67e22"),(55,"#f1c40f"),
-                          (75,"#a8e063"),(100,"#2ecc71")],
+                         [("0%","#e74c3c"),("25%","#e67e22"),("50%","#f1c40f"),
+                          ("75%","#a8e063"),("100%","#2ecc71")],
                          "KORKU &amp; HIR&#x15E;")
     if acs is not None:
         _ax1, _ax2, _ay, _ah = 12, 188, 46, 13
@@ -1230,7 +1219,7 @@ def market_dashboard():
                    '<text x="100" y="45" text-anchor="middle" fill="#5a6a7a" font-size="18" font-family="monospace">—</text>'
                    '</svg>')
     dom_svg = _gauge_svg(btc_dom,
-                         [(45,"#2ecc71"),(55,"#f1c40f"),(100,"#e67e22")],
+                         [("0%","#2ecc71"),("50%","#f1c40f"),("100%","#e67e22")],
                          "BTC DOMIN.")
 
     # ── ETF flows ──
@@ -1414,12 +1403,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   <div id="tv_chart"></div>
 </div>
 
-<div class="card" style="padding:10px;margin-top:16px">
-  <div style="font-size:.6rem;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-family:monospace">
-    MVRV Z-SCORE &nbsp;<span style="color:var(--dim);font-size:.5rem;letter-spacing:0">(ilyaevp95 · Weekly)</span>
-  </div>
-  <div id="tv_mvrv"></div>
-</div>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
@@ -1429,17 +1412,6 @@ new TradingView.widget({{
   timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
   toolbar_bg:"#0f1319",hide_side_toolbar:false,allow_symbol_change:true,
   backgroundColor:"#0a0e14",gridColor:"#1a2030"
-}});
-
-new TradingView.widget({{
-  container_id:"tv_mvrv",width:"100%",height:420,
-  symbol:"BINANCE:BTCUSDT",interval:"W",
-  timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
-  toolbar_bg:"#0f1319",hide_side_toolbar:true,allow_symbol_change:false,
-  backgroundColor:"#0a0e14",gridColor:"#1a2030",
-  hide_top_toolbar:false,
-  studies:["PUB;v3TqVthK"],
-  studies_overrides:{{"MVRV Z Score.Market Cap Source":"Coinmetrics"}}
 }});
 
 (function(){{
