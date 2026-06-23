@@ -804,6 +804,7 @@ def _fetch_market_pulse():
             out["total_mcap"]    = float(qu.get("total_market_cap", 0))
             eth_d = float(gd.get("eth_dominance", 0))
             btc_d = float(gd.get("btc_dominance", 0))
+            out["eth_dominance"] = round(eth_d, 1)
             out["total3"] = out["total_mcap"] * (1 - (btc_d + eth_d) / 100)
         except Exception as e:
             print(f"[MARKET] CMC global hata: {e}", flush=True)
@@ -1164,6 +1165,15 @@ def market_dashboard():
     # ── Altcoin ──
     total3     = mp.get("total3")
     total3_fmt = _mcap_fmt(total3) if total3 else "—"
+    eth_dom    = mp.get("eth_dominance")
+    eth_dom_fmt = f"%{eth_dom}" if eth_dom is not None else "—"
+    _usdt_d    = mp.get("usdt_dominance") or 0
+    others_d   = (round(100 - (btc_dom or 0) - (eth_dom or 0) - _usdt_d, 1)
+                  if (btc_dom is not None and eth_dom is not None) else None)
+    others_d_fmt = f"%{others_d}" if others_d is not None else "—"
+    others_d_lc  = ("#2ecc71" if others_d and others_d >= 35
+                    else "#f1c40f" if others_d and others_d >= 25
+                    else "#e67e22" if others_d is not None else "#5a6a7a")
     acs        = mp.get("altcoin_season")
     acs_label  = ("altcoin sezonu" if acs is not None and acs >= 75
                   else "dengeli" if acs is not None and acs >= 25
@@ -1414,6 +1424,14 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <div class="metric">
         <div><div class="m-label">Total3</div><div class="m-value">{total3_fmt}</div></div>
         <div class="m-sub" style="color:var(--dim)">BTC+ETH hariç</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">ETH Dom</div><div class="m-value">{eth_dom_fmt}</div></div>
+        <div class="m-sub" style="color:var(--dim)">ETH dominans</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">OTHERS.D</div><div class="m-value" style="color:{others_d_lc}">{others_d_fmt}</div></div>
+        <div class="m-sub" style="color:{others_d_lc}">top10 dışı altcoin</div>
       </div>
     </div>
   </div>
