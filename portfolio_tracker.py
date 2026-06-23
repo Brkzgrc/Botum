@@ -1355,7 +1355,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
-.visual-row{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
+.visual-row{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}}
 .card h3{{color:var(--accent);font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase;text-align:center}}
 .gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:2px}}
@@ -1461,16 +1461,18 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <div class="gauge-sub">CoinLore · anlık</div>
     </div>
   </div>
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
-    <div>
-      <h3>Funding Rate</h3>
+  <div class="card">
+    <h3>Funding Rate</h3>
+    <div class="gauge-wrap">
       {fr_bar_svg}
-      <div style="font-size:.45rem;color:var(--dim);margin-top:2px;text-align:center">8 saatlik · Binance BTCUSDT</div>
+      <div class="gauge-sub">8 saatlik · Binance BTCUSDT</div>
     </div>
-    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
-      <h3>Long / Short</h3>
+  </div>
+  <div class="card">
+    <h3>Long / Short</h3>
+    <div class="gauge-wrap">
       {ls_bar_svg}
-      <div style="font-size:.45rem;color:var(--dim);margin-top:2px;text-align:center">Binance · hesap bazlı · 1s</div>
+      <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
     </div>
   </div>
 </div>
