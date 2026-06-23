@@ -1291,7 +1291,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .time{{color:var(--dim);font-size:.7rem}}
 .groups-row{{display:flex;gap:10px;margin-bottom:14px}}
 .group{{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1}}
-.group-title{{font-size:.52rem;letter-spacing:2px;color:var(--accent);text-transform:uppercase;padding:6px 12px;border-bottom:1px solid var(--border);background:#0c1219}}
+.group-title{{font-size:.58rem;letter-spacing:2px;color:var(--accent);text-transform:uppercase;padding:6px 12px;border-bottom:1px solid var(--border);background:#0c1219;font-weight:700}}
 .group-metrics{{display:flex;flex:1}}
 .metric{{flex:1;padding:9px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between}}
 .metric:last-child{{border-right:none}}
@@ -1299,7 +1299,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
-.visual-row{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
+.visual-row{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}}
 .card h3{{color:var(--accent);font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase;text-align:center}}
 .gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:2px}}
@@ -1405,22 +1405,23 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <div class="gauge-sub">CoinLore · anlık</div>
     </div>
   </div>
-  <div class="card">
-    <h3>Funding Rate</h3>
-    <div class="stat-card-inner">
-      <div style="font-size:1.3rem;font-weight:bold;color:{fr_lc}">{fr_fmt}</div>
-      <div style="font-size:.5rem;color:var(--dim);margin-top:5px">8 saatlik</div>
-      <div style="font-size:.72rem;font-weight:bold;color:{fr_lc};margin-top:8px">{fr_label}</div>
-      <div style="font-size:.48rem;color:var(--dim);margin-top:3px">Binance BTCUSDT perp</div>
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
+    <div>
+      <h3>Funding Rate</h3>
+      <div class="stat-card-inner">
+        <div style="font-size:1.2rem;font-weight:bold;color:{fr_lc}">{fr_fmt}</div>
+        <div style="font-size:.5rem;color:var(--dim);margin-top:3px">8 saatlik · Binance BTCUSDT</div>
+        <div style="font-size:.68rem;font-weight:bold;color:{fr_lc};margin-top:6px">{fr_label}</div>
+      </div>
     </div>
-  </div>
-  <div class="card">
-    <h3>Long / Short</h3>
-    <div class="stat-card-inner">
-      <div style="font-size:1.3rem;font-weight:bold;color:{ls_lc}">{ls_fmt}</div>
-      <div style="font-size:.5rem;color:var(--dim);margin-top:5px">Long {lr_fmt} · Short {sr_fmt}</div>
-      <div style="font-size:.72rem;font-weight:bold;color:{ls_lc};margin-top:8px">{ls_label}</div>
-      <div style="font-size:.48rem;color:var(--dim);margin-top:3px">Binance · hesap bazlı · 1s</div>
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+      <h3>Long / Short</h3>
+      <div class="stat-card-inner">
+        <div style="font-size:1.2rem;font-weight:bold;color:{ls_lc}">{ls_fmt}</div>
+        <div style="font-size:.5rem;color:var(--dim);margin-top:3px">Long {lr_fmt} · Short {sr_fmt}</div>
+        <div style="font-size:.68rem;font-weight:bold;color:{ls_lc};margin-top:6px">{ls_label}</div>
+        <div style="font-size:.45rem;color:var(--dim);margin-top:2px">Binance · hesap bazlı · 1s</div>
+      </div>
     </div>
   </div>
 </div>
