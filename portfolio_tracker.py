@@ -1299,7 +1299,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
-.visual-row{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
+.visual-row{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}}
 .card h3{{color:var(--accent);font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase;text-align:center}}
 .gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:2px}}
@@ -1406,20 +1406,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     </div>
   </div>
   <div class="card">
-    <h3>BTC Spot ETF Net Flow</h3>
-    <canvas id="etfCanvas" style="width:100%;display:block" height="150"></canvas>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-      <div style="display:flex;gap:8px;font-size:.5rem;color:var(--dim)">
-        <span><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:#2ecc71;margin-right:2px"></span>Giriş</span>
-        <span><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:#e74c3c;margin-right:2px"></span>Çıkış</span>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:.48rem;color:var(--dim)">Bugün</div>
-        <div style="font-size:.8rem;font-weight:bold;color:{etf_today_c}">{etf_today_fmt}</div>
-      </div>
-    </div>
-  </div>
-  <div class="card">
     <h3>Funding Rate</h3>
     <div class="stat-card-inner">
       <div style="font-size:1.3rem;font-weight:bold;color:{fr_lc}">{fr_fmt}</div>
@@ -1440,6 +1426,16 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 </div>
 
 <div class="card" style="padding:10px">
+  <div style="font-size:.6rem;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-family:monospace">
+    BTC Spot ETF Net Flow &nbsp;<span style="color:var(--dim);font-size:.5rem;letter-spacing:0">theblock.co · günlük</span>
+  </div>
+  <iframe width="100%" height="400" frameborder="0"
+    src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-flows/embed"
+    title="Spot Bitcoin ETF Flows"
+    style="border-radius:6px;display:block"></iframe>
+</div>
+
+<div class="card" style="padding:10px;margin-top:14px">
   <div id="tv_chart"></div>
 </div>
 
@@ -1454,26 +1450,6 @@ new TradingView.widget({{
   backgroundColor:"#0a0e14",gridColor:"#1a2030"
 }});
 
-(function(){{
-  const c=document.getElementById('etfCanvas');
-  c.width=c.offsetWidth||320;
-  const ctx=c.getContext('2d'),W=c.width,H=c.height;
-  const flows={etf_flows_j};
-  if(!flows.length)return;
-  const max=Math.max(...flows.map(Math.abs));
-  if(!max)return;
-  const zeroY=Math.round(H/2);
-  const barW=Math.max(1,Math.floor(W/flows.length));
-  flows.forEach((v,i)=>{{
-    const x=i*barW;
-    const h=Math.max(1,Math.round((Math.abs(v)/max)*(H/2-3)));
-    ctx.fillStyle=v>=0?'#2ecc71':'#e74c3c';
-    if(v>=0)ctx.fillRect(x,zeroY-h,barW,h);
-    else ctx.fillRect(x,zeroY,barW,h);
-  }});
-  ctx.strokeStyle='#2a3a4a';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(0,zeroY);ctx.lineTo(W,zeroY);ctx.stroke();
-}})();
 </script>
 </body>
 </html>"""
