@@ -1048,28 +1048,71 @@ def market_dashboard():
         if val is None: return "—", "#8a9bb0"
         return f"{val:+.2f}%", ("#2ecc71" if val >= 0 else "#e74c3c")
 
-    def _gauge_svg(value, gid, stops, label_text):
-        if value is None:
-            nx, ny, nc = 100, 20, "#5a6a7a"
-        else:
-            ang = _math.radians(180 - value * 1.8)
-            nx  = round(100 + 75 * _math.cos(ang), 1)
-            ny  = round(100 - 75 * _math.sin(ang), 1)
-            nc  = ("#e74c3c" if value <= 25 else "#e67e22" if value <= 45
-                   else "#f1c40f" if value <= 55 else "#a8e063" if value <= 75
-                   else "#2ecc71")
-        s_html = "".join(f'<stop offset="{p}" stop-color="{c}"/>' for p, c in stops)
+    def _gauge_svg(value, sectors, label_text):
+        """Speedometer gauge with colored annular sectors.
+        sectors: [(end_val, color), ...] — e.g. [(25,'#e74c3c'),(100,'#2ecc71')]
+        """
+        cx, cy = 100, 103
+        ro, ri = 80, 57
+
+        def _pt(ang, r):
+            return (round(cx + r * _math.cos(ang), 2),
+                    round(cy - r * _math.sin(ang), 2))
+
+        def _v2a(v):
+            return _math.pi * (1 - v / 100)
+
+        def _sector(v1, v2):
+            a1, a2 = _v2a(v1), _v2a(v2)
+            ox1, oy1 = _pt(a1, ro)
+            ox2, oy2 = _pt(a2, ro)
+            ix2, iy2 = _pt(a2, ri)
+            ix1, iy1 = _pt(a1, ri)
+            laf = '1' if (v2 - v1) > 50 else '0'
+            return (f'M {ox1},{oy1} A {ro},{ro} 0 {laf},1 {ox2},{oy2} '
+                    f'L {ix2},{iy2} A {ri},{ri} 0 {laf},0 {ix1},{iy1} Z')
+
+        parts = []
+        v_prev = 0
+        for v_end, color in sectors:
+            parts.append(f'<path d="{_sector(v_prev, v_end)}" fill="{color}" opacity="0.82"/>')
+            v_prev = v_end
+
+        # divider lines
+        for v_end, _ in sectors[:-1]:
+            ang = _v2a(v_end)
+            x1, y1 = _pt(ang, ri - 2)
+            x2, y2 = _pt(ang, ro + 2)
+            parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#0d1421" stroke-width="2"/>')
+
+        # tick marks at 0, 25, 50, 75, 100
+        for v in [0, 25, 50, 75, 100]:
+            ang = _v2a(v)
+            x1, y1 = _pt(ang, ro + 7)
+            x2, y2 = _pt(ang, ri - 4)
+            parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#ecf0f1" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>')
+
+        # needle
+        if value is not None:
+            ang = _v2a(max(0, min(100, value)))
+            nx, ny = _pt(ang, ro - 5)
+            parts.append(f'<line x1="{cx}" y1="{cy}" x2="{nx}" y2="{ny}" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>')
+
+        # center cap — color of current zone
+        cap_c = "#5a6a7a"
+        if value is not None:
+            for v_end, color in sectors:
+                if value <= v_end:
+                    cap_c = color
+                    break
+        parts.append(f'<circle cx="{cx}" cy="{cy}" r="6" fill="{cap_c}" stroke="#0d1421" stroke-width="1.5"/>')
+
         vt = str(value) if value is not None else "—"
-        return (f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">'
-                f'<defs><linearGradient id="{gid}" x1="0%" y1="0%" x2="100%" y2="0%">'
-                f'{s_html}</linearGradient></defs>'
-                f'<path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="#1a2535" stroke-width="14"/>'
-                f'<path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="url(#{gid})" stroke-width="10" stroke-linecap="round"/>'
-                f'<line x1="100" y1="100" x2="{nx}" y2="{ny}" stroke="{nc}" stroke-width="3" stroke-linecap="round"/>'
-                f'<circle cx="100" cy="100" r="5" fill="{nc}"/>'
-                f'<text x="100" y="88" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{vt}</text>'
-                f'<text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="9" font-family="monospace">{label_text}</text>'
-                f'</svg>')
+        parts.append(f'<text x="100" y="86" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{vt}</text>')
+        parts.append(f'<text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="8" font-family="monospace">{label_text}</text>')
+
+        body = "".join(parts)
+        return f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">{body}</svg>'
 
     # ── BTC ──
     btc_p   = mp.get("btc_price")
@@ -1166,15 +1209,15 @@ def market_dashboard():
     btc_dom_nc = ("#2ecc71" if btc_dom and btc_dom < 50
                   else "#f1c40f" if btc_dom and btc_dom < 58 else "#e67e22")
 
-    fng_svg = _gauge_svg(fng_v, "ag1",
-                         [("0%","#e74c3c"),("25%","#e67e22"),("50%","#f1c40f"),
-                          ("75%","#a8e063"),("100%","#2ecc71")],
+    fng_svg = _gauge_svg(fng_v,
+                         [(25,"#e74c3c"),(45,"#e67e22"),(55,"#f1c40f"),
+                          (75,"#a8e063"),(100,"#2ecc71")],
                          "KORKU &amp; HIR&#x15E;")
-    acs_svg = _gauge_svg(acs, "ag2",
-                         [("0%","#00b4d8"),("50%","#f1c40f"),("100%","#e67e22")],
+    acs_svg = _gauge_svg(acs,
+                         [(25,"#3498db"),(50,"#f1c40f"),(75,"#e67e22"),(100,"#e74c3c")],
                          "ALTCOİN SEZON")
-    dom_svg = _gauge_svg(btc_dom, "ag3",
-                         [("0%","#2ecc71"),("50%","#f1c40f"),("100%","#e67e22")],
+    dom_svg = _gauge_svg(btc_dom,
+                         [(45,"#2ecc71"),(55,"#f1c40f"),(100,"#e67e22")],
                          "BTC DOMIN.")
 
     # ── ETF flows ──
@@ -1358,6 +1401,13 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   <div id="tv_chart"></div>
 </div>
 
+<div class="card" style="padding:10px;margin-top:16px">
+  <div style="font-size:.6rem;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-family:monospace">
+    MVRV Z-SCORE &nbsp;<span style="color:var(--dim);font-size:.5rem;letter-spacing:0">(ilyaevp95 · Weekly)</span>
+  </div>
+  <div id="tv_mvrv"></div>
+</div>
+
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
 new TradingView.widget({{
@@ -1366,6 +1416,16 @@ new TradingView.widget({{
   timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
   toolbar_bg:"#0f1319",hide_side_toolbar:false,allow_symbol_change:true,
   backgroundColor:"#0a0e14",gridColor:"#1a2030"
+}});
+
+new TradingView.widget({{
+  container_id:"tv_mvrv",width:"100%",height:420,
+  symbol:"BINANCE:BTCUSDT",interval:"W",
+  timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
+  toolbar_bg:"#0f1319",hide_side_toolbar:true,allow_symbol_change:false,
+  backgroundColor:"#0a0e14",gridColor:"#1a2030",
+  hide_top_toolbar:false,
+  studies:["PUB;ujo5xlgy"]
 }});
 
 (function(){{
