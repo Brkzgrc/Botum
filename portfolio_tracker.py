@@ -847,27 +847,29 @@ def _fetch_market_pulse():
     except Exception as e:
         print(f"[MARKET] Altcoin Season hata: {e}", flush=True)
     try:
-        from datetime import date as _date, timedelta as _td
-        end_d   = _date.today().isoformat()
-        start_d = (_date.today() - _td(days=60)).isoformat()
         r6 = requests.get(
-            "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics",
-            params={"assets": "btc", "metrics": "CapMVRVCur", "frequency": "1d",
-                    "start_time": start_d, "end_time": end_d, "page_size": 60},
-            timeout=12)
-        series = r6.json().get("data", [])
-        pts = [round(float(p["CapMVRVCur"]), 2) for p in series if p.get("CapMVRVCur")]
-        if pts:
-            out["mvrv_series"]  = pts[-30:]
-            out["mvrv_current"] = pts[-1]
+            "https://fapi.binance.com/fapi/v1/premiumIndex",
+            params={"symbol": "BTCUSDT"}, timeout=6)
+        out["funding_rate"] = float(r6.json().get("lastFundingRate", 0)) * 100
     except Exception as e:
-        print(f"[MARKET] MVRV hata: {e}", flush=True)
+        print(f"[MARKET] Funding Rate hata: {e}", flush=True)
     try:
         r7 = requests.get(
+            "https://fapi.binance.com/futures/data/globalLongShortAccountRatio",
+            params={"symbol": "BTCUSDT", "period": "1h", "limit": 1}, timeout=6)
+        d7 = r7.json()
+        if d7:
+            out["long_ratio"]  = round(float(d7[0]["longAccount"]) * 100, 1)
+            out["short_ratio"] = round(float(d7[0]["shortAccount"]) * 100, 1)
+            out["ls_ratio"]    = round(float(d7[0]["longShortRatio"]), 2)
+    except Exception as e:
+        print(f"[MARKET] Long/Short hata: {e}", flush=True)
+    try:
+        r8 = requests.get(
             "https://sosovalue.com/api/etf/us-bitcoin-spot-etf-fund-flow",
             headers={"User-Agent": "Mozilla/5.0", "Referer": "https://sosovalue.com"},
             timeout=10)
-        raw   = r7.json()
+        raw   = r8.json()
         items = raw.get("data", raw) if isinstance(raw, dict) else raw
         if isinstance(items, list):
             flows = []
@@ -977,11 +979,12 @@ def market_dashboard():
     total3     = mp.get("total3")
     total3_fmt = _mcap_fmt(total3) if total3 else "—"
     acs        = mp.get("altcoin_season")
-    acs_fmt    = str(acs) if acs is not None else "—"
     acs_label  = ("altcoin sezonu" if acs is not None and acs >= 75
-                  else "dengeli" if acs is not None and acs >= 25 else "btc sezonu")
+                  else "dengeli" if acs is not None and acs >= 25
+                  else "btc sezonu" if acs is not None else "—")
     acs_lc     = ("#2ecc71" if acs is not None and acs >= 75
-                  else "#f1c40f" if acs is not None and acs >= 25 else "#e67e22")
+                  else "#f1c40f" if acs is not None and acs >= 25
+                  else "#e67e22" if acs is not None else "#5a6a7a")
 
     # ── Piyasa ──
     total_mc     = mp.get("total_mcap")
@@ -992,20 +995,52 @@ def market_dashboard():
                       else "yüksek" if usdt_dom and usdt_dom >= 5 else "normal")
     usdt_dom_lc    = ("#e67e22" if usdt_dom and usdt_dom >= 7
                       else "#f1c40f" if usdt_dom and usdt_dom >= 5 else "#5a6a7a")
-    mvrv     = mp.get("mvrv_current")
-    mvrv_fmt = f"{mvrv}" if mvrv else "—"
-    mvrv_label = ("ucuz bölge" if mvrv and mvrv < 1.5
-                  else "normal" if mvrv and mvrv < 3 else "pahalı bölge" if mvrv else "—")
-    mvrv_lc    = ("#2ecc71" if mvrv and mvrv < 1.5
-                  else "#f1c40f" if mvrv and mvrv < 3 else "#e74c3c" if mvrv else "#5a6a7a")
 
-    # ── F&G gauge ──
+    # ── Funding Rate ──
+    fr = mp.get("funding_rate")
+    if fr is None:
+        fr_fmt, fr_label, fr_lc = "—", "—", "#5a6a7a"
+    else:
+        fr_fmt = f"{fr:.4f}%"
+        if fr < -0.01:
+            fr_label, fr_lc = "short baskı", "#2ecc71"
+        elif fr < 0.01:
+            fr_label, fr_lc = "dengeli", "#5a6a7a"
+        elif fr < 0.05:
+            fr_label, fr_lc = "longa baskı", "#f1c40f"
+        else:
+            fr_label, fr_lc = "aşırı long", "#e74c3c"
+
+    # ── Long/Short ──
+    ls    = mp.get("ls_ratio")
+    lr    = mp.get("long_ratio")
+    sr    = mp.get("short_ratio")
+    lr_fmt = f"%{lr:.1f}" if lr else "—"
+    sr_fmt = f"%{sr:.1f}" if sr else "—"
+    if ls is None:
+        ls_fmt, ls_label, ls_lc = "—", "—", "#5a6a7a"
+    else:
+        ls_fmt = f"{ls:.2f}"
+        if ls > 1.5:
+            ls_label, ls_lc = "çok fazla long", "#e74c3c"
+        elif ls > 1.2:
+            ls_label, ls_lc = "long ağırlıklı", "#f1c40f"
+        elif ls < 0.8:
+            ls_label, ls_lc = "short ağırlıklı", "#f1c40f"
+        else:
+            ls_label, ls_lc = "dengeli", "#5a6a7a"
+
+    # ── Gauges ──
     fng_v = mp.get("fng_value")
     fng_c = mp.get("fng_class", "")
     fng_label_tr = {"Extreme Fear": "Aşırı Korku", "Fear": "Korku", "Neutral": "Nötr",
                     "Greed": "Hırs", "Extreme Greed": "Aşırı Hırs"}.get(fng_c, fng_c or "—")
     fng_label_c  = {"Extreme Fear": "#e74c3c", "Fear": "#e67e22", "Neutral": "#f1c40f",
                     "Greed": "#a8e063", "Extreme Greed": "#2ecc71"}.get(fng_c, "#8a9bb0")
+
+    btc_dom_nc = ("#2ecc71" if btc_dom and btc_dom < 50
+                  else "#f1c40f" if btc_dom and btc_dom < 58 else "#e67e22")
+
     fng_svg = _gauge_svg(fng_v, "ag1",
                          [("0%","#e74c3c"),("25%","#e67e22"),("50%","#f1c40f"),
                           ("75%","#a8e063"),("100%","#2ecc71")],
@@ -1013,6 +1048,9 @@ def market_dashboard():
     acs_svg = _gauge_svg(acs, "ag2",
                          [("0%","#00b4d8"),("50%","#f1c40f"),("100%","#e67e22")],
                          "ALTCOİN SEZON")
+    dom_svg = _gauge_svg(btc_dom, "ag3",
+                         [("0%","#2ecc71"),("50%","#f1c40f"),("100%","#e67e22")],
+                         "BTC DOMIN.")
 
     # ── ETF flows ──
     etf_flows   = mp.get("etf_flows", [])
@@ -1024,9 +1062,6 @@ def market_dashboard():
         etf_today_fmt, etf_today_c = f"+${etf_today:.0f}M", "#2ecc71"
     else:
         etf_today_fmt, etf_today_c = f"-${abs(etf_today):.0f}M", "#e74c3c"
-
-    # ── MVRV series ──
-    mvrv_j = json.dumps(mp.get("mvrv_series", []))
 
     return f"""<!DOCTYPE html>
 <html lang="tr">
@@ -1054,12 +1089,13 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
-.visual-row{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px;align-items:stretch}}
-.card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}}
-.card h3{{color:var(--accent);font-size:.62rem;letter-spacing:1.5px;margin-bottom:10px;text-transform:uppercase}}
-.gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:4px}}
-.gauge-label{{font-size:.9rem;font-weight:bold;margin-top:4px}}
-.gauge-sub{{font-size:.55rem;color:var(--dim);margin-top:3px;text-align:center}}
+.visual-row{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}}
+.card h3{{color:var(--accent);font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase;text-align:center}}
+.gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:2px}}
+.gauge-label{{font-size:.8rem;font-weight:bold;margin-top:2px}}
+.gauge-sub{{font-size:.5rem;color:var(--dim);margin-top:1px;text-align:center}}
+.stat-card-inner{{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px 8px}}
 </style>
 </head>
 <body>
@@ -1072,7 +1108,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <a href="/market" class="tab active">Piyasa</a>
     </div>
   </div>
-  <span class="time">{now} | v3.0</span>
+  <span class="time">{now} | v3.1</span>
 </div>
 
 <div class="groups-row">
@@ -1113,12 +1149,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div><div class="m-label">Total3</div><div class="m-value">{total3_fmt}</div></div>
         <div class="m-sub" style="color:var(--dim)">BTC+ETH hariç</div>
       </div>
-      <div class="metric">
-        <div><div class="m-label">Altcoin Season</div>
-          <div class="m-value">{acs_fmt}<span style="font-size:.55rem;color:var(--dim)">/100</span></div>
-        </div>
-        <div class="m-sub" style="color:{acs_lc}">{acs_label}</div>
-      </div>
     </div>
   </div>
   <div class="group">
@@ -1133,8 +1163,8 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div class="m-sub" style="color:{usdt_dom_lc}">{usdt_dom_label}</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">MVRV</div><div class="m-value" style="color:{mvrv_lc}">{mvrv_fmt}</div></div>
-        <div class="m-sub" style="color:{mvrv_lc}">{mvrv_label}</div>
+        <div><div class="m-label">Funding</div><div class="m-value" style="color:{fr_lc}">{fr_fmt}</div></div>
+        <div class="m-sub" style="color:{fr_lc}">{fr_label}</div>
       </div>
     </div>
   </div>
@@ -1158,26 +1188,43 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     </div>
   </div>
   <div class="card">
+    <h3>BTC Dominans</h3>
+    <div class="gauge-wrap">
+      {dom_svg}
+      <div class="gauge-label" style="color:{btc_dom_nc}">{btc_dom_fmt}</div>
+      <div class="gauge-sub">CoinLore · anlık</div>
+    </div>
+  </div>
+  <div class="card">
     <h3>BTC Spot ETF Net Flow</h3>
-    <canvas id="etfCanvas" style="width:100%;display:block" height="130"></canvas>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-      <div style="display:flex;gap:10px;font-size:.52rem;color:var(--dim)">
-        <span><span style="display:inline-block;width:7px;height:7px;border-radius:1px;background:#2ecc71;margin-right:3px"></span>Giriş</span>
-        <span><span style="display:inline-block;width:7px;height:7px;border-radius:1px;background:#e74c3c;margin-right:3px"></span>Çıkış</span>
+    <canvas id="etfCanvas" style="width:100%;display:block" height="110"></canvas>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+      <div style="display:flex;gap:8px;font-size:.5rem;color:var(--dim)">
+        <span><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:#2ecc71;margin-right:2px"></span>Giriş</span>
+        <span><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:#e74c3c;margin-right:2px"></span>Çıkış</span>
       </div>
       <div style="text-align:right">
-        <div style="font-size:.5rem;color:var(--dim)">Bugün</div>
-        <div style="font-size:.85rem;font-weight:bold;color:{etf_today_c}">{etf_today_fmt}</div>
+        <div style="font-size:.48rem;color:var(--dim)">Bugün</div>
+        <div style="font-size:.8rem;font-weight:bold;color:{etf_today_c}">{etf_today_fmt}</div>
       </div>
     </div>
   </div>
   <div class="card">
-    <h3>MVRV Z-Score</h3>
-    <canvas id="mvrvCanvas" style="width:100%;display:block" height="130"></canvas>
-    <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:.52rem;color:var(--dim)">
-      <span style="color:#2ecc71">■ Ucuz &lt;1.5</span>
-      <span style="color:#f1c40f">■ Normal 1.5-3</span>
-      <span style="color:#e74c3c">■ Pahalı &gt;3</span>
+    <h3>Funding Rate</h3>
+    <div class="stat-card-inner">
+      <div style="font-size:1.3rem;font-weight:bold;color:{fr_lc}">{fr_fmt}</div>
+      <div style="font-size:.5rem;color:var(--dim);margin-top:5px">8 saatlik</div>
+      <div style="font-size:.72rem;font-weight:bold;color:{fr_lc};margin-top:8px">{fr_label}</div>
+      <div style="font-size:.48rem;color:var(--dim);margin-top:3px">Binance BTCUSDT perp</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Long / Short</h3>
+    <div class="stat-card-inner">
+      <div style="font-size:1.3rem;font-weight:bold;color:{ls_lc}">{ls_fmt}</div>
+      <div style="font-size:.5rem;color:var(--dim);margin-top:5px">Long {lr_fmt} · Short {sr_fmt}</div>
+      <div style="font-size:.72rem;font-weight:bold;color:{ls_lc};margin-top:8px">{ls_label}</div>
+      <div style="font-size:.48rem;color:var(--dim);margin-top:3px">Binance · hesap bazlı · 1s</div>
     </div>
   </div>
 </div>
@@ -1198,43 +1245,19 @@ new TradingView.widget({{
 
 (function(){{
   const c=document.getElementById('etfCanvas');
-  c.width=c.offsetWidth||300;
+  c.width=c.offsetWidth||260;
   const ctx=c.getContext('2d'),W=c.width,H=c.height;
   const flows={etf_flows_j};
   if(!flows.length)return;
   const max=Math.max(...flows.map(Math.abs));
   const zeroY=H/2,barW=(W/flows.length)-2;
   flows.forEach((v,i)=>{{
-    const x=i*(barW+2),h=(Math.abs(v)/max)*(H/2-6);
+    const x=i*(barW+2),h=(Math.abs(v)/max)*(H/2-5);
     ctx.fillStyle=v>=0?'#2ecc71':'#e74c3c';
     v>=0?ctx.fillRect(x,zeroY-h,barW,h):ctx.fillRect(x,zeroY,barW,h);
   }});
   ctx.strokeStyle='#2a3a4a';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(0,zeroY);ctx.lineTo(W,zeroY);ctx.stroke();
-}})();
-
-(function(){{
-  const c=document.getElementById('mvrvCanvas');
-  c.width=c.offsetWidth||300;
-  const ctx=c.getContext('2d'),W=c.width,H=c.height;
-  const data={mvrv_j};
-  if(!data.length)return;
-  const allV=data.concat([0,4]);
-  const dmin=Math.min(...allV)-0.2,dmax=Math.max(...allV)+0.2,range=dmax-dmin;
-  const toY=v=>H-((v-dmin)/range)*H;
-  ctx.fillStyle='#e74c3c1a';ctx.fillRect(0,0,W,toY(3));
-  ctx.fillStyle='#f1c40f14';ctx.fillRect(0,toY(3),W,toY(1.5)-toY(3));
-  ctx.fillStyle='#2ecc7114';ctx.fillRect(0,toY(1.5),W,H-toY(1.5));
-  ctx.setLineDash([3,3]);ctx.lineWidth=1;
-  ctx.strokeStyle='#e74c3c35';ctx.beginPath();ctx.moveTo(0,toY(3));ctx.lineTo(W,toY(3));ctx.stroke();
-  ctx.strokeStyle='#f1c40f35';ctx.beginPath();ctx.moveTo(0,toY(1.5));ctx.lineTo(W,toY(1.5));ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle='#00b4d8';ctx.lineWidth=2;ctx.beginPath();
-  const step=W/(data.length-1);
-  data.forEach((v,i)=>i===0?ctx.moveTo(0,toY(v)):ctx.lineTo(i*step,toY(v)));
-  ctx.stroke();
-  ctx.fillStyle='#00b4d8';ctx.beginPath();
-  ctx.arc((data.length-1)*step,toY(data[data.length-1]),4,0,Math.PI*2);ctx.fill();
 }})();
 </script>
 </body>
