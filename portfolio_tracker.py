@@ -973,40 +973,49 @@ def _fetch_market_pulse():
         import re as _re2
         _fs = requests.get(
             "https://farside.co.uk/bitcoin-etf-flow-all-data/",
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                     "Accept-Language": "en-US,en;q=0.9"},
-            timeout=20)
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://farside.co.uk/",
+            },
+            timeout=25)
+        print(f"[MARKET] ETF Farside HTTP {_fs.status_code} len={len(_fs.text)}", flush=True)
         if _fs.ok:
-            tbl_m = _re2.search(r'<table[^>]*>(.*?)</table>', _fs.text, _re2.DOTALL | _re2.IGNORECASE)
-            if tbl_m:
-                rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', tbl_m.group(1), _re2.DOTALL | _re2.IGNORECASE)
+            # Try all tables — farside uses multiple tables per year
+            tables = _re2.findall(r'<table[^>]*>(.*?)</table>', _fs.text, _re2.DOTALL | _re2.IGNORECASE)
+            etf_flows_all = []
+            for tbl in tables:
+                rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', tbl, _re2.DOTALL | _re2.IGNORECASE)
                 total_idx = None
-                etf_flows = []
                 for row in rows:
                     cells = _re2.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, _re2.DOTALL | _re2.IGNORECASE)
-                    clean = [_re2.sub(r'<[^>]+>', '', c).strip() for c in cells]
+                    clean = [_re2.sub(r'<[^>]+>', '', c).strip().replace('\xa0', '').replace(',', '') for c in cells]
                     if not clean:
                         continue
                     if total_idx is None:
+                        # Find "Total" column — try exact match then partial
                         for i, h in enumerate(clean):
-                            if h.lower() == "total":
+                            if h.strip().lower() in ('total', 'net total', 'total flow'):
                                 total_idx = i
                                 break
+                        if total_idx is None and len(clean) > 3:
+                            # Header row without "total" label — assume last col
+                            known = {'ibit','fbtc','bitb','arkb','btco','ezbc','brrr','hodl','gbtc','btc','date'}
+                            if any(h.strip().lower() in known for h in clean):
+                                total_idx = len(clean) - 1
                         continue
                     if len(clean) <= total_idx:
                         continue
-                    raw_val = clean[total_idx].replace(",", "").replace("\xa0", "").strip()
+                    raw_val = clean[total_idx].strip()
                     try:
-                        etf_flows.append(round(float(raw_val), 1))
+                        etf_flows_all.append(round(float(raw_val), 1))
                     except ValueError:
-                        pass
-                if len(etf_flows) >= 5:
-                    out["etf_flows"] = etf_flows[-90:]
-                    out["etf_today"] = etf_flows[-1]
-                    print(f"[MARKET] ETF Farside: {len(etf_flows)} gün OK", flush=True)
-                else:
-                    print(f"[MARKET] ETF Farside: yetersiz veri ({len(etf_flows)})", flush=True)
+                        pass  # skip rows with text/empty totals
+            print(f"[MARKET] ETF Farside parsed: {len(etf_flows_all)} rows", flush=True)
+            if len(etf_flows_all) >= 5:
+                out["etf_flows"] = etf_flows_all   # full history from Jan 2024
+                out["etf_today"] = etf_flows_all[-1]
     except Exception as e:
         print(f"[MARKET] ETF flow hata: {e}", flush=True)
     _market_cache["data"] = out
@@ -1373,7 +1382,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   </div>
   <div class="card">
     <h3>BTC Spot ETF Net Flow</h3>
-    <canvas id="etfCanvas" style="width:100%;display:block" height="110"></canvas>
+    <canvas id="etfCanvas" style="width:100%;display:block" height="150"></canvas>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
       <div style="display:flex;gap:8px;font-size:.5rem;color:var(--dim)">
         <span><span style="display:inline-block;width:6px;height:6px;border-radius:1px;background:#2ecc71;margin-right:2px"></span>Giriş</span>
@@ -1422,16 +1431,20 @@ new TradingView.widget({{
 
 (function(){{
   const c=document.getElementById('etfCanvas');
-  c.width=c.offsetWidth||260;
+  c.width=c.offsetWidth||320;
   const ctx=c.getContext('2d'),W=c.width,H=c.height;
   const flows={etf_flows_j};
   if(!flows.length)return;
   const max=Math.max(...flows.map(Math.abs));
-  const zeroY=H/2,barW=(W/flows.length)-2;
+  if(!max)return;
+  const zeroY=Math.round(H/2);
+  const barW=Math.max(1,Math.floor(W/flows.length));
   flows.forEach((v,i)=>{{
-    const x=i*(barW+2),h=(Math.abs(v)/max)*(H/2-5);
+    const x=i*barW;
+    const h=Math.max(1,Math.round((Math.abs(v)/max)*(H/2-3)));
     ctx.fillStyle=v>=0?'#2ecc71':'#e74c3c';
-    v>=0?ctx.fillRect(x,zeroY-h,barW,h):ctx.fillRect(x,zeroY,barW,h);
+    if(v>=0)ctx.fillRect(x,zeroY-h,barW,h);
+    else ctx.fillRect(x,zeroY,barW,h);
   }});
   ctx.strokeStyle='#2a3a4a';ctx.lineWidth=1;
   ctx.beginPath();ctx.moveTo(0,zeroY);ctx.lineTo(W,zeroY);ctx.stroke();
