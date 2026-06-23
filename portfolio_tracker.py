@@ -34,6 +34,7 @@ EXPIRE_HOURS = int(os.getenv("EXPIRE_HOURS", "48"))
 SHADOW_EXPIRE_HOURS = int(os.getenv("SHADOW_EXPIRE_HOURS", "72"))
 AUTH_TOKEN   = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+CMC_API_KEY  = os.getenv("CMC_API_KEY", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -790,6 +791,59 @@ def _fetch_market_pulse():
     if _market_cache["data"] and now_ts - _market_cache["ts"] < _MARKET_CACHE_TTL:
         return _market_cache["data"]
     out = {}
+    # 0. CoinMarketCap (primary source when key is set)
+    if CMC_API_KEY:
+        _cmc_h = {"X-CMC_PRO_API_KEY": CMC_API_KEY, "Accept": "application/json"}
+        try:
+            rg = requests.get(
+                "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest",
+                headers=_cmc_h, timeout=8)
+            gd = rg.json().get("data", {})
+            qu = gd.get("quote", {}).get("USD", {})
+            out["btc_dominance"] = round(float(gd.get("btc_dominance", 0)), 1)
+            out["total_mcap"]    = float(qu.get("total_market_cap", 0))
+            eth_d = float(gd.get("eth_dominance", 0))
+            btc_d = float(gd.get("btc_dominance", 0))
+            out["total3"] = out["total_mcap"] * (1 - (btc_d + eth_d) / 100)
+        except Exception as e:
+            print(f"[MARKET] CMC global hata: {e}", flush=True)
+        # USDT dominance via USDT quote (more reliable)
+        if "usdt_dominance" not in out or out.get("usdt_dominance", 0) == 0:
+            try:
+                ru = requests.get(
+                    "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest",
+                    headers=_cmc_h, params={"symbol": "USDT", "convert": "USD"}, timeout=8)
+                usdt_data = ru.json().get("data", {}).get("USDT", [])
+                if usdt_data:
+                    usdt_mc = float(usdt_data[0]["quote"]["USD"]["market_cap"])
+                    tot_mc = out.get("total_mcap", 0)
+                    if tot_mc:
+                        out["usdt_dominance"] = round(usdt_mc / tot_mc * 100, 1)
+            except Exception as e:
+                print(f"[MARKET] CMC USDT hata: {e}", flush=True)
+        # Altcoin Season: % of top 50 non-stablecoin coins beating BTC 90d change
+        try:
+            rl = requests.get(
+                "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
+                headers=_cmc_h,
+                params={"limit": 51, "convert": "USD", "sort": "market_cap"}, timeout=10)
+            coins = rl.json().get("data", [])
+            _stables = {"USDT", "USDC", "BUSD", "DAI", "TUSD", "USDP", "FDUSD",
+                        "USDE", "PYUSD", "GUSD", "LUSD", "USDD", "FRAX", "CRVUSD"}
+            btc_90d = None
+            non_btc = []
+            for c in coins:
+                sym = c.get("symbol", "")
+                pct90 = c.get("quote", {}).get("USD", {}).get("percent_change_90d")
+                if sym == "BTC":
+                    btc_90d = pct90
+                elif sym not in _stables and pct90 is not None:
+                    non_btc.append(pct90)
+            if btc_90d is not None and non_btc:
+                beating = sum(1 for p in non_btc if p > btc_90d)
+                out["altcoin_season"] = round(beating / len(non_btc) * 100)
+        except Exception as e:
+            print(f"[MARKET] CMC Altcoin Season hata: {e}", flush=True)
     try:
         r = requests.get(
             "https://api.binance.com/api/v3/ticker/24hr",
@@ -812,26 +866,32 @@ def _fetch_market_pulse():
         out["fng_class"] = d["value_classification"]
     except Exception as e:
         print(f"[MARKET] F&G hata: {e}", flush=True)
-    try:
-        r3 = requests.get("https://api.coinlore.net/api/global/",
-                          headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
-        gl = r3.json()[0]
-        out["btc_dominance"] = round(float(gl.get("btc_d", "0").replace("%", "")), 1)
-        out["total_mcap"]    = float(gl.get("total_mcap", 0))
-    except Exception as e:
-        print(f"[MARKET] CoinLore hata: {e}", flush=True)
-    try:
-        r4 = requests.get("https://api.coingecko.com/api/v3/global",
-                          headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
-        gd = r4.json()["data"]
-        total_usd = gd["total_market_cap"]["usd"]
-        mcp       = gd["market_cap_percentage"]
-        btc_pct   = mcp.get("btc", 0)
-        eth_pct   = mcp.get("eth", 0)
-        out["total3"]         = total_usd * (1 - (btc_pct + eth_pct) / 100)
-        out["usdt_dominance"] = round(float(mcp.get("usdt", 0)), 1)
-    except Exception as e:
-        print(f"[MARKET] CoinGecko hata: {e}", flush=True)
+    if "btc_dominance" not in out or "total_mcap" not in out:
+        try:
+            r3 = requests.get("https://api.coinlore.net/api/global/",
+                              headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
+            gl = r3.json()[0]
+            if "btc_dominance" not in out:
+                out["btc_dominance"] = round(float(gl.get("btc_d", "0").replace("%", "")), 1)
+            if "total_mcap" not in out:
+                out["total_mcap"] = float(gl.get("total_mcap", 0))
+        except Exception as e:
+            print(f"[MARKET] CoinLore hata: {e}", flush=True)
+    if "total3" not in out or "usdt_dominance" not in out:
+        try:
+            r4 = requests.get("https://api.coingecko.com/api/v3/global",
+                              headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
+            gd = r4.json()["data"]
+            total_usd = gd["total_market_cap"]["usd"]
+            mcp       = gd["market_cap_percentage"]
+            btc_pct   = mcp.get("btc", 0)
+            eth_pct   = mcp.get("eth", 0)
+            if "total3" not in out:
+                out["total3"] = total_usd * (1 - (btc_pct + eth_pct) / 100)
+            if "usdt_dominance" not in out:
+                out["usdt_dominance"] = round(float(mcp.get("usdt", 0)), 1)
+        except Exception as e:
+            print(f"[MARKET] CoinGecko hata: {e}", flush=True)
     # USDT Dom fallback — CoinPaprika (CoinGecko rate-limit yaparsa)
     if "usdt_dominance" not in out:
         try:
@@ -852,44 +912,45 @@ def _fetch_market_pulse():
             est = tm - bp * 19_650_000 - ep * 120_000_000
             if est > 0:
                 out["total3"] = est
-    try:
-        import re as _re
-        acs_found = False
-        for url in ["https://api.blockchaincenter.net/altcoin-season/",
-                    "https://www.blockchaincenter.net/altcoin-season-index/api/"]:
-            try:
-                ra = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
-                if ra.ok and ra.headers.get("content-type", "").startswith("application/json"):
-                    d = ra.json()
-                    for key in ("value", "index", "score", "altcoin_season", "altcoinSeason"):
-                        if key in d:
-                            val = int(d[key])
-                            if 5 <= val <= 100:
-                                out["altcoin_season"] = val
-                                acs_found = True
-                                break
-                if acs_found:
-                    break
-            except Exception:
-                pass
-        if not acs_found:
-            r5 = requests.get(
-                "https://www.blockchaincenter.net/altcoin-season-index/",
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                         "Accept-Language": "en-US,en;q=0.9"},
-                timeout=12)
-            for pat in [r'"altcoinSeasonIndex"\s*:\s*(\d+)', r'"altcoinSeason"\s*:\s*(\d+)',
-                        r'"value"\s*:\s*(\d+)', r'season_index[^0-9]{0,20}(\d{1,3})',
-                        r'seasonValue[^0-9]{0,10}(\d{1,3})', r'id="season"[^>]*>(\d+)',
-                        r'class="gauge[^"]*"[^>]*>.*?(\d{1,3})', r'index[^0-9]{0,15}(\d{1,2})\b']:
-                m = _re.search(pat, r5.text, _re.IGNORECASE | _re.DOTALL)
-                if m:
-                    val = int(m.group(1))
-                    if 5 <= val <= 100:
-                        out["altcoin_season"] = val
+    if "altcoin_season" not in out:
+        try:
+            import re as _re
+            acs_found = False
+            for url in ["https://api.blockchaincenter.net/altcoin-season/",
+                        "https://www.blockchaincenter.net/altcoin-season-index/api/"]:
+                try:
+                    ra = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+                    if ra.ok and ra.headers.get("content-type", "").startswith("application/json"):
+                        d = ra.json()
+                        for key in ("value", "index", "score", "altcoin_season", "altcoinSeason"):
+                            if key in d:
+                                val = int(d[key])
+                                if 5 <= val <= 100:
+                                    out["altcoin_season"] = val
+                                    acs_found = True
+                                    break
+                    if acs_found:
                         break
-    except Exception as e:
-        print(f"[MARKET] Altcoin Season hata: {e}", flush=True)
+                except Exception:
+                    pass
+            if not acs_found:
+                r5 = requests.get(
+                    "https://www.blockchaincenter.net/altcoin-season-index/",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                             "Accept-Language": "en-US,en;q=0.9"},
+                    timeout=12)
+                for pat in [r'"altcoinSeasonIndex"\s*:\s*(\d+)', r'"altcoinSeason"\s*:\s*(\d+)',
+                            r'"value"\s*:\s*(\d+)', r'season_index[^0-9]{0,20}(\d{1,3})',
+                            r'seasonValue[^0-9]{0,10}(\d{1,3})', r'id="season"[^>]*>(\d+)',
+                            r'class="gauge[^"]*"[^>]*>.*?(\d{1,3})', r'index[^0-9]{0,15}(\d{1,2})\b']:
+                    m = _re.search(pat, r5.text, _re.IGNORECASE | _re.DOTALL)
+                    if m:
+                        val = int(m.group(1))
+                        if 5 <= val <= 100:
+                            out["altcoin_season"] = val
+                            break
+        except Exception as e:
+            print(f"[MARKET] Altcoin Season hata: {e}", flush=True)
     try:
         r6 = requests.get(
             "https://fapi.binance.com/fapi/v1/premiumIndex",
