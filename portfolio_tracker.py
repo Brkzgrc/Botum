@@ -1002,7 +1002,7 @@ def _fetch_market_pulse():
                     except ValueError:
                         pass
                 if len(etf_flows) >= 5:
-                    out["etf_flows"] = etf_flows[-30:]
+                    out["etf_flows"] = etf_flows[-90:]
                     out["etf_today"] = etf_flows[-1]
                     print(f"[MARKET] ETF Farside: {len(etf_flows)} gün OK", flush=True)
                 else:
