@@ -1523,8 +1523,8 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 
 <div class="card" style="padding:10px">
   <iframe width="100%" height="400" frameborder="0"
-    src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-flows/embed"
-    title="Spot Bitcoin ETF Flows"
+    src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-total-net-flow/embed"
+    title="Spot Bitcoin ETF Total Net Flow"
     style="border-radius:6px;display:block"></iframe>
 </div>
 
