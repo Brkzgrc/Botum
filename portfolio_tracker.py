@@ -971,51 +971,76 @@ def _fetch_market_pulse():
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
     try:
         import re as _re2
-        _fs = requests.get(
-            "https://farside.co.uk/bitcoin-etf-flow-all-data/",
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://farside.co.uk/",
-            },
-            timeout=25)
-        print(f"[MARKET] ETF Farside HTTP {_fs.status_code} len={len(_fs.text)}", flush=True)
-        if _fs.ok:
-            # Try all tables — farside uses multiple tables per year
-            tables = _re2.findall(r'<table[^>]*>(.*?)</table>', _fs.text, _re2.DOTALL | _re2.IGNORECASE)
-            etf_flows_all = []
-            for tbl in tables:
-                rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', tbl, _re2.DOTALL | _re2.IGNORECASE)
-                total_idx = None
-                for row in rows:
-                    cells = _re2.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, _re2.DOTALL | _re2.IGNORECASE)
-                    clean = [_re2.sub(r'<[^>]+>', '', c).strip().replace('\xa0', '').replace(',', '') for c in cells]
-                    if not clean:
-                        continue
-                    if total_idx is None:
-                        # Find "Total" column — try exact match then partial
-                        for i, h in enumerate(clean):
-                            if h.strip().lower() in ('total', 'net total', 'total flow'):
-                                total_idx = i
-                                break
-                        if total_idx is None and len(clean) > 3:
-                            # Header row without "total" label — assume last col
-                            known = {'ibit','fbtc','bitb','arkb','btco','ezbc','brrr','hodl','gbtc','btc','date'}
-                            if any(h.strip().lower() in known for h in clean):
-                                total_idx = len(clean) - 1
-                        continue
-                    if len(clean) <= total_idx:
-                        continue
-                    raw_val = clean[total_idx].strip()
-                    try:
-                        etf_flows_all.append(round(float(raw_val), 1))
-                    except ValueError:
-                        pass  # skip rows with text/empty totals
-            print(f"[MARKET] ETF Farside parsed: {len(etf_flows_all)} rows", flush=True)
-            if len(etf_flows_all) >= 5:
-                out["etf_flows"] = etf_flows_all   # full history from Jan 2024
-                out["etf_today"] = etf_flows_all[-1]
+        _hdrs = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        # Step 1: fetch SoSoValue page to get current Next.js buildId
+        _ss_page = requests.get(
+            "https://sosovalue.com/tr/dashboard/total-crypto-spot-etf-fund-flow",
+            headers={**_hdrs, "Accept": "text/html,application/xhtml+xml"},
+            timeout=15)
+        print(f"[MARKET] SoSoValue page HTTP {_ss_page.status_code}", flush=True)
+        _bid_m = _re2.search(r'"buildId"\s*:\s*"([^"]+)"', _ss_page.text)
+        if _bid_m:
+            _bid = _bid_m.group(1)
+            # Step 2: fetch Next.js data with dynamic buildId
+            _ss_data = requests.get(
+                f"https://sosovalue.com/_next/data/{_bid}/tr/dashboard/total-crypto-spot-etf-fund-flow.json",
+                params={"currency": "total-crypto-spot-etf-fund-flow"},
+                headers={**_hdrs,
+                         "Accept": "application/json",
+                         "Referer": "https://sosovalue.com/tr/dashboard/total-crypto-spot-etf-fund-flow"},
+                timeout=15)
+            print(f"[MARKET] SoSoValue data HTTP {_ss_data.status_code}", flush=True)
+            if _ss_data.ok:
+                _jd = _ss_data.json()
+                # Navigate into pageProps → find a list with flow data
+                _props = _jd.get("pageProps", _jd)
+                _list  = None
+                for _key in ("flowList", "fundFlowList", "list", "data", "flowData", "etfList"):
+                    _v = _props.get(_key)
+                    if isinstance(_v, list) and _v:
+                        _list = _v
+                        break
+                if _list is None:
+                    # deep search: first list with ≥5 items
+                    def _find_list(obj, depth=0):
+                        if depth > 5: return None
+                        if isinstance(obj, list) and len(obj) >= 5: return obj
+                        if isinstance(obj, dict):
+                            for v in obj.values():
+                                r = _find_list(v, depth+1)
+                                if r: return r
+                        return None
+                    _list = _find_list(_props)
+                print(f"[MARKET] SoSoValue list len={len(_list) if _list else 0}", flush=True)
+                if _list:
+                    _flows = []
+                    for item in _list:
+                        if not isinstance(item, dict): continue
+                        v = (item.get("totalNetFlow") or item.get("netFlow") or
+                             item.get("total") or item.get("flow") or
+                             item.get("netInflow") or item.get("totalInflow") or
+                             item.get("fundFlow") or 0)
+                        try:
+                            fv = float(v)
+                            # values may be in $ or $M — normalize to $M
+                            if abs(fv) > 1e7:
+                                fv = round(fv / 1e6, 1)
+                            else:
+                                fv = round(fv, 1)
+                            _flows.append(fv)
+                        except (TypeError, ValueError):
+                            pass
+                    if len(_flows) >= 5:
+                        out["etf_flows"] = _flows
+                        out["etf_today"] = _flows[-1]
+                        print(f"[MARKET] SoSoValue ETF OK: {len(_flows)} gün", flush=True)
+                    else:
+                        print(f"[MARKET] SoSoValue: veri parse edilemedi, keys={list((_list[0] if _list else {{}}).keys())}", flush=True)
+        else:
+            print("[MARKET] SoSoValue: buildId bulunamadı", flush=True)
     except Exception as e:
         print(f"[MARKET] ETF flow hata: {e}", flush=True)
     _market_cache["data"] = out
