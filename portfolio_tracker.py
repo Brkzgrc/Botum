@@ -1085,13 +1085,6 @@ def market_dashboard():
             x2, y2 = _pt(ang, ro + 2)
             parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#0d1421" stroke-width="2"/>')
 
-        # tick marks at 0, 25, 50, 75, 100
-        for v in [0, 25, 50, 75, 100]:
-            ang = _v2a(v)
-            x1, y1 = _pt(ang, ro + 7)
-            x2, y2 = _pt(ang, ri - 4)
-            parts.append(f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#ecf0f1" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>')
-
         # needle
         if value is not None:
             ang = _v2a(max(0, min(100, value)))
