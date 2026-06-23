@@ -1522,10 +1522,12 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 </div>
 
 <div class="card" style="padding:10px">
-  <iframe width="100%" height="400" frameborder="0"
-    src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-flows/embed"
-    title="Spot Bitcoin ETF Flows"
-    style="border-radius:6px;display:block"></iframe>
+  <div style="height:370px;overflow:hidden;border-radius:6px">
+    <iframe width="100%" height="420" frameborder="0"
+      src="https://www.theblock.co/data/etfs/bitcoin-etf/spot-bitcoin-etf-flows/embed"
+      title="Spot Bitcoin ETF Flows"
+      style="display:block;margin-top:-2px"></iframe>
+  </div>
 </div>
 
 <div class="card" style="padding:10px;margin-top:14px">
