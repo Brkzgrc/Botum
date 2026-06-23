@@ -785,7 +785,7 @@ _market_cache = {"data": None, "ts": 0}
 _MARKET_CACHE_TTL = 180  # saniye
 
 def _fetch_market_pulse():
-    """BTC/ETH fiyat, F&G, dominans, market cap — 3 dk cache."""
+    """BTC/ETH fiyat, F&G, dominans, MVRV, ETF, Altcoin Season — 3 dk cache."""
     now_ts = time.time()
     if _market_cache["data"] and now_ts - _market_cache["ts"] < _MARKET_CACHE_TTL:
         return _market_cache["data"]
@@ -804,7 +804,7 @@ def _fetch_market_pulse():
                 out["eth_price"]  = float(t["lastPrice"])
                 out["eth_change"] = float(t["priceChangePercent"])
     except Exception as e:
-        print(f"[MARKET] Binance ticker hata: {e}", flush=True)
+        print(f"[MARKET] Binance hata: {e}", flush=True)
     try:
         r2 = requests.get("https://api.alternative.me/fng/", timeout=5)
         d = r2.json()["data"][0]
@@ -816,10 +816,70 @@ def _fetch_market_pulse():
         r3 = requests.get("https://api.coinlore.net/api/global/",
                           headers={"User-Agent": "portfolio-tracker/1.0"}, timeout=8)
         gl = r3.json()[0]
-        out["btc_dominance"] = round(float(gl.get("btc_d", "0").replace("%", "")), 1)
-        out["total_mcap"]    = float(gl.get("total_mcap", 0))
+        out["btc_dominance"]  = round(float(gl.get("btc_d",   "0").replace("%", "")), 1)
+        out["usdt_dominance"] = round(float(gl.get("usdt_d",  "0").replace("%", "")), 1)
+        out["total_mcap"]     = float(gl.get("total_mcap", 0))
     except Exception as e:
         print(f"[MARKET] CoinLore hata: {e}", flush=True)
+    try:
+        r4 = requests.get("https://api.coingecko.com/api/v3/global", timeout=8)
+        gd = r4.json()["data"]
+        total_usd = gd["total_market_cap"]["usd"]
+        btc_pct   = gd["market_cap_percentage"].get("btc", 0)
+        eth_pct   = gd["market_cap_percentage"].get("eth", 0)
+        out["total3"] = total_usd * (1 - (btc_pct + eth_pct) / 100)
+    except Exception as e:
+        print(f"[MARKET] CoinGecko hata: {e}", flush=True)
+    try:
+        import re as _re
+        r5 = requests.get(
+            "https://www.blockchaincenter.net/altcoin-season-index/",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=10)
+        for pat in [r'"altcoinSeason"\s*:\s*(\d+)', r'"value"\s*:\s*(\d+)',
+                    r'season[_-]?index[^0-9]{0,20}(\d{1,2})\b', r'(\d{1,2})\s*/\s*100']:
+            m = _re.search(pat, r5.text, _re.IGNORECASE)
+            if m:
+                val = int(m.group(1))
+                if 0 <= val <= 100:
+                    out["altcoin_season"] = val
+                    break
+    except Exception as e:
+        print(f"[MARKET] Altcoin Season hata: {e}", flush=True)
+    try:
+        from datetime import date as _date, timedelta as _td
+        end_d   = _date.today().isoformat()
+        start_d = (_date.today() - _td(days=60)).isoformat()
+        r6 = requests.get(
+            "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics",
+            params={"assets": "btc", "metrics": "CapMVRVCur", "frequency": "1d",
+                    "start_time": start_d, "end_time": end_d, "page_size": 60},
+            timeout=12)
+        series = r6.json().get("data", [])
+        pts = [round(float(p["CapMVRVCur"]), 2) for p in series if p.get("CapMVRVCur")]
+        if pts:
+            out["mvrv_series"]  = pts[-30:]
+            out["mvrv_current"] = pts[-1]
+    except Exception as e:
+        print(f"[MARKET] MVRV hata: {e}", flush=True)
+    try:
+        r7 = requests.get(
+            "https://sosovalue.com/api/etf/us-bitcoin-spot-etf-fund-flow",
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://sosovalue.com"},
+            timeout=10)
+        raw   = r7.json()
+        items = raw.get("data", raw) if isinstance(raw, dict) else raw
+        if isinstance(items, list):
+            flows = []
+            for item in items[-30:]:
+                v = (item.get("totalNetFlow") or item.get("netFlow") or
+                     item.get("flow") or item.get("total_net_flow") or 0)
+                flows.append(round(float(v) / 1e6, 1))
+            if flows:
+                out["etf_flows"] = flows
+                out["etf_today"] = flows[-1]
+    except Exception as e:
+        print(f"[MARKET] ETF flow hata: {e}", flush=True)
     _market_cache["data"] = out
     _market_cache["ts"]   = now_ts
     return out
@@ -851,23 +911,9 @@ def api_btc_candles():
 
 @app.route("/market")
 def market_dashboard():
-    mp = _fetch_market_pulse()
+    import math as _math
+    mp  = _fetch_market_pulse()
     now = tr_now_str()
-
-    def _stat(val, fmt=".2f", prefix="$"):
-        if val is None: return "—"
-        return f"{prefix}{val:{fmt}}"
-    def _chg(val):
-        if val is None: return "—", "#8a9bb0"
-        c = "#2ecc71" if val >= 0 else "#e74c3c"
-        return f"{val:+.2f}%", c
-
-    btc_p = mp.get("btc_price"); eth_p = mp.get("eth_price")
-    btc_vol = mp.get("btc_volume", 0)
-    btc_cs, btc_cc = _chg(mp.get("btc_change"))
-    eth_cs, eth_cc = _chg(mp.get("eth_change"))
-    fng_v = mp.get("fng_value"); fng_c = mp.get("fng_class", "—")
-    btc_dom = mp.get("btc_dominance"); total_mc = mp.get("total_mcap")
 
     def _mcap_fmt(v):
         if not v: return "—"
@@ -875,90 +921,149 @@ def market_dashboard():
         if v >= 1e9:  return f"${v/1e9:.1f}B"
         return f"${v/1e6:.0f}M"
 
-    # F&G gauge SVG
-    def _fng_gauge(value):
-        if value is None: return '<div style="color:#3a4a5a">—</div>'
-        # needle açısı: 0→180°(sol), 100→0°(sağ)
-        import math
-        ang = math.radians(180 - value * 1.8)
-        nx = round(100 + 75 * math.cos(ang), 1)
-        ny = round(100 - 75 * math.sin(ang), 1)
-        # renk
-        if value <= 25:   needle_c = "#e74c3c"
-        elif value <= 45: needle_c = "#e67e22"
-        elif value <= 55: needle_c = "#f1c40f"
-        elif value <= 75: needle_c = "#a8e063"
-        else:             needle_c = "#2ecc71"
-        return f"""<svg viewBox="0 0 200 115" style="width:200px;height:115px">
-  <defs><linearGradient id="arc-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-    <stop offset="0%"   stop-color="#e74c3c"/>
-    <stop offset="25%"  stop-color="#e67e22"/>
-    <stop offset="50%"  stop-color="#f1c40f"/>
-    <stop offset="75%"  stop-color="#a8e063"/>
-    <stop offset="100%" stop-color="#2ecc71"/>
-  </linearGradient></defs>
-  <!-- arka plan ark -->
-  <path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="#1a2535" stroke-width="14"/>
-  <!-- renkli ark -->
-  <path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="url(#arc-grad)" stroke-width="10" stroke-linecap="round"/>
-  <!-- iğne -->
-  <line x1="100" y1="100" x2="{nx}" y2="{ny}" stroke="{needle_c}" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="100" cy="100" r="5" fill="{needle_c}"/>
-  <!-- değer -->
-  <text x="100" y="88" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{value}</text>
-  <text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="9" font-family="monospace">KORKU &amp; HIR&#x15E;</text>
-</svg>"""
+    def _chg_fmt(val):
+        if val is None: return "—", "#8a9bb0"
+        return f"{val:+.2f}%", ("#2ecc71" if val >= 0 else "#e74c3c")
 
-    fng_gauge_html = _fng_gauge(fng_v)
+    def _gauge_svg(value, gid, stops, label_text):
+        if value is None:
+            nx, ny, nc = 100, 20, "#5a6a7a"
+        else:
+            ang = _math.radians(180 - value * 1.8)
+            nx  = round(100 + 75 * _math.cos(ang), 1)
+            ny  = round(100 - 75 * _math.sin(ang), 1)
+            nc  = ("#e74c3c" if value <= 25 else "#e67e22" if value <= 45
+                   else "#f1c40f" if value <= 55 else "#a8e063" if value <= 75
+                   else "#2ecc71")
+        s_html = "".join(f'<stop offset="{p}" stop-color="{c}"/>' for p, c in stops)
+        vt = str(value) if value is not None else "—"
+        return (f'<svg viewBox="0 0 200 115" style="width:100%;max-width:180px;height:auto">'
+                f'<defs><linearGradient id="{gid}" x1="0%" y1="0%" x2="100%" y2="0%">'
+                f'{s_html}</linearGradient></defs>'
+                f'<path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="#1a2535" stroke-width="14"/>'
+                f'<path d="M 20,100 A 80,80 0 0,1 180,100" fill="none" stroke="url(#{gid})" stroke-width="10" stroke-linecap="round"/>'
+                f'<line x1="100" y1="100" x2="{nx}" y2="{ny}" stroke="{nc}" stroke-width="3" stroke-linecap="round"/>'
+                f'<circle cx="100" cy="100" r="5" fill="{nc}"/>'
+                f'<text x="100" y="88" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{vt}</text>'
+                f'<text x="100" y="100" text-anchor="middle" fill="#8a9bb0" font-size="9" font-family="monospace">{label_text}</text>'
+                f'</svg>')
 
-    # F&G etiket rengi
-    fng_colors = {
-        "Extreme Fear": "#e74c3c", "Fear": "#e67e22",
-        "Neutral": "#f1c40f", "Greed": "#a8e063", "Extreme Greed": "#2ecc71"
-    }
-    fng_label_c = fng_colors.get(fng_c, "#8a9bb0")
-    fng_label_tr = {"Extreme Fear": "Aşırı Korku", "Fear": "Korku",
-                    "Neutral": "Nötr", "Greed": "Hırs", "Extreme Greed": "Aşırı Hırs"}.get(fng_c, fng_c)
-
+    # ── BTC ──
+    btc_p   = mp.get("btc_price")
+    eth_p   = mp.get("eth_price")
+    btc_vol = mp.get("btc_volume", 0)
+    btc_cs, btc_cc = _chg_fmt(mp.get("btc_change"))
+    eth_cs, eth_cc = _chg_fmt(mp.get("eth_change"))
     btc_price_fmt = f"${btc_p:,.0f}" if btc_p else "—"
     eth_price_fmt = f"${eth_p:,.0f}" if eth_p else "—"
-    eth_btc_ratio = round(eth_p / btc_p, 5) if (eth_p and btc_p) else None
-    eth_btc_fmt = f"{eth_btc_ratio}" if eth_btc_ratio else "—"
     vol_fmt = _mcap_fmt(btc_vol)
 
-    return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>Piyasa Durumu</title>
+    btc_dom = mp.get("btc_dominance")
+    btc_dom_fmt = f"%{btc_dom}" if btc_dom else "—"
+    btc_dom_label = ("altcoin baskılı" if btc_dom and btc_dom >= 58
+                     else "dengeli" if btc_dom and btc_dom >= 50 else "altcoin sezonu")
+    btc_dom_lc    = ("#e67e22" if btc_dom and btc_dom >= 58
+                     else "#5a6a7a" if btc_dom and btc_dom >= 50 else "#2ecc71")
+
+    # ── ETH ──
+    eth_btc = round(eth_p / btc_p, 5) if (eth_p and btc_p) else None
+    eth_btc_fmt   = f"{eth_btc}" if eth_btc else "—"
+    eth_btc_label = ("btc sezonu" if eth_btc and eth_btc < 0.05
+                     else "btc baskılı" if eth_btc and eth_btc < 0.065 else "altcoin güçlü")
+    eth_btc_lc    = ("#e74c3c" if eth_btc and eth_btc < 0.05
+                     else "#e67e22" if eth_btc and eth_btc < 0.065 else "#2ecc71")
+
+    # ── Altcoin ──
+    total3     = mp.get("total3")
+    total3_fmt = _mcap_fmt(total3) if total3 else "—"
+    acs        = mp.get("altcoin_season")
+    acs_fmt    = str(acs) if acs is not None else "—"
+    acs_label  = ("altcoin sezonu" if acs is not None and acs >= 75
+                  else "dengeli" if acs is not None and acs >= 25 else "btc sezonu")
+    acs_lc     = ("#2ecc71" if acs is not None and acs >= 75
+                  else "#f1c40f" if acs is not None and acs >= 25 else "#e67e22")
+
+    # ── Piyasa ──
+    total_mc     = mp.get("total_mcap")
+    total_mc_fmt = _mcap_fmt(total_mc) if total_mc else "—"
+    usdt_dom     = mp.get("usdt_dominance")
+    usdt_dom_fmt = f"%{usdt_dom}" if usdt_dom else "—"
+    usdt_dom_label = ("kaçış var" if usdt_dom and usdt_dom >= 7
+                      else "yüksek" if usdt_dom and usdt_dom >= 5 else "normal")
+    usdt_dom_lc    = ("#e67e22" if usdt_dom and usdt_dom >= 7
+                      else "#f1c40f" if usdt_dom and usdt_dom >= 5 else "#5a6a7a")
+    mvrv     = mp.get("mvrv_current")
+    mvrv_fmt = f"{mvrv}" if mvrv else "—"
+    mvrv_label = ("ucuz bölge" if mvrv and mvrv < 1.5
+                  else "normal" if mvrv and mvrv < 3 else "pahalı bölge" if mvrv else "—")
+    mvrv_lc    = ("#2ecc71" if mvrv and mvrv < 1.5
+                  else "#f1c40f" if mvrv and mvrv < 3 else "#e74c3c" if mvrv else "#5a6a7a")
+
+    # ── F&G gauge ──
+    fng_v = mp.get("fng_value")
+    fng_c = mp.get("fng_class", "")
+    fng_label_tr = {"Extreme Fear": "Aşırı Korku", "Fear": "Korku", "Neutral": "Nötr",
+                    "Greed": "Hırs", "Extreme Greed": "Aşırı Hırs"}.get(fng_c, fng_c or "—")
+    fng_label_c  = {"Extreme Fear": "#e74c3c", "Fear": "#e67e22", "Neutral": "#f1c40f",
+                    "Greed": "#a8e063", "Extreme Greed": "#2ecc71"}.get(fng_c, "#8a9bb0")
+    fng_svg = _gauge_svg(fng_v, "ag1",
+                         [("0%","#e74c3c"),("25%","#e67e22"),("50%","#f1c40f"),
+                          ("75%","#a8e063"),("100%","#2ecc71")],
+                         "KORKU &amp; HIR&#x15E;")
+    acs_svg = _gauge_svg(acs, "ag2",
+                         [("0%","#00b4d8"),("50%","#f1c40f"),("100%","#e67e22")],
+                         "ALTCOİN SEZON")
+
+    # ── ETF flows ──
+    etf_flows   = mp.get("etf_flows", [])
+    etf_today   = mp.get("etf_today")
+    etf_flows_j = json.dumps(etf_flows)
+    if etf_today is None:
+        etf_today_fmt, etf_today_c = "—", "#5a6a7a"
+    elif etf_today >= 0:
+        etf_today_fmt, etf_today_c = f"+${etf_today:.0f}M", "#2ecc71"
+    else:
+        etf_today_fmt, etf_today_c = f"-${abs(etf_today):.0f}M", "#e74c3c"
+
+    # ── MVRV series ──
+    mvrv_j = json.dumps(mp.get("mvrv_series", []))
+
+    return f"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"><title>Piyasa</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="120">
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-:root{{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--dim:#5a6a7a;--accent:#00b4d8;}}
+:root{{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--dim:#5a6a7a;--accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#e67e22;--yellow:#f1c40f}}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira Code',monospace;padding:20px;max-width:1200px;margin:0 auto}}
-.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}}
+body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira Code',monospace;padding:20px;max-width:1400px;margin:0 auto}}
+.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)}}
 .header h1{{color:var(--accent);font-size:1.1rem;letter-spacing:3px}}
 .tabs{{display:flex;gap:6px}}
-.tab{{background:#0f1319;border:1px solid var(--border);color:var(--dim);padding:5px 16px;border-radius:4px;text-decoration:none;font-size:.72rem;letter-spacing:1px;transition:all .15s}}
-.tab:hover,.tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811}}
-.stats-bar{{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}}
-.stat-card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px}}
-.stat-card .lbl{{font-size:.55rem;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}}
-.stat-card .val{{font-size:1.05rem;font-weight:bold;color:#ecf0f1}}
-.stat-card .sub{{font-size:.65rem;margin-top:3px}}
-.grid2{{display:grid;grid-template-columns:220px 1fr;gap:16px;margin-bottom:20px}}
-.card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}}
-.card h3{{color:var(--accent);font-size:.8rem;letter-spacing:1.5px;margin-bottom:14px}}
-.tf-bar{{display:flex;gap:6px;margin-bottom:12px}}
-.tf-btn{{background:#0a0e14;border:1px solid var(--border);color:var(--dim);padding:3px 10px;border-radius:3px;cursor:pointer;font-size:.65rem;font-family:inherit;transition:all .12s}}
-.tf-btn:hover,.tf-btn.active{{border-color:var(--accent);color:var(--accent)}}
-#chart-container{{height:380px;border-radius:4px;overflow:hidden}}
-.fng-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:8px}}
-.fng-label{{font-size:1rem;font-weight:bold;margin-top:4px}}
-.fng-sub{{font-size:.6rem;color:var(--dim);margin-top:2px}}
+.tab{{background:#0f1319;border:1px solid var(--border);color:var(--dim);padding:5px 16px;border-radius:4px;text-decoration:none;font-size:.72rem;letter-spacing:1px}}
+.tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811}}
 .time{{color:var(--dim);font-size:.7rem}}
-@media(max-width:700px){{.grid2{{grid-template-columns:1fr}}}}
+.groups-row{{display:flex;gap:10px;margin-bottom:14px}}
+.group{{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1}}
+.group-title{{font-size:.52rem;letter-spacing:2px;color:var(--accent);text-transform:uppercase;padding:6px 12px;border-bottom:1px solid var(--border);background:#0c1219}}
+.group-metrics{{display:flex;flex:1}}
+.metric{{flex:1;padding:9px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between}}
+.metric:last-child{{border-right:none}}
+.m-label{{font-size:.5rem;color:#ecf0f1;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;font-weight:bold}}
+.m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
+.m-value.lg{{font-size:1.1rem}}
+.m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
+.visual-row{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px;align-items:stretch}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}}
+.card h3{{color:var(--accent);font-size:.62rem;letter-spacing:1.5px;margin-bottom:10px;text-transform:uppercase}}
+.gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:4px}}
+.gauge-label{{font-size:.9rem;font-weight:bold;margin-top:4px}}
+.gauge-sub{{font-size:.55rem;color:var(--dim);margin-top:3px;text-align:center}}
 </style>
-</head><body>
+</head>
+<body>
+
 <div class="header">
   <div style="display:flex;align-items:center;gap:16px">
     <h1>📊 PORTFÖY TAKİP</h1>
@@ -967,100 +1072,173 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <a href="/market" class="tab active">Piyasa</a>
     </div>
   </div>
-  <span class="time">{now} | v2.8</span>
+  <span class="time">{now} | v3.0</span>
 </div>
 
-<div class="stats-bar">
-  <div class="stat-card">
-    <div class="lbl">BTC Fiyat</div>
-    <div class="val">{btc_price_fmt}</div>
-    <div class="sub" style="color:{btc_cc}">{btc_cs}</div>
+<div class="groups-row">
+  <div class="group">
+    <div class="group-title">₿ Bitcoin</div>
+    <div class="group-metrics">
+      <div class="metric">
+        <div><div class="m-label">Fiyat</div><div class="m-value lg">{btc_price_fmt}</div></div>
+        <div class="m-sub" style="color:{btc_cc}">{btc_cs}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">Dominans</div><div class="m-value">{btc_dom_fmt}</div></div>
+        <div class="m-sub" style="color:{btc_dom_lc}">{btc_dom_label}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">24s Hacim</div><div class="m-value">{vol_fmt}</div></div>
+        <div class="m-sub" style="color:var(--dim)">USDT</div>
+      </div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="lbl">ETH Fiyat</div>
-    <div class="val">{eth_price_fmt}</div>
-    <div class="sub" style="color:{eth_cc}">{eth_cs}</div>
+  <div class="group">
+    <div class="group-title">⟠ Ethereum</div>
+    <div class="group-metrics">
+      <div class="metric">
+        <div><div class="m-label">Fiyat</div><div class="m-value lg">{eth_price_fmt}</div></div>
+        <div class="m-sub" style="color:{eth_cc}">{eth_cs}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">ETH/BTC</div><div class="m-value">{eth_btc_fmt}</div></div>
+        <div class="m-sub" style="color:{eth_btc_lc}">{eth_btc_label}</div>
+      </div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="lbl">BTC Dominans</div>
-    <div class="val">%{btc_dom if btc_dom else "—"}</div>
-    <div class="sub" style="color:var(--dim)">toplam pay</div>
+  <div class="group">
+    <div class="group-title">🎯 Altcoin</div>
+    <div class="group-metrics">
+      <div class="metric">
+        <div><div class="m-label">Total3</div><div class="m-value">{total3_fmt}</div></div>
+        <div class="m-sub" style="color:var(--dim)">BTC+ETH hariç</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">Altcoin Season</div>
+          <div class="m-value">{acs_fmt}<span style="font-size:.55rem;color:var(--dim)">/100</span></div>
+        </div>
+        <div class="m-sub" style="color:{acs_lc}">{acs_label}</div>
+      </div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="lbl">Total Market Cap</div>
-    <div class="val" style="font-size:.85rem">{_mcap_fmt(total_mc)}</div>
-    <div class="sub" style="color:var(--dim)">tüm kripto</div>
-  </div>
-  <div class="stat-card">
-    <div class="lbl">ETH/BTC Oranı</div>
-    <div class="val" style="font-size:.9rem">{eth_btc_fmt}</div>
-    <div class="sub" style="color:var(--dim)">altcoin sezonu göstergesi</div>
-  </div>
-  <div class="stat-card">
-    <div class="lbl">BTC 24s Hacim</div>
-    <div class="val" style="font-size:.85rem">{vol_fmt}</div>
-    <div class="sub" style="color:var(--dim)">USDT</div>
+  <div class="group">
+    <div class="group-title">🌐 Piyasa</div>
+    <div class="group-metrics">
+      <div class="metric">
+        <div><div class="m-label">Total MCap</div><div class="m-value">{total_mc_fmt}</div></div>
+        <div class="m-sub" style="color:var(--dim)">tüm kripto</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">USDT Dom</div><div class="m-value">{usdt_dom_fmt}</div></div>
+        <div class="m-sub" style="color:{usdt_dom_lc}">{usdt_dom_label}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">MVRV</div><div class="m-value" style="color:{mvrv_lc}">{mvrv_fmt}</div></div>
+        <div class="m-sub" style="color:{mvrv_lc}">{mvrv_label}</div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="grid2">
+<div class="visual-row">
   <div class="card">
-    <h3>KORKU &amp; HIR&#x15E; ENDEKSİ</h3>
-    <div class="fng-wrap">
-      {fng_gauge_html}
-      <div class="fng-label" style="color:{fng_label_c}">{fng_label_tr}</div>
-      <div class="fng-sub">alternative.me · günlük güncellenir</div>
+    <h3>Korku &amp; Hırs</h3>
+    <div class="gauge-wrap">
+      {fng_svg}
+      <div class="gauge-label" style="color:{fng_label_c}">{fng_label_tr}</div>
+      <div class="gauge-sub">alternative.me · günlük</div>
     </div>
   </div>
   <div class="card">
-    <h3>BTC / USDT</h3>
-    <div class="tf-bar">
-      <button class="tf-btn" onclick="loadChart('1m',this,300)">1D</button>
-      <button class="tf-btn" onclick="loadChart('5m',this,300)">5D</button>
-      <button class="tf-btn" onclick="loadChart('15m',this,200)">15D</button>
-      <button class="tf-btn active" onclick="loadChart('1h',this,300)">1S</button>
-      <button class="tf-btn" onclick="loadChart('4h',this,300)">4S</button>
-      <button class="tf-btn" onclick="loadChart('1d',this,300)">1G</button>
-      <button class="tf-btn" onclick="loadChart('1w',this,200)">1H</button>
-      <button class="tf-btn" onclick="loadChart('1M',this,60)">1A</button>
+    <h3>Altcoin Season</h3>
+    <div class="gauge-wrap">
+      {acs_svg}
+      <div class="gauge-label" style="color:{acs_lc}">{acs_label}</div>
+      <div class="gauge-sub">blockchaincenter.net · günlük</div>
     </div>
-    <div id="chart-container"></div>
+  </div>
+  <div class="card">
+    <h3>BTC Spot ETF Net Flow</h3>
+    <canvas id="etfCanvas" style="width:100%;display:block" height="130"></canvas>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <div style="display:flex;gap:10px;font-size:.52rem;color:var(--dim)">
+        <span><span style="display:inline-block;width:7px;height:7px;border-radius:1px;background:#2ecc71;margin-right:3px"></span>Giriş</span>
+        <span><span style="display:inline-block;width:7px;height:7px;border-radius:1px;background:#e74c3c;margin-right:3px"></span>Çıkış</span>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:.5rem;color:var(--dim)">Bugün</div>
+        <div style="font-size:.85rem;font-weight:bold;color:{etf_today_c}">{etf_today_fmt}</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>MVRV Z-Score</h3>
+    <canvas id="mvrvCanvas" style="width:100%;display:block" height="130"></canvas>
+    <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:.52rem;color:var(--dim)">
+      <span style="color:#2ecc71">■ Ucuz &lt;1.5</span>
+      <span style="color:#f1c40f">■ Normal 1.5-3</span>
+      <span style="color:#e74c3c">■ Pahalı &gt;3</span>
+    </div>
   </div>
 </div>
 
+<div class="card" style="padding:10px">
+  <div id="tv_chart"></div>
+</div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-let chart, candleSeries, volSeries;
-function initChart() {{
-  const el = document.getElementById('chart-container');
-  chart = LightweightCharts.createChart(el, {{
-    layout: {{ background:{{color:'#0a0e14'}}, textColor:'#8a9bb0' }},
-    grid:   {{ vertLines:{{color:'#1a2030'}}, horzLines:{{color:'#1a2030'}} }},
-    crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
-    rightPriceScale: {{ borderColor:'#1a2030' }},
-    timeScale: {{ borderColor:'#1a2030', timeVisible:true, secondsVisible:false }},
-    width: el.clientWidth, height: el.clientHeight,
+new TradingView.widget({{
+  container_id:"tv_chart",width:"100%",height:460,
+  symbol:"BINANCE:BTCUSDT",interval:"60",
+  timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
+  toolbar_bg:"#0f1319",hide_side_toolbar:false,allow_symbol_change:true,
+  backgroundColor:"#0a0e14",gridColor:"#1a2030"
+}});
+
+(function(){{
+  const c=document.getElementById('etfCanvas');
+  c.width=c.offsetWidth||300;
+  const ctx=c.getContext('2d'),W=c.width,H=c.height;
+  const flows={etf_flows_j};
+  if(!flows.length)return;
+  const max=Math.max(...flows.map(Math.abs));
+  const zeroY=H/2,barW=(W/flows.length)-2;
+  flows.forEach((v,i)=>{{
+    const x=i*(barW+2),h=(Math.abs(v)/max)*(H/2-6);
+    ctx.fillStyle=v>=0?'#2ecc71':'#e74c3c';
+    v>=0?ctx.fillRect(x,zeroY-h,barW,h):ctx.fillRect(x,zeroY,barW,h);
   }});
-  candleSeries = chart.addCandlestickSeries({{
-    upColor:'#2ecc71', downColor:'#e74c3c',
-    borderUpColor:'#2ecc71', borderDownColor:'#e74c3c',
-    wickUpColor:'#2ecc71', wickDownColor:'#e74c3c',
-  }});
-  new ResizeObserver(()=>chart.applyOptions({{width:el.clientWidth}})).observe(el);
-}}
-async function loadChart(tf, btn, limit) {{
-  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  try {{
-    const res = await fetch('/api/btc-candles?tf='+tf+'&limit='+(limit||300));
-    const data = await res.json();
-    candleSeries.setData(data);
-    chart.timeScale().fitContent();
-  }} catch(e) {{ console.error(e); }}
-}}
-initChart();
-loadChart('1h', document.querySelector('.tf-btn.active'), 300);
+  ctx.strokeStyle='#2a3a4a';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,zeroY);ctx.lineTo(W,zeroY);ctx.stroke();
+}})();
+
+(function(){{
+  const c=document.getElementById('mvrvCanvas');
+  c.width=c.offsetWidth||300;
+  const ctx=c.getContext('2d'),W=c.width,H=c.height;
+  const data={mvrv_j};
+  if(!data.length)return;
+  const allV=data.concat([0,4]);
+  const dmin=Math.min(...allV)-0.2,dmax=Math.max(...allV)+0.2,range=dmax-dmin;
+  const toY=v=>H-((v-dmin)/range)*H;
+  ctx.fillStyle='#e74c3c1a';ctx.fillRect(0,0,W,toY(3));
+  ctx.fillStyle='#f1c40f14';ctx.fillRect(0,toY(3),W,toY(1.5)-toY(3));
+  ctx.fillStyle='#2ecc7114';ctx.fillRect(0,toY(1.5),W,H-toY(1.5));
+  ctx.setLineDash([3,3]);ctx.lineWidth=1;
+  ctx.strokeStyle='#e74c3c35';ctx.beginPath();ctx.moveTo(0,toY(3));ctx.lineTo(W,toY(3));ctx.stroke();
+  ctx.strokeStyle='#f1c40f35';ctx.beginPath();ctx.moveTo(0,toY(1.5));ctx.lineTo(W,toY(1.5));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle='#00b4d8';ctx.lineWidth=2;ctx.beginPath();
+  const step=W/(data.length-1);
+  data.forEach((v,i)=>i===0?ctx.moveTo(0,toY(v)):ctx.lineTo(i*step,toY(v)));
+  ctx.stroke();
+  ctx.fillStyle='#00b4d8';ctx.beginPath();
+  ctx.arc((data.length-1)*step,toY(data[data.length-1]),4,0,Math.PI*2);ctx.fill();
+}})();
 </script>
-</body></html>"""
+</body>
+</html>"""
 
 
 def fmt_price(p):
