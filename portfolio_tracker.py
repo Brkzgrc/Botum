@@ -1206,9 +1206,29 @@ def market_dashboard():
                          [(25,"#e74c3c"),(45,"#e67e22"),(55,"#f1c40f"),
                           (75,"#a8e063"),(100,"#2ecc71")],
                          "KORKU &amp; HIR&#x15E;")
-    acs_svg = _gauge_svg(acs,
-                         [(25,"#3498db"),(50,"#f1c40f"),(75,"#e67e22"),(100,"#e74c3c")],
-                         "ALTCOİN SEZON")
+    if acs is not None:
+        _ax1, _ax2, _ay, _ah = 12, 188, 46, 13
+        _aw  = _ax2 - _ax1
+        _adx = round(_ax1 + max(0, min(100, acs)) / 100 * _aw, 1)
+        acs_svg = (
+            '<svg viewBox="0 0 200 80" style="width:100%;height:auto">'
+            '<defs><linearGradient id="abg" x1="0%" y1="0%" x2="100%" y2="0%">'
+            '<stop offset="0%" stop-color="#e67e22"/>'
+            '<stop offset="38%" stop-color="#7a6a62"/>'
+            '<stop offset="100%" stop-color="#3498db"/>'
+            '</linearGradient></defs>'
+            f'<rect x="{_ax1}" y="{_ay}" width="{_aw}" height="{_ah}" rx="6" fill="#1a2535"/>'
+            f'<rect x="{_ax1}" y="{_ay}" width="{_aw}" height="{_ah}" rx="6" fill="url(#abg)"/>'
+            f'<text x="100" y="26" text-anchor="middle" fill="#ecf0f1" font-size="22" font-weight="bold" font-family="monospace">{acs}</text>'
+            f'<circle cx="{_adx}" cy="{_ay + _ah // 2}" r="8" fill="#ecf0f1" stroke="#0d1421" stroke-width="2"/>'
+            f'<text x="{_ax1}" y="76" text-anchor="start" fill="#e67e22" font-size="8" font-family="monospace">Bitcoin</text>'
+            f'<text x="{_ax2}" y="76" text-anchor="end" fill="#3498db" font-size="8" font-family="monospace">Altcoin</text>'
+            '</svg>'
+        )
+    else:
+        acs_svg = ('<svg viewBox="0 0 200 80" style="width:100%;height:auto">'
+                   '<text x="100" y="45" text-anchor="middle" fill="#5a6a7a" font-size="18" font-family="monospace">—</text>'
+                   '</svg>')
     dom_svg = _gauge_svg(btc_dom,
                          [(45,"#2ecc71"),(55,"#f1c40f"),(100,"#e67e22")],
                          "BTC DOMIN.")
