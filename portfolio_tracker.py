@@ -1425,7 +1425,8 @@ new TradingView.widget({{
   toolbar_bg:"#0f1319",hide_side_toolbar:true,allow_symbol_change:false,
   backgroundColor:"#0a0e14",gridColor:"#1a2030",
   hide_top_toolbar:false,
-  studies:["PUB;ujo5xlgy"]
+  studies:["PUB;v3TqVthK"],
+  studies_overrides:{{"MVRV Z Score.Market Cap Source":"Coinmetrics"}}
 }});
 
 (function(){{
