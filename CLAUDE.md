@@ -1,5 +1,9 @@
 # Botum — Proje Notları
 
+## GitHub Repo
+- **URL:** https://github.com/brkzgrc/Botum
+- **Branch:** main (tüm değişiklikler direkt main'e)
+
 ## Kritik Kurallar
 
 - **SMC.py'ye kesinlikle dokunma** — SMC tek düzgün çalışan ve sistemin temel parçası; dokunmak için ayrı, açık onay şart
