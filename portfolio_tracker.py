@@ -502,9 +502,9 @@ def calc_performance():
         "sim_bot":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
         "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
         "smc_alt": {
-            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "half":     {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "actual":      {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "tp1_only":    {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
+            "tp2_direct":  {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
         },
         "bot_alt": {
             "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
@@ -604,8 +604,6 @@ def calc_performance():
                         _tb[_tk]["wins"] += 1
                     elif status in ("loss", "loss_half"):
                         _tb[_tk]["losses"] += 1
-                    elif status == "loss":
-                        _tb[_tk]["losses"] += 1
             except Exception: pass
 
         # Alternatif senaryo hesabı (sadece kapanmış sinyaller)
@@ -622,15 +620,16 @@ def calc_performance():
 
             if _is_smc:
                 sa = result["smc_alt"]
+                # actual: gerçek DB kapanış değeri — tüm statüsleri doğru say
                 sa["actual"]["total"] += 1
-                if status == "win_tp2":
+                if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
                     sa["actual"]["wins"] += 1; sa["actual"]["pnl"] += _closed_pct
-                elif status == "loss":
+                elif status in ("loss", "loss_half"):
                     sa["actual"]["losses"] += 1; sa["actual"]["pnl"] += _closed_pct
                 else:
-                    # win_partial = eski half_open legacy, win_tp1 = legacy → expired gibi say
                     sa["actual"]["expired"] += 1; sa["actual"]["expired_pnl"] += _closed_pct
 
+                # tp1_only sim: %100 pozisyon TP1'de çıksaydı
                 sa["tp1_only"]["total"] += 1
                 if _tp1_pct > 0 and _pk >= _tp1_pct:
                     sa["tp1_only"]["wins"] += 1; sa["tp1_only"]["pnl"] += _tp1_pct
@@ -639,24 +638,14 @@ def calc_performance():
                 else:
                     sa["tp1_only"]["expired"] += 1; sa["tp1_only"]["expired_pnl"] += _closed_pct
 
-                # ½TP1 + ½TP2: her iki hedef vurulduysa ortalama, vurulmadıysa ½TP1 + ½kapanış
-                sa["half"]["total"] += 1
-                if _tp1_pct > 0 and _pk >= _tp1_pct:
-                    if _tp2_pct > 0 and _pk >= _tp2_pct:
-                        _half_pct = round((_tp1_pct + _tp2_pct) / 2, 2)
-                        sa["half"]["wins"] += 1; sa["half"]["pnl"] += _half_pct
-                    elif _stop_pct < 0 and _dp <= _stop_pct:
-                        _half_pct = round((_tp1_pct + _stop_pct) / 2, 2)
-                        if _half_pct > 0: sa["half"]["wins"] += 1
-                        else: sa["half"]["losses"] += 1
-                        sa["half"]["pnl"] += _half_pct
-                    else:
-                        _half_pct = round((_tp1_pct + _closed_pct) / 2, 2)
-                        sa["half"]["expired"] += 1; sa["half"]["expired_pnl"] += _half_pct
+                # tp2_direct sim: %100 pozisyon TP2'ye kadar tutulsaydı
+                sa["tp2_direct"]["total"] += 1
+                if _tp2_pct > 0 and _pk >= _tp2_pct:
+                    sa["tp2_direct"]["wins"] += 1; sa["tp2_direct"]["pnl"] += _tp2_pct
                 elif _stop_pct < 0 and _dp <= _stop_pct:
-                    sa["half"]["losses"] += 1; sa["half"]["pnl"] += _stop_pct
+                    sa["tp2_direct"]["losses"] += 1; sa["tp2_direct"]["pnl"] += _stop_pct
                 else:
-                    sa["half"]["expired"] += 1; sa["half"]["expired_pnl"] += _closed_pct
+                    sa["tp2_direct"]["expired"] += 1; sa["tp2_direct"]["expired_pnl"] += _closed_pct
             else:
                 ba = result["bot_alt"]
                 ba["actual"]["total"] += 1
@@ -2042,12 +2031,12 @@ def dashboard():
             f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
             f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
             f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
-            f'<tr><td style="color:#9b59b6;white-space:nowrap">½TP1 + ½TP2 (gerçek — smc-v2)</td>'
-            f'{_alt_cell(smc_a.get("actual",{}), "#2ecc71", is_actual=True)}</tr>'
-            f'<tr><td style="color:#f39c12;white-space:nowrap">Sadece TP1</td>'
+            f'<tr><td style="color:#9b59b6;white-space:nowrap">Gerçek (½TP1+½TP2)</td>'
+            f'{_alt_cell(smc_a.get("actual",{}), "#9b59b6", is_actual=True)}</tr>'
+            f'<tr><td style="color:#f39c12;white-space:nowrap">Sadece TP1 (sim)</td>'
             f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
-            f'<tr><td style="color:#e67e22;white-space:nowrap">½ TP1 + ½ TP2</td>'
-            f'{_alt_cell(smc_a.get("half",{}), "#e67e22")}</tr>'
+            f'<tr><td style="color:#3498db;white-space:nowrap">TP2 Direkt (sim)</td>'
+            f'{_alt_cell(smc_a.get("tp2_direct",{}), "#3498db")}</tr>'
             f'</tbody></table></div>'
             f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
             f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
