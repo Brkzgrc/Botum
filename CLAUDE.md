@@ -2,11 +2,12 @@
 
 ## Kritik Kurallar
 
-- **SMC.py'ye kesinlikle dokunma** — kullanıcı açıkça söylemedikçe
+- **SMC.py'ye kesinlikle dokunma** — SMC tek düzgün çalışan ve sistemin temel parçası; dokunmak için ayrı, açık onay şart
 - **SMC_original.py'ye kesinlikle dokunma** — referans kopya, hiçbir koşulda değiştirilemez
 - **Onay almadan kod yazma** — her implementasyon öncesi onay gerekli
 - **portfolio_tracker_PASİF.py** — sadece referans, üretim kodu değil
 - **claude_analyzer.py** — AKTİF üretim kodu (portfolio_tracker.py içinde çalışır, `/api/analyze` üzerinden bot.py sinyallerini değerlendirir)
+- **Değişiklikleri direkt main'e push et** — ayrı branch açma
 
 ## Servis URL'leri
 
@@ -99,6 +100,27 @@ Telegram kanalına coin + timeframe yazınca anında analiz gelsin:
 **Kapsam:** Binance spot'taki **herhangi bir coin**, herhangi bir timeframe  
 **Mimari:** Telegram webhook → Python handler → claude_analyzer → yanıt  
 **Durum:** Bekleyen fikir — önce mevcut sistemler olgunlaşsın
+
+## Backtest Dosya Kuralı
+
+Her backtest çalıştırıldığında sonuç dosyası şu formatta adlandırılır:
+
+```
+{strateji}_{sembol}_{başlangıç}_{bitiş}_{timestamp}.txt
+```
+
+Örnek: `panik_pump_BTCUSDT_20240101_20260624_20260624_1423.txt`
+
+**Kurallar:**
+- Tüm backtest çıktıları `YeniKlasör2/` altına kaydedilir, **üzerine yazılmaz**
+- Tarihler `YYYYMMDD` formatında
+- Timestamp (çalıştırma anı) `YYYYMMDD_HHMM` formatında — her çalıştırmayı ayırt eder
+- Aynı stratejiyi iki kez çalıştırsan iki ayrı dosya oluşur, hiçbiri kaybolmaz
+- Dosya içinin ilk satırı dosya adıyla birebir uyumlu başlık içerir:
+
+```
+=== panik_pump | BTCUSDT | 2024-01-01 → 2026-06-24 | Çalıştırma: 2026-06-24 14:23 ===
+```
 
 ## Claude Analyzer (claude_analyzer.py)
 
