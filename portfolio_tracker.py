@@ -2,8 +2,8 @@
 """
 Portföy Takip Sistemi v2.8
 ===========================
-SMC çıkış: stop → loss | TP2 → win_tp2 direkt. TP1 sadece milestone.
-           Trailing yok, expire yok SMC için.
+SMC-V2 çıkış: TP1'de ½ çıkılır (half_tp1) → TP2'de kalan ½ kapanır. Getiri = ortalama.
+           Diğer SMC: stop → loss | TP2 → win_tp2 direkt. TP1 milestone.
 Bot çıkış: trailing %3 (peak altı) | TP1 milestone | TP2 hedef | expire var.
 
 NOT: Bu dosya geliştirme referansı içindir.
@@ -2042,7 +2042,7 @@ def dashboard():
             f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
             f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
             f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
-            f'<tr><td style="color:#2ecc71;white-space:nowrap">TP2 direkt (gerçek)</td>'
+            f'<tr><td style="color:#9b59b6;white-space:nowrap">½TP1 + ½TP2 (gerçek — smc-v2)</td>'
             f'{_alt_cell(smc_a.get("actual",{}), "#2ecc71", is_actual=True)}</tr>'
             f'<tr><td style="color:#f39c12;white-space:nowrap">Sadece TP1</td>'
             f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
@@ -2132,7 +2132,7 @@ def dashboard():
 
     expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
 
-    _note_smc = "SMC çıkış: stop → loss | TP2 → win_tp2 direkt. TP1 sadece milestone — pozisyon bölünmez."
+    _note_smc = "SMC V2 çıkış: TP1'de %50 çıkılır (½TP1), kalan %50 TP2'yi bekler. Getiri = (½TP1 + ½final) ortalaması."
     _note_bot = "Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır"
     _no_data_msg = '<p style="color:#3a4a5a;font-size:.63rem;text-align:center;padding:14px 0;font-style:italic">Henüz kapanan sinyal yok</p>'
     _smc_section_block = (
