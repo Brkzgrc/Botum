@@ -113,9 +113,10 @@ Her backtest çalıştırıldığında sonuç dosyası şu formatta adlandırıl
 
 **Kurallar:**
 - Tüm backtest çıktıları `YeniKlasör2/` altına kaydedilir, **üzerine yazılmaz**
+- Her çalıştırma **3 dosya** üretir: `.txt` (özet), `.json` (ham veri), `.html` (görsel)
 - Tarihler `YYYYMMDD` formatında
 - Timestamp (çalıştırma anı) `YYYYMMDD_HHMM` formatında — her çalıştırmayı ayırt eder
-- Aynı stratejiyi iki kez çalıştırsan iki ayrı dosya oluşur, hiçbiri kaybolmaz
+- Aynı stratejiyi iki kez çalıştırsan iki ayrı dosya seti oluşur, hiçbiri kaybolmaz
 - Dosya içinin ilk satırı dosya adıyla birebir uyumlu başlık içerir:
 
 ```
