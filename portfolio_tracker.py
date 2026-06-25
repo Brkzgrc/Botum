@@ -41,15 +41,12 @@ BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 EXPIRE_TRAIL_THRESHOLD = float(os.getenv("EXPIRE_TRAIL_THRESHOLD", "0.80"))
 EXPIRE_TRAIL_PCT = float(os.getenv("EXPIRE_TRAIL_PCT", "2.0"))
 TRAIL_PCT      = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
-SIM_TP1    = 5.0   # Hayali senaryo parametreleri (sabit)
-SIM_TP2    = 10.0
-SIM_STOP   = -2.5
-
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
 SMC_MAIN_SOURCES = ("smc", "smc-original", "smc-trailing", "smc-momentum", "smc-v2")
 
-# smc-v2: ½TP1+½TP2 stratejisi — TP1'de %50 çıkılır, kalan %50 TP2'yi bekler
-HALF_EXIT_SOURCES = {"smc-v2"}
+# smc-v2: TP1 aktivasyon → %100 pozisyon %2.5 trailing ile çıkar
+FULL_TRAIL_SOURCES  = {"smc-v2"}
+SMC_FULL_TRAIL_PCT  = 2.5
 
 # Kaldırılmış sinyal tipleri (sig_type) — DB'de kalır ama UI'da gösterilmez.
 HIDDEN_SIG_TYPES = ("pump_probability", "pump_prob", "pump_watch")
@@ -320,18 +317,23 @@ def check_open_positions():
                 else:
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
                         tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
-                        if sig.get("source") in HALF_EXIT_SOURCES and tp2:
+                        if sig.get("source") in FULL_TRAIL_SOURCES:
                             sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                             sig["tp1_pct"] = tp1_pct_v
-                            sig["status"] = "half_tp1"
                             need_save = True
-                            print(f"  🟡 ½TP1 HIT: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → TP2 izleniyor", flush=True)
+                            print(f"  🟡 TP1 TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → %{SMC_FULL_TRAIL_PCT} trailing başladı", flush=True)
                         else:
                             sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                             sig["tp1_exit_price"] = round(tp1, 8)
                             sig["tp1_exit_pct"] = tp1_pct_v
                             need_save = True
                             print(f"  🎯 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 bekleniyor", flush=True)
+                    elif sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+                        trail_stop = round(sig["peak_price"] * (1 - SMC_FULL_TRAIL_PCT / 100), 8)
+                        trail_ret  = round((trail_stop - entry) / entry * 100, 2)
+                        if low <= trail_stop:
+                            close_reason = "trailing"; close_price = trail_stop
+                            sig["status"] = "win_trail" if trail_ret > 0 else "loss"
             else:
                 # Bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
                 trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
@@ -509,17 +511,6 @@ def calc_performance():
             "dikkat":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
             "riskli":  {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0},
         },
-        "sim_bot":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
-        "sim_smc":  {"tp2": 0, "tp1": 0, "stop": 0, "open": 0, "pnl": 0.0, "exp_tp2": 0, "exp_tp1": 0, "exp_stop": 0, "exp_open": 0},
-        "smc_alt": {
-            "actual":      {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only":    {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp2_direct":  {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-        },
-        "bot_alt": {
-            "actual":   {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-            "tp1_only": {"wins": 0, "losses": 0, "expired": 0, "total": 0, "pnl": 0.0, "expired_pnl": 0.0},
-        },
         "by_type": {}, "daily": {}, "weekly": {}, "monthly": {},
     }
 
@@ -628,73 +619,6 @@ def calc_performance():
             _dp = sig.get("low_pct", 0) or 0
             _closed_pct = sig.get("close_pct", 0) or 0
 
-            if _is_smc:
-                sa = result["smc_alt"]
-                # actual: gerçek DB kapanış değeri — tüm statüsleri doğru say
-                sa["actual"]["total"] += 1
-                if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
-                    sa["actual"]["wins"] += 1; sa["actual"]["pnl"] += _closed_pct
-                elif status in ("loss", "loss_half"):
-                    sa["actual"]["losses"] += 1; sa["actual"]["pnl"] += _closed_pct
-                else:
-                    sa["actual"]["expired"] += 1; sa["actual"]["expired_pnl"] += _closed_pct
-
-                # tp1_only sim: %100 pozisyon TP1'de çıksaydı
-                sa["tp1_only"]["total"] += 1
-                if _tp1_pct > 0 and _pk >= _tp1_pct:
-                    sa["tp1_only"]["wins"] += 1; sa["tp1_only"]["pnl"] += _tp1_pct
-                elif _stop_pct < 0 and _dp <= _stop_pct:
-                    sa["tp1_only"]["losses"] += 1; sa["tp1_only"]["pnl"] += _stop_pct
-                else:
-                    sa["tp1_only"]["expired"] += 1; sa["tp1_only"]["expired_pnl"] += _closed_pct
-
-                # tp2_direct sim: %100 pozisyon TP2'ye kadar tutulsaydı
-                sa["tp2_direct"]["total"] += 1
-                if _tp2_pct > 0 and _pk >= _tp2_pct:
-                    sa["tp2_direct"]["wins"] += 1; sa["tp2_direct"]["pnl"] += _tp2_pct
-                elif _stop_pct < 0 and _dp <= _stop_pct:
-                    sa["tp2_direct"]["losses"] += 1; sa["tp2_direct"]["pnl"] += _stop_pct
-                else:
-                    sa["tp2_direct"]["expired"] += 1; sa["tp2_direct"]["expired_pnl"] += _closed_pct
-            else:
-                ba = result["bot_alt"]
-                ba["actual"]["total"] += 1
-                if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
-                    ba["actual"]["wins"] += 1; ba["actual"]["pnl"] += _closed_pct
-                elif status == "loss":
-                    ba["actual"]["losses"] += 1; ba["actual"]["pnl"] += _closed_pct
-                else:
-                    ba["actual"]["expired"] += 1; ba["actual"]["expired_pnl"] += _closed_pct
-
-                ba["tp1_only"]["total"] += 1
-                if _tp1_pct > 0 and _pk >= _tp1_pct:
-                    ba["tp1_only"]["wins"] += 1; ba["tp1_only"]["pnl"] += _tp1_pct
-                elif _stop_pct < 0 and _dp <= _stop_pct:
-                    ba["tp1_only"]["losses"] += 1; ba["tp1_only"]["pnl"] += _stop_pct
-                else:
-                    ba["tp1_only"]["expired"] += 1; ba["tp1_only"]["expired_pnl"] += _closed_pct
-
-    # Hayali senaryo hesabı (sadece kapanmış sinyaller — açık pozisyonlar dahil değil)
-    for sig in all_sigs:
-        if sig.get("status") == "open":
-            continue
-        is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
-        bucket = result["sim_smc"] if is_smc else result["sim_bot"]
-        pk = sig.get("peak_pct", 0) or 0
-        dp = sig.get("low_pct", 0) or 0
-        _is_exp = sig.get("status") == "expired"
-        if pk >= SIM_TP2:
-            bucket["tp2"] += 1; bucket["pnl"] += SIM_TP2
-            if _is_exp: bucket["exp_tp2"] += 1
-        elif pk >= SIM_TP1 and dp > SIM_STOP:
-            bucket["tp1"] += 1; bucket["pnl"] += SIM_TP1
-            if _is_exp: bucket["exp_tp1"] += 1
-        elif dp <= SIM_STOP:
-            bucket["stop"] += 1; bucket["pnl"] += SIM_STOP
-            if _is_exp: bucket["exp_stop"] += 1
-        else:
-            bucket["open"] += 1
-            if _is_exp: bucket["exp_open"] += 1
 
     # [SMC-ESKİ] Karşılaştırma istatistikleri — TOPLAM/breakdown'a dahil edilmez
     if closed_peaks:
@@ -710,23 +634,6 @@ def calc_performance():
         dec = bv["wins"] + bv["losses"]
         bv["wr"]  = round(bv["wins"] / dec * 100, 1) if dec > 0 else 0
         bv["pnl"] = round(bv["pnl"], 2)
-    for sb in ("sim_bot", "sim_smc"):
-        b = result[sb]
-        decided = b["tp2"] + b["tp1"] + b["stop"]
-        b["wr"]  = round((b["tp2"] + b["tp1"]) / decided * 100, 1) if decided > 0 else 0
-        b["pnl"] = round(b["pnl"], 2)
-
-    for ak in ("smc_alt", "bot_alt"):
-        for sk in result[ak]:
-            s = result[ak][sk]
-            dec = s["wins"] + s["losses"]
-            s["wr"] = round(s["wins"] / dec * 100, 1) if dec > 0 else 0
-            s["pnl"] = round(s["pnl"], 2)
-            if "expired_pnl" in s:
-                s["expired_pnl"]  = round(s["expired_pnl"], 2)
-                s["win_loss_pnl"] = s["pnl"]
-                s["total_pnl"]    = round(s["pnl"] + s["expired_pnl"], 2)
-
     for tk, ts in type_stats.items():
         closed = ts["wins"] + ts["losses"] + ts["expired"]
         ts["win_rate"] = round(ts["wins"] / closed * 100, 1) if closed > 0 else 0
@@ -1802,14 +1709,18 @@ def dashboard():
         peak_c, peak_s = pct_color(sig.get("peak_pct"))
         sym = sig["symbol"].replace("/USDT", "")
         tp1_badge = ""
-        if sig.get("source") in HALF_EXIT_SOURCES and sig.get("tp1_pct") is not None:
-            cr = sig.get("close_reason", "")
-            if cr in ("tp2", "half_stop", "expired_half"):
-                _tp1_p = sig.get("tp1_pct", 0)
-                _fin_p = sig.get("close_pct", 0)
-                _fin_lbl = "TP2" if cr == "tp2" else ("STOP" if cr == "half_stop" else "EXP")
-                tp1_badge = (f'<span style="color:#9b59b6;font-size:.58rem">'
-                             f'½TP1:{_tp1_p:+.2f}% + ½{_fin_lbl} → avg:{_fin_p:+.2f}%</span>')
+        _cr = sig.get("close_reason", "")
+        if sig.get("tp1_pct") is not None and _cr in ("tp2", "half_stop", "expired_half"):
+            _tp1_p = sig.get("tp1_pct", 0)
+            _fin_p = sig.get("close_pct", 0)
+            _fin_lbl = "TP2" if _cr == "tp2" else ("STOP" if _cr == "half_stop" else "EXP")
+            tp1_badge = (f'<span style="color:#9b59b6;font-size:.58rem">'
+                         f'½TP1:{_tp1_p:+.2f}% + ½{_fin_lbl} → avg:{_fin_p:+.2f}%</span>')
+        elif sig.get("tp1_hit") and _cr == "trailing":
+            _tp1_p = sig.get("tp1_pct", 0) or 0
+            _fin_p = sig.get("close_pct", 0)
+            tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
+                         f'TP1+trail:{_tp1_p:+.2f}% → {_fin_p:+.2f}%</span>')
         elif sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
@@ -1856,92 +1767,6 @@ def dashboard():
         else:
             bot_type_rows += row
 
-    # Hayali senaryo verileri
-    def _sim_row(b):
-        decided = b["tp2"] + b["tp1"] + b["stop"]
-        wr_c = "#2ecc71" if b["wr"] >= 55 else ("#f39c12" if b["wr"] >= 40 else "#e74c3c")
-        pnl_c = "#2ecc71" if b["pnl"] > 0 else ("#e74c3c" if b["pnl"] < 0 else "#8a9bb0")
-        return (b["tp2"], b["tp1"], b["stop"], b["open"], decided, b["wr"], wr_c, b["pnl"], pnl_c)
-    def _exp_subrow(b):
-        e2 = b.get("exp_tp2",0); e1 = b.get("exp_tp1",0)
-        es = b.get("exp_stop",0); eo = b.get("exp_open",0)
-        total_exp = e2 + e1 + es + eo
-        if total_exp == 0: return ""
-        return (f'<tr style="background:#04080e">'
-                f'<td style="color:#3a4a5a;font-size:.58rem;padding-left:14px">↳ Exp: {total_exp} sin.</td>'
-                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{total_exp}</td>'
-                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{e2 if e2 else "—"}</td>'
-                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{e1 if e1 else "—"}</td>'
-                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{es if es else "—"}</td>'
-                f'<td style="text-align:center;color:#3a4a5a;font-size:.58rem">{eo if eo else "—"}</td>'
-                f'<td colspan="2" style="color:#2a3540;font-size:.58rem;font-style:italic">gerçekte süresi doldu</td>'
-                f'</tr>')
-    sb = perf.get("sim_bot", {}); ss = perf.get("sim_smc", {})
-    sbt = _sim_row(sb) if sb else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
-    sst = _sim_row(ss) if ss else (0,0,0,0,0,0,"#8a9bb0",0,"#8a9bb0")
-
-    # Hayali senaryo — TOPLAM kolonu
-    st_tp2  = sbt[0] + sst[0]; st_tp1 = sbt[1] + sst[1]
-    st_stop = sbt[2] + sst[2]; st_open = sbt[3] + sst[3]
-    st_dec  = st_tp2 + st_tp1 + st_stop
-    st_wr   = round((st_tp2 + st_tp1) / st_dec * 100, 1) if st_dec > 0 else 0
-    st_pnl  = round(sbt[7] + sst[7], 1)
-    st_wrc  = "#2ecc71" if st_wr >= 55 else ("#f39c12" if st_wr >= 40 else "#e74c3c")
-    st_pnlc = "#2ecc71" if st_pnl > 0 else ("#e74c3c" if st_pnl < 0 else "#8a9bb0")
-    st_fake_b = {f"exp_{k}": sb.get(f"exp_{k}",0)+ss.get(f"exp_{k}",0) for k in ("tp2","tp1","stop","open")}
-
-    _sim_section = f"""<div class="tp2-box">
-    <details data-id="sim">
-    <summary>🎭 HAYALİ SENARYO — "TP1 +5% | TP2 +10% | Stop -2.5% olsaydı ne olurdu?"</summary>
-    <p style="color:var(--text-dim);font-size:.6rem;margin-bottom:12px;font-style:italic">
-        Tüm sinyallere sabit parametreler uygulanıyor. Peak ve dip verisi üzerinden hesaplanır — gerçek çıkış değil.<br>
-        <span style="color:#3a4a5a">↳ Exp satırları: o gruptaki sinyallerin kaçı gerçekte süresi dolmuştu?</span></p>
-    <div class="table-wrap"><table style="font-size:.72rem"><thead><tr>
-        <th></th>
-        <th style="text-align:center;color:#8a9bb0">Sinyal</th>
-        <th style="text-align:center;color:#27ae60">TP2 (+10%)</th>
-        <th style="text-align:center;color:#2ecc71">TP1 (+5%)</th>
-        <th style="text-align:center;color:#e74c3c">Stop (-2.5%)</th>
-        <th style="text-align:center;color:#8a9bb0">Devam/Açık</th>
-        <th style="text-align:center;color:#8a9bb0">Win Rate</th>
-        <th style="text-align:center;color:#8a9bb0">P&amp;L</th>
-    </tr></thead><tbody>
-        <tr>
-            <td style="color:#3498db">Bot Sinyalleri</td>
-            <td style="text-align:center;color:#8a9bb0">{sbt[0]+sbt[1]+sbt[2]+sbt[3]}</td>
-            <td style="text-align:center;color:#27ae60">{sbt[0]}</td>
-            <td style="text-align:center;color:#2ecc71">{sbt[1]}</td>
-            <td style="text-align:center;color:#e74c3c">{sbt[2]}</td>
-            <td style="text-align:center;color:#8a9bb0">{sbt[3]}</td>
-            <td style="text-align:center"><span style="color:{sbt[6]}">%{sbt[5]}</span></td>
-            <td style="text-align:center"><span style="color:{sbt[8]}">{sbt[7]:+.2f}%</span></td>
-        </tr>
-        {_exp_subrow(sb)}
-        <tr>
-            <td style="color:#e67e22">SMC Sinyalleri</td>
-            <td style="text-align:center;color:#8a9bb0">{sst[0]+sst[1]+sst[2]+sst[3]}</td>
-            <td style="text-align:center;color:#27ae60">{sst[0]}</td>
-            <td style="text-align:center;color:#2ecc71">{sst[1]}</td>
-            <td style="text-align:center;color:#e74c3c">{sst[2]}</td>
-            <td style="text-align:center;color:#8a9bb0">{sst[3]}</td>
-            <td style="text-align:center"><span style="color:{sst[6]}">%{sst[5]}</span></td>
-            <td style="text-align:center"><span style="color:{sst[8]}">{sst[7]:+.2f}%</span></td>
-        </tr>
-        {_exp_subrow(ss)}
-        <tr style="border-top:2px solid #1a3050">
-            <td style="color:#c0cdd8;font-weight:bold">TOPLAM</td>
-            <td style="text-align:center;color:#8a9bb0;font-weight:bold">{st_tp2+st_tp1+st_stop+st_open}</td>
-            <td style="text-align:center;color:#27ae60;font-weight:bold">{st_tp2}</td>
-            <td style="text-align:center;color:#2ecc71;font-weight:bold">{st_tp1}</td>
-            <td style="text-align:center;color:#e74c3c;font-weight:bold">{st_stop}</td>
-            <td style="text-align:center;color:#8a9bb0">{st_open}</td>
-            <td style="text-align:center;font-weight:bold"><span style="color:{st_wrc}">%{st_wr}</span></td>
-            <td style="text-align:center;font-weight:bold"><span style="color:{st_pnlc}">{st_pnl:+.2f}%</span></td>
-        </tr>
-        {_exp_subrow(st_fake_b)}
-    </tbody></table></div>
-    </details>
-</div>"""
     type_rows = smc_type_rows + bot_type_rows
 
     shadow_rows = ""
@@ -2001,75 +1826,6 @@ def dashboard():
     </div>
     </details>
 </div>"""
-
-    # Alternatif senaryo bölümleri (SMC ve Bot altına eklenecek)
-    smc_a = perf.get("smc_alt", {})
-    bot_a = perf.get("bot_alt", {})
-
-    def _alt_cell(data, color, is_actual=False):
-        if not data or data.get("total", 0) == 0:
-            return '<td colspan="3" style="color:#3a4a5a;text-align:center">—</td>'
-        wr_c = "#2ecc71" if data.get("wr",0) >= 55 else ("#f39c12" if data.get("wr",0) >= 40 else "#e74c3c")
-        wlp = data.get("win_loss_pnl", data.get("pnl", 0))
-        ep  = data.get("expired_pnl", 0)
-        tp  = data.get("total_pnl", data.get("pnl", 0))
-        wlp_c = "#2ecc71" if wlp > 0 else ("#e74c3c" if wlp < 0 else "#8a9bb0")
-        ep_c  = "#2ecc71" if ep > 0 else ("#e74c3c" if ep < 0 else "#8a9bb0")
-        tp_c  = "#2ecc71" if tp > 0 else ("#e74c3c" if tp < 0 else "#8a9bb0")
-        return (f'<td style="text-align:center"><span style="color:#2ecc71">{data.get("wins",0)}</span></td>'
-                f'<td style="text-align:center"><span style="color:#e74c3c">{data.get("losses",0)}</span></td>'
-                f'<td style="text-align:center"><span style="color:#f39c12">{data.get("expired",0)}</span></td>'
-                f'<td style="text-align:center;font-weight:bold"><span style="color:{wr_c}">%{data.get("wr",0)}</span></td>'
-                f'<td style="text-align:center"><span style="color:{wlp_c}">{wlp:+.2f}%</span></td>'
-                f'<td style="text-align:center"><span style="color:{ep_c}">{ep:+.2f}%</span></td>'
-                f'<td style="text-align:center;font-weight:bold"><span style="color:{tp_c}">{tp:+.2f}%</span></td>')
-
-    _ALT_TH = ('<th style="text-align:center;color:#5a6a7a">Strateji</th>'
-               '<th style="text-align:center;color:#2ecc71">Win</th>'
-               '<th style="text-align:center;color:#e74c3c">Loss</th>'
-               '<th style="text-align:center;color:#f39c12">Exp</th>'
-               '<th style="text-align:center;color:#8a9bb0">WR</th>'
-               '<th style="text-align:center;color:#8a9bb0">W/L P&amp;L</th>'
-               '<th style="text-align:center;color:#8a9bb0">Exp P&amp;L</th>'
-               '<th style="text-align:center;color:#8a9bb0">Toplam P&amp;L</th>')
-
-    _smc_alt_section = ""
-    if smc_a and smc_a.get("actual", {}).get("total", 0) > 0:
-        _smc_alt_section = (
-            f'<div style="margin-top:10px;padding:10px 14px;background:#070d14;'
-            f'border:1px solid #1a2535;border-radius:4px">'
-            f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
-            f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
-            f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
-            f'<tr><td style="color:#9b59b6;white-space:nowrap">Gerçek (½TP1+½TP2)</td>'
-            f'{_alt_cell(smc_a.get("actual",{}), "#9b59b6", is_actual=True)}</tr>'
-            f'<tr><td style="color:#f39c12;white-space:nowrap">Sadece TP1 (sim)</td>'
-            f'{_alt_cell(smc_a.get("tp1_only",{}), "#f39c12")}</tr>'
-            f'<tr><td style="color:#3498db;white-space:nowrap">TP2 Direkt (sim)</td>'
-            f'{_alt_cell(smc_a.get("tp2_direct",{}), "#3498db")}</tr>'
-            f'</tbody></table></div>'
-            f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
-            f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
-            f'</div>'
-        )
-
-    _bot_alt_section = ""
-    if bot_a and bot_a.get("actual", {}).get("total", 0) > 0:
-        _bot_alt_section = (
-            f'<div style="margin-top:10px;padding:10px 14px;background:#070d14;'
-            f'border:1px solid #1a2535;border-radius:4px">'
-            f'<div style="font-size:.58rem;color:#4a5a6a;letter-spacing:1.5px;'
-            f'margin-bottom:10px;text-transform:uppercase">Acaba farklı çıkış olsaydı?</div>'
-            f'<div class="table-wrap"><table style="font-size:.7rem"><thead><tr>{_ALT_TH}</tr></thead><tbody>'
-            f'<tr><td style="color:#3498db;white-space:nowrap">Trailing %3 (gerçek)</td>'
-            f'{_alt_cell(bot_a.get("actual",{}), "#3498db", is_actual=True)}</tr>'
-            f'<tr><td style="color:#f39c12;white-space:nowrap">Tam TP1 (%100)</td>'
-            f'{_alt_cell(bot_a.get("tp1_only",{}), "#f39c12")}</tr>'
-            f'</tbody></table></div>'
-            f'<div style="font-size:.57rem;color:#2a3a4a;margin-top:5px">'
-            f'Peak/dip verisi üzerinden — kapanmış sinyaller</div>'
-            f'</div>'
-        )
 
     shadow_section = ""
     if shadow_rows:
@@ -2131,19 +1887,6 @@ def dashboard():
 
     expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
 
-    _note_smc = "SMC V2 çıkış: TP1'de %50 çıkılır (½TP1), kalan %50 TP2'yi bekler. Getiri = (½TP1 + ½final) ortalaması."
-    _note_bot = "Trailing stop %3 aktif (baştan itibaren) — TP1 milestone, TP2 hedef, peak'in %3 altında kapanır"
-    _no_data_msg = '<p style="color:#3a4a5a;font-size:.63rem;text-align:center;padding:14px 0;font-style:italic">Henüz kapanan sinyal yok</p>'
-    _smc_section_block = (
-        f'<div class="section"><details data-id="smc-alt"><summary>🟠 SMC SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</summary>'
-        f'<p class="note">{_note_smc}</p>'
-        f'{_smc_alt_section if _smc_alt_section else _no_data_msg}</details></div>'
-    )
-    _bot_section_block = (
-        f'<div class="section"><details data-id="bot-alt"><summary>🔵 BOT SİNYALLERİ — Acaba Farklı Çıkış Olsaydı?</summary>'
-        f'<p class="note">{_note_bot}</p>'
-        f'{_bot_alt_section if _bot_alt_section else _no_data_msg}</details></div>'
-    )
 
     _smc_eski_section = ""
     html = f"""<!DOCTYPE html>
@@ -2327,13 +2070,7 @@ function toggleType(key, btn) {{
     </details>
 </div>
 
-{_smc_section_block}
-
 {_smc_eski_section}
-
-{_bot_section_block}
-
-{_sim_section}
 
 {_analyzer_section}
 
