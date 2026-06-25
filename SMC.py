@@ -23,9 +23,8 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
-    btc_dt = "BTC DÜŞÜŞ 🔻" if btc_downtrend_cache.get("active") else "BTC YAPI OK ✅"
-    return (f"SMC v21 — Eski CHoCH V2 ≥2.0x | {boot_status} | {cached} coin cached | "
-            f"{btc_cr} | {btc_dt} | {ws_1h_closes} bar kapandı"), 200
+    return (f"SMC v21 — CHoCH V2 ≥3.0x | {boot_status} | {cached} coin cached | "
+            f"{btc_cr} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -43,7 +42,7 @@ TIMEFRAME        = "1h"
 MIN_VOLUME_24H   = float(os.getenv("MIN_VOLUME_24H", "5000000"))
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
-VOL_RATIO_MIN    = 2.0  # Hacim filtresi: son bar / 20 bar MA
+VOL_RATIO_MIN    = 3.0  # Hacim filtresi: son bar / 20 bar MA
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
@@ -476,10 +475,6 @@ def _analyze_symbol(symbol):
         if check_btc_crash():
             scan_stats["btc_crash_skip"] += 1
             return
-        if check_btc_downtrend_active():
-            scan_stats["btc_downtrend_skip"] += 1
-            return
-
         # CHoCH tespiti
         micro_break, micro_dir, _, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
 
@@ -661,7 +656,6 @@ async def periodic_summary():
         print(f"Hacim filtresi   : {scan_stats.get('vol_filter_skip', 0)}", flush=True)
         print(f"Cooldown skip    : {scan_stats.get('cooldown_skip', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
-        print(f"BTC düşüş skip   : {scan_stats.get('btc_downtrend_skip', 0)}", flush=True)
         print(f"Sinyal (V2)      : {scan_stats.get('signal_v2', 0)}", flush=True)
         print(f"------------------------\n", flush=True)
         scan_stats.clear()
@@ -678,14 +672,14 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v21 — Eski CHoCH V2 ≥2.0x Hacim")
+    print("🚀  SMC v21 — CHoCH V2 ≥3.0x Hacim | Downtrend filtresi: KAPALI")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
     print(f"  Min Hacim       : {MIN_VOLUME_24H/1e6:.0f}M USDT/24h (env: MIN_VOLUME_24H)")
-    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash/downtrend yok")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash yok")
     print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
     print(f"  TP Yapısı       : TP1=risk×1.0 (50%) | TP2=risk×2.0 (kapat)")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
