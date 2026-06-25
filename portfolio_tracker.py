@@ -392,19 +392,29 @@ def check_open_positions():
 
             close_reason_h = None; close_price_h = None; new_status_h = None; avg_pct = None
 
-            if low <= stop:
-                stop_pct = round((stop - entry) / entry * 100, 2)
-                avg_pct = round((tp1_pct + stop_pct) / 2, 2)
-                close_reason_h = "half_stop"; close_price_h = stop; new_status_h = "loss_half"
-                print(f"  🔴 HALF STOP: {symbol.replace('/USDT','')} | "
-                      f"TP1:{tp1_pct:+.2f}% + stop:{stop_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
-            elif tp2 and high >= tp2:
+            # TP1 sonrası %2.5 trailing stop (peak takibi peak_price'ta zaten yapılıyor)
+            SMC_HALF_TRAIL_PCT = 2.5
+            trail_stop = round(sig["peak_price"] * (1 - SMC_HALF_TRAIL_PCT / 100), 8)
+            trail_pct  = round((trail_stop - entry) / entry * 100, 2)
+
+            if tp2 and high >= tp2:
                 tp2_pct = round((tp2 - entry) / entry * 100, 2)
                 avg_pct = round((tp1_pct + tp2_pct) / 2, 2)
                 close_reason_h = "tp2"; close_price_h = tp2; new_status_h = "win_tp2"
                 sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
                 print(f"  🎯 HALF TP2 HIT: {symbol.replace('/USDT','')} | "
                       f"TP1:{tp1_pct:+.2f}% + TP2:{tp2_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
+            elif trail_stop > stop and low <= trail_stop:
+                avg_pct = round((tp1_pct + trail_pct) / 2, 2)
+                close_reason_h = "half_trail"; close_price_h = trail_stop; new_status_h = "win_trail"
+                print(f"  🟢 HALF TRAIL: {symbol.replace('/USDT','')} | "
+                      f"TP1:{tp1_pct:+.2f}% + trail:{trail_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
+            elif low <= stop:
+                stop_pct = round((stop - entry) / entry * 100, 2)
+                avg_pct = round((tp1_pct + stop_pct) / 2, 2)
+                close_reason_h = "half_stop"; close_price_h = stop; new_status_h = "loss_half"
+                print(f"  🔴 HALF STOP: {symbol.replace('/USDT','')} | "
+                      f"TP1:{tp1_pct:+.2f}% + stop:{stop_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
             else:
                 open_time = datetime.fromisoformat(sig["open_time"])
                 if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
