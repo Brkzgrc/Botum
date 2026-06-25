@@ -13,6 +13,15 @@
 - **claude_analyzer.py** — AKTİF üretim kodu (portfolio_tracker.py içinde çalışır, `/api/analyze` üzerinden bot.py sinyallerini değerlendirir)
 - **Değişiklikleri direkt main'e push et** — ayrı branch açma
 
+## Session İş Bölümü
+
+| Session | Görev |
+|---|---|
+| **Remote (bu session)** | Kod değişikliği, GitHub push, akıl danışma |
+| **Local (bilgisayar)** | TradingView analizi (MCP-Jackson), backtest çalıştırma |
+
+**Local session kesinlikle:** Kod değişikliği yapmaz, dosya düzenlemez, GitHub'a push etmez. Sadece okur, analiz eder, test çalıştırır.
+
 ## Servis URL'leri
 
 | Servis | URL |
