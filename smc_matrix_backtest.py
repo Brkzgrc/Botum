@@ -13,6 +13,8 @@ paper_backtest_chatgpt.py motoru üzerine — komisyon + slippage dahil.
 Kullanım:
   python smc_matrix_backtest.py --no-fetch   # mevcut cache kullan
   python smc_matrix_backtest.py              # Binance'den güncelle
+
+Not: Script çalıştıış dizine kaydeder — Yeni Klasör 2 içinden çalıştır.
 """
 
 import argparse, heapq, json, os, pickle, time
@@ -754,17 +756,14 @@ def main():
     end_s   = now.strftime("%Y%m%d")
     base    = f"smc_matrix_MULTI_{start_s}_{end_s}_{now_str}"
 
-    out_dir = "Yeni Klasör2"
-    os.makedirs(out_dir, exist_ok=True)
-
-    out_json = os.path.join(out_dir, base + ".json")
+    out_json = base + ".json"
     summary  = {k: {ek: ev for ek, ev in v.items() if ek != "equity"}
                 for k, v in results.items()}
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     print(f"\n✓ {out_json} kaydedildi")
 
-    out_html = os.path.join(out_dir, base + ".html")
+    out_html = base + ".html"
     with open(out_html, "w", encoding="utf-8") as f:
         f.write(generate_html(results, len(symbols)))
     print(f"✓ {out_html} kaydedildi\n")
