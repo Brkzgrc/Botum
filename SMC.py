@@ -1,3 +1,32 @@
+# ═══════════════════════════════════════════════════════════════
+#  SMC — CHoCH Bullish Sinyal Sistemi
+#  Kayıt: portfolio_tracker.py (source="smc-v2")
+# ───────────────────────────────────────────────────────────────
+#  SİNYAL KOŞULLARI
+#    • CHoCH Bullish (yapısal kırılım)
+#    • Hacim filtresi  : son bar / 20 bar MA ≥ 3.0x
+#    • 24h soğuma      : aynı coinde 24 saat tekrar yok
+#    • BTC crash filtresi aktif
+#
+#  STOP / TP
+#    • Stop   : yapısal düşük (CHoCH öncesi swing low)
+#    • TP1    : 1:1 risk/ödül
+#    • TP2    : 1:2 risk/ödül
+#
+#  OPTİMAL ÇIKIŞ STRATEJİSİ  (backtest: 2022-2026, 9175 işlem)
+#    exit_full_trail → %107.434 getiri | MaxDD -%9.85 | WR %68.9
+#    ┌─────────────────────────────────────────────────────────┐
+#    │  TP1'e ulaşınca: KAPATMA YOK — trailing aktifleşir     │
+#    │  Trailing stop : peak'ten -%2.5 geri çekilince çıkış   │
+#    │                                                         │
+#    │  Binance Trailing Stop Emri:                            │
+#    │    Activation Price = TP1                               │
+#    │    Callback Rate    = %2.5                              │
+#    └─────────────────────────────────────────────────────────┘
+#    Referans karşılaştırma:
+#      exit_half (½TP1 + ½trail) → %58.290 | MaxDD -%10.13
+# ═══════════════════════════════════════════════════════════════
+
 import asyncio
 import json
 import os
