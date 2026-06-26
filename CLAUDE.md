@@ -11,7 +11,7 @@
 - **Onay almadan kod yazma** — her implementasyon öncesi onay gerekli
 - **portfolio_tracker_PASİF.py** — sadece referans, üretim kodu değil
 - **claude_analyzer.py** — AKTİF üretim kodu (portfolio_tracker.py içinde çalışır, `/api/analyze` üzerinden bot.py sinyallerini değerlendirir)
-- **Değişiklikleri direkt main'e push et** — ayrı branch açma
+- **Değişiklikleri direkt main'e push et** — başka branch kesinlikle kullanılmaz
 
 ## Session İş Bölümü
 
@@ -30,7 +30,7 @@
 
 ## Geliştirme Branch
 
-Her değişiklik direkt **main**'e push edilir.
+Her değişiklik direkt **main**'e push edilir. Başka branch kullanılmaz, açılmaz.
 
 ## SMC Entegrasyonu (Bekleyen Görev)
 
