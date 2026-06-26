@@ -116,18 +116,22 @@ Telegram kanalına coin + timeframe yazınca anında analiz gelsin:
 
 ## Backtest / Analiz Çıktı Kuralı
 
-Her analiz/backtest çalıştırıldığında sonuç dosyası şu formatta adlandırılır:
+Her analiz/backtest çalıştırıldığında şu 2 dosya üretilir:
 
 ```
 {strateji}_{sembol}_{başlangıç}_{bitiş}_{timestamp}.json
+{strateji}_{sembol}_{başlangıç}_{bitiş}_{timestamp}.html
 ```
 
-Örnek: `panik_pump_BTCUSDT_20240101_20260624_20260624_1423.json`
+Örnek:
+```
+panik_pump_BTCUSDT_20240101_20260624_20260624_1423.json
+panik_pump_BTCUSDT_20240101_20260624_20260624_1423.html
+```
 
 **Kurallar:**
 - **TXT ÇIKTI KESİNLİKLE YASAK** — `.txt` dosyası hiçbir koşulda üretilmez
 - Çıktılar scriptin bulunduğu klasöre kaydedilir — **ayrı alt klasör açılmaz**
-- Her çalıştırma en fazla **2 dosya** üretir: `.json` (veri), `.html` (görsel rapor, isteğe bağlı)
 - Tarihler `YYYYMMDD` formatında
 - Timestamp (çalıştırma anı) `YYYYMMDD_HHMM` formatında — her çalıştırmayı ayırt eder
 - Aynı scripti iki kez çalıştırsan iki ayrı dosya seti oluşur, hiçbiri kaybolmaz
