@@ -114,27 +114,23 @@ Telegram kanalına coin + timeframe yazınca anında analiz gelsin:
 **Mimari:** Telegram webhook → Python handler → claude_analyzer → yanıt  
 **Durum:** Bekleyen fikir — önce mevcut sistemler olgunlaşsın
 
-## Backtest Dosya Kuralı
+## Backtest / Analiz Çıktı Kuralı
 
-Her backtest çalıştırıldığında sonuç dosyası şu formatta adlandırılır:
+Her analiz/backtest çalıştırıldığında sonuç dosyası şu formatta adlandırılır:
 
 ```
-{strateji}_{sembol}_{başlangıç}_{bitiş}_{timestamp}.txt
+{strateji}_{sembol}_{başlangıç}_{bitiş}_{timestamp}.json
 ```
 
-Örnek: `panik_pump_BTCUSDT_20240101_20260624_20260624_1423.txt`
+Örnek: `panik_pump_BTCUSDT_20240101_20260624_20260624_1423.json`
 
 **Kurallar:**
-- Tüm backtest çıktıları `YeniKlasör2/` altına kaydedilir, **üzerine yazılmaz**
-- Her çalıştırma **3 dosya** üretir: `.txt` (özet), `.json` (ham veri), `.html` (görsel)
+- **TXT ÇIKTI KESİNLİKLE YASAK** — `.txt` dosyası hiçbir koşulda üretilmez
+- Çıktılar scriptin bulunduğu klasöre kaydedilir — **ayrı alt klasör açılmaz**
+- Her çalıştırma en fazla **2 dosya** üretir: `.json` (veri), `.html` (görsel rapor, isteğe bağlı)
 - Tarihler `YYYYMMDD` formatında
 - Timestamp (çalıştırma anı) `YYYYMMDD_HHMM` formatında — her çalıştırmayı ayırt eder
-- Aynı stratejiyi iki kez çalıştırsan iki ayrı dosya seti oluşur, hiçbiri kaybolmaz
-- Dosya içinin ilk satırı dosya adıyla birebir uyumlu başlık içerir:
-
-```
-=== panik_pump | BTCUSDT | 2024-01-01 → 2026-06-24 | Çalıştırma: 2026-06-24 14:23 ===
-```
+- Aynı scripti iki kez çalıştırsan iki ayrı dosya seti oluşur, hiçbiri kaybolmaz
 
 ## Claude Analyzer (claude_analyzer.py)
 
