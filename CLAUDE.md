@@ -75,9 +75,9 @@ ROCKET        → sinyal → Telegram (PUMP_PROBABILITY_TOKEN, ayrı thread)
 ## Aktif Sistemler (bot.py)
 
 1. **PANİK PUMP** — Kapitülasyon mean reversion | Stop -3% | TP +5/10/15% | WR ~%84
-2. **T24** — DEVRE DIŞI
-3. **ORTA VADE T72** — Stop -5% | TP +10% | WR %54
-4. **UZUN VADE T168** — Stop -8% | TP +25% | WR %40
+2. **T24** — DEVRE DIŞI (2026-05-26, WR %10, ret -%1.7)
+3. **ORTA VADE T72** — DEVRE DIŞI (2026-06-18, WR %27, ret -%5.7)
+4. **UZUN VADE T168** — DEVRE DIŞI (2026-06-18, WR %32, ret +%2.2)
 5. **ROCKET** — Momentum devam + hacim artışı | Stop -5% | TP +8/15/25%
 
 ## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
