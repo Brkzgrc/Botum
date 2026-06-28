@@ -564,7 +564,7 @@ def calc_performance():
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
             type_key = f"SMC-M {phase_label}"
         elif source == "smc-v2":
-            type_key = "SMC V2"
+            type_key = "SMC CHoCH ROC"
         elif source in ("smc", "smc-original"):
             phase = sig.get('phase', '')
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
