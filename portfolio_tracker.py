@@ -51,7 +51,12 @@ FULL_TRAIL_SOURCES  = {"smc-v2"}
 SMC_FULL_TRAIL_PCT  = 2.5
 
 # Kaldırılmış sinyal tipleri (sig_type) — DB'de kalır ama UI'da gösterilmez.
-HIDDEN_SIG_TYPES = ("pump_probability", "pump_prob", "pump_watch")
+HIDDEN_SIG_TYPES = (
+    "pump_probability", "pump_prob", "pump_watch",   # eski PUMP_PROBABILITY sistemi
+    "panik_pump",                                     # eski PANİK PUMP sistemi (2026-06-28 kaldırıldı)
+    "rocket",                                         # eski ROCKET sistemi
+    "t24", "t72", "t168",                            # eski T24/T72/T168 sistemleri
+)
 
 # Kaldırılmış sinyal kaynakları (source) — DB'de kalır ama UI'da gösterilmez.
 # smc-eski-choch-v2: smc-v2 öncülü, gelecekte analyzer için saklanıyor.
@@ -1617,7 +1622,7 @@ def type_badge(sig):
         "trend":            "#3498db",
         "birikim":          "#9b59b6",
         "tp":               "#e67e22",
-        "pump":             "#ff8c00",
+        "pump":             "#ff4444",
         "panik_pump":       "#ff4444",
         "pump_kisa":        "#ff8800",
         "pump_orta":        "#ffcc00",
