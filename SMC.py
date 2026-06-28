@@ -5,6 +5,7 @@
 #  SİNYAL KOŞULLARI
 #    • CHoCH Bullish (yapısal kırılım)
 #    • Hacim filtresi  : son bar / 20 bar MA ≥ 3.0x
+#    • ROC filtresi    : 16H ROC ≥ %8 (son 16 mum kapanış değişimi)
 #    • 24h soğuma      : aynı coinde 24 saat tekrar yok
 #    • BTC crash filtresi aktif
 #
@@ -13,8 +14,9 @@
 #    • TP1    : 1:1 risk/ödül
 #    • TP2    : 1:2 risk/ödül
 #
-#  OPTİMAL ÇIKIŞ STRATEJİSİ  (backtest: 2022-2026, 9175 işlem)
-#    exit_full_trail → %107.434 getiri | MaxDD -%9.85 | WR %68.9
+#  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥3x)
+#    ROC filtreli  → WR %83.0 | MaxDD -%7.23  | 2,172 sinyal
+#    ROC filtresiz → WR %70.5 | MaxDD -%13.28 | 9,791 sinyal
 #    ┌─────────────────────────────────────────────────────────┐
 #    │  TP1'e ulaşınca: KAPATMA YOK — trailing aktifleşir     │
 #    │  Trailing stop : peak'ten -%2.5 geri çekilince çıkış   │
@@ -23,8 +25,6 @@
 #    │    Activation Price = TP1                               │
 #    │    Callback Rate    = %2.5                              │
 #    └─────────────────────────────────────────────────────────┘
-#    Referans karşılaştırma:
-#      exit_half (½TP1 + ½trail) → %58.290 | MaxDD -%10.13
 # ═══════════════════════════════════════════════════════════════
 
 import asyncio
@@ -52,7 +52,7 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
-    return (f"SMC v21 — CHoCH V2 ≥3.0x | {boot_status} | {cached} coin cached | "
+    return (f"SMC v22 — CHoCH+ROC≥8%+vol≥3x | {boot_status} | {cached} coin cached | "
             f"{btc_cr} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -68,7 +68,6 @@ PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TIMEFRAME        = "1h"
-MIN_VOLUME_24H   = float(os.getenv("MIN_VOLUME_24H", "5000000"))
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
 VOL_RATIO_MIN    = 3.0  # Hacim filtresi: son bar / 20 bar MA
@@ -309,11 +308,7 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
 def get_clean_symbols():
     try:
         exchange.load_markets()
-        # Hacim verisi için tüm ticker'ları çek
-        print("📊 24h hacimleri çekiliyor (volume filtresi)...", flush=True)
-        tickers = exchange.fetch_tickers()
         result = []
-        filtered_vol = 0
         for symbol, market in exchange.markets.items():
             if not (market["spot"] and market["active"] and symbol.endswith("/USDT")):
                 continue
@@ -322,14 +317,8 @@ def get_clean_symbols():
             base = symbol.split("/")[0]
             if any(x in base for x in ["UP", "DOWN", "BULL", "BEAR"]):
                 continue
-            # Hacim filtresi (MIN_VOLUME_24H env variable)
-            ticker = tickers.get(symbol, {})
-            vol = ticker.get("quoteVolume") or 0
-            if vol < MIN_VOLUME_24H:
-                filtered_vol += 1
-                continue
             result.append(symbol)
-        print(f"  → Hacim filtresi ({MIN_VOLUME_24H/1e6:.0f}M): {filtered_vol} coin elendi", flush=True)
+        print(f"  → {len(result)} aktif USDT spot coin (ROC filtresi bar kapanışında uygulanır)", flush=True)
         return result
     except Exception as e:
         print(f"[HATA] Piyasa verisi: {e}")
@@ -521,6 +510,17 @@ def _analyze_symbol(symbol):
             scan_stats["vol_filter_skip"] += 1
             return
 
+        # ROC filtresi: son 16 saat değişimi >= %8
+        if len(df) >= 17:
+            prev_close = float(df["close"].iloc[-17])
+            curr_close = float(df["close"].iloc[-1])
+            roc_16h = (curr_close - prev_close) / prev_close * 100.0 if prev_close > 0 else 0.0
+        else:
+            roc_16h = 0.0
+        if roc_16h < 8.0:
+            scan_stats["roc_filter_skip"] += 1
+            return
+
         # Cooldown kontrolü (24 saat)
         last_sent = get_last_sent(symbol, "choch_v2", "smc-v2")
         if now - last_sent < PHASE2_COOLDOWN:
@@ -683,6 +683,7 @@ async def periodic_summary():
         print(f"WS bar kapandı   : {ws_1h_closes}", flush=True)
         print(f"CHoCH yok        : {scan_stats.get('no_choch', 0)}", flush=True)
         print(f"Hacim filtresi   : {scan_stats.get('vol_filter_skip', 0)}", flush=True)
+        print(f"ROC filtresi     : {scan_stats.get('roc_filter_skip', 0)}", flush=True)
         print(f"Cooldown skip    : {scan_stats.get('cooldown_skip', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
         print(f"Sinyal (V2)      : {scan_stats.get('signal_v2', 0)}", flush=True)
@@ -701,16 +702,15 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v21 — CHoCH V2 ≥3.0x Hacim | Downtrend filtresi: KAPALI")
+    print("🚀  SMC v22 — CHoCH + ROC≥8% + vol≥3x")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
-    print(f"  Min Hacim       : {MIN_VOLUME_24H/1e6:.0f}M USDT/24h (env: MIN_VOLUME_24H)")
-    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash yok")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + 16H ROC≥8% + BTC crash yok")
     print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
-    print(f"  TP Yapısı       : TP1=risk×1.0 (50%) | TP2=risk×2.0 (kapat)")
+    print(f"  TP Yapısı       : TP1=risk×1.0 | TP2=risk×2.0")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
     print("=" * 60 + "\n")
 
@@ -724,7 +724,7 @@ async def main():
             await asyncio.sleep(5)
 
     symbols = get_clean_symbols()
-    print(f"{len(symbols)} coin bulundu (hacim filtresi sonrası)", flush=True)
+    print(f"{len(symbols)} coin bulundu", flush=True)
 
     if not symbols:
         print("⚠️ Coin listesi boş! 30 saniye bekleyip tekrar denenecek.", flush=True)
