@@ -1613,9 +1613,10 @@ def type_badge(sig):
     if source in SMC_MAIN_SOURCES:
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
+        if source == "smc-v2":
+            return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">SMC CHoCH ROC</span>'
         src_label = ("SMC-T" if source == "smc-trailing" else
-                      "SMC-M" if source == "smc-momentum" else
-                      "SMC V2" if source == "smc-v2" else "SMC")
+                      "SMC-M" if source == "smc-momentum" else "SMC")
         return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{src_label} {phase_label}</span>'
     colors = {
         "dip":              "#2ecc71",
