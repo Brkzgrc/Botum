@@ -6,7 +6,8 @@ Senaryo A — Mevcut : MIN_VOL_24H=2.5M USDT filtresi, ROC yok
 Senaryo B — ROC    : MIN_VOL_24H yok, 16H ROC >= %8 filtresi
 
 Her iki senaryo için aynı çıkış stratejisi:
-  half → TP1'de %50 çıkış + %2.5 trailing
+  exit_full_trail → TP1 trailing aktivasyonu, tam çıkış + %2.5 trailing
+  (SMC.py production ile birebir — WR %68.9, +%107 getiri)
 
 Kullanım:
   python smc_roc_comparison.py              # cache varsa kullan
@@ -278,13 +279,13 @@ def collect_signals(symbols, btc_filters, fetch=True, use_roc=False):
     return result
 
 
-# ─── ÇIKIŞ (half: TP1 %50 + %2.5 trailing) ───────────────────────────────────
-def exit_half(sig, pos_size):
+# ─── ÇIKIŞ (full_trail: TP1 trailing aktivasyonu, tam pozisyon çıkışı) ──────────
+# SMC.py production stratejisiyle birebir — TP1 kısmi çıkış YOK
+def exit_full_trail(sig, pos_size):
     entry=sig["entry"]; stop=sig["stop"]; tp1=sig["tp1"]; tp2=sig["tp2"]
     rows=sig["future"]; expire_h=sig.get("expire_h", EXPIRE_H)
     eff_entry = entry * (1 + SLIPPAGE)
     sp  = (stop - eff_entry) / eff_entry
-    t1p = (tp1  - eff_entry) / eff_entry
     t2p = (tp2  - eff_entry) / eff_entry
     peak = entry; tp1_hit = False
     for ts, row in rows.iloc[:expire_h].iterrows():
@@ -295,15 +296,14 @@ def exit_half(sig, pos_size):
         else:
             if h > peak: peak = h
             trail = peak * (1 - SMC_TRAIL_PCT / 100)
-            if h >= tp2:  return ts, pos_size*(1+(t1p+t2p)/2)*(1-FEE_RATE), "tp2"
+            if h >= tp2:  return ts, pos_size*(1+t2p)*(1-FEE_RATE), "tp2"
             if l <= trail:
                 trail_pct = (trail - eff_entry) / eff_entry
-                return ts, pos_size*(1+(t1p+trail_pct)/2)*(1-FEE_RATE), "trail"
+                return ts, pos_size*(1+trail_pct)*(1-FEE_RATE), "trail"
     if len(rows) > 0:
         idx = min(expire_h-1, len(rows)-1)
         last_pct = (float(rows.iloc[idx]["close"]) - eff_entry) / eff_entry
-        ret = (t1p + last_pct) / 2 if tp1_hit else last_pct
-        return rows.index[idx], pos_size*(1+ret)*(1-FEE_RATE), "expire"
+        return rows.index[idx], pos_size*(1+last_pct)*(1-FEE_RATE), "expire"
     return sig["entry_time"], pos_size*(1-FEE_RATE), "no_data"
 
 
@@ -329,7 +329,7 @@ def simulate_portfolio(signals):
             if open_count > max_open: max_open = open_count
             trade_id = counter; counter += 1
             open_positions[trade_id] = pos_size
-            exit_ts, cash_ret, label = exit_half(sig, pos_size)
+            exit_ts, cash_ret, label = exit_full_trail(sig, pos_size)
             heapq.heappush(queue,(exit_ts.timestamp(),0,counter,"exit",{
                 "trade_id":trade_id,"symbol":sig["symbol"],
                 "entry_time":sig["entry_time"],"entry":sig["entry"],
@@ -404,7 +404,7 @@ def print_report(results):
     W = 130
     print("\n" + "═"*W)
     print(f"  SMC ROC KARŞILAŞTIRMA | ${INITIAL_CAP:,.0f} başlangıç | Maks {MAX_POSITIONS} poz | ${MAX_POS_SIZE:,.0f} maks | Komisyon %{FEE_RATE*100:.1f} | Slippage %{SLIPPAGE*100:.2f}")
-    print(f"  Çıkış: TP1 %50 + %{SMC_TRAIL_PCT} trailing | Expire: {EXPIRE_H}H | Cooldown: {COOLDOWN_H}H")
+    print(f"  Çıkış: TP1 trailing aktivasyonu + %{SMC_TRAIL_PCT} trailing (tam çıkış) | Expire: {EXPIRE_H}H | Cooldown: {COOLDOWN_H}H")
     print("═"*W)
     print(f"  {'Senaryo':<38} {'Sinyal':>7} {'Trade':>6} {'Kazanç':>7} {'Stop':>6} {'Expire':>7} {'WR%':>6} {'AvgWin':>8} {'AvgLoss':>8} {'MaxDD':>7} {'Getiri':>8} {'Son $':>10}")
     print("─"*W)
@@ -477,7 +477,7 @@ button:hover{{background:#30363d}}
 <div class="meta">
   {run_date} | {n_coins} coin | 1H Binance | 2022→bugün | ${INITIAL_CAP:,.0f} başlangıç<br>
   Mevcut: MIN_VOL_24H={MIN_VOL_24H_CURRENT/1e6:.0f}M USDT | ROC: 16H ROC≥{ROC_16H_MIN:.0f}% (MIN_VOL yok)<br>
-  Çıkış: TP1 %50 çıkış + %{SMC_TRAIL_PCT} trailing stop | Expire: {EXPIRE_H}H | Cooldown: {COOLDOWN_H}H
+  Çıkış: TP1 trailing aktivasyonu + %{SMC_TRAIL_PCT} trailing (tam çıkış) | Expire: {EXPIRE_H}H | Cooldown: {COOLDOWN_H}H
 </div>
 <div class="card"><table>
 <thead><tr>
