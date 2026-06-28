@@ -52,7 +52,7 @@ PUMP_MA50_BARS   = 50      # 4h MA50 periyodu
 PUMP_ROC_PERIOD  = 4       # 4h ROC bar sayısı
 PUMP_ROC_MIN     = 24.0    # 4h ROC minimum %
 PUMP_TP_PCT      = 20.0    # Take profit %
-PUMP_SL_PCT      = 5.0     # Stop loss %
+PUMP_SL_PCT      = 7.0     # Stop loss %
 PUMP_EXPIRE_H    = 6       # Pozisyon expire süresi (saat) — 6h timeout (backtest ile uyumlu)
 PUMP_COOLDOWN_H  = int(os.getenv("PUMP_COOLDOWN_H", "24"))  # Cooldown (saat)
 
