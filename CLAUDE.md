@@ -81,7 +81,7 @@ SMC.py        → sinyal → kendi Telegram botu
 | CRASH_MAX | Kapitülasyon sistemi kaldırıldı |
 | VOL_MIN | Kapitülasyon sistemi kaldırıldı |
 | VOL_MAX | Kapitülasyon sistemi kaldırıldı |
-| MIN_LIQUIDITY | Hardcode edildi (500k USDT) |
+| MIN_LIQUIDITY | Kaldırıldı — backtest'te hacim filtresi yoktu |
 
 ## Aktif Sistemler (bot.py)
 

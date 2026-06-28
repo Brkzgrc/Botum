@@ -57,7 +57,6 @@ PUMP_EXPIRE_H    = 6       # Pozisyon expire süresi (saat) — 6h timeout (back
 PUMP_COOLDOWN_H  = int(os.getenv("PUMP_COOLDOWN_H", "24"))  # Cooldown (saat)
 
 # Genel
-MIN_LIQUIDITY    = 500_000   # Minimum günlük hacim (USDT) — sembol havuzu için
 MAX_SYMBOLS      = int(os.getenv("MAX_SYMBOLS",      "0"))
 TRAILING_PCT     = float(os.getenv("TRAILING_PCT",   "0.03"))   # %3 trailing stop
 TRAILING_MIN_GAIN = float(os.getenv("TRAILING_MIN_GAIN", "0.0"))
@@ -164,33 +163,8 @@ async def load_symbols_pool():
         and s not in IGNORED_COINS
         and not any(s.replace("/USDT", "").endswith(p) for p in LEVERAGED_PATTERNS)
     ]
-    volumes = {}
-    for i in range(0, len(syms), 100):
-        try:
-            res = await api_gate.call(exchange_spot.fetch_tickers, syms[i:i+100])
-            for k, v in (res or {}).items():
-                vol = float(v.get("quoteVolume", 0) or 0)
-                if vol > 0:
-                    volumes[k] = vol
-        except Exception:
-            pass
-        await asyncio.sleep(0.5)
-    missing = [s for s in syms if volumes.get(s, 0) == 0]
-    for sym in missing[:50]:
-        try:
-            ticker = await api_gate.call(exchange_spot.fetch_ticker, sym)
-            vol = float(ticker.get("quoteVolume", 0) or 0)
-            if vol > 0:
-                volumes[sym] = vol
-        except Exception:
-            pass
-        await asyncio.sleep(0.05)
-    filtered = sorted(
-        [s for s in syms if volumes.get(s, 0) >= MIN_LIQUIDITY],
-        key=lambda x: volumes.get(x, 0), reverse=True
-    )
-    print(f"Sembol: {len(syms)} → {len(filtered)} (min {MIN_LIQUIDITY/1e6:.1f}M USDT)", flush=True)
-    return filtered[:MAX_SYMBOLS] if MAX_SYMBOLS else filtered
+    print(f"Sembol havuzu: {len(syms)} aktif USDT çifti", flush=True)
+    return syms[:MAX_SYMBOLS] if MAX_SYMBOLS else syms
 
 # ============================================================
 # VERİ ÇEKME
