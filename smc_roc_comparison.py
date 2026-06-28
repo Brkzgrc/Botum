@@ -36,7 +36,7 @@ SMC_TRAIL_PCT   = 2.5
 
 # Senaryo parametreleri
 MIN_VOL_24H_CURRENT = 2_500_000   # Mevcut: 2.5M USDT (SMC.py env: MIN_VOLUME_24H)
-VOL_RATIO_MIN       = 2.0
+VOL_RATIO_MIN       = 3.0  # SMC.py ile aynı
 ROC_16H_MIN         = 8.0         # ROC senaryosu: 16H ROC >= %8
 
 START_TS = int(_dt.datetime(2021, 1, 1, tzinfo=_dt.timezone.utc).timestamp() * 1000)
