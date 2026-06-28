@@ -296,7 +296,32 @@ def exit_half(sig, pos_size):
     return sig["entry_time"], pos_size*(1-FEE_RATE), "no_data"
 
 
-EXIT_FNS = {"half": exit_half, "tp1": exit_tp1, "tp2": exit_tp2}
+def exit_full_trail(sig, pos_size):
+    entry=sig["entry"]; stop=sig["stop"]; tp1=sig["tp1"]; tp2=sig["tp2"]
+    rows=sig["future"]; expire_h=sig.get("expire_h",EXPIRE_H)
+    eff_entry = entry * (1 + SLIPPAGE)
+    sp=(stop-eff_entry)/eff_entry; t2p=(tp2-eff_entry)/eff_entry
+    peak=entry; tp1_hit=False
+    for ts,row in rows.iloc[:expire_h].iterrows():
+        h=float(row["high"]); l=float(row["low"])
+        if not tp1_hit:
+            if l<=stop: return ts, pos_size*(1+sp)*(1-FEE_RATE), "stop"
+            if h>=tp1: tp1_hit=True; peak=max(entry,h)
+        else:
+            if h>peak: peak=h
+            trail=peak*(1-SMC_TRAIL_PCT/100)
+            if h>=tp2: return ts, pos_size*(1+t2p)*(1-FEE_RATE), "tp2"
+            if l<=trail:
+                trail_pct=(trail-eff_entry)/eff_entry
+                return ts, pos_size*(1+trail_pct)*(1-FEE_RATE), "trail"
+    if len(rows)>0:
+        idx=min(expire_h-1,len(rows)-1)
+        last_pct=(float(rows.iloc[idx]["close"])-eff_entry)/eff_entry
+        return rows.index[idx], pos_size*(1+last_pct)*(1-FEE_RATE), "expire"
+    return sig["entry_time"], pos_size*(1-FEE_RATE), "no_data"
+
+
+EXIT_FNS = {"half": exit_half, "tp1": exit_tp1, "tp2": exit_tp2, "full_trail": exit_full_trail}
 
 
 # ─── SİNYAL TOPLAMA (sadece eski_v2) ───────────────────────────────────────────────────────────────────────
@@ -333,7 +358,7 @@ def collect_smc_signals(symbols, btc_filters, fetch=True):
             if np.isnan(vol24[i]) or vol24[i] < MIN_VOL_24H: continue
 
             vr = float(volr20[i]) if not np.isnan(volr20[i]) else 0.0
-            if vr < 2.0: continue
+            if vr < 3.0: continue
 
             if not (bts[i]=="CHoCH" and bds[i]=="BULLISH"): continue
             if not bool(btc_al["crash_ok"].iloc[i]): continue
@@ -466,8 +491,9 @@ def system_stats(trade_log, equity_pts):
 
 # ─── SENARYO TANIMI ────────────────────────────────────────────────────────────────────────────
 SCENARIO_META = [
-    ("smc_tp2",  "eski_v2", "tp2",  "SMC V2", "TP2 ONLY"),
-    ("smc_half", "eski_v2", "half", "SMC V2", "TP1 50% + TRAIL 2.5%"),
+    ("smc_full_trail", "eski_v2", "full_trail", "SMC V2", "TP1 TRAIL AKTİV + TAM ÇIKIŞ 2.5%"),
+    ("smc_half",       "eski_v2", "half",       "SMC V2", "TP1 50% + TRAIL 2.5%"),
+    ("smc_tp2",        "eski_v2", "tp2",        "SMC V2", "TP2 ONLY"),
 ]
 
 PALETTE = ["#e63946","#457b9d","#2a9d8f","#e9c46a","#264653"]
