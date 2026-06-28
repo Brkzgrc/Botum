@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-pump_scanner_v6_20260526.py
+pump_scanner_v7_20260627.py
 ════════════════════════════════════════════════════════
-4 SİSTEM — TEK BOT  (T24 devre dışı)
+PUMP SİSTEMİ — TEK SİNYAL, ÇOK ZAMAN DİLİMİ
 
-SİSTEM 1: PANİK PUMP (Kapitülasyon)
-  Crash barı: -15% ile -7% | Hacim 1.5-3x
-  Stop: -3% | TP: +5/+10/+15% | Backtest WR: ~%84
+Koşullar (her 1h kapanışında kontrol edilir):
+  1. 15m vol spike  : son 4x15m mumda max_vol / 20-bar medyan ≥ 15x
+  2. 15m getiri     : son 4x15m mumdaki max getiri ≥ 5% ve < 20%
+  3. 1h vol spike   : 1h vol / 20-bar medyan ≥ 5x
+  4. 4h trend       : close_4h > MA50(4h)
+  5. 4h ROC         : ROC(4h close, 4 bar) ≥ 24%
 
-SİSTEM 2: PUMP SİNYALİ — KISA VADE (T24)  *** DEVRE DIŞI ***
-
-SİSTEM 3: PUMP SİNYALİ — ORTA VADE (T72)  *** DEVRE DIŞI ***
-
-SİSTEM 4: PUMP SİNYALİ — UZUN VADE (T168)  *** DEVRE DIŞI ***
+Stop: -5% | TP: +20% | Max Hold: 24h | Cooldown: 24h
+Backtest WR: ~%91 | Beklenti: ~+19% / işlem
 ════════════════════════════════════════════════════════
 """
 
@@ -35,33 +35,36 @@ from flask import Flask
 # ============================================================
 # AYARLAR
 # ============================================================
-BINANCE_API_KEY         = os.getenv("BINANCE_API_KEY",         "")
-BINANCE_API_SECRET      = os.getenv("BINANCE_API_SECRET",      "")
-TELEGRAM_TOKEN          = os.getenv("TELEGRAM_TOKEN",          "")
-TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID",        "")
-PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL",           "")
-PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
-ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
-PUMP_PROBABILITY_TOKEN  = os.getenv("PUMP_PROBABILITY_TOKEN",  "")
-ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
+BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY",    "")
+BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN",     "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "")
+PORTFOLIO_URL      = os.getenv("PORTFOLIO_URL",       "")
+PORTFOLIO_TOKEN    = os.getenv("PORTFOLIO_TOKEN",     "")
+ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY",  "")
 
-# Sistem 1 — Kapitülasyon parametreleri
-CRASH_MIN    = float(os.getenv("CRASH_MIN",    "-15.0"))
-CRASH_MAX    = float(os.getenv("CRASH_MAX",    "-7.0"))
-VOL_MIN      = float(os.getenv("VOL_MIN",      "1.5"))
-VOL_MAX      = float(os.getenv("VOL_MAX",      "3.0"))
-VOL_PERIOD   = int(os.getenv("VOL_PERIOD",     "20"))
+# PUMP sinyal parametreleri
+PUMP_VR15_MIN    = 15.0    # 15m vol spike — 20-bar medyan katsayısı
+PUMP_RET15_MIN   = 5.0     # 15m getiri alt sınır %
+PUMP_RET15_MAX   = 20.0    # 15m getiri üst sınır % (filtre)
+PUMP_VR1H_MIN    = 5.0     # 1h vol spike — 20-bar medyan katsayısı
+PUMP_MA50_BARS   = 50      # 4h MA50 periyodu
+PUMP_ROC_PERIOD  = 4       # 4h ROC bar sayısı
+PUMP_ROC_MIN     = 24.0    # 4h ROC minimum %
+PUMP_TP_PCT      = 20.0    # Take profit %
+PUMP_SL_PCT      = 5.0     # Stop loss %
+PUMP_EXPIRE_H    = 24      # Pozisyon expire süresi (saat)
+PUMP_COOLDOWN_H  = int(os.getenv("PUMP_COOLDOWN_H", "24"))  # Cooldown (saat)
 
 # Genel
-MIN_LIQUIDITY         = float(os.getenv("MIN_LIQUIDITY",         "1000000"))
-MAX_SYMBOLS           = int(os.getenv("MAX_SYMBOLS",             "0"))
-SIGNAL_COOLDOWN_HOURS = int(os.getenv("SIGNAL_COOLDOWN_HOURS",   "4"))
-PUMP_COOLDOWN_HOURS   = int(os.getenv("PUMP_COOLDOWN_HOURS",     "4"))
-TRAILING_PCT          = float(os.getenv("TRAILING_PCT",          "0.03"))  # %3 trailing stop
-TRAILING_MIN_GAIN     = float(os.getenv("TRAILING_MIN_GAIN",     "0.0"))   # ilk andan itibaren aktif
-WS_STREAM_CHUNK       = int(os.getenv("WS_STREAM_CHUNK",         "120"))
-BOOTSTRAP_BARS        = int(os.getenv("BOOTSTRAP_BARS",          "750"))
-KEEP_BARS             = int(os.getenv("KEEP_BARS",               "720"))
+MIN_LIQUIDITY    = 500_000   # Minimum günlük hacim (USDT) — sembol havuzu için
+MAX_SYMBOLS      = int(os.getenv("MAX_SYMBOLS",      "0"))
+TRAILING_PCT     = float(os.getenv("TRAILING_PCT",   "0.03"))   # %3 trailing stop
+TRAILING_MIN_GAIN = float(os.getenv("TRAILING_MIN_GAIN", "0.0"))
+WS_STREAM_CHUNK  = int(os.getenv("WS_STREAM_CHUNK",  "120"))
+BOOTSTRAP_BARS   = int(os.getenv("BOOTSTRAP_BARS",   "750"))
+KEEP_BARS        = int(os.getenv("KEEP_BARS",         "720"))
+VOL_PERIOD       = 20
 
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -89,21 +92,16 @@ ws_1h_closes    = 0
 tracked_symbols = []
 signal_counter  = 0
 
-bars_1h:        dict = {}
-bars_15m:       dict = {}
-bars_4h:        dict = {}
-bars_1d:        dict = {}
-funding_cache:  dict = {}
-last_signal_ts:  dict = {}
-last_pump_ts:    dict = {}
-last_rocket_ts: dict = {}
-all_signals:     list = []
-btc_4h_cache:   dict = {"trend": "?", "ema50": None, "close": None, "updated": None}
+bars_1h:   dict = {}
+bars_15m:  dict = {}
+bars_4h:   dict = {}
+bars_1d:   dict = {}
+last_pump_ts:   dict = {}
+all_signals:    list = []
 heartbeat = {"last": "", "epoch": time.time(), "symbol": "?"}
 bot_status = {"status": "BOOT"}
 _recent_signal_times:    list = []
 _secondary_bootstrap_done = False
-_dominance_cache: dict = {"data": None, "updated": 0}
 
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
@@ -150,11 +148,6 @@ exchange_spot = ccxt.binance({
     "apiKey":  BINANCE_API_KEY    or None,
     "secret":  BINANCE_API_SECRET or None,
     "options": {"defaultType": "spot", "adjustForTimeDifference": True},
-    "enableRateLimit": True,
-    "timeout": 15000,
-})
-exchange_fut = ccxt.binance({
-    "options": {"defaultType": "future", "adjustForTimeDifference": True},
     "enableRateLimit": True,
     "timeout": 15000,
 })
@@ -216,322 +209,117 @@ def prepare_bars(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
 
-    # --- Mevcut göstergeler (Sistem 1) ---
-    df["vol_ma"] = v.rolling(VOL_PERIOD).mean()
-    tr        = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    df["atr"] = tr.ewm(alpha=1/14, adjust=False).mean()
+    df["vol_ma"]     = v.rolling(VOL_PERIOD).mean()
+    tr               = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    df["atr"]        = tr.ewm(alpha=1/14, adjust=False).mean()
     df["atr_pct"]    = df["atr"] / c * 100
     df["ema50"]      = c.ewm(span=50,  adjust=False).mean()
     df["ema200"]     = c.ewm(span=200, adjust=False).mean()
     df["close_prev"] = c.shift(1)
 
-    # --- Yeni göstergeler (Sistem 2-3-4) ---
-    ema21  = c.ewm(span=21,  adjust=False).mean()
-    ma50   = c.rolling(50).mean()
-    ma200  = c.rolling(200).mean()
-
-    df["ema21"]      = ema21
-    df["dist_ema21"] = (c - ema21)  / ema21.replace(0, np.nan)  * 100
-    df["dist_ma50"]  = (c - ma50)   / ma50.replace(0, np.nan)   * 100
-    df["dist_ma200"] = (c - ma200)  / ma200.replace(0, np.nan)  * 100
-    df["ma200_slope"]= (ma200 - ma200.shift(20)) / ma200.shift(20).abs().replace(0, np.nan) * 100
-
-    bb_mid = c.rolling(20).mean()
-    bb_std = c.rolling(20).std()
-    bb_up  = bb_mid + 2 * bb_std
-    bb_dn  = bb_mid - 2 * bb_std
-    bb_w   = (bb_up - bb_dn) / bb_mid.replace(0, np.nan)
-    df["bb_width"]     = bb_w
-    df["bb_width_ch3"] = bb_w.diff(3)
-
-    df["mom5_pct"]  = (c - c.shift(5))  / c.shift(5).abs().replace(0, np.nan)  * 100
-    df["mom10_pct"] = (c - c.shift(10)) / c.shift(10).abs().replace(0, np.nan) * 100
-
-    # Coin drawdown: yüksekten ne kadar uzakta (%)
-    roll_max = c.rolling(KEEP_BARS, min_periods=50).max()
-    df["coin_drawdown"] = (c - roll_max) / roll_max.replace(0, np.nan) * 100
-
-    # Son ATH'dan bu yana kaç bar geçti
-    bar_idx       = pd.Series(np.arange(len(c), dtype=float), index=c.index)
-    is_at_high    = c >= roll_max * (1 - 1e-6)
-    last_high_pos = bar_idx.where(is_at_high).ffill().fillna(0)
-    df["days_since_high"] = bar_idx - last_high_pos
-
     return df.dropna(subset=["vol_ma", "atr", "close_prev"])
 
 # ============================================================
-# MUM FORMASYONLARI
+# PUMP SİNYAL SİSTEMİ
 # ============================================================
-def _ohlc(df, i):
-    row = df.iloc[i]
-    return float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"])
+def calc_roc(close_arr, period=4):
+    """Rate of Change: (curr - prev_N) / prev_N * 100"""
+    if len(close_arr) <= period:
+        return None
+    prev = float(close_arr[-(period + 1)])
+    curr = float(close_arr[-1])
+    if prev <= 0:
+        return None
+    return (curr - prev) / prev * 100
 
-def is_hammer(df, i):
-    if i < 1: return False
-    o, h, l, c = _ohlc(df, i)
-    if c <= o: return False
-    body = c - o; rng = h - l
-    if rng <= 0 or body <= 0: return False
-    return ((o - l) >= body * 2.0 and (h - c) <= body * 0.5 and (o - l) / rng >= 0.55)
 
-def is_engulfing(df, i):
-    if i < 1: return False
-    o0, _, _, c0 = _ohlc(df, i); o1, _, _, c1 = _ohlc(df, i - 1)
-    b0 = abs(c0 - o0); b1 = abs(c1 - o1)
-    if b1 <= 0: return False
-    return c1 < o1 and c0 > o0 and o0 <= c1 and c0 >= o1 and b0 >= b1 * 0.8
+def check_pump_signal(symbol: str) -> dict | None:
+    """
+    5 koşul kontrolü:
+    1. 15m vol spike >= 15x (son 4 mumdaki max / 20-bar medyan)
+    2. 15m getiri >= 5% ve < 20% (son 4 mumda)
+    3. 1h vol >= 5x medyan
+    4. close_4h > MA50(4h)
+    5. ROC(4h, 4 bar) >= 24%
+    """
+    df15 = bars_15m.get(symbol)
+    df1h = bars_1h.get(symbol)
+    df4h = bars_4h.get(symbol)
 
-def is_morning_star(df, i):
-    if i < 2: return False
-    o0, _, _, c0 = _ohlc(df, i); o1, _, _, c1 = _ohlc(df, i-1); o2, _, _, c2 = _ohlc(df, i-2)
-    b0=abs(c0-o0); b1=abs(c1-o1); b2=abs(c2-o2)
-    avg=(b0+b1+b2)/3 if (b0+b1+b2)>0 else 1
-    return (c2<o2 and b2>=avg and b1<=avg*0.5 and c0>o0 and b0>=avg and c0>=o2-b2/2)
+    if df15 is None or len(df15) < 25:
+        return None
+    if df1h is None or len(df1h) < 22:
+        return None
+    if df4h is None or len(df4h) < PUMP_MA50_BARS + 2:
+        return None
 
-def detect_candle(df, i):
-    if is_morning_star(df, i): return "🌅 Morning Star"
-    if is_engulfing(df, i):    return "🟢 Bullish Engulfing"
-    if is_hammer(df, i):       return "🔨 Hammer"
-    return ""
+    # --- Koşul 1: 15m vol spike ---
+    vol15_last4  = df15["volume"].iloc[-4:].values.astype(float)
+    max_vol15    = float(np.max(vol15_last4))
+    baseline15   = df15["volume"].iloc[-24:-4].values.astype(float)
+    if len(baseline15) < 16:
+        return None
+    med_vol15 = float(np.median(baseline15))
+    if med_vol15 <= 0:
+        return None
+    vr15 = max_vol15 / med_vol15
+    if vr15 < PUMP_VR15_MIN:
+        return None
 
-# ============================================================
-# SİSTEM 1 — KAPİTÜLASYON SİNYALİ (değişmedi)
-# ============================================================
-def check_capitulation_signal(df: pd.DataFrame, symbol: str) -> dict | None:
-    if len(df) < VOL_PERIOD + 5: return None
-    bar = df.iloc[-1]
-    def gv(col):
-        val = bar.get(col, np.nan)
-        return None if pd.isna(val) else float(val)
-    close_now  = gv("close"); close_prev = gv("close_prev")
-    vol_now    = gv("volume"); vol_ma    = gv("vol_ma")
-    atr_val    = gv("atr");   atr_pct   = gv("atr_pct")
-    if None in (close_now, close_prev, vol_now, vol_ma, atr_val): return None
-    if close_prev == 0 or vol_ma == 0: return None
-    ret1      = (close_now / close_prev - 1) * 100
-    vol_ratio = vol_now / vol_ma
-    if not (CRASH_MIN <= ret1 <= CRASH_MAX):
-        stats["filtered_crash"] += 1; return None
-    if not (VOL_MIN <= vol_ratio <= VOL_MAX):
-        stats["filtered_vol"] += 1; return None
-    c5ago = float(df["close"].iloc[-5])
-    if c5ago > 0 and (c5ago - close_now) / c5ago * 100 >= 4.0:
-        stats["filtered_f5t"] += 1; return None
-    entry = close_now
-    funding     = funding_cache.get(symbol)
-    funding_neg = funding is not None and funding < 0
+    # --- Koşul 2: 15m getiri ---
+    open15_first = float(df15["open"].iloc[-4])
+    max_high15   = float(df15["high"].iloc[-4:].max())
+    if open15_first <= 0:
+        return None
+    ret15 = (max_high15 / open15_first - 1) * 100
+    if not (PUMP_RET15_MIN <= ret15 < PUMP_RET15_MAX):
+        return None
+
+    # --- Koşul 3: 1h vol spike ---
+    vol1h_last    = float(df1h["volume"].iloc[-1])
+    vol1h_base    = df1h["volume"].iloc[-21:-1].values.astype(float)
+    if len(vol1h_base) < 10:
+        return None
+    med_vol1h = float(np.median(vol1h_base))
+    if med_vol1h <= 0:
+        return None
+    vr1h = vol1h_last / med_vol1h
+    if vr1h < PUMP_VR1H_MIN:
+        return None
+
+    # --- Koşul 4: 4h trend (close > MA50) ---
+    close4h  = df4h["close"].values.astype(float)
+    ma50_4h  = float(np.mean(close4h[-PUMP_MA50_BARS:]))
+    curr4h   = close4h[-1]
+    if curr4h <= ma50_4h:
+        return None
+
+    # --- Koşul 5: 4h ROC ---
+    roc_4h = calc_roc(close4h, period=PUMP_ROC_PERIOD)
+    if roc_4h is None or roc_4h < PUMP_ROC_MIN:
+        return None
+
+    # Tüm koşullar geçti
+    entry = float(df1h["close"].iloc[-1])
+    if entry <= 0:
+        return None
+    stop = round(entry * (1 - PUMP_SL_PCT / 100), 8)
+    tp   = round(entry * (1 + PUMP_TP_PCT / 100), 8)
+
     return {
-        "symbol": symbol, "type": "capit",
-        "entry": round(entry, 8), "stop": round(entry * 0.97, 8),
-        "tp1": round(entry * 1.05, 8), "tp2": round(entry * 1.10, 8), "tp3": round(entry * 1.15, 8),
-        "ret1": round(ret1, 2), "vol_ratio": round(vol_ratio, 2), "vol_ma": round(vol_ma, 2),
-        "atr": round(atr_val, 8), "atr_pct": round(atr_pct, 2) if atr_pct else None,
-        "funding": round(funding, 6) if funding is not None else None,
-        "funding_neg": funding_neg,
-        "candle": detect_candle(df, len(df) - 1),
+        "type":    "pump",
+        "symbol":  symbol,
+        "entry":   round(entry, 8),
+        "stop":    stop,
+        "tp1":     tp,
+        "tp2":     tp,   # tp2 = tp1 → portfolio tracker'da otomatik kapatma tetikler
+        "vr15":    round(vr15, 2),
+        "ret15":   round(ret15, 2),
+        "vr1h":    round(vr1h, 2),
+        "ma50_4h": round(ma50_4h, 4),
+        "roc_4h":  round(roc_4h, 2),
+        "candle":  "1h",
     }
-
-# ============================================================
-# SİSTEM 2 — KISA VADE (T24)
-# ============================================================
-def check_t24_signal(df: pd.DataFrame, symbol: str) -> dict | None:
-    """dist_ema21>=2.566 & dist_ma50<=-5.045 & bb_width_ch3<=-0.019 & ma200_slope<=-1.933"""
-    if len(df) < 50: return None
-    bar = df.iloc[-1]
-    def gv(col):
-        val = bar.get(col, np.nan)
-        return None if pd.isna(val) else float(val)
-    dist_ema21   = gv("dist_ema21")
-    dist_ma50    = gv("dist_ma50")
-    bb_width_ch3 = gv("bb_width_ch3")
-    ma200_slope  = gv("ma200_slope")
-    close        = gv("close")
-    if None in (dist_ema21, dist_ma50, bb_width_ch3, ma200_slope, close): return None
-    if not (dist_ema21 >= 2.566 and dist_ma50 <= -5.045 and
-            bb_width_ch3 <= -0.019 and ma200_slope <= -1.933): return None
-    return {
-        "symbol": symbol, "type": "t24",
-        "entry": round(close, 8),
-        "stop":  round(close * 0.97, 8),
-        "tp1":   round(close * 1.05, 8),
-        "tp2":   round(close * 1.05, 8),
-        "dist_ema21":   round(dist_ema21, 2),
-        "dist_ma50":    round(dist_ma50, 2),
-        "bb_width_ch3": round(bb_width_ch3, 4),
-        "ma200_slope":  round(ma200_slope, 3),
-        "atr_pct":      round(float(bar.get("atr_pct") or 0), 2),
-    }
-
-# ============================================================
-# SİSTEM 3 — ORTA VADE (T72)
-# ============================================================
-def check_t72_signal(df: pd.DataFrame, symbol: str) -> dict | None:
-    """mom5_pct>=2.740 & dist_ema21<=-2.737 & coin_drawdown>=-26.796 & ma200_slope>=1.028"""
-    if len(df) < 50: return None
-    bar = df.iloc[-1]
-    def gv(col):
-        val = bar.get(col, np.nan)
-        return None if pd.isna(val) else float(val)
-    mom5_pct      = gv("mom5_pct")
-    dist_ema21    = gv("dist_ema21")
-    coin_drawdown = gv("coin_drawdown")
-    ma200_slope   = gv("ma200_slope")
-    close         = gv("close")
-    if None in (mom5_pct, dist_ema21, coin_drawdown, ma200_slope, close): return None
-    if not (mom5_pct >= 2.740 and dist_ema21 <= -2.737 and
-            coin_drawdown >= -26.796 and ma200_slope >= 1.028): return None
-    return {
-        "symbol": symbol, "type": "t72",
-        "entry": round(close, 8),
-        "stop":  round(close * 0.95, 8),
-        "tp1":   round(close * 1.10, 8),
-        "tp2":   round(close * 1.15, 8),
-        "mom5_pct":      round(mom5_pct, 2),
-        "dist_ema21":    round(dist_ema21, 2),
-        "coin_drawdown": round(coin_drawdown, 2),
-        "ma200_slope":   round(ma200_slope, 3),
-        "atr_pct":       round(float(bar.get("atr_pct") or 0), 2),
-    }
-
-# ============================================================
-# SİSTEM 4 — UZUN VADE (T168)
-# ============================================================
-def check_t168_signal(df: pd.DataFrame, symbol: str) -> dict | None:
-    """dist_ma200>=5.657 & dist_ma50<=-5.045 & mom10_pct>=3.941 & days_since_high<=677"""
-    if len(df) < 50: return None
-    bar = df.iloc[-1]
-    def gv(col):
-        val = bar.get(col, np.nan)
-        return None if pd.isna(val) else float(val)
-    dist_ma200      = gv("dist_ma200")
-    dist_ma50       = gv("dist_ma50")
-    mom10_pct       = gv("mom10_pct")
-    days_since_high = gv("days_since_high")
-    close           = gv("close")
-    if None in (dist_ma200, dist_ma50, mom10_pct, days_since_high, close): return None
-    if not (dist_ma200 >= 5.657 and dist_ma50 <= -5.045 and
-            mom10_pct >= 3.941 and days_since_high <= 677): return None
-    return {
-        "symbol": symbol, "type": "t168",
-        "entry": round(close, 8),
-        "stop":  round(close * 0.92, 8),
-        "tp1":   round(close * 1.25, 8),
-        "tp2":   round(close * 1.25, 8),
-        "dist_ma200":      round(dist_ma200, 2),
-        "dist_ma50":       round(dist_ma50, 2),
-        "mom10_pct":       round(mom10_pct, 2),
-        "days_since_high": int(days_since_high),
-        "atr_pct":         round(float(bar.get("atr_pct") or 0), 2),
-    }
-
-# ============================================================
-# SİSTEM 6 — ROCKET (MOMENTUM DEVAM)
-# ============================================================
-def check_rocket_signal(symbol: str) -> dict | None:
-    df = bars_1h.get(symbol)
-    if df is None or len(df) < 26:
-        return None
-
-    close_now  = float(df["close"].iloc[-1])
-    close_24h  = float(df["close"].iloc[-25])
-    if close_24h <= 0:
-        return None
-    change_24h = (close_now / close_24h - 1) * 100
-    if change_24h < 10.0:
-        return None
-
-    # Hacim: son 1H barı, 20-bar ortalamasının 1.2x üstünde mi?
-    vol_now = float(df["volume"].iloc[-1])
-    vol_avg = float(df["volume"].iloc[-21:-1].mean())
-    if vol_avg <= 0 or vol_now < vol_avg * 1.2:
-        return None
-
-    # ADX(14) + DI+ > DI-
-    adx_now, _, di_plus, di_minus = _calc_adx_di(df, period=14)
-    if adx_now is None or adx_now < 25 or di_plus <= di_minus:
-        return None
-
-    # BTC düşüş trendinde sinyal verme
-    if btc_4h_cache.get("trend", "?") == "🔴 Düşüş":
-        return None
-
-    atr_pct = float(df.iloc[-1].get("atr_pct") or 0)
-    return {
-        "symbol":     symbol,
-        "type":       "rocket",
-        "entry":      round(close_now, 8),
-        "stop":       round(close_now * 0.95, 8),
-        "tp1":        round(close_now * 1.08, 8),
-        "tp2":        round(close_now * 1.15, 8),
-        "tp3":        round(close_now * 1.25, 8),
-        "change_24h": round(change_24h, 2),
-        "vol_ratio":  round(vol_now / vol_avg, 2),
-        "adx":        round(adx_now, 1),
-        "di_plus":    round(di_plus, 1),
-        "di_minus":   round(di_minus, 1),
-        "atr_pct":    round(atr_pct, 2),
-    }
-
-# ============================================================
-# PUANLAMA (Sistem 1 için)
-# ============================================================
-def calc_signal_score(ret1: float, vol_ratio: float, liquidity: float) -> int:
-    abs_ret = abs(ret1)
-    if abs_ret >= 12:   crash_score = 5
-    elif abs_ret >= 10: crash_score = 4
-    elif abs_ret >= 9:  crash_score = 3
-    elif abs_ret >= 8:  crash_score = 2
-    else:               crash_score = 1
-    if 1.8 <= vol_ratio <= 2.5:  vol_score = 5
-    elif 1.5 <= vol_ratio < 1.8: vol_score = 3
-    elif 2.5 < vol_ratio <= 3.0: vol_score = 3
-    else:                         vol_score = 1
-    if liquidity >= 15_000_000:  liq_score = 5
-    elif liquidity >= 5_000_000: liq_score = 3
-    else:                        liq_score = 1
-    raw = crash_score * 0.5 + vol_score * 0.3 + liq_score * 0.2
-    return max(1, min(5, round(raw)))
-
-def _stars(score: int) -> str:
-    return "⭐" * score
-
-# ============================================================
-# FUNDING + BTC 4H
-# ============================================================
-async def fetch_funding_rate(symbol):
-    sym_fut = symbol.replace("/USDT", "USDT")
-    try:
-        loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(None, lambda: exchange_fut.fetch_funding_rate(sym_fut))
-        rate = data.get("fundingRate")
-        funding_cache[symbol] = float(rate) if rate is not None else None
-    except Exception:
-        funding_cache[symbol] = None
-
-async def refresh_funding_cache(symbols):
-    print("  Funding cache dolduruluyor...", flush=True)
-    ok = 0
-    for sym in symbols:
-        await fetch_funding_rate(sym)
-        if funding_cache.get(sym) is not None: ok += 1
-        await asyncio.sleep(0.05)
-    print(f"  → {ok}/{len(symbols)} sembolde funding rate", flush=True)
-
-async def refresh_btc_4h():
-    try:
-        df = await fetch_df("BTC/USDT", "4h", 100)
-        if df is None or len(df) < 50: return
-        df = prepare_bars(df)
-        lc=float(df["close"].iloc[-1]); le50=float(df["ema50"].iloc[-1]); le200=float(df["ema200"].iloc[-1])
-        if lc > le50 > le200:   trend = "⬆️ Güçlü Yükseliş"
-        elif lc > le50:         trend = "🟢 Yükseliş"
-        elif lc > le200:        trend = "🟡 Karışık"
-        else:                   trend = "🔴 Düşüş"
-        btc_4h_cache.update({"trend": trend, "ema50": le50, "close": lc,
-                              "updated": datetime.now(timezone.utc).strftime("%H:%M")})
-        print(f"BTC 4H: {trend} | Fiyat:{lc:.0f} EMA50:{le50:.0f}", flush=True)
-    except Exception as e:
-        print(f"BTC 4H hata: {e}", flush=True)
 
 # ============================================================
 # YARDIMCI FONKSİYONLAR
@@ -545,158 +333,31 @@ def fmt_price(price):
     if p >= 0.0001: return f"{p:.6f}"
     return f"{p:.8f}"
 
-def _pct(new, ref):
-    if not ref: return "?"
-    return f"+{round((new/ref-1)*100, 1)}%"
-
-def _vol_risk(atr_pct):
-    if atr_pct is None: return "?"
-    if atr_pct >= 5.0:  return f"⚠️ Yüksek (%{atr_pct:.1f})"
-    if atr_pct >= 2.5:  return f"🟡 Orta (%{atr_pct:.1f})"
-    return f"🟢 Düşük (%{atr_pct:.1f})"
-
 def _sep():
     return "━━━━━━━━━━━━━━━━━━━━"
 
 # ============================================================
-# TELEGRAM MESAJ OLUŞTURUCULAR
+# TELEGRAM MESAJ OLUŞTURUCU
 # ============================================================
-def build_capitulation_message(r, tr_time, sig_num):
-    sym  = r["symbol"].replace("/USDT", "")
-    e    = r["entry"]
-    icon = "💰" if r.get("funding_neg") else "🔴"
-    ret1 = r.get("ret1", 0); vr = r.get("vol_ratio", 0)
+def build_pump_message(r, tr_time, sig_num):
+    sym = r["symbol"].replace("/USDT", "")
+    e   = r["entry"]
     lines = [
         f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
         "",
-        f"{icon} <b>#{sym}/USDT  •  PANİK PUMP  •  1H</b>",
+        f"🚀 <b>#{sym}/USDT  •  PUMP  •  1H</b>",
         _sep(),
         f"💵 <b>Giriş</b>    {fmt_price(e)}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  (-3%)",
-        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+5%)",
-        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+10%)",
-        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+15%)",
+        f"🛑 <b>Stop</b>     {fmt_price(r['stop'])}  (-{PUMP_SL_PCT:.0f}%)",
+        f"🎯 <b>Hedef</b>    {fmt_price(r['tp1'])}  (+{PUMP_TP_PCT:.0f}%)",
         _sep(),
         "📊 <b>Göstergeler</b>",
-        f"📉 <b>Düşüş</b>     {ret1:+.2f}%  (panik satışı)",
-        f"📊 <b>Hacim</b>     {vr:.2f}x ortalama  🔥",
-    ]
-    if r.get("funding") is not None:
-        lines.append(f"<b>Funding</b>    {r['funding']:+.4f}%{'  💰' if r.get('funding_neg') else ''}")
-    if r.get("candle"):
-        lines.append(f"<b>Formasyon</b>  {r['candle']}  ✅")
-    lines += [
+        f"📈 15m Spike   : <b>{r['vr15']:.1f}x</b>",
+        f"📊 15m Hareket : +{r['ret15']:.1f}%",
+        f"💧 1h Hacim    : {r['vr1h']:.1f}x medyan",
+        f"🔮 4h ROC      : +{r['roc_4h']:.1f}% (4 bar)",
         _sep(),
-        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
-        f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
-        _sep(),
-        f"⏱ Geçmiş başarı: ~%84 (TP+15%)  |  #{sig_num} sinyal",
-    ]
-    return "\n".join(lines)
-
-
-def build_t24_message(r, tr_time, sig_num):
-    sym = r["symbol"].replace("/USDT", "")
-    e   = r["entry"]
-    lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
-        "",
-        f"🔴 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  KISA VADE</b>",
-        _sep(),
-        f"💵 <b>Giriş</b>   {fmt_price(e)}",
-        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%3)",
-        f"🎯 <b>Hedef</b>   {fmt_price(r['tp1'])}  (+%5)",
-        _sep(),
-        "📊 <b>Göstergeler</b>",
-        f"📈 Fiyat, EMA21'in %{abs(r['dist_ema21']):.1f} üstünde",
-        f"📉 Fiyat, MA50'nin %{abs(r['dist_ma50']):.1f} altında",
-        f"📉 Bollinger Bandı daralıyor ({r['bb_width_ch3']:.4f})",
-        f"📉 MA200 aşağı eğimli (%{r['ma200_slope']:.2f}/20 bar)",
-        _sep(),
-        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
-        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
-        _sep(),
-        f"⏱ Geçmiş başarı: %65  |  #{sig_num} sinyal",
-    ]
-    return "\n".join(lines)
-
-
-def build_t72_message(r, tr_time, sig_num):
-    sym = r["symbol"].replace("/USDT", "")
-    e   = r["entry"]
-    lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
-        "",
-        f"🟡 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  ORTA VADE</b>",
-        _sep(),
-        f"💵 <b>Giriş</b>   {fmt_price(e)}",
-        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%5)",
-        f"🎯 <b>TP1</b>     {fmt_price(r['tp1'])}  (+%10)",
-        f"🎯 <b>TP2</b>     {fmt_price(r['tp2'])}  (+%15)",
-        _sep(),
-        "📊 <b>Göstergeler</b>",
-        f"📈 Kısa vadeli momentum: +%{r['mom5_pct']:.1f}",
-        f"📉 Fiyat, EMA21'in %{abs(r['dist_ema21']):.1f} altında (geri çekilme)",
-        f"✅ Düşüş %{abs(r['coin_drawdown']):.1f} (sağlıklı seviye)",
-        f"📈 MA200 yukarı eğimli (+%{r['ma200_slope']:.2f}/20 bar)",
-        _sep(),
-        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
-        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
-        _sep(),
-        f"⏱ Geçmiş başarı: %54  |  #{sig_num} sinyal",
-    ]
-    return "\n".join(lines)
-
-
-def build_t168_message(r, tr_time, sig_num):
-    sym = r["symbol"].replace("/USDT", "")
-    e   = r["entry"]
-    lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
-        "",
-        f"🟢 <b>#{sym}/USDT  •  PUMP SİNYALİ  •  UZUN VADE</b>",
-        _sep(),
-        f"💵 <b>Giriş</b>   {fmt_price(e)}",
-        f"🛑 <b>Stop</b>    {fmt_price(r['stop'])}  (-%8)",
-        f"🎯 <b>Hedef</b>   {fmt_price(r['tp1'])}  (+%25)",
-        _sep(),
-        "📊 <b>Göstergeler</b>",
-        f"📈 Fiyat, MA200'ün %{abs(r['dist_ma200']):.1f} üstünde",
-        f"📉 Fiyat, MA50'nin %{abs(r['dist_ma50']):.1f} altında",
-        f"📈 10 bar momentum: +%{r['mom10_pct']:.1f}",
-        f"⏰ Son zirve: {r['days_since_high']} bar önce",
-        _sep(),
-        f"<b>BTC 4H</b>    {btc_4h_cache.get('trend','?')}",
-        f"<b>Vol. Risk</b> {_vol_risk(r.get('atr_pct'))}",
-        _sep(),
-        f"⏱ Geçmiş başarı: %40  |  #{sig_num} sinyal",
-    ]
-    return "\n".join(lines)
-
-def build_rocket_message(r, tr_time, sig_num):
-    sym      = r["symbol"].replace("/USDT", "")
-    e        = r["entry"]
-    stop_pct = round((r["stop"] / e - 1) * 100, 1)
-    lines = [
-        f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}",
-        "",
-        f"🚀 <b>#{sym}/USDT  •  ROCKET  •  1H</b>",
-        _sep(),
-        f"💵 <b>Giriş</b>    {fmt_price(e)}",
-        f"🛡️ <b>Stop</b>     {fmt_price(r['stop'])}  ({stop_pct:+.1f}%)",
-        f"🎯 <b>TP1</b>      {fmt_price(r['tp1'])}  (+8%)",
-        f"🎯 <b>TP2</b>      {fmt_price(r['tp2'])}  (+15%)",
-        f"🎯 <b>TP3</b>      {fmt_price(r['tp3'])}  (+25%)",
-        _sep(),
-        "📊 <b>Göstergeler</b>",
-        f"🚀 24s değişim: <b>+{r['change_24h']:.1f}%</b>  (momentum aktif)",
-        f"📊 Hacim: {r['vol_ratio']:.2f}x ortalama",
-        f"📈 ADX(14): {r['adx']:.1f}  |  DI+: {r['di_plus']:.1f}  DI-: {r['di_minus']:.1f}",
-        _sep(),
-        f"<b>BTC 4H</b>     {btc_4h_cache.get('trend','?')}",
-        f"<b>Vol. Risk</b>  {_vol_risk(r.get('atr_pct'))}",
-        _sep(),
-        f"⏱ Yeni sistem — veri biriktiriliyor  |  #{sig_num} sinyal",
+        f"⏱ WR: ~%91  |  Hold: 24h  |  #{sig_num} sinyal",
     ]
     return "\n".join(lines)
 
@@ -720,9 +381,7 @@ def send_telegram(text):
 
 def _notify_trailing_activated(entry, old_stop):
     try:
-        sym  = entry["symbol"].replace("/USDT", "")
-        raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
-        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(raw, raw)
+        sym      = entry["symbol"].replace("/USDT", "")
         e        = entry["entry"]
         old_pct  = round((old_stop / e - 1) * 100, 1)
         new_pct  = round((entry["stop"] / e - 1) * 100, 1)
@@ -730,7 +389,7 @@ def _notify_trailing_activated(entry, old_stop):
         msg = (
             f"🔄 <b>Trailing Stop Devreye Girdi</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"#{sym}/USDT  [{lbl}]\n"
+            f"#{sym}/USDT  [PUMP]\n"
             f"Peak: <b>+{peak_pct:.1f}%</b>\n"
             f"Eski Stop: {old_pct:+.1f}%  →  Yeni Stop: <b>{new_pct:+.1f}%</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━"
@@ -741,13 +400,11 @@ def _notify_trailing_activated(entry, old_stop):
 
 def _notify_trailing_close(entry, close_price, close_ret):
     try:
-        sym  = entry["symbol"].replace("/USDT", "")
-        raw  = entry.get("raw_type", entry.get("sig_type", "capit"))
-        lbl  = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE"}.get(raw, raw)
+        sym = entry["symbol"].replace("/USDT", "")
         msg = (
             f"✅ <b>Trailing Stop — Kâr Kapatıldı</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"#{sym}/USDT  [{lbl}]\n"
+            f"#{sym}/USDT  [PUMP]\n"
             f"Giriş: {fmt_price(entry['entry'])}  →  Çıkış: {fmt_price(close_price)}\n"
             f"Kâr: <b>+{close_ret:.1f}%</b>  |  Peak: +{entry.get('peak_pct', 0):.1f}%\n"
             f"━━━━━━━━━━━━━━━━━━━━"
@@ -758,17 +415,13 @@ def _notify_trailing_close(entry, close_price, close_ret):
 
 # sig_type → portfolio type eşleştirmesi
 _SIG_TYPE_MAP = {
-    "capit":      "panik_pump",
-    "t24":        "pump_kisa",
-    "t72":        "pump_orta",
-    "t168":       "pump_uzun",
-    "rocket":     "rocket",
+    "pump": "pump",
 }
 
 def send_to_portfolio(result):
     if not PORTFOLIO_URL: return ""
     try:
-        sig_type = _SIG_TYPE_MAP.get(result.get("type", "capit"), "panik_pump")
+        sig_type = _SIG_TYPE_MAP.get(result.get("type", "pump"), "pump")
         payload = {
             "symbol":      result["symbol"],
             "entry":       result["entry"],
@@ -779,7 +432,7 @@ def send_to_portfolio(result):
             "sub_type":    "",
             "source":      "bot",
             "candle":      result.get("candle", ""),
-            "funding_neg": result.get("funding_neg", False),
+            "funding_neg": False,
         }
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
@@ -809,7 +462,8 @@ def _analyzer_safe(signal: dict, recent_count: int, sig_num: int, portfolio_id: 
         try:
             r = requests.post(
                 f"{PORTFOLIO_URL}/api/analyze",
-                json={"signal": signal, "recent_count": recent_count, "sig_num": sig_num, "portfolio_id": portfolio_id},
+                json={"signal": signal, "recent_count": recent_count,
+                      "sig_num": sig_num, "portfolio_id": portfolio_id},
                 headers={"Authorization": f"Bearer {PORTFOLIO_TOKEN}"},
                 timeout=30,
             )
@@ -823,9 +477,6 @@ def _analyzer_safe(signal: dict, recent_count: int, sig_num: int, portfolio_id: 
             else:
                 print(f"[ANALYZER] #{sym} başarısız (2 deneme): {e}", flush=True)
 
-# ============================================================
-# CLAUDE SHADOW MODE
-# ============================================================
 def _recent_signal_count() -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
     _recent_signal_times[:] = [t for t in _recent_signal_times if t > cutoff]
@@ -834,609 +485,11 @@ def _recent_signal_count() -> int:
 def _record_signal_time():
     _recent_signal_times.append(datetime.now(timezone.utc))
 
-# --- Teknik hesaplamalar ---
-def _calc_rsi(closes, period=14):
-    if len(closes) < period + 1:
-        return None
-    a  = np.array(closes[-(period * 3):], dtype=float)
-    d  = np.diff(a)
-    g  = np.where(d > 0, d, 0.0)
-    l  = np.where(d < 0, -d, 0.0)
-    ag = np.mean(g[-period:])
-    al = np.mean(l[-period:])
-    if al == 0:
-        return 100.0
-    return round(100 - 100 / (1 + ag / al), 1)
-
-def _calc_ema_val(closes, span):
-    if len(closes) < span // 2:
-        return None
-    s = pd.Series(closes)
-    return round(float(s.ewm(span=span, adjust=False).mean().iloc[-1]), 8)
-
-def calc_sr_levels(df, n_pivot=5, max_levels=3):
-    """Pivot high/low tabanlı destek ve direnç seviyeleri."""
-    if len(df) < n_pivot * 2 + 5:
-        return [], []
-    highs  = df["high"].values  if "high"  in df.columns else df["close"].values
-    lows   = df["low"].values   if "low"   in df.columns else df["close"].values
-    closes = df["close"].values
-    cur    = float(closes[-1])
-
-    pivot_highs, pivot_lows = [], []
-    for i in range(n_pivot, len(df) - n_pivot):
-        if highs[i] == max(highs[i - n_pivot: i + n_pivot + 1]):
-            pivot_highs.append(float(highs[i]))
-        if lows[i]  == min(lows[i  - n_pivot: i + n_pivot + 1]):
-            pivot_lows.append(float(lows[i]))
-
-    def cluster(levels, pct=0.015):
-        if not levels: return []
-        levels = sorted(levels)
-        grps = [[levels[0]]]
-        for v in levels[1:]:
-            if (v - grps[-1][-1]) / max(grps[-1][-1], 1e-12) < pct:
-                grps[-1].append(v)
-            else:
-                grps.append([v])
-        return [round(sum(g) / len(g), 10) for g in grps]
-
-    ch = cluster(pivot_highs)
-    cl = cluster(pivot_lows)
-    supports    = sorted([v for v in cl if v < cur * 0.999], reverse=True)[:max_levels]
-    resistances = sorted([v for v in ch if v > cur * 1.001])[:max_levels]
-    return supports, resistances
-
-def _vol_ratio_tf(volumes, period=20):
-    if len(volumes) < period + 1:
-        return None
-    avg = np.mean(volumes[-period - 1:-1])
-    return round(float(volumes[-1]) / avg, 2) if avg > 0 else None
-
-def _calc_adx_di(df, period=7):
-    """Wilder's ADX + DI+/DI- hesapla. (adx_now, adx_prev3, di_plus, di_minus) döndürür."""
-    min_len = period * 4
-    if len(df) < min_len:
-        return None, None, None, None
-    h = df["high"].values.astype(float)
-    l = df["low"].values.astype(float)
-    c = df["close"].values.astype(float)
-    n = len(c)
-    tr_arr  = np.zeros(n)
-    dm_plus = np.zeros(n)
-    dm_min  = np.zeros(n)
-    for i in range(1, n):
-        tr_arr[i]  = max(h[i] - l[i], abs(h[i] - c[i-1]), abs(l[i] - c[i-1]))
-        up   = h[i] - h[i-1]
-        down = l[i-1] - l[i]
-        dm_plus[i] = up   if (up > down and up > 0)   else 0.0
-        dm_min[i]  = down if (down > up and down > 0) else 0.0
-
-    def wilder(arr, p):
-        s = np.zeros(len(arr))
-        s[p] = np.sum(arr[1:p+1])
-        for i in range(p + 1, len(arr)):
-            s[i] = s[i-1] - s[i-1] / p + arr[i]
-        return s
-
-    atr_s  = wilder(tr_arr,  period)
-    dmp_s  = wilder(dm_plus, period)
-    dmm_s  = wilder(dm_min,  period)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        di_p = np.where(atr_s > 0, dmp_s / atr_s * 100, 0.0)
-        di_m = np.where(atr_s > 0, dmm_s / atr_s * 100, 0.0)
-        dx   = np.where((di_p + di_m) > 0,
-                        np.abs(di_p - di_m) / (di_p + di_m) * 100, 0.0)
-    adx = wilder(dx, period)
-    adx_prev = float(adx[-4]) if len(adx) >= 4 else float(adx[-1])
-    return float(adx[-1]), adx_prev, float(di_p[-1]), float(di_m[-1])
-
-# --- Tek timeframe özet ---
-async def _fetch_tf_summary(symbol, timeframe, limit=120):
-    try:
-        df = await fetch_df(symbol, timeframe, limit)
-        if df is None or len(df) < 20:
-            return None
-        closes  = df["close"].tolist()
-        volumes = df["volume"].tolist()
-        sup, res = calc_sr_levels(df)
-        return {
-            "close":       round(float(closes[-1]), 8),
-            "rsi":         _calc_rsi(closes),
-            "ema50":       _calc_ema_val(closes, 50),
-            "ema200":      _calc_ema_val(closes, 200),
-            "vol_ratio":   _vol_ratio_tf(volumes),
-            "supports":    sup,
-            "resistances": res,
-        }
-    except Exception:
-        return None
-
-# --- Çoklu timeframe veri ---
-async def fetch_multi_tf_data(symbol):
-    coin_tfs = [("15m", 80), ("4h", 120), ("1d", 220)]
-    btc_tfs  = [("15m", 80), ("1h", 120), ("4h", 120), ("1d", 220)]
-    tasks = {}
-    for tf, lim in coin_tfs:
-        tasks[f"coin_{tf}"] = asyncio.create_task(_fetch_tf_summary(symbol,      tf, lim))
-    for tf, lim in btc_tfs:
-        tasks[f"btc_{tf}"]  = asyncio.create_task(_fetch_tf_summary("BTC/USDT", tf, lim))
-    out = {}
-    for key, task in tasks.items():
-        try:
-            out[key] = await task
-        except Exception:
-            out[key] = None
-    return {
-        "coin": {tf: out.get(f"coin_{tf}") for tf, _ in coin_tfs},
-        "btc":  {tf: out.get(f"btc_{tf}")  for tf, _ in btc_tfs},
-    }
-
-# --- Fear & Greed ---
-def fetch_fear_greed():
-    try:
-        r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5)
-        if r.status_code == 200:
-            d = r.json()["data"][0]
-            return int(d["value"]), d["value_classification"]
-    except Exception:
-        pass
-    return None, None
-
-# --- BTC Dominans Trend ---
-def fetch_btc_dominance_trend() -> dict | None:
-    """BTC dominansı + 30 günlük trend analizi. 4 saatte bir yenilenir."""
-    now = time.time()
-    cached = _dominance_cache["data"]
-    if cached and (now - _dominance_cache["updated"]) < 14400:
-        return cached
-    try:
-        r_global = requests.get(
-            "https://api.coingecko.com/api/v3/global",
-            timeout=10, headers={"Accept": "application/json"}
-        )
-        if r_global.status_code != 200:
-            return cached
-        global_data = r_global.json().get("data", {})
-        current_dom = float(global_data.get("market_cap_percentage", {}).get("btc", 0))
-
-        # BTC + toplam market cap geçmişi (son 30 gün)
-        r_btc = requests.get(
-            "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
-            params={"vs_currency": "usd", "days": "30", "interval": "daily"},
-            timeout=15
-        )
-        r_total = requests.get(
-            "https://api.coingecko.com/api/v3/global/market_cap_chart",
-            params={"days": "30"},
-            timeout=15
-        )
-
-        dominance_series = []
-        if r_btc.status_code == 200 and r_total.status_code == 200:
-            btc_caps   = r_btc.json().get("market_caps", [])
-            total_raw  = r_total.json()
-            total_caps = (total_raw.get("market_cap_chart", {}).get("market_cap")
-                          or total_raw.get("market_cap") or [])
-            min_len = min(len(btc_caps), len(total_caps))
-            for i in range(min_len):
-                btc_mc   = float(btc_caps[i][1])
-                total_mc = float(total_caps[i][1])
-                if total_mc > 0:
-                    dominance_series.append(btc_mc / total_mc * 100)
-
-        result = {"current": round(current_dom, 2), "trend_dir": None,
-                  "slope_30d": None, "distance": None, "trend_val": None}
-
-        if len(dominance_series) >= 14:
-            x = np.arange(len(dominance_series), dtype=float)
-            y = np.array(dominance_series)
-            slope, intercept = np.polyfit(x, y, 1)
-            trend_val = slope * (len(dominance_series) - 1) + intercept
-            slope_30d = slope * len(dominance_series)
-            distance  = current_dom - trend_val
-
-            if slope_30d > 1.0:    trend_dir = "yükseliş"
-            elif slope_30d < -1.0: trend_dir = "düşüş"
-            else:                  trend_dir = "yatay"
-
-            result.update({
-                "trend_dir": trend_dir,
-                "slope_30d": round(slope_30d, 2),
-                "distance":  round(distance, 2),
-                "trend_val": round(trend_val, 2),
-            })
-
-        _dominance_cache["data"]    = result
-        _dominance_cache["updated"] = now
-        print(f"[DOMINANS] %{current_dom:.1f} | trend: {result['trend_dir']} | "
-              f"mesafe: {result['distance']}", flush=True)
-        return result
-    except Exception as e:
-        print(f"[DOMINANS] Hata: {e}", flush=True)
-        return cached
-
-def _dominance_str(dom: dict | None) -> str:
-    if not dom:
-        return "BTC Dominans: veri yok"
-    cur       = dom["current"]
-    trend_dir = dom.get("trend_dir")
-    slope     = dom.get("slope_30d")
-    distance  = dom.get("distance")
-
-    if trend_dir is None:
-        return f"BTC Dominans: %{cur} (tarihsel trend verisi yok)"
-
-    line = f"BTC Dominans: %{cur} | 30G Trend: {trend_dir} ({slope:+.1f}pp)"
-    if distance is not None:
-        if abs(distance) < 0.5:
-            if trend_dir == "yükseliş":
-                line += "\n  ⚠️ Yükselen trend çizgisine yakın — kırılırsa altcoin sezonu başlayabilir"
-            elif trend_dir == "düşüş":
-                line += "\n  ⚠️ Düşen trend çizgisine yakın — kırılırsa BTC baskısı azalabilir"
-        elif distance > 1.5:
-            line += "\n  📈 Trend üstünde — BTC güçlü, altcoinler baskı altında"
-        elif distance < -1.5:
-            line += "\n  📉 Trend altında — altcoinlere para akıyor"
-    return line
-
-# --- Geçmiş sinyal performansı ---
-_SIG_TYPE_PORTFOLIO = {"capit": "panik_pump", "t72": "pump_orta", "t168": "pump_uzun"}
-
-def fetch_portfolio_context(symbol: str, sig_type: str) -> tuple[str, str]:
-    """Portfolio'dan tek çağrıyla coin geçmişi + sistem genel istatistiği döndürür."""
-    if not PORTFOLIO_URL:
-        return "", ""
-    try:
-        headers = {"Authorization": f"Bearer {PORTFOLIO_TOKEN}"} if PORTFOLIO_TOKEN else {}
-        r = requests.get(f"{PORTFOLIO_URL}/api/signals", params={"limit": 500},
-                         headers=headers, timeout=5)
-        if r.status_code != 200:
-            return "", ""
-        signals = r.json()
-        if not isinstance(signals, list):
-            signals = signals.get("signals", signals.get("data", []))
-
-        closed = [s for s in signals if s.get("status") in ("win", "loss", "expired")]
-
-        # --- Coin geçmişi ---
-        pt = _SIG_TYPE_PORTFOLIO.get(sig_type, "panik_pump")
-        cs = [s for s in closed
-              if s.get("symbol", "").upper() == symbol.upper()
-              and s.get("sig_type", "") == pt]
-        if cs:
-            wins  = [s for s in cs if s.get("status") == "win"]
-            loss_ = [s for s in cs if s.get("status") == "loss"]
-            exp   = [s for s in cs if s.get("status") == "expired"]
-            wr    = round(len(wins) / len(cs) * 100)
-            def avg_r(lst):
-                v = [float(s["close_ret"]) for s in lst if s.get("close_ret") is not None]
-                return round(sum(v) / len(v), 1) if v else None
-            coin_lines = [f"{len(cs)} geçmiş sinyal → {len(wins)} WIN / {len(loss_)} LOSS / {len(exp)} expired | WR %{wr}"]
-            wa = avg_r(wins); la = avg_r(loss_)
-            if wa is not None: coin_lines.append(f"Ort. kazanç: +%{wa}")
-            if la is not None: coin_lines.append(f"Ort. kayıp: %{la}")
-            coin_hist = "\n".join(coin_lines)
-        else:
-            coin_hist = "Bu coin için henüz geçmiş veri yok."
-
-        # --- Sistem genel (SMC hariç) ---
-        non_smc = [s for s in closed if "smc" not in s.get("sig_type", "").lower()]
-        recent30 = non_smc[:30]
-        if recent30:
-            w30 = sum(1 for s in recent30 if s.get("status") == "win")
-            l30 = sum(1 for s in recent30 if s.get("status") == "loss")
-            wr30 = round(w30 / len(recent30) * 100)
-            sys_lines = [f"Son 30 sinyal (SMC hariç): {w30} WIN / {l30} LOSS | WR %{wr30}"]
-        else:
-            sys_lines = ["Henüz yeterli sistem verisi yok."]
-
-        cutoff7 = datetime.now(timezone.utc) - timedelta(days=7)
-        last7 = []
-        for s in non_smc:
-            try:
-                t = s.get("close_time") or s.get("time", "")
-                if t:
-                    dt = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    if dt > cutoff7:
-                        last7.append(s)
-            except Exception:
-                pass
-        if last7:
-            w7 = sum(1 for s in last7 if s.get("status") == "win")
-            l7 = sum(1 for s in last7 if s.get("status") == "loss")
-            sys_lines.append(f"Son 7 gün: {w7} WIN / {l7} LOSS")
-
-        sys_hist = "\n".join(sys_lines)
-        return coin_hist, sys_hist
-    except Exception as e:
-        print(f"[CLAUDE] Portfolio hata: {e}", flush=True)
-        return "", ""
-
-# --- Timeframe satır formatı ---
-def _tf_line(label, d):
-    if not d:
-        return f"  {label}: —"
-    parts = []
-    if d.get("rsi")       is not None: parts.append(f"RSI {d['rsi']}")
-    if d.get("ema50")     is not None: parts.append(f"EMA50 {d['ema50']}")
-    if d.get("ema200")    is not None: parts.append(f"EMA200 {d['ema200']}")
-    if d.get("vol_ratio") is not None: parts.append(f"Hacim {d['vol_ratio']}x")
-    if d.get("supports"):
-        parts.append(f"Des:{'/'.join(fmt_price(s) for s in d['supports'][:2])}")
-    if d.get("resistances"):
-        parts.append(f"Dir:{'/'.join(fmt_price(r) for r in d['resistances'][:2])}")
-    return f"  {label}: Fiyat {d['close']} | {' | '.join(parts)}"
-
-# --- Claude API çağrısı ---
-def ask_claude_shadow(result: dict, recent_count: int,
-                      tf_data: dict, fg_val, fg_label, dom: dict | None = None) -> str:
-    if not ANTHROPIC_API_KEY:
-        return ""
-    try:
-        import anthropic
-        sym      = result["symbol"].replace("/USDT", "")
-        sig_type = result.get("type", "capit")
-
-        type_names = {
-            "capit":     "PANİK PUMP — kapitülasyon mean reversion | Stop -3% | TP +5/10/15% | Backtest WR ~%84",
-            "t72":       "ORTA VADE T72 — 3 gün hedef | Stop -5% | TP +10% | Backtest WR %54",
-            "t168":      "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | Backtest WR %40",
-            "rocket":    "ROCKET — momentum devam + hacim artışı | Stop -5% | TP +8/15/25%",
-        }
-
-        if sig_type == "capit":
-            sig_data = (
-                f"Düşüş: {result.get('ret1', 0):+.2f}% | "
-                f"Hacim: {result.get('vol_ratio', 0):.2f}x | "
-                f"ATR: %{result.get('atr_pct', 0):.2f} | "
-                f"Funding: {result.get('funding', '?')}"
-            )
-        elif sig_type == "t72":
-            sig_data = (
-                f"Mom5: +%{result.get('mom5_pct', 0):.2f} | "
-                f"EMA21 uzaklık: %{result.get('dist_ema21', 0):.2f} | "
-                f"Drawdown: %{result.get('coin_drawdown', 0):.2f} | "
-                f"MA200 eğim: +%{result.get('ma200_slope', 0):.3f}"
-            )
-        elif sig_type == "rocket":
-            sig_data = (
-                f"24s değişim: +%{result.get('change_24h', 0):.1f} | "
-                f"ADX(14): {result.get('adx', 0):.1f} | "
-                f"DI+: {result.get('di_plus', 0):.1f}  DI-: {result.get('di_minus', 0):.1f} | "
-                f"Hacim: {result.get('vol_ratio', 0):.2f}x"
-            )
-        else:
-            sig_data = (
-                f"MA200 uzaklık: +%{result.get('dist_ma200', 0):.2f} | "
-                f"Mom10: +%{result.get('mom10_pct', 0):.2f} | "
-                f"Son zirve: {result.get('days_since_high', 0)} bar"
-            )
-
-        coin_tf = tf_data.get("coin", {})
-        btc_tf  = tf_data.get("btc",  {})
-
-        coin_block = "\n".join([
-            _tf_line("15D", coin_tf.get("15m")),
-            _tf_line("4S",  coin_tf.get("4h")),
-            _tf_line("1G",  coin_tf.get("1d")),
-        ])
-        btc_block = "\n".join([
-            _tf_line("15D", btc_tf.get("15m")),
-            _tf_line("1S",  btc_tf.get("1h")),
-            _tf_line("4S",  btc_tf.get("4h")),
-            _tf_line("1G",  btc_tf.get("1d")),
-        ])
-
-        fg_str = f"{fg_val} ({fg_label})" if fg_val is not None else "bilinmiyor"
-
-        cluster_str = ""
-        if recent_count >= 3:
-            cluster_str = f"⚠️ Son 1 saatte {recent_count} coin sinyal verdi — piyasa geneli baskı!"
-        elif recent_count >= 2:
-            cluster_str = f"🟡 Son 1 saatte {recent_count} sinyal — dikkatli ol."
-        else:
-            cluster_str = "Normal (tek sinyal)"
-
-        coin_hist, sys_hist = fetch_portfolio_context(result["symbol"], sig_type)
-
-        prompt = f"""Sen deneyimli bir kripto teknik analistisisin. Ham verileri kendin yorumla, etiketlere güvenme.
-
-[SİNYAL]
-Coin: #{sym}/USDT | {type_names.get(sig_type, sig_type)}
-{sig_data}
-
-[KOİN — ÇOKLU ZAMAN DİLİMİ]
-{coin_block}
-
-[BTC — ÇOKLU ZAMAN DİLİMİ]
-{btc_block}
-
-[MARKET]
-Fear & Greed: {fg_str}
-{_dominance_str(dom)}
-Sinyal clustering: {cluster_str}
-
-[BU COİN GEÇMİŞİ]
-{coin_hist}
-
-[SİSTEM GENEL PERFORMANS — SMC HARİCİ]
-{sys_hist}
-
-RSI, EMA, hacim, trend uyumu ve momentum verilerini birlikte değerlendir. Geçmiş istatistikler sadece bağlamdır — her sinyali anlık verilere göre bağımsız değerlendir, geçmiş tek başına karar kriteri değildir.
-
-KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
-GEREKÇE: (2-3 cümle — somut veri referansı ver)
-UYARI: (varsa 1 cümle, yoksa yazma)"""
-
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        resp   = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=250,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.content[0].text.strip()
-    except Exception as e:
-        print(f"[CLAUDE] API hata: {e}", flush=True)
-        return ""
-
-# --- Ayrı thread Telegram (ROCKET) ---
-def send_pump_telegram(text):
-    token   = PUMP_PROBABILITY_TOKEN or TELEGRAM_TOKEN
-    chat_id = TELEGRAM_CHAT_ID
-    if not token or not chat_id: return
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True,
-                  "message_thread_id": 4},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            print(f"[PUMP TG] {r.status_code}: {r.text[:80]}", flush=True)
-    except Exception as e:
-        print(f"[PUMP TG] Hata: {e}", flush=True)
-
-# --- Telegram gönderim ---
-def send_claude_telegram(text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text,
-                  "parse_mode": "HTML", "disable_web_page_preview": True,
-                  "message_thread_id": 5},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            print(f"[CLAUDE TG] {r.status_code}: {r.text[:80]}", flush=True)
-    except Exception as e:
-        print(f"[CLAUDE TG] Hata: {e}", flush=True)
-
-# --- Ana async görev ---
-async def _claude_shadow_task(result: dict, recent_count: int, sig_num: int):
-    try:
-        loop = asyncio.get_running_loop()
-        tf_data, (fg_val, fg_label), dom = await asyncio.gather(
-            fetch_multi_tf_data(result["symbol"]),
-            loop.run_in_executor(None, fetch_fear_greed),
-            loop.run_in_executor(None, fetch_btc_dominance_trend),
-        )
-        claude_text = await loop.run_in_executor(
-            None, lambda: ask_claude_shadow(result, recent_count, tf_data, fg_val, fg_label, dom)
-        )
-        if not claude_text:
-            return
-        sym        = result["symbol"].replace("/USDT", "")
-        sig_type   = result.get("type", "capit")
-        type_short = {"capit": "PANİK PUMP", "t72": "ORTA VADE", "t168": "UZUN VADE", "rocket": "ROCKET"}.get(sig_type, sig_type)
-        msg = (
-            f"🤖 <b>CLAUDE — #{sym}/USDT [{type_short}] #{sig_num}</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{claude_text}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Gölge mod · sinyal #{sig_num}</i>"
-        )
-        send_claude_telegram(msg)
-        print(f"[CLAUDE] #{sym} değerlendirmesi gönderildi", flush=True)
-    except Exception as e:
-        print(f"[CLAUDE] Shadow task hata: {e}", flush=True)
-
-# ============================================================
-# CLAUDE SCAN — PERİYODİK OTONOMİK TARAMA
-# ============================================================
-async def refresh_4h_bars(symbols):
-    ok = 0
-    for sym in symbols:
-        try:
-            df = await fetch_df(sym, "4h", 3)
-            if df is not None and len(df) >= 2:
-                if sym in bars_4h:
-                    combined = pd.concat([bars_4h[sym], df])
-                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-200:]
-                    bars_4h[sym] = combined
-                else:
-                    bars_4h[sym] = df.iloc[-200:]
-                ok += 1
-        except Exception:
-            pass
-        await asyncio.sleep(0.05)
-    print(f"[SCAN] 4H güncelleme: {ok}/{len(symbols)}", flush=True)
-
-async def refresh_1d_bars(symbols):
-    ok = 0
-    for sym in symbols:
-        try:
-            df = await fetch_df(sym, "1d", 3)
-            if df is not None and len(df) >= 2:
-                if sym in bars_1d:
-                    combined = pd.concat([bars_1d[sym], df])
-                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-250:]
-                    bars_1d[sym] = combined
-                else:
-                    bars_1d[sym] = df.iloc[-250:]
-                ok += 1
-        except Exception:
-            pass
-        await asyncio.sleep(0.05)
-    print(f"[SCAN] 1D güncelleme: {ok}/{len(symbols)}", flush=True)
-
-def _scan_prefilter(top_n=40):
-    candidates = []
-    for sym in tracked_symbols:
-        score = 0
-        df1h = bars_1h.get(sym)
-        if df1h is not None and len(df1h) > 20:
-            rsi = _calc_rsi(df1h["close"].tolist())
-            if rsi is not None:
-                if   rsi < 35: score += 3
-                elif rsi < 45: score += 2
-                elif rsi < 55: score += 1
-            vr = _vol_ratio_tf(df1h["volume"].tolist())
-            if vr:
-                if   vr > 1.5: score += 2
-                elif vr > 1.2: score += 1
-        df4h = bars_4h.get(sym)
-        if df4h is not None and len(df4h) > 20:
-            rsi4 = _calc_rsi(df4h["close"].tolist())
-            if rsi4 is not None:
-                if   rsi4 < 40: score += 2
-                elif rsi4 < 50: score += 1
-        if score > 0:
-            candidates.append((sym, score))
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    return [s for s, _ in candidates[:top_n]]
-
-def _build_scan_line(sym):
-    parts = []
-    for label, d in [("15D", bars_15m.get(sym)), ("1S", bars_1h.get(sym)),
-                     ("4S", bars_4h.get(sym)),   ("1G", bars_1d.get(sym))]:
-        if d is None or len(d) < 20:
-            continue
-        closes  = d["close"].tolist()
-        volumes = d["volume"].tolist()
-        rsi = _calc_rsi(closes)
-        vr  = _vol_ratio_tf(volumes)
-        sup, res = calc_sr_levels(d)
-        items = []
-        if rsi is not None: items.append(f"RSI:{rsi}")
-        if vr  is not None: items.append(f"H:{vr}x")
-        if sup:             items.append(f"Des:{fmt_price(sup[0])}")
-        if res:             items.append(f"Dir:{fmt_price(res[0])}")
-        parts.append(f"{label}[{' '.join(items)}]")
-    close_price = fmt_price(bars_1h[sym]["close"].iloc[-1]) if sym in bars_1h and len(bars_1h[sym]) > 0 else "?"
-    return f"  {sym.replace('/USDT','')}: {close_price} | {' | '.join(parts)}"
-
-
 # ============================================================
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = os.path.join(os.getenv("DATA_DIR", "/tmp"), "signal_log.json")
-_EXPIRE_H = {"capit": 24, "t24": 24, "t72": 72, "t168": 168, "rocket": 48}
+_EXPIRE_H = {"pump": 24}
 
 def load_signal_log():
     try:
@@ -1454,31 +507,29 @@ def save_signal_log(log):
 
 signal_log        = load_signal_log()
 pending_by_symbol = {}
-_last_periodic_save = 0.0  # restart sonrası peak_pct/trailing kaybını önlemek için
+_last_periodic_save = 0.0
 
 def log_signal(result, tr_time):
-    sig_type = result.get("type", "capit")
+    sig_type = result.get("type", "pump")
     entry_rec = {
-        "id":          f"{result['symbol']}_{sig_type}_{int(tr_time.timestamp())}",
-        "symbol":      result["symbol"],
-        "sig_type":    _SIG_TYPE_MAP.get(sig_type, "panik_pump"),
-        "raw_type":    sig_type,
-        "entry":       result["entry"],
-        "stop":        result["stop"],
-        "tp1":         result.get("tp1"),
-        "tp2":         result.get("tp2"),
-        "tp3":         result.get("tp3"),
-        "expire_h":    _EXPIRE_H.get(sig_type, 24),
-        "funding_neg": result.get("funding_neg", False),
-        "candle":      result.get("candle", ""),
-        "time":        tr_time.isoformat(),
-        "status":      "open",
+        "id":       f"{result['symbol']}_{sig_type}_{int(tr_time.timestamp())}",
+        "symbol":   result["symbol"],
+        "sig_type": _SIG_TYPE_MAP.get(sig_type, "pump"),
+        "raw_type": sig_type,
+        "entry":    result["entry"],
+        "stop":     result["stop"],
+        "tp1":      result.get("tp1"),
+        "tp2":      result.get("tp2"),
+        "expire_h": _EXPIRE_H.get(sig_type, 24),
+        "candle":   result.get("candle", ""),
+        "time":     tr_time.isoformat(),
+        "status":   "open",
         "peak_pct": 0.0, "tp1_hit": False, "tp2_hit": False, "tp3_hit": False,
         "trailing_active": False, "trailing_stop": None,
         "close_time": None, "close_price": None, "close_ret": None,
-        "ret1":      result.get("ret1"),
-        "vol_ratio": result.get("vol_ratio"),
-        "score":     result.get("score"),
+        "vr15":   result.get("vr15"),
+        "vr1h":   result.get("vr1h"),
+        "roc_4h": result.get("roc_4h"),
     }
     signal_log.insert(0, entry_rec)
     if len(signal_log) > 500: signal_log.pop()
@@ -1506,15 +557,15 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
         if cur_ret > entry["peak_pct"]:
             entry["peak_pct"] = round(cur_ret, 2)
 
-        # Trailing stop güncelleme — peak %5'i geçince devreye girer
+        # Trailing stop güncelleme
         if entry.get("trailing_active") or entry["peak_pct"] >= TRAILING_MIN_GAIN:
-            peak_price    = e * (1 + entry["peak_pct"] / 100)
-            new_trailing  = round(peak_price * (1 - TRAILING_PCT), 8)
+            peak_price   = e * (1 + entry["peak_pct"] / 100)
+            new_trailing = round(peak_price * (1 - TRAILING_PCT), 8)
             if new_trailing > entry["stop"]:
                 was_active = entry.get("trailing_active", False)
                 old_stop   = entry["stop"]
-                entry["stop"]           = new_trailing
-                entry["trailing_stop"]  = new_trailing
+                entry["stop"]            = new_trailing
+                entry["trailing_stop"]   = new_trailing
                 entry["trailing_active"] = True
                 stp = new_trailing
                 if not was_active:
@@ -1551,7 +602,7 @@ def check_pending_for_symbol(symbol, bar_high, bar_low, bar_close, bar_time):
     else:
         global _last_periodic_save
         now_ts = time.time()
-        if now_ts - _last_periodic_save >= 300:  # 5 dakikada bir peak_pct / trailing_active kaydet
+        if now_ts - _last_periodic_save >= 300:
             _last_periodic_save = now_ts
             save_signal_log(signal_log)
 
@@ -1621,6 +672,45 @@ async def bootstrap_secondary_tf(symbols):
     print(f"Secondary bootstrap bitti: {ok}/{len(all_syms)}", flush=True)
 
 # ============================================================
+# 4H/1D BAR YENİLEME (periyodik REST çekimi)
+# ============================================================
+async def refresh_4h_bars(symbols):
+    ok = 0
+    for sym in symbols:
+        try:
+            df = await fetch_df(sym, "4h", 3)
+            if df is not None and len(df) >= 2:
+                if sym in bars_4h:
+                    combined = pd.concat([bars_4h[sym], df])
+                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-200:]
+                    bars_4h[sym] = combined
+                else:
+                    bars_4h[sym] = df.iloc[-200:]
+                ok += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.05)
+    print(f"[REFRESH] 4H güncelleme: {ok}/{len(symbols)}", flush=True)
+
+async def refresh_1d_bars(symbols):
+    ok = 0
+    for sym in symbols:
+        try:
+            df = await fetch_df(sym, "1d", 3)
+            if df is not None and len(df) >= 2:
+                if sym in bars_1d:
+                    combined = pd.concat([bars_1d[sym], df])
+                    combined = combined[~combined.index.duplicated(keep="last")].sort_index().iloc[-250:]
+                    bars_1d[sym] = combined
+                else:
+                    bars_1d[sym] = df.iloc[-250:]
+                ok += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.05)
+    print(f"[REFRESH] 1D güncelleme: {ok}/{len(symbols)}", flush=True)
+
+# ============================================================
 # SİNYAL WORKER
 # ============================================================
 @dataclass
@@ -1634,84 +724,36 @@ async def signal_worker(candidate_queue):
     while True:
         sig = await candidate_queue.get()
         try:
-            symbol  = sig.symbol
-            result  = sig.result
-            tr_time = sig.tr_time
-            sig_type = result.get("type", "capit")
+            symbol   = sig.symbol
+            result   = sig.result
+            tr_time  = sig.tr_time
+            sig_type = result.get("type", "pump")
 
-            # Açık pozisyon tekrar kontrolü — aynı coin + aynı sistem zaten açıksa atla
-            pt = _SIG_TYPE_MAP.get(sig_type, "panik_pump")
+            # Açık pozisyon tekrar kontrolü
+            pt = _SIG_TYPE_MAP.get(sig_type, "pump")
             if any(s["status"] == "open" and s["symbol"] == symbol and s["sig_type"] == pt
                    for s in signal_log):
-                print(f"[SKIP] {symbol} {sig_type} — açık pozisyon mevcut, sinyal atlandı", flush=True)
-                continue
-
-            # Likidite kontrolü
-            liquidity = 0.0
-            try:
-                ticker    = await api_gate.call(exchange_spot.fetch_ticker, symbol)
-                liquidity = float(ticker.get("quoteVolume", 0) or 0)
-                if liquidity < MIN_LIQUIDITY:
-                    stats["low_liquidity"] += 1
-                    continue
-            except Exception:
-                pass
-
-            result["liquidity"] = liquidity
-
-            if sig_type == "capit":
-                result["score"] = calc_signal_score(
-                    result.get("ret1", 0), result.get("vol_ratio", 0), liquidity)
-                await fetch_funding_rate(symbol)
-                result["funding"]     = funding_cache.get(symbol)
-                result["funding_neg"] = result["funding"] is not None and result["funding"] < 0
-                msg = build_capitulation_message(result, tr_time, signal_counter + 1)
-                icon = "💰" if result.get("funding_neg") else "🔴"
-                print(f"SİNYAL {icon} [PANİK PUMP] {symbol}"
-                      f" | düşüş:{result['ret1']:+.2f}% | vol:{result['vol_ratio']:.2f}x"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            elif sig_type == "t24":
-                msg = build_t24_message(result, tr_time, signal_counter + 1)
-                print(f"SİNYAL 🔴 [KISA VADE] {symbol}"
-                      f" | ema21:+%{result['dist_ema21']:.1f}"
-                      f" | ma50:%{result['dist_ma50']:.1f}"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            elif sig_type == "t72":
-                msg = build_t72_message(result, tr_time, signal_counter + 1)
-                print(f"SİNYAL 🟡 [ORTA VADE] {symbol}"
-                      f" | mom5:+%{result['mom5_pct']:.1f}"
-                      f" | ema21:%{result['dist_ema21']:.1f}"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            elif sig_type == "t168":
-                msg = build_t168_message(result, tr_time, signal_counter + 1)
-                print(f"SİNYAL 🟢 [UZUN VADE] {symbol}"
-                      f" | ma200:+%{result['dist_ma200']:.1f}"
-                      f" | mom10:+%{result['mom10_pct']:.1f}"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            elif sig_type == "rocket":
-                msg = build_rocket_message(result, tr_time, signal_counter + 1)
-                print(f"SİNYAL 🚀 [ROCKET] {symbol}"
-                      f" | 24s:+{result['change_24h']:.1f}%"
-                      f" | ADX:{result['adx']:.0f}"
-                      f" | vol:{result['vol_ratio']:.2f}x"
-                      f" | giriş:{fmt_price(result['entry'])}", flush=True)
-            else:
+                print(f"[SKIP] {symbol} — açık pozisyon mevcut, sinyal atlandı", flush=True)
                 continue
 
             signal_counter += 1
-            if sig_type == "rocket":
-                send_pump_telegram(msg)
-            else:
-                send_telegram(msg)
+            msg = build_pump_message(result, tr_time, signal_counter)
+            print(f"SİNYAL 🚀 [PUMP] {symbol}"
+                  f" | 15m:{result['vr15']:.1f}x +{result['ret15']:.1f}%"
+                  f" | 1h:{result['vr1h']:.1f}x"
+                  f" | 4h ROC:+{result['roc_4h']:.1f}%"
+                  f" | giriş:{fmt_price(result['entry'])}", flush=True)
+
+            send_telegram(msg)
             portfolio_id = send_to_portfolio(result)
 
             # Claude Analyzer
-            if ANTHROPIC_API_KEY and ANALYZER_TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+            if PORTFOLIO_URL and TELEGRAM_CHAT_ID:
                 recent_cnt = _recent_signal_count()
                 _record_signal_time()
-                sig_snap   = dict(result)
-                sig_num    = signal_counter
-                loop       = asyncio.get_running_loop()
+                sig_snap = dict(result)
+                sig_num  = signal_counter
+                loop     = asyncio.get_running_loop()
                 asyncio.create_task(
                     loop.run_in_executor(
                         None,
@@ -1721,12 +763,9 @@ async def signal_worker(candidate_queue):
                 )
 
             # Cooldown güncelle
-            if sig_type == "capit":
-                last_signal_ts[symbol] = tr_time.replace(tzinfo=None)
-            else:
-                last_pump_ts[(symbol, sig_type)] = tr_time.replace(tzinfo=None)
+            last_pump_ts[symbol] = tr_time.replace(tzinfo=None)
 
-            result["time"]     = tr_time.strftime("%Y-%m-%d %H:%M")
+            result["time"] = tr_time.strftime("%Y-%m-%d %H:%M")
             all_signals.insert(0, result)
             if len(all_signals) > 200: all_signals.pop()
             stats["signal_sent"] += 1
@@ -1764,29 +803,20 @@ async def on_1h_close(symbol, o, h, l, c, v, ts_ms, candidate_queue):
 
     tr_time = datetime.now(timezone.utc).astimezone(TR_TZ)
 
-    # --- Sistem 1: Kapitülasyon ---
-    last_c = last_signal_ts.get(symbol)
-    capit_ok = True
-    if last_c is not None:
-        elapsed = (tr_time.replace(tzinfo=None) - last_c.replace(tzinfo=None)).total_seconds() / 3600
-        if elapsed < SIGNAL_COOLDOWN_HOURS:
-            stats["cooldown"] += 1; capit_ok = False
-    if capit_ok:
-        result = check_capitulation_signal(df, symbol)
+    # --- PUMP sinyali ---
+    last_p  = last_pump_ts.get(symbol)
+    pump_ok = True
+    if last_p is not None:
+        elapsed = (tr_time.replace(tzinfo=None) - last_p.replace(tzinfo=None)).total_seconds() / 3600
+        if elapsed < PUMP_COOLDOWN_H:
+            stats["cooldown"] += 1
+            pump_ok = False
+    if pump_ok:
+        result = check_pump_signal(symbol)
         if result:
             await candidate_queue.put(SignalCandidate(symbol, result, tr_time))
         else:
-            stats["capit_filtered"] += 1
-
-    # --- Sistem 2: T24 --- (DEVRE DIŞI - 2026-05-26 analiz sonucu kapatildi)
-    # T24 backtest: WR %%10, ort getiri -%%1.7 -> para kaybettiriyor
-    pass  # T24 disabled
-
-    # --- Sistem 3: T72 --- (DEVRE DIŞI - 2026-06-18 backtest WR %27, ret -%5.7)
-    pass  # T72 disabled
-
-    # --- Sistem 4: T168 --- (DEVRE DIŞI - 2026-06-18 backtest WR %32, ret +%2.2)
-    pass  # T168 disabled
+            stats["filtered"] += 1
 
 async def on_15m_close(symbol, o, h, l, c, v, ts_ms):
     if symbol not in bars_15m:
@@ -1885,11 +915,7 @@ def clean_json(obj):
     return obj
 
 _TYPE_LABEL = {
-    "capit":     ("🔴", "PANİK PUMP",        "#ff4444"),
-    "t24":       ("🔴", "KISA VADE",         "#ff8800"),
-    "t72":       ("🟡", "ORTA VADE",         "#ffcc00"),
-    "t168":      ("🟢", "UZUN VADE",         "#00cc66"),
-    "rocket":    ("📈", "ROCKET",            "#00ccaa"),
+    "pump":  ("🚀", "PUMP", "#3fb950"),
 }
 
 @flask_app.route("/")
@@ -1897,37 +923,22 @@ def home():
     now = tr_now().strftime("%H:%M:%S")
     sig_rows = ""
     for s in all_signals[:40]:
-        stype = s.get("type", "capit")
-        icon, label, bc = _TYPE_LABEL.get(stype, ("🔴", "SİNYAL", "#ff4444"))
-        e = s.get("entry"); stop = s.get("stop"); tp1 = s.get("tp1"); tp2 = s.get("tp2")
-
-        if stype == "capit":
-            ret1_v = s.get("ret1", 0); vr_v = s.get("vol_ratio", 0)
-            ind = f"Düşüş:{ret1_v:+.2f}%  Hacim:{vr_v:.2f}x"
-            fn = s.get("funding_neg", False)
-            if fn: icon = "💰"; bc = "#c8e86a"
-        elif stype == "t24":
-            ind = f"EMA21:+%{abs(s.get('dist_ema21',0)):.1f}  MA50:%{s.get('dist_ma50',0):.1f}  BB-dar:{s.get('bb_width_ch3',0):.3f}"
-        elif stype == "t72":
-            ind = f"Mom5:+%{s.get('mom5_pct',0):.1f}  EMA21:%{s.get('dist_ema21',0):.1f}  Drawdown:%{s.get('coin_drawdown',0):.1f}"
-        elif stype == "t168":
-            ind = f"MA200:+%{s.get('dist_ma200',0):.1f}  Mom10:+%{s.get('mom10_pct',0):.1f}  Zirve:{s.get('days_since_high',0)} bar"
-        else:
-            ind = ""
-
-        tp_str = f"TP1:{fmt_price(tp1)}"
-        if tp2 and tp2 != tp1: tp_str += f" / TP2:{fmt_price(tp2)}"
+        stype = s.get("type", "pump")
+        icon, label, bc = _TYPE_LABEL.get(stype, ("🚀", "PUMP", "#3fb950"))
+        e = s.get("entry"); stop = s.get("stop"); tp1 = s.get("tp1")
+        vr15_v = s.get("vr15", 0); vr1h_v = s.get("vr1h", 0); roc_v = s.get("roc_4h", 0)
+        ind = f"15m:{vr15_v:.1f}x  +{s.get('ret15',0):.1f}%  |  1h:{vr1h_v:.1f}x  |  4h ROC:+{roc_v:.1f}%"
         sig_rows += (
             f'<div class="sig" style="border-color:{bc}">'
             f'<div class="sr"><b>{icon} {s.get("symbol","")} <small>[{label}]</small></b>'
             f'<span class="ts">{s.get("time","")[:16]}</span></div>'
-            f'<div class="sd">💵 {fmt_price(e)}  🛑 {fmt_price(stop)}  🎯 {tp_str}</div>'
+            f'<div class="sd">💵 {fmt_price(e)}  🛑 {fmt_price(stop)}  🎯 {fmt_price(tp1)}</div>'
             f'<div class="sd">{ind}</div>'
             f'</div>'
         )
     ps = perf_summary()
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Pump Scanner v6.0</title>
+<html><head><meta charset="UTF-8"><title>Pump Scanner v7.0</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -1938,21 +949,17 @@ h1{{color:#00d4ff;letter-spacing:4px;font-size:1.1rem;margin-bottom:16px}}
 .stat{{background:#0c1117;border:1px solid #1c2a36;padding:9px 14px;border-radius:4px;min-width:80px}}
 .sv{{font-size:1.1rem;color:#00d4ff;display:block;font-weight:bold}}
 .sl{{font-size:.58rem;color:#3d5a6a;text-transform:uppercase;letter-spacing:1px}}
-h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
-.sig{{background:#0d0305;border-left:3px solid #ff4444;padding:10px 14px;margin:5px 0;border-radius:2px}}
+h3{{color:#3fb950;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
+.sig{{background:#0d1305;border-left:3px solid #3fb950;padding:10px 14px;margin:5px 0;border-radius:2px}}
 .sr{{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}}
 .sd{{font-size:.73rem;margin:2px 0;color:#8aa8b8}}
 .ts{{color:#3d5a6a;font-size:.65rem}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:20px;border-top:1px solid #1c2a36;padding-top:10px;line-height:2}}
 </style></head><body>
-<h1>PUMP SCANNER <small style="font-size:.6rem;color:#3d5a6a">v6.0 — 4 SİSTEM</small></h1>
+<h1>PUMP SCANNER <small style="font-size:.6rem;color:#3d5a6a">v7.0 — PUMP SİSTEMİ</small></h1>
 <div class="info">
-  🔴 PANİK PUMP: Düşüş {CRASH_MAX:.0f}% ile {CRASH_MIN:.0f}% | Hacim {VOL_MIN:.1f}x-{VOL_MAX:.1f}x | Stop -3% | TP +5/10/15% | WR ~%84<br>
-  ⛔ KISA VADE (T24): DEVRE DIŞI<br>
-  ⛔ ORTA VADE (T72): DEVRE DIŞI<br>
-  ⛔ UZUN VADE (T168): DEVRE DIŞI<br>
-  📈 ROCKET: 24s değişim + ADX(14) Yükseliş + Hacim artışı | Stop -5% | TP +8/15/25%<br>
-  BTC 4H: {btc_4h_cache.get("trend","?")}
+  🚀 PUMP: 15m spike ≥{PUMP_VR15_MIN:.0f}x | 15m getiri ≥{PUMP_RET15_MIN:.0f}% | 1h hacim ≥{PUMP_VR1H_MIN:.0f}x | 4h MA50 trend | 4h ROC ≥{PUMP_ROC_MIN:.0f}%<br>
+  Stop: -{PUMP_SL_PCT:.0f}% | TP: +{PUMP_TP_PCT:.0f}% | Hold: {PUMP_EXPIRE_H}h | Cooldown: {PUMP_COOLDOWN_H}h | Backtest WR: ~%91
 </div>
 <div class="stats">
   <div class="stat"><span class="sv">{len(tracked_symbols)}</span><span class="sl">Sembol</span></div>
@@ -1970,7 +977,7 @@ h3{{color:#ff4444;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 <div class="footer">
   Heartbeat: {heartbeat["last"]} | Son coin: {heartbeat["symbol"]}
   &nbsp;|&nbsp; <a href="/performance" style="color:#00d4ff">📈 Performans</a><br>
-  Eleme: Cooldown:{stats.get("cooldown",0)} Crash:{stats.get("filtered_crash",0)} Vol:{stats.get("filtered_vol",0)} F4t:{stats.get("filtered_f4t",0)} F5t:{stats.get("filtered_f5t",0)} Hacim:{stats.get("low_liquidity",0)}
+  Filtre: Cooldown:{stats.get("cooldown",0)}  Filtered:{stats.get("filtered",0)}  Data:{stats.get("data_missing",0)}
 </div>
 </body></html>"""
 
@@ -1997,8 +1004,8 @@ def perf_dashboard():
         st_col = "#00f080" if st=="win" else ("#ff4444" if st=="loss" else ("#ffb300" if st=="expired" else "#3d5a6a"))
         peak   = s.get("peak_pct", 0)
         cr     = s.get("close_ret"); ct = (s.get("close_time") or "")[:16]
-        stype  = s.get("raw_type", s.get("sig_type", "capit"))
-        _, label, tc = _TYPE_LABEL.get(stype, ("🔴", "SİNYAL", "#ff4444"))
+        stype  = s.get("raw_type", s.get("sig_type", "pump"))
+        _, label, tc = _TYPE_LABEL.get(stype, ("🚀", "PUMP", "#3fb950"))
         def fmt_ret(r):
             if r is None: return "—"
             col = "#00f080" if float(r) > 0 else "#ff4444"
@@ -2012,13 +1019,12 @@ def perf_dashboard():
           <td>{fmt_price(s.get("tp1"))}</td>
           <td style="color:#00f080">+{peak}%</td>
           <td>{'✅' if s.get('tp1_hit') else '—'}</td>
-          <td>{'✅' if s.get('tp2_hit') else '—'}</td>
           <td>{fmt_ret(cr)}</td>
           <td>{ct}</td>
           <td style="color:{st_col}">{st.upper()}</td>
         </tr>"""
     return f"""<!DOCTYPE html><html lang="tr"><head>
-<meta charset="UTF-8"><title>Performans — Pump Scanner v6</title>
+<meta charset="UTF-8"><title>Performans — Pump Scanner v7</title>
 <meta http-equiv="refresh" content="300">
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2035,7 +1041,7 @@ def perf_dashboard():
   tr:hover td{{background:#0c1117}}
   a{{color:#00d4ff;text-decoration:none}}
 </style></head><body>
-<h1>📈 PUMP SCANNER SİNYAL PERFORMANSI v6.0</h1>
+<h1>📈 PUMP SCANNER SİNYAL PERFORMANSI v7.0</h1>
 <div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()}</div>
 <div class="cards">
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>
@@ -2048,7 +1054,7 @@ def perf_dashboard():
 </div>
 <table><thead><tr>
   <th>Zaman</th><th>Sembol</th><th>Sistem</th><th>Giriş</th><th>Stop</th><th>Hedef</th>
-  <th>Peak%</th><th>TP1</th><th>TP2</th><th>Kapanış%</th><th>Kapanış Zamanı</th><th>Durum</th>
+  <th>Peak%</th><th>TP1</th><th>Kapanış%</th><th>Kapanış Zamanı</th><th>Durum</th>
 </tr></thead><tbody>{rows}</tbody></table>
 </body></html>"""
 
@@ -2056,34 +1062,24 @@ def perf_dashboard():
 # PERİYODİK GÖREVLER
 # ============================================================
 async def periodic_tasks():
-    tick = 0
-    last_4h_tick  = 0
-    last_1d_tick  = 0
+    tick         = 0
+    last_4h_tick = 0
+    last_1d_tick = 0
     while True:
         await asyncio.sleep(600)
         tick += 1
-        t24_cnt  = sum(1 for s in all_signals if s.get("type") == "t24")
-        t72_cnt  = sum(1 for s in all_signals if s.get("type") == "t72")
-        t168_cnt = sum(1 for s in all_signals if s.get("type") == "t168")
-        cap_cnt  = sum(1 for s in all_signals if s.get("type") == "capit")
+        pump_cnt = sum(1 for s in all_signals if s.get("type") == "pump")
         print(
             f"\n╔══════════════ PUMP SCANNER ÖZET ══════════════╗\n"
             f"  Sembol: {len(tracked_symbols):<6} 1H Kapanış: {ws_1h_closes:<6} Toplam Sinyal: {stats.get('signal_sent',0)}\n"
             f"  15m bar: {len(bars_15m):<5} 4H bar: {len(bars_4h):<5} 1D bar: {len(bars_1d)}\n"
-            f"  ── Son Sinyaller ──\n"
-            f"  PANİK PUMP    : {cap_cnt}\n"
-            f"  KISA VADE     : {t24_cnt}\n"
-            f"  ORTA VADE     : {t72_cnt}\n"
-            f"  UZUN VADE     : {t168_cnt}\n"
+            f"  PUMP sinyaller (son oturum): {pump_cnt}\n"
             f"  ── Filtre ──\n"
-            f"  Crash:{stats.get('filtered_crash',0)}  Vol:{stats.get('filtered_vol',0)}"
-            f"  F4t:{stats.get('filtered_f4t',0)}  F5t:{stats.get('filtered_f5t',0)}"
-            f"  Hacim:{stats.get('low_liquidity',0)}  Cooldown:{stats.get('cooldown',0)}\n"
+            f"  Filtered:{stats.get('filtered',0)}  Cooldown:{stats.get('cooldown',0)}"
+            f"  Data:{stats.get('data_missing',0)}\n"
             f"╚═══════════════════════════════════════════════╝",
             flush=True,
         )
-        if tick % 2 == 0:
-            await refresh_btc_4h()
         # 4H bar güncelleme — her 4 saatte (24 tick × 10 dk = 240 dk)
         if tick - last_4h_tick >= 24:
             last_4h_tick = tick
@@ -2093,54 +1089,15 @@ async def periodic_tasks():
             last_1d_tick = tick
             asyncio.create_task(refresh_1d_bars(tracked_symbols + ["BTC/USDT"]))
 
-
-# ============================================================
-# ROCKET TARAMA DÖNGÜSÜ
-# ============================================================
-ROCKET_INTERVAL_S  = int(os.getenv("ROCKET_INTERVAL_S",  "1800"))  # 30 dakika
-ROCKET_COOLDOWN_H  = int(os.getenv("ROCKET_COOLDOWN_H",  "12"))    # aynı coin 12s cooldown
-
-async def rocket_scan_loop(candidate_queue):
-    await asyncio.sleep(300)  # bootstrap bitmesini bekle
-    while True:
-        try:
-            now_tr = datetime.now(timezone.utc).astimezone(TR_TZ)
-            hits   = 0
-            for sym in list(tracked_symbols):
-                result = check_rocket_signal(sym)
-                if result is None:
-                    continue
-                last_r = last_rocket_ts.get(sym)
-                if last_r is not None:
-                    elapsed = (now_tr.replace(tzinfo=None) - last_r.replace(tzinfo=None)).total_seconds() / 3600
-                    if elapsed < ROCKET_COOLDOWN_H:
-                        continue
-                # Açık pozisyon varsa atla
-                if any(s["status"] == "open" and s["symbol"] == sym and s["sig_type"] == "rocket"
-                       for s in signal_log):
-                    continue
-                await candidate_queue.put(SignalCandidate(sym, result, now_tr))
-                last_rocket_ts[sym] = now_tr
-                hits += 1
-            if hits:
-                print(f"[ROCKET] Tarama tamamlandı: {hits} sinyal üretildi", flush=True)
-        except Exception as e:
-            print(f"[ROCKET] Tarama hata: {e}", flush=True)
-        await asyncio.sleep(ROCKET_INTERVAL_S)
-
 # ============================================================
 # MAIN
 # ============================================================
 async def main():
     global tracked_symbols
-    print("Pump Scanner v6.0 başlatılıyor — 5 Sistem (T24 devre dışı)", flush=True)
-    print(f"  [1] PANİK PUMP  : Crash {CRASH_MAX:.0f}%-{CRASH_MIN:.0f}% + Hacim {VOL_MIN}x-{VOL_MAX}x | Stop -3% | TP +5/10/15% | WR ~%84", flush=True)
-    print(f"  [2] T24         : *** DEVRE DIŞI ***", flush=True)
-    print(f"  [3] ORTA VADE   : *** DEVRE DIŞI ***", flush=True)
-    print(f"  [4] UZUN VADE   : *** DEVRE DIŞI ***", flush=True)
-    print(f"  [5] ROCKET      : Momentum devam + hacim artışı | Stop ~-5% | TP +8/15/25%", flush=True)
-    pp_tok = "VAR" if PUMP_PROBABILITY_TOKEN else "YOK (fallback: ana bot)"
-    print(f"       → ROCKET Telegram token (PUMP_PROBABILITY_TOKEN): {pp_tok}", flush=True)
+    print("Pump Scanner v7.0 başlatılıyor — PUMP SİSTEMİ", flush=True)
+    print(f"  Koşullar: 15m spike ≥{PUMP_VR15_MIN:.0f}x | 15m getiri ≥{PUMP_RET15_MIN:.0f}% | 1h hacim ≥{PUMP_VR1H_MIN:.0f}x", flush=True)
+    print(f"            4h MA50 trend | 4h ROC ≥{PUMP_ROC_MIN:.0f}% ({PUMP_ROC_PERIOD} bar)", flush=True)
+    print(f"  Stop: -{PUMP_SL_PCT:.0f}% | TP: +{PUMP_TP_PCT:.0f}% | Hold: {PUMP_EXPIRE_H}h | Cooldown: {PUMP_COOLDOWN_H}h", flush=True)
 
     symbols = await load_symbols_pool()
     if not symbols:
@@ -2151,8 +1108,6 @@ async def main():
     print(f"{len(symbols)} sembol yüklendi", flush=True)
 
     await bootstrap_all(symbols)
-    await refresh_funding_cache(symbols)
-    await refresh_btc_4h()
     rebuild_pending()
     print(f"Pending sinyaller: {sum(len(v) for v in pending_by_symbol.values())}", flush=True)
 
@@ -2160,7 +1115,6 @@ async def main():
     asyncio.create_task(signal_worker(candidate_queue))
     asyncio.create_task(periodic_tasks())
     asyncio.create_task(bootstrap_secondary_tf(symbols))
-    asyncio.create_task(rocket_scan_loop(candidate_queue))
 
     bot_status["status"] = "LIVE"
     print(f"LIVE | {len(symbols)} sembol izleniyor", flush=True)
