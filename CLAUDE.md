@@ -49,36 +49,44 @@ Opsiyonel: `source` ("smc"), `tp2`, `tp3`, sistem-spesifik metrikler
 ## Sistem Mimarisi
 
 ```
-bot.py        → sinyal → Telegram (TELEGRAM_TOKEN)
+bot.py        → sinyal → Telegram thread 5 (TELEGRAM_TOKEN)
                → HTTP  → claude_analyzer.py → karar → Telegram (ANALYZER_TELEGRAM_TOKEN)
 
 SMC.py        → sinyal → kendi Telegram botu
                → [İLERDE] claude_analyzer.py → karar → Telegram (ANALYZER_TELEGRAM_TOKEN)
-
-ROCKET        → sinyal → Telegram (PUMP_PROBABILITY_TOKEN, ayrı thread)
 ```
 
 ## Environment Variables (Render — bot.py servisi)
+
+### Aktif / Gerekli
 
 | Değişken | Açıklama |
 |---|---|
 | BINANCE_API_KEY | Binance API |
 | BINANCE_API_SECRET | Binance Secret |
-| TELEGRAM_TOKEN | Ana sinyal botu |
-| TELEGRAM_CHAT_ID | Kullanıcı chat ID (tüm botlar ortak) |
-| PUMP_PROBABILITY_TOKEN | ROCKET sinyalleri için ayrı thread tokeni |
-| ANALYZER_TELEGRAM_TOKEN | @CLAUDE_ANALYZR_BOT tokeni |
-| ANTHROPIC_API_KEY | Claude API |
+| TELEGRAM_TOKEN | Ana sinyal botu (thread 5) |
+| TELEGRAM_CHAT_ID | Kullanıcı chat ID |
+| ANALYZER_TELEGRAM_TOKEN | @CLAUDE_ANALYZR_BOT tokeni (portfolio tracker kullanır) |
+| ANTHROPIC_API_KEY | Claude API (ileride kullanım için) |
 | PORTFOLIO_URL | Portfolio tracker URL |
 | PORTFOLIO_TOKEN | Portfolio auth token |
 
+### Render'dan SİLİNECEK (artık kullanılmıyor)
+
+| Değişken | Neden |
+|---|---|
+| PUMP_PROBABILITY_TOKEN | ROCKET sistemi kaldırıldı |
+| SIGNAL_COOLDOWN_HOURS | Kapitülasyon sistemi kaldırıldı |
+| CRASH_MIN | Kapitülasyon sistemi kaldırıldı |
+| CRASH_MAX | Kapitülasyon sistemi kaldırıldı |
+| VOL_MIN | Kapitülasyon sistemi kaldırıldı |
+| VOL_MAX | Kapitülasyon sistemi kaldırıldı |
+| MIN_LIQUIDITY | Hardcode edildi (500k USDT) |
+
 ## Aktif Sistemler (bot.py)
 
-1. **PANİK PUMP** — Kapitülasyon mean reversion | Stop -3% | TP +5/10/15% | WR ~%84
-2. **T24** — DEVRE DIŞI (2026-05-26, WR %10, ret -%1.7)
-3. **ORTA VADE T72** — DEVRE DIŞI (2026-06-18, WR %27, ret -%5.7)
-4. **UZUN VADE T168** — DEVRE DIŞI (2026-06-18, WR %32, ret +%2.2)
-5. **ROCKET** — Momentum devam + hacim artışı | Stop -5% | TP +8/15/25%
+1. **PUMP** (2026-06-28) — 15m spike ≥15x + 1h hacim ≥5x + 4h trend + ROC ≥24% | Stop -5% | TP +20% | Backtest WR ~%91
+   - Eski sistemler (PANİK PUMP, T24, T72, T168, ROCKET) tamamen kaldırıldı
 
 ## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
 
