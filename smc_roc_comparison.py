@@ -2,7 +2,7 @@
 """
 SMC ROC Filtresi Karşılaştırma Backtesti
 =========================================
-Senaryo A — Mevcut : MIN_VOL_24H=5M USDT filtresi, ROC yok
+Senaryo A — Mevcut : MIN_VOL_24H=2.5M USDT filtresi, ROC yok
 Senaryo B — ROC    : MIN_VOL_24H yok, 16H ROC >= %8 filtresi
 
 Her iki senaryo için aynı çıkış stratejisi:
@@ -35,7 +35,7 @@ SWING_LENGTH    = 50
 SMC_TRAIL_PCT   = 2.5
 
 # Senaryo parametreleri
-MIN_VOL_24H_CURRENT = 5_000_000   # Mevcut: 5M USDT
+MIN_VOL_24H_CURRENT = 2_500_000   # Mevcut: 2.5M USDT (SMC.py env: MIN_VOLUME_24H)
 VOL_RATIO_MIN       = 2.0
 ROC_16H_MIN         = 8.0         # ROC senaryosu: 16H ROC >= %8
 
@@ -193,7 +193,7 @@ def run_choch_incremental(df):
 # ─── SİNYAL TOPLAMA ──────────────────────────────────────────────────────────
 def collect_signals(symbols, btc_filters, fetch=True, use_roc=False):
     """
-    use_roc=False → Mevcut: MIN_VOL_24H=5M filtresi, ROC yok
+    use_roc=False → Mevcut: MIN_VOL_24H=2.5M filtresi, ROC yok
     use_roc=True  → ROC: MIN_VOL_24H yok, 16H ROC >= %8
     """
     label = "ROC" if use_roc else "Mevcut"
@@ -408,7 +408,7 @@ def print_report(results):
     print("═"*W)
     print(f"  {'Senaryo':<38} {'Sinyal':>7} {'Trade':>6} {'Kazanç':>7} {'Stop':>6} {'Expire':>7} {'WR%':>6} {'AvgWin':>8} {'AvgLoss':>8} {'MaxDD':>7} {'Getiri':>8} {'Son $':>10}")
     print("─"*W)
-    for key, label in [("current","Mevcut (MIN_VOL_24H=5M, ROC yok)"),("roc",f"ROC (MIN_VOL yok, 16H ROC>=%{ROC_16H_MIN:.0f})")]:
+    for key, label in [("current","Mevcut (MIN_VOL_24H=2.5M, ROC yok)"),("roc",f"ROC (MIN_VOL yok, 16H ROC>=%{ROC_16H_MIN:.0f})")]:
         r = results.get(key, {}); st = r.get("stats", {})
         n_sigs = r.get("n_sigs", 0)
         trades = st.get("trades",0); wr = st.get("wr",0)
@@ -425,7 +425,7 @@ def generate_html(results, n_coins):
     PALETTE = ["#457b9d", "#2a9d8f"]
     rows = ""; datasets = []
     scenarios = [
-        ("current", f"Mevcut — MIN_VOL_24H=5M, ROC yok"),
+        ("current", f"Mevcut — MIN_VOL_24H=2.5M, ROC yok"),
         ("roc",     f"ROC — MIN_VOL yok, 16H ROC≥{ROC_16H_MIN:.0f}%"),
     ]
     for idx, (key, label) in enumerate(scenarios):
@@ -542,7 +542,7 @@ def main():
     n_coins = len([s for s in symbols if s != "BTC/USDT"])
     print(f"\n{len(symbols)} coin | 2 senaryo karşılaştırılıyor...\n")
 
-    print("─── Senaryo A: Mevcut (MIN_VOL_24H=5M, ROC yok) ───")
+    print("─── Senaryo A: Mevcut (MIN_VOL_24H=2.5M, ROC yok) ───")
     sigs_current = collect_signals(symbols, btc_filters, fetch=do_fetch, use_roc=False)
     print(f"  → {len(sigs_current)} sinyal\n")
 
