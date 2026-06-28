@@ -41,6 +41,8 @@ BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 EXPIRE_TRAIL_THRESHOLD = float(os.getenv("EXPIRE_TRAIL_THRESHOLD", "0.80"))
 EXPIRE_TRAIL_PCT = float(os.getenv("EXPIRE_TRAIL_PCT", "2.0"))
 TRAIL_PCT      = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
+# PUMP sinyalleri: hard SL + sabit expire (trailing yok)
+BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h, diğer bot sinyalleri EXPIRE_HOURS kullanır
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
 SMC_MAIN_SOURCES = ("smc", "smc-original", "smc-trailing", "smc-momentum", "smc-v2")
 
@@ -335,29 +337,49 @@ def check_open_positions():
                             close_reason = "trailing"; close_price = trail_stop
                             sig["status"] = "win_trail" if trail_ret > 0 else "loss"
             else:
-                # Bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
-                trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
-                sig["trail_stop"] = trail_stop_price
-
-                if tp1 and high >= tp1 and not sig.get("tp1_hit"):
-                    sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                    need_save = True
-                    print(f"  🏁 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}% | devam", flush=True)
-
-                if tp2 and high >= tp2:
-                    close_reason = "tp2"; close_price = tp2
-                    sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
-                elif low <= trail_stop_price:
-                    trail_ret = round((trail_stop_price - entry) / entry * 100, 2)
-                    close_reason = "trailing"; close_price = trail_stop_price
-                    sig["status"] = "win_trail" if trail_ret > 0 else "loss"
-                    sig["tp2_shadow"] = "not_reached"
+                is_pump = sig.get("sig_type") == "pump"
+                if is_pump:
+                    # PUMP: hard SL -5%, TP +20% (tp2=tp1), 6h expire — trailing yok
+                    if tp1 and high >= tp1 and not sig.get("tp1_hit"):
+                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                        need_save = True
+                        print(f"  🎯 PUMP TP HİT: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}%", flush=True)
+                    if tp2 and high >= tp2:
+                        close_reason = "tp2"; close_price = tp2
+                        sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
+                    elif low <= stop:
+                        close_reason = "stop"; close_price = stop
+                        sig["status"] = "loss"; sig["tp2_shadow"] = "not_reached"
+                    else:
+                        open_time = datetime.fromisoformat(sig["open_time"])
+                        if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
+                        if (now - open_time).total_seconds() / 3600 >= BOT_EXPIRE_H["pump"]:
+                            close_reason = "expired"; close_price = close; sig["status"] = "expired"
+                            sig["tp2_shadow"] = "not_reached"
                 else:
-                    open_time = datetime.fromisoformat(sig["open_time"])
-                    if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
-                    if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
-                        close_reason = "expired"; close_price = close; sig["status"] = "expired"
+                    # Diğer bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
+                    trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
+                    sig["trail_stop"] = trail_stop_price
+
+                    if tp1 and high >= tp1 and not sig.get("tp1_hit"):
+                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                        need_save = True
+                        print(f"  🏁 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}% | devam", flush=True)
+
+                    if tp2 and high >= tp2:
+                        close_reason = "tp2"; close_price = tp2
+                        sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
+                    elif low <= trail_stop_price:
+                        trail_ret = round((trail_stop_price - entry) / entry * 100, 2)
+                        close_reason = "trailing"; close_price = trail_stop_price
+                        sig["status"] = "win_trail" if trail_ret > 0 else "loss"
                         sig["tp2_shadow"] = "not_reached"
+                    else:
+                        open_time = datetime.fromisoformat(sig["open_time"])
+                        if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
+                        if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
+                            close_reason = "expired"; close_price = close; sig["status"] = "expired"
+                            sig["tp2_shadow"] = "not_reached"
 
             if close_reason:
                 sig["close_time"] = now.isoformat()
@@ -1595,6 +1617,7 @@ def type_badge(sig):
         "trend":            "#3498db",
         "birikim":          "#9b59b6",
         "tp":               "#e67e22",
+        "pump":             "#ff8c00",
         "panik_pump":       "#ff4444",
         "pump_kisa":        "#ff8800",
         "pump_orta":        "#ffcc00",
@@ -1602,6 +1625,7 @@ def type_badge(sig):
         "rocket":           "#00ccaa",
     }
     labels = {
+        "pump":             "PUMP",
         "panik_pump":       "PANİK PUMP",
         "pump_kisa":        "KISA VADE",
         "pump_orta":        "ORTA VADE (72s)",
@@ -1674,7 +1698,7 @@ def dashboard():
             ot = datetime.fromisoformat(sig["open_time"])
             if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
             elapsed_h = int((now_dt - ot).total_seconds() / 3600)
-            _max_h = {"pump_orta": 72, "pump_uzun": 168}.get(sig.get("sig_type", ""))
+            _max_h = {"pump": 6, "pump_orta": 72, "pump_uzun": 168}.get(sig.get("sig_type", ""))
             if _max_h:
                 _sc = "#f39c12" if elapsed_h >= _max_h * 0.8 else "#7f8c8d"
                 sure_cell = f'<span style="font-size:.7rem;color:{_sc}">{elapsed_h}s / {_max_h}s</span>'
