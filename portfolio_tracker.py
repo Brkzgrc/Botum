@@ -2,7 +2,7 @@
 """
 Portföy Takip Sistemi v2.9
 ===========================
-SMC-V2 çıkış: TP1'de ½ çıkılır (half_tp1) → TP2'de kalan ½ kapanır. Getiri = ortalama.
+SMC-V2 çıkış: TP1 trailing'i aktive eder (çıkış yok) → peak'ten -%2.5 trail veya TP2'de tam çıkış.
            Diğer SMC: stop → loss | TP2 → win_tp2 direkt. TP1 milestone.
 PUMP çıkış: hard SL -%5 | TP +%20 (tp2=tp1) | 6h expire | trailing yok.
 Bot (diğer): trailing %3 (peak altı) | TP1 milestone | TP2 hedef | 48h expire.
@@ -1575,7 +1575,7 @@ def status_badge(status):
         "open":        ("#3498db", "AÇIK"),
         "half_tp1":    ("#f39c12", "½TP1✓ →TP2"),
         "win_tp1":     ("#2ecc71", "WIN (TP1)"),
-        "win_tp2":     ("#27ae60", "WIN (½+½ TP2)"),
+        "win_tp2":     ("#27ae60", "WIN (TP2)"),
         "win_trail":   ("#27ae60", "WIN (TRAIL)"),
         "win_partial": ("#27ae60", "WIN (TRAIL)"),
         "loss":        ("#e74c3c", "LOSS"),
@@ -1713,11 +1713,16 @@ def dashboard():
             pass
 
         is_half = sig.get("status") == "half_tp1"
+        is_full_trail_sig = sig.get("source") in FULL_TRAIL_SOURCES
         tp1_milestone = sig.get("tp1_hit")
         if is_half:
             _tp1_hit_pct = sig.get("tp1_pct", 0)
             tp1_cell = (f'<span style="background:#f39c1233;color:#f39c12;padding:1px 5px;border-radius:3px;'
                         f'font-size:.6rem;white-space:nowrap">🟡 ½ çıkıldı +{_tp1_hit_pct:.2f}% → TP2 bekleniyor</span>')
+        elif tp1_milestone and is_full_trail_sig:
+            _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
+            tp1_cell = (f'<span style="background:#f39c1233;color:#f39c12;padding:1px 5px;border-radius:3px;'
+                        f'font-size:.6rem;white-space:nowrap">🟡 TRAIL AKTİF +{_tp1_hit_pct:.2f}%</span>')
         elif tp1_milestone:
             tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;font-size:.6rem;white-space:nowrap">✅ +{tp1_pct}% milestone</span>')
         else:
@@ -1739,17 +1744,23 @@ def dashboard():
         sym = sig["symbol"].replace("/USDT", "")
         tp1_badge = ""
         _cr = sig.get("close_reason", "")
-        if sig.get("tp1_pct") is not None and _cr in ("tp2", "half_stop", "expired_half"):
+        _is_full_trail_closed = sig.get("source") in FULL_TRAIL_SOURCES
+        if sig.get("tp1_hit") and _cr == "trailing":
+            _tp1_p = sig.get("tp1_pct", 0) or 0
+            _fin_p = sig.get("close_pct", 0)
+            tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
+                         f'TP1 trail aktif → çıkış:{_fin_p:+.2f}%</span>')
+        elif sig.get("tp1_hit") and _cr == "tp2" and _is_full_trail_closed:
+            _tp1_p = sig.get("tp1_pct", 0) or 0
+            _fin_p = sig.get("close_pct", 0)
+            tp1_badge = (f'<span style="color:#2ecc71;font-size:.58rem">'
+                         f'TP1 trail aktif → TP2:{_fin_p:+.2f}%</span>')
+        elif sig.get("tp1_pct") is not None and _cr in ("tp2", "half_stop", "expired_half"):
             _tp1_p = sig.get("tp1_pct", 0)
             _fin_p = sig.get("close_pct", 0)
             _fin_lbl = "TP2" if _cr == "tp2" else ("STOP" if _cr == "half_stop" else "EXP")
             tp1_badge = (f'<span style="color:#9b59b6;font-size:.58rem">'
                          f'½TP1:{_tp1_p:+.2f}% + ½{_fin_lbl} → avg:{_fin_p:+.2f}%</span>')
-        elif sig.get("tp1_hit") and _cr == "trailing":
-            _tp1_p = sig.get("tp1_pct", 0) or 0
-            _fin_p = sig.get("close_pct", 0)
-            tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
-                         f'TP1+trail:{_tp1_p:+.2f}% → {_fin_p:+.2f}%</span>')
         elif sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
