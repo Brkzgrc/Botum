@@ -11,7 +11,7 @@ Koşullar (her 1h kapanışında kontrol edilir):
   4. 4h trend       : close_4h > MA50(4h)
   5. 4h ROC         : ROC(4h close, 4 bar) ≥ 24%
 
-Stop: -5% | TP: +20% | Max Hold: 24h | Cooldown: 24h
+Stop: -5% | TP: +20% | Max Hold: 6h | Cooldown: 24h
 Backtest WR: ~%91 | Beklenti: ~+19% / işlem
 ════════════════════════════════════════════════════════
 """
@@ -53,7 +53,7 @@ PUMP_ROC_PERIOD  = 4       # 4h ROC bar sayısı
 PUMP_ROC_MIN     = 24.0    # 4h ROC minimum %
 PUMP_TP_PCT      = 20.0    # Take profit %
 PUMP_SL_PCT      = 5.0     # Stop loss %
-PUMP_EXPIRE_H    = 24      # Pozisyon expire süresi (saat)
+PUMP_EXPIRE_H    = 6       # Pozisyon expire süresi (saat) — 6h timeout (backtest ile uyumlu)
 PUMP_COOLDOWN_H  = int(os.getenv("PUMP_COOLDOWN_H", "24"))  # Cooldown (saat)
 
 # Genel
@@ -357,7 +357,7 @@ def build_pump_message(r, tr_time, sig_num):
         f"💧 1h Hacim    : {r['vr1h']:.1f}x medyan",
         f"🔮 4h ROC      : +{r['roc_4h']:.1f}% (4 bar)",
         _sep(),
-        f"⏱ WR: ~%91  |  Hold: 24h  |  #{sig_num} sinyal",
+        f"⏱ WR: ~%91  |  Hold: {PUMP_EXPIRE_H}h  |  #{sig_num} sinyal",
     ]
     return "\n".join(lines)
 
@@ -489,7 +489,7 @@ def _record_signal_time():
 # PERFORMANS TAKİP
 # ============================================================
 SIGNAL_LOG_PATH = os.path.join(os.getenv("DATA_DIR", "/tmp"), "signal_log.json")
-_EXPIRE_H = {"pump": 24}
+_EXPIRE_H = {"pump": PUMP_EXPIRE_H}
 
 def load_signal_log():
     try:
