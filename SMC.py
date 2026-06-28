@@ -5,7 +5,7 @@
 #  SİNYAL KOŞULLARI
 #    • CHoCH Bullish (yapısal kırılım)
 #    • Hacim filtresi  : son bar / 20 bar MA ≥ 3.0x
-#    • ROC filtresi    : 16H ROC ≥ %8 (son 16 mum kapanış değişimi)
+#    • ROC filtresi    : 16H ROC ≥ %7.5 (son 16 mum kapanış değişimi)
 #    • 24h soğuma      : aynı coinde 24 saat tekrar yok
 #    • BTC crash filtresi aktif
 #
@@ -15,7 +15,7 @@
 #    • TP2    : 1:2 risk/ödül
 #
 #  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥3x)
-#    ROC filtreli  → WR %83.0 | MaxDD -%7.23  | 2,172 sinyal
+#    ROC filtreli  → WR %81.8 | MaxDD -%6.12  | 2,556 sinyal
 #    ROC filtresiz → WR %70.5 | MaxDD -%13.28 | 9,791 sinyal
 #    ┌─────────────────────────────────────────────────────────┐
 #    │  TP1'e ulaşınca: KAPATMA YOK — trailing aktifleşir     │
@@ -52,7 +52,7 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
-    return (f"SMC v22 — CHoCH+ROC≥8%+vol≥3x | {boot_status} | {cached} coin cached | "
+    return (f"SMC v23 — CHoCH+ROC≥7.5%+vol≥3x | {boot_status} | {cached} coin cached | "
             f"{btc_cr} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -517,7 +517,7 @@ def _analyze_symbol(symbol):
             roc_16h = (curr_close - prev_close) / prev_close * 100.0 if prev_close > 0 else 0.0
         else:
             roc_16h = 0.0
-        if roc_16h < 8.0:
+        if roc_16h < 7.5:
             scan_stats["roc_filter_skip"] += 1
             return
 
@@ -702,13 +702,13 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v22 — CHoCH + ROC≥8% + vol≥3x")
+    print("🚀  SMC v23 — CHoCH + ROC≥7.5% + vol≥3x")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
-    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + 16H ROC≥8% + BTC crash yok")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + 16H ROC≥7.5% + BTC crash yok")
     print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
     print(f"  TP Yapısı       : TP1=risk×1.0 | TP2=risk×2.0")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
