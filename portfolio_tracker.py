@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Portföy Takip Sistemi v2.8
+Portföy Takip Sistemi v2.9
 ===========================
 SMC-V2 çıkış: TP1'de ½ çıkılır (half_tp1) → TP2'de kalan ½ kapanır. Getiri = ortalama.
            Diğer SMC: stop → loss | TP2 → win_tp2 direkt. TP1 milestone.
-Bot çıkış: trailing %3 (peak altı) | TP1 milestone | TP2 hedef | expire var.
+PUMP çıkış: hard SL -%5 | TP +%20 (tp2=tp1) | 6h expire | trailing yok.
+Bot (diğer): trailing %3 (peak altı) | TP1 milestone | TP2 hedef | 48h expire.
 
-NOT: Bu dosya geliştirme referansı içindir.
-     Değişiklikleri gerçek portfolio-tracker reposuna manuel kopyala.
+Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
 """
 
 import json
