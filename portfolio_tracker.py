@@ -28,15 +28,12 @@ TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
-EXPIRE_HOURS = int(os.getenv("EXPIRE_HOURS", "48"))
-SHADOW_EXPIRE_HOURS = int(os.getenv("SHADOW_EXPIRE_HOURS", "72"))
 AUTH_TOKEN   = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 CMC_API_KEY  = os.getenv("CMC_API_KEY", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
-TRAIL_PCT      = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
@@ -122,13 +119,6 @@ def _migrate_signals():
             if not sig.get("close_reason"):
                 sig["close_reason"] = "legacy_half"
             fixed += 1
-        # tp3 shadow alanlarını yoksa ekle
-        if "tp3_shadow" not in sig:
-            sig["tp3_shadow"] = None
-            sig["tp3_trail_peak"] = 0.0
-            sig["tp3_trail_stop_pct"] = 2.5
-            sig["tp3_hit_time"] = None
-            fixed += 1
     if fixed:
         save_signals()
         print(f"[DB] Migrasyon: {fixed} kayıt düzeltildi.", flush=True)
@@ -194,7 +184,6 @@ def receive_signal():
         "low_price": float(data["entry"]), "low_pct": 0.0,
         "current_price": float(data["entry"]), "current_pct": 0.0,
         "tp1_hit": False, "tp1_time": None,
-        "tp3_shadow": None, "tp3_trail_peak": 0.0, "tp3_trail_stop_pct": 2.5, "tp3_hit_time": None,
         # analyzer
         "analyzer_decision": None, "analyzer_time": None,
         "last_check": now.isoformat(), "checks": 0,
@@ -236,15 +225,12 @@ def get_current_price_hl(symbol):
 def check_open_positions():
     now = tr_now()
     with _lock:
-        active = [s for s in signals_db
-                  if s["status"] == "open"
-                  or s.get("tp3_shadow") == "watching"]
+        active = [s for s in signals_db if s["status"] == "open"]
     if not active:
         return
 
-    open_count = sum(1 for s in active if s["status"] == "open")
-    tp3_count = sum(1 for s in active if s.get("tp3_shadow") == "watching")
-    print(f"[CHECK] {open_count} açık + {tp3_count} TP3 shadow takip...", flush=True)
+    open_count = len(active)
+    print(f"[CHECK] {open_count} açık pozisyon takip...", flush=True)
 
     closed_count = 0
     need_save = False
@@ -311,28 +297,6 @@ def check_open_positions():
                         if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                         if (now - open_time).total_seconds() / 3600 >= BOT_EXPIRE_H["pump"]:
                             close_reason = "expired"; close_price = close; sig["status"] = "expired"
-                else:
-                    # Diğer bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
-                    trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
-                    sig["trail_stop"] = trail_stop_price
-
-                    if tp1 and high >= tp1 and not sig.get("tp1_hit"):
-                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                        need_save = True
-                        print(f"  🏁 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}% | devam", flush=True)
-
-                    if tp2 and high >= tp2:
-                        close_reason = "tp2"; close_price = tp2
-                        sig["status"] = "win_tp2"
-                    elif low <= trail_stop_price:
-                        trail_ret = round((trail_stop_price - entry) / entry * 100, 2)
-                        close_reason = "trailing"; close_price = trail_stop_price
-                        sig["status"] = "win_trail" if trail_ret > 0 else "loss"
-                    else:
-                        open_time = datetime.fromisoformat(sig["open_time"])
-                        if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
-                        if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
-                            close_reason = "expired"; close_price = close; sig["status"] = "expired"
 
             if close_reason:
                 sig["close_time"] = now.isoformat()
@@ -350,40 +314,6 @@ def check_open_positions():
                 except Exception as _ae:
                     print(f"[ARCHIVE] {_ae}", flush=True)
 
-
-        # TP3 shadow takibi (SMC sinyali TP2'de kapandıktan sonra TP3 izleme)
-        elif sig.get("tp3_shadow") == "watching" and sig.get("status") == "win_tp2":
-            tp3_val = sig.get("tp3")
-            if tp3_val:
-                if high > sig.get("tp3_trail_peak", 0):
-                    sig["tp3_trail_peak"] = high
-                    need_save = True
-                trail_stop_pct = sig.get("tp3_trail_stop_pct", 2.5)
-                trail_stop = round(sig["tp3_trail_peak"] * (1 - trail_stop_pct / 100), 8)
-                if high >= tp3_val:
-                    sig["tp3_shadow"] = "başarılı"
-                    sig["tp3_hit_time"] = now.isoformat()
-                    need_save = True
-                    print(f"  🌟 TP3 SHADOW BAŞARILI: {symbol.replace('/USDT','')} | TP3 ulaşıldı!", flush=True)
-                elif low <= trail_stop:
-                    sig["tp3_shadow"] = "durdu"
-                    need_save = True
-                    print(f"  ⚡ TP3 SHADOW DURDU: {symbol.replace('/USDT','')} | Trailing tetiklendi", flush=True)
-                else:
-                    ref_time_str = sig.get("tp2_time") or sig.get("close_time") or sig["open_time"]
-                    try:
-                        ref_dt = datetime.fromisoformat(ref_time_str)
-                        if ref_dt.tzinfo is None: ref_dt = ref_dt.replace(tzinfo=TR_TZ)
-                        elapsed = (now - ref_dt).total_seconds() / 3600
-                    except Exception:
-                        elapsed = 0
-                    if elapsed >= SHADOW_EXPIRE_HOURS:
-                        sig["tp3_shadow"] = "durdu"
-                        need_save = True
-                        print(f"  ⏰ TP3 SHADOW SÜRE DOLDU: {symbol.replace('/USDT','')} | {SHADOW_EXPIRE_HOURS}s geçti", flush=True)
-            else:
-                sig["tp3_shadow"] = "durdu"
-                need_save = True
 
         time.sleep(0.15)
 
@@ -1495,16 +1425,6 @@ def type_badge(sig):
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
     return f'<span style="border:1px solid {c};color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{label}</span>'
 
-def tp3_shadow_badge(sig):
-    shadow = sig.get("tp3_shadow")
-    if shadow == "başarılı":
-        return '<span style="background:#2ecc7122;color:#2ecc71;padding:1px 6px;border-radius:3px;font-size:.6rem">🌟 başarılı</span>'
-    if shadow == "durdu":
-        return '<span style="background:#e74c3c22;color:#e74c3c;padding:1px 6px;border-radius:3px;font-size:.6rem">⚡ durdu</span>'
-    if shadow == "watching":
-        return '<span style="background:#3498db22;color:#3498db;padding:1px 6px;border-radius:3px;font-size:.6rem">👁 izleniyor</span>'
-    return '<span style="color:#5a6a7a;font-size:.6rem">—</span>'
-
 def analyzer_badge(sig):
     d = sig.get("analyzer_decision") or ""
     if not d:
@@ -1538,17 +1458,8 @@ def dashboard():
         tp2_val = sig.get("tp2")
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
-        # Dinamik trailing stop: peak * %97
-        is_smc_sig = sig.get("source", "bot") in SMC_MAIN_SOURCES
-        if not is_smc_sig:
-            trail_stop_v = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
-            trail_ret_v  = round((trail_stop_v - sig["entry"]) / sig["entry"] * 100, 1)
-            tc = "#f39c12" if trail_ret_v >= 0 else "#e74c3c"
-            stop_cell = (f'<span style="background:{tc}22;color:{tc};padding:1px 5px;border-radius:3px;'
-                         f'font-size:.6rem;white-space:nowrap">⚡ {fmt_price(trail_stop_v)} ({trail_ret_v:+.2f}%)</span>')
-        else:
-            stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
-            stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
+        stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
+        stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
 
         sure_cell = '<span style="font-size:.7rem;color:#7f8c8d">—</span>'
         try:
@@ -1598,8 +1509,6 @@ def dashboard():
         elif sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
-        _is_smc_closed = sig.get("source", "bot") in SMC_MAIN_SOURCES
-        tp3_cell = tp3_shadow_badge(sig) if _is_smc_closed else '<span style="color:#2a3a4a;font-size:.6rem">—</span>'
 
         closed_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
@@ -1608,7 +1517,6 @@ def dashboard():
             <td style="color:{close_c};font-weight:bold">{close_s}</td>
             <td style="color:{peak_c}">{peak_s}</td>
             <td>{tp1_badge}</td>
-            <td>{tp3_cell}</td>
             <td>{analyzer_badge(sig)}</td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['close_time']).strftime('%d/%m/%Y') if sig.get('close_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['close_time']).strftime('%H:%M') if sig.get('close_time') else ''}</span></td></tr>"""
@@ -1672,51 +1580,6 @@ def dashboard():
         {_az_row("dikkat", "⚠️ DİKKAT",  "#f39c12")}
         {_az_row("riskli", "🚫 RİSKLİ",  "#e74c3c")}
     </div>
-    </details>
-</div>"""
-
-    # TP3 shadow section
-    tp3_shadow_watching = [s for s in all_sigs if s.get("tp3_shadow") == "watching" and s.get("status") == "win_tp2"]
-    tp3_shadow_rows = ""
-    for sig in tp3_shadow_watching[:30]:
-        sym = sig["symbol"].replace("/USDT", "")
-        entry = sig["entry"]
-        tp2_close_pct = sig.get("close_pct", 0) or 0
-        tp3_val = sig.get("tp3")
-        tp3_pct = round((tp3_val - entry) / entry * 100, 1) if tp3_val and entry > 0 else 0
-        trail_peak = sig.get("tp3_trail_peak", 0)
-        trail_peak_pct = round((trail_peak - entry) / entry * 100, 1) if trail_peak and entry > 0 else 0
-        trail_stop_pct_v = sig.get("tp3_trail_stop_pct", 2.5)
-        trail_stop_v = round(trail_peak * (1 - trail_stop_pct_v / 100), 8) if trail_peak else 0
-        cur_price = sig.get("current_price", entry)
-        cur_pct = sig.get("current_pct", 0)
-        cur_c = "#2ecc71" if cur_pct > 0 else ("#e74c3c" if cur_pct < 0 else "#8a9bb0")
-        remaining = ""
-        try:
-            ref_time_str = sig.get("tp2_time") or sig.get("close_time") or sig["open_time"]
-            ref_dt = datetime.fromisoformat(ref_time_str)
-            if ref_dt.tzinfo is None: ref_dt = ref_dt.replace(tzinfo=TR_TZ)
-            remaining = f"{max(0, SHADOW_EXPIRE_HOURS - (now_dt - ref_dt).total_seconds() / 3600):.0f}s"
-        except Exception:
-            pass
-        tp3_shadow_rows += f"""<tr>
-            <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
-            <td style="color:#2ecc71">{tp2_close_pct:+.2f}%</td>
-            <td style="color:{cur_c}">{fmt_price(cur_price)} ({cur_pct:+.2f}%)</td>
-            <td>{fmt_price(tp3_val)} (+{tp3_pct}%)</td>
-            <td style="color:#f39c12">+{trail_peak_pct:.1f}% &nbsp;<span style="color:#5a6a7a;font-size:.6rem">Trail stop: {fmt_price(trail_stop_v)}</span></td>
-            <td style="color:#7f8c8d;font-size:.7rem">{remaining}</td></tr>"""
-
-    tp3_shadow_section = ""
-    if tp3_shadow_rows:
-        tp3_shadow_section = f"""
-<div class="section">
-    <details data-id="tp3-shadow">
-    <summary>🌟 TP3 SHADOW İZLEME ({len(tp3_shadow_watching)})</summary>
-    <p class="note">TP2'de tamamen kapandı — TP3'e ulaşabilir mi? %2.5 trailing ile gözlemsel izleme. Gerçek pozisyon yok.</p>
-    <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Tür</th><th>TP2 Kâr</th><th>Şu An</th><th>TP3 Hedef</th><th>Trail Peak / Stop</th><th>Kalan</th>
-    </tr></thead><tbody>{tp3_shadow_rows}</tbody></table></div>
     </details>
 </div>"""
 
@@ -1916,16 +1779,14 @@ function toggleType(key, btn) {{
     </details>
 </div>
 
-{tp3_shadow_section}
-
 <div class="section">
     <details data-id="closed-list">
     <summary>📋 KAPANMIŞ İŞLEMLER (son 100)</summary>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Getiri</th><th>Peak</th>
-        <th>TP1 Hit</th><th>TP3</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
+        <th>TP1 Hit</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
-        {closed_rows if closed_rows else '<tr><td colspan="11" class="empty">Henüz kapanmış işlem yok</td></tr>'}
+        {closed_rows if closed_rows else '<tr><td colspan="10" class="empty">Henüz kapanmış işlem yok</td></tr>'}
     </tbody></table></div>
     </details>
 </div>
@@ -1942,7 +1803,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Portföy Takip v3.0 | SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire | TP3 shadow %2.5 |
+    Portföy Takip v3.0 | SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 </body></html>"""
@@ -2038,7 +1899,6 @@ if __name__ == "__main__":
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
     print(f"  PUMP expire süresi   : {BOT_EXPIRE_H['pump']} saat", flush=True)
-    print(f"  TP3 shadow süresi    : {SHADOW_EXPIRE_HOURS} saat", flush=True)
     print(f"  Data dizini          : {DATA_DIR}", flush=True)
     print("=" * 50, flush=True)
 
