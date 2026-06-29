@@ -600,7 +600,7 @@ _dom_anchor   = {"others_d": None, "ts": 0}
 _DOM_ANCHOR_TTL = 86400  # 24 saat
 
 def _fetch_market_pulse():
-    """BTC/ETH fiyat, F&G, dominans, MVRV, ETF, Altcoin Season — 3 dk cache."""
+    """BTC/ETH fiyat, F&G, dominans, MVRV, Altcoin Season — 3 dk cache."""
     now_ts = time.time()
     if _market_cache["data"] and now_ts - _market_cache["ts"] < _MARKET_CACHE_TTL:
         return _market_cache["data"]
@@ -790,80 +790,6 @@ def _fetch_market_pulse():
             out["ls_ratio"]    = round(float(d7[0]["longShortRatio"]), 2)
     except Exception as e:
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
-    try:
-        import re as _re2
-        _hdrs = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        # Step 1: fetch SoSoValue page to get current Next.js buildId
-        _ss_page = requests.get(
-            "https://sosovalue.com/tr/dashboard/total-crypto-spot-etf-fund-flow",
-            headers={**_hdrs, "Accept": "text/html,application/xhtml+xml"},
-            timeout=15)
-        print(f"[MARKET] SoSoValue page HTTP {_ss_page.status_code}", flush=True)
-        _bid_m = _re2.search(r'"buildId"\s*:\s*"([^"]+)"', _ss_page.text)
-        if _bid_m:
-            _bid = _bid_m.group(1)
-            # Step 2: fetch Next.js data with dynamic buildId
-            _ss_data = requests.get(
-                f"https://sosovalue.com/_next/data/{_bid}/tr/dashboard/total-crypto-spot-etf-fund-flow.json",
-                params={"currency": "total-crypto-spot-etf-fund-flow"},
-                headers={**_hdrs,
-                         "Accept": "application/json",
-                         "Referer": "https://sosovalue.com/tr/dashboard/total-crypto-spot-etf-fund-flow"},
-                timeout=15)
-            print(f"[MARKET] SoSoValue data HTTP {_ss_data.status_code}", flush=True)
-            if _ss_data.ok:
-                _jd = _ss_data.json()
-                # Navigate into pageProps → find a list with flow data
-                _props = _jd.get("pageProps", _jd)
-                _list  = None
-                for _key in ("flowList", "fundFlowList", "list", "data", "flowData", "etfList"):
-                    _v = _props.get(_key)
-                    if isinstance(_v, list) and _v:
-                        _list = _v
-                        break
-                if _list is None:
-                    # deep search: first list with ≥5 items
-                    def _find_list(obj, depth=0):
-                        if depth > 5: return None
-                        if isinstance(obj, list) and len(obj) >= 5: return obj
-                        if isinstance(obj, dict):
-                            for v in obj.values():
-                                r = _find_list(v, depth+1)
-                                if r: return r
-                        return None
-                    _list = _find_list(_props)
-                print(f"[MARKET] SoSoValue list len={len(_list) if _list else 0}", flush=True)
-                if _list:
-                    _flows = []
-                    for item in _list:
-                        if not isinstance(item, dict): continue
-                        v = (item.get("totalNetFlow") or item.get("netFlow") or
-                             item.get("total") or item.get("flow") or
-                             item.get("netInflow") or item.get("totalInflow") or
-                             item.get("fundFlow") or 0)
-                        try:
-                            fv = float(v)
-                            # values may be in $ or $M — normalize to $M
-                            if abs(fv) > 1e7:
-                                fv = round(fv / 1e6, 1)
-                            else:
-                                fv = round(fv, 1)
-                            _flows.append(fv)
-                        except (TypeError, ValueError):
-                            pass
-                    if len(_flows) >= 5:
-                        out["etf_flows"] = _flows
-                        out["etf_today"] = _flows[-1]
-                        print(f"[MARKET] SoSoValue ETF OK: {len(_flows)} gün", flush=True)
-                    else:
-                        print(f"[MARKET] SoSoValue: veri parse edilemedi, keys={list((_list[0] if _list else {{}}).keys())}", flush=True)
-        else:
-            print("[MARKET] SoSoValue: buildId bulunamadı", flush=True)
-    except Exception as e:
-        print(f"[MARKET] ETF flow hata: {e}", flush=True)
     # others_d hesapla ve 24h anchor güncelle
     _bd = out.get("btc_dominance")
     _ed = out.get("eth_dominance")
@@ -1165,17 +1091,6 @@ def market_dashboard():
     dom_svg = _gauge_svg(btc_dom,
                          [("0%","#2ecc71"),("50%","#f1c40f"),("100%","#e67e22")],
                          "BTC DOMIN.")
-
-    # ── ETF flows ──
-    etf_flows   = mp.get("etf_flows", [])
-    etf_today   = mp.get("etf_today")
-    etf_flows_j = json.dumps(etf_flows)
-    if etf_today is None:
-        etf_today_fmt, etf_today_c = "—", "#5a6a7a"
-    elif etf_today >= 0:
-        etf_today_fmt, etf_today_c = f"+${etf_today:.0f}M", "#2ecc71"
-    else:
-        etf_today_fmt, etf_today_c = f"-${abs(etf_today):.0f}M", "#e74c3c"
 
     return f"""<!DOCTYPE html>
 <html lang="tr">
