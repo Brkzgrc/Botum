@@ -1,3 +1,142 @@
+# GPT Mimari Analizi ve Optimizasyon Önerileri
+> Tarih: 29 Haziran 2026 — Sistemin mevcut haliyle ilgili GPT-4o değerlendirmesi
+
+## Genel Puan
+
+| Başlık            | Puan  |
+|-------------------|------:|
+| Modüler yapı      | 10/10 |
+| Haber sistemi     |  8/10 |
+| API optimizasyonu | 8.5/10|
+| Token verimliliği |  7/10 |
+| Ölçeklenebilirlik |  9/10 |
+
+Hedef: **9.8/10**
+
+---
+
+## 1) market_analyzer.py — Ham Veri Yerine Özet Veri Gönder
+
+Claude bu modülde hesaplamıyor, sadece yorum yapıyor. Input'u şöyle sadeleştir:
+
+```
+# Şu an (pahalı):
+200W MA: 92345 | Current: 108123 | Distance: 17.4%
+
+# Öneri (ucuz):
+200W MA: Far Above (+17%)
+```
+
+**Beklenen kazanım:** Input 3.000 token → 800-1.200 token
+
+---
+
+## 2) Haber Sistemi — Daha İnce Skorlama Katmanı
+
+Şu an: `<80 → API yok | 80-149 → Haiku | ≥150 → Sonnet`
+
+Öneri:
+```
+<40      → Yok say
+40-80    → Arşivle (API yok)
+80-120   → Haiku
+120-170  → Sonnet
+170+     → Yüksek öncelik
+```
+
+---
+
+## 3) Aynı Haber Problemi — Dedup Eksik
+
+Reuters, CoinDesk, Cointelegraph, Decrypt, TheBlock aynı haberi veriyor.
+Şu an muhtemelen 4 API çağrısı → olması gereken 1.
+
+**Öneri:** `RapidFuzz` veya sentence similarity ile başlık benzerliği hesapla,
+`%80+ benzerlik → aynı haber → birini at`.
+Beklenen tasarruf: **%20-30**.
+
+---
+
+## 4) claude_analyzer.py — Token Sıkıştırma
+
+Şu an: 1.500-2.000 token input. Öneri: 600-900 token.
+
+```
+# Şu an:
+EMA21: 109342 | EMA50: 108443 | EMA200: 106553
+
+# Öneri:
+EMA: Bullish Alignment
+RSI: Neutral (61)
+MACD: Bullish Cross
+Fear & Greed: 61 (Greed)
+BTC.D: Increasing
+Liquidity: Above High
+```
+
+---
+
+## 5) Market Watcher — Çoklu Koşul Tetikleyici
+
+Şu an: BTC ±5% → Claude çağrılır.
+
+Öneri:
+```
+BTC +4% VE OI +12% VE Funding >0.03 → Claude çağır
+aksi halde → sessiz kal
+```
+Yüksek volatilite ama düşük OI/Funding = zayıf hareket, Claude'a gerek yok.
+
+---
+
+## 6) Context Memory — Bir Önceki Analize Referans
+
+Her seferinde tüm veriyi sıfırdan gönderiyorsun.
+30 dakika önce gönderilen analizle şimdiki çok benzer olabilir.
+
+**Öneri:** Son analiz sonucunu cache'le, sadece değişimi gönder:
+```
+Previous: Bullish | Now: Neutral
+Changed: Funding ↑, OI ↓, Volume ↓
+```
+
+---
+
+## 7) En Büyük Potansiyel — AI Decision Gateway
+
+**Mevcut akış:**
+```
+Binance Veri → Claude (her şeyi değerlendir)
+```
+
+**Önerilen akış:**
+```
+Binance Veri
+    │
+    ▼
+Python Analiz Motoru
+(EMA, RSI, ADX, Hacim, Likidite, Makro, Haber Skoru)
+    │
+    ▼
+Güven Skoru
+    │
+    ├── ≥95 → Claude YOK — Python kararı uygulanır
+    ├── 80-94 → Haiku — sadece doğrulama
+    └── <80 veya çelişkili sinyaller → Sonnet — detaylı analiz
+```
+
+**İki avantajı:**
+1. Yüksek güvenli durumlarda API sıfır.
+2. Claude artık hesap yapan değil, Python kararını denetleyen hakem olur.
+
+---
+
+> *Not: Bu öneriler uygulanmadan önce her biri ayrıca değerlendirilmeli.*
+> *Öncelik sırası: 3 → 4 → 7 → 1 → 6 → 2 → 5*
+
+---
+---
+
 # Botum — Proje Notları
 
 ## GitHub Repo
