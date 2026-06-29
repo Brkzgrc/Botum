@@ -361,7 +361,8 @@ def run_daily_analysis(portfolio_context=""):
             messages=[{"role": "user", "content": prompt}],
         )
         _log_usage("market_analyzer", "sonnet", _PROMPT_V,
-                   resp.usage.input_tokens, resp.usage.output_tokens, _time.time() - _t0)
+                   resp.usage.input_tokens, resp.usage.output_tokens, _time.time() - _t0,
+                   prompt_chars=len(prompt))
         text = resp.content[0].text
     except Exception as e:
         print(f"[MARKET_ANALYZER] Claude API hata: {e}", flush=True)

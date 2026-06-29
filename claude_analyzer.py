@@ -959,7 +959,8 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
             messages=[{"role": "user", "content": prompt}],
         )
         _log_usage("claude_analyzer", "haiku", _PROMPT_V_SIGNAL,
-                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0,
+                   prompt_chars=len(prompt))
         return resp.content[0].text.strip(), conditions
     except Exception as e:
         print(f"[ANALYZER CLAUDE] {e}", flush=True)
@@ -1105,7 +1106,8 @@ GÖREV: {gorev}"""
             messages=[{"role": "user", "content": prompt}],
         )
         _log_usage("market_watcher", "haiku", _PROMPT_V_WATCHER,
-                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0,
+                   prompt_chars=len(prompt))
         return resp.content[0].text.strip()
     except Exception as e:
         print(f"[WATCHER CLAUDE] {e}", flush=True)

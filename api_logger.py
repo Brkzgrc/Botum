@@ -33,12 +33,13 @@ def _model_key(model: str) -> str:
 
 
 def log_usage(
-    module:    str,
-    model:     str,
-    prompt_v:  str,
-    in_tok:    int,
-    out_tok:   int,
-    duration:  float,
+    module:       str,
+    model:        str,
+    prompt_v:     str,
+    in_tok:       int,
+    out_tok:      int,
+    duration:     float,
+    prompt_chars: int = 0,
 ):
     """Her Claude API çağrısından sonra çağrılır."""
     mk     = _model_key(model)
@@ -47,26 +48,30 @@ def log_usage(
     total  = in_tok + out_tok
     ts_tr  = datetime.now(timezone.utc).astimezone(TR_TZ)
     ts_str = ts_tr.strftime("%Y-%m-%d %H:%M")
+    cpt    = round(prompt_chars / in_tok, 2) if in_tok > 0 and prompt_chars > 0 else None
 
     # Render log satırı
+    chars_part = f" chars={prompt_chars} cpt={cpt}" if cpt is not None else ""
     print(
         f"[API_USAGE] module={module} model={mk} prompt_v={prompt_v} "
-        f"in={in_tok} out={out_tok} total={total} "
-        f"cost=${cost:.4f} dur={duration:.1f}s ts={ts_str}",
+        f"in={in_tok} out={out_tok} total={total}"
+        f"{chars_part} cost=${cost:.4f} dur={duration:.1f}s ts={ts_str}",
         flush=True,
     )
 
     # JSONL dosyası
     record = {
-        "ts":        ts_str,
-        "module":    module,
-        "model":     mk,
-        "prompt_v":  prompt_v,
-        "in_tok":    in_tok,
-        "out_tok":   out_tok,
-        "total_tok": total,
-        "cost_usd":  round(cost, 6),
-        "dur_s":     round(duration, 2),
+        "ts":           ts_str,
+        "module":       module,
+        "model":        mk,
+        "prompt_v":     prompt_v,
+        "in_tok":       in_tok,
+        "out_tok":      out_tok,
+        "total_tok":    total,
+        "prompt_chars": prompt_chars or None,
+        "chars_per_tok": cpt,
+        "cost_usd":     round(cost, 6),
+        "dur_s":        round(duration, 2),
     }
     try:
         with open(_LOG_FILE, "a", encoding="utf-8") as f:
