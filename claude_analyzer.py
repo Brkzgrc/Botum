@@ -305,12 +305,12 @@ def _tf_line(label: str, d: dict | None) -> str:
     if not d:
         return f"  {label}: —"
     parts = []
-    if d.get("rsi")       is not None: parts.append(f"RSI {d['rsi']}")
-    if d.get("ema50")     is not None: parts.append(f"EMA50 {d['ema50']}")
-    if d.get("ema200")    is not None: parts.append(f"EMA200 {d['ema200']}")
-    if d.get("vol_ratio") is not None: parts.append(f"Hacim {d['vol_ratio']}x")
-    if d.get("adx")       is not None: parts.append(f"ADX {d['adx']}")
-    return f"  {label}: Fiyat {d['close']} | {' | '.join(parts)}"
+    if d.get("rsi")       is not None: parts.append(f"RSI {_fmt_ind(d['rsi'])}")
+    if d.get("ema50")     is not None: parts.append(f"EMA50 {_fmt_ind(d['ema50'])}")
+    if d.get("ema200")    is not None: parts.append(f"EMA200 {_fmt_ind(d['ema200'])}")
+    if d.get("vol_ratio") is not None: parts.append(f"Hacim {_fmt_ind(d['vol_ratio'])}x")
+    if d.get("adx")       is not None: parts.append(f"ADX {_fmt_ind(d['adx'])}")
+    return f"  {label}: Fiyat {_fmt_ind(d['close'])} | {' | '.join(parts)}"
 
 def _fetch_all_tf(symbol: str) -> dict:
     """Coin ve BTC için tüm timeframe verilerini paralel çeker."""
@@ -762,6 +762,16 @@ def _fmt(p):
     if p >= 0.01:   return f"{p:.4f}"
     if p >= 0.0001: return f"{p:.6f}"
     return f"{p:.8f}"
+
+def _fmt_ind(v) -> str:
+    """İndikatör değerlerini LLM prompt'u için formatlar — gereksiz hassasiyet yok."""
+    if v is None: return "?"
+    v = float(v)
+    if v >= 10000: return f"{v:,.0f}"
+    if v >= 100:   return f"{v:.1f}"
+    if v >= 1:     return f"{v:.2f}"
+    if v >= 0.01:  return f"{v:.4f}"
+    return         f"{v:.6f}"
 
 def _build_sig_data(signal: dict) -> str:
     sig_type = signal.get("type", "")
