@@ -912,7 +912,7 @@ def home():
         )
     ps = perf_summary()
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Pump Scanner v7.0</title>
+<html><head><meta charset="UTF-8"><title>Pump Scanner</title>
 <meta http-equiv="refresh" content="30">
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -930,7 +930,7 @@ h3{{color:#3fb950;margin:0 0 10px;font-size:.78rem;letter-spacing:2px}}
 .ts{{color:#3d5a6a;font-size:.65rem}}
 .footer{{color:#3d5a6a;font-size:.62rem;margin-top:20px;border-top:1px solid #1c2a36;padding-top:10px;line-height:2}}
 </style></head><body>
-<h1>PUMP SCANNER <small style="font-size:.6rem;color:#3d5a6a">v7.0 — PUMP SİSTEMİ</small></h1>
+<h1>PUMP SCANNER</h1>
 <div class="info">
   🚀 PUMP: 15m spike ≥{PUMP_VR15_MIN:.0f}x | 15m getiri ≥{PUMP_RET15_MIN:.0f}% | 1h hacim ≥{PUMP_VR1H_MIN:.0f}x | 4h MA50 trend | 4h ROC ≥{PUMP_ROC_MIN:.0f}%<br>
   Stop: -{PUMP_SL_PCT:.0f}% | TP: +{PUMP_TP_PCT:.0f}% | Hold: {PUMP_EXPIRE_H}h | Cooldown: {PUMP_COOLDOWN_H}h | Backtest WR: ~%91
@@ -1015,7 +1015,7 @@ def perf_dashboard():
   tr:hover td{{background:#0c1117}}
   a{{color:#00d4ff;text-decoration:none}}
 </style></head><body>
-<h1>📈 PUMP SCANNER SİNYAL PERFORMANSI v7.0</h1>
+<h1>📈 PUMP SCANNER SİNYAL PERFORMANSI</h1>
 <div class="sub"><a href="/">← Ana Sayfa</a> &nbsp;|&nbsp; {tr_now_str()}</div>
 <div class="cards">
   <div class="card"><div class="cv">{ps.get("total",0)}</div><div class="cl">Toplam</div></div>

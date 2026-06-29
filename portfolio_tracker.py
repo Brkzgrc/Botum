@@ -1586,7 +1586,7 @@ def dashboard():
     _smc_eski_section = ""
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
-<meta charset="UTF-8"><title>Portföy Takip v3.0</title>
+<meta charset="UTF-8"><title>Portföy Takip</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
@@ -1680,7 +1680,7 @@ tr:hover td{{background:var(--card);}}
         </div>
     </div>
     <span class="time">
-        {now} | v3.0
+        {now}
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
@@ -1803,7 +1803,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Portföy Takip v3.0 | SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
+    SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 </body></html>"""
