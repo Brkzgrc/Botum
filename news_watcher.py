@@ -498,13 +498,13 @@ def _fetch_and_send(hours_back: int):
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"{part}\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"<i>🐾 ANTON 🐾 · Haber İzleme</i>"
+                    f"<i>🤖🐾 ANTON🐾 · Haber İzleme</i>"
                 )
             else:
                 msg = (
                     f"{part}\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"<i>🐾 ANTON 🐾 · Haber İzleme</i>"
+                    f"<i>🤖🐾 ANTON🐾 · Haber İzleme</i>"
                 )
             _send_telegram(msg)
             time.sleep(0.8)
@@ -615,7 +615,7 @@ def _check_breaking_news():
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{result}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>🐾 ANTON 🐾 · Anlık İzleme</i>"
+            f"<i>🤖🐾 ANTON🐾 · Anlık İzleme</i>"
         )
         _send_telegram(msg)
 
