@@ -1239,12 +1239,12 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div class="m-sub" style="color:{usdt_dom_lc}">{usdt_dom_label}</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">Funding</div><div class="m-value" style="color:{fr_lc}">{fr_fmt}</div></div>
-        <div class="m-sub" style="color:{fr_lc}">{fr_label}</div>
-      </div>
-      <div class="metric">
         <div><div class="m-label">ETF Akış</div><div class="m-value" style="color:{etf_today_c};white-space:nowrap;font-size:.82rem">{etf_today_fmt}</div></div>
         <div class="m-sub" style="color:{etf_today_c}">{etf_today_sub}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">Funding</div><div class="m-value" style="color:{fr_lc}">{fr_fmt}</div></div>
+        <div class="m-sub" style="color:{fr_lc}">{fr_label}</div>
       </div>
     </div>
   </div>
