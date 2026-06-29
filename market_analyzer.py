@@ -351,7 +351,7 @@ def run_daily_analysis(portfolio_context=""):
     client = _make_client()
     try:
         resp = client.messages.create(
-            model="claude-opus-4-8",
+            model="claude-sonnet-4-6",
             max_tokens=10000,
             messages=[{"role": "user", "content": prompt}],
         )

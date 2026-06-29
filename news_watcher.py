@@ -69,7 +69,8 @@ BREAK_KEYWORDS = [
     "$100 million", "$200 million", "$500 million", "$1 billion", "$2 billion",
 ]
 
-SCHEDULE_HOURS_TR = {9, 12, 15, 19, 23}
+SCHEDULE_HOURS_TR = {9, 19}
+BREAK_HOURS_TR    = {11, 23}
 
 _STOP_WORDS = {
     "the", "and", "for", "with", "that", "from", "this", "has", "are",
@@ -82,8 +83,8 @@ _STOP_WORDS = {
 
 _CACHE_TTL    = 48 * 3600   # 48 saat — bu süreden eski girişler silinir
 _state = {
-    "last_run_key":      None,
-    "last_break_ts":     0,
+    "last_run_key":   None,
+    "last_break_key": None,
     "sent_hashes":       {},   # hash → timestamp (float)
     "sent_fingerprints": [],   # list[{"words": list, "ts": float}]
 }
@@ -451,7 +452,7 @@ def _check_breaking_news():
 # ============================================================
 
 def _news_watcher_loop():
-    print("[NEWS] Başlatıldı — scheduled 09/12/15/19/23 TR + 30 dakikalık breaking kontrol.", flush=True)
+    print("[NEWS] Başlatıldı — özet 09/19 TR | breaking 11/23 TR.", flush=True)
     while True:
         try:
             now_tr = _tr_now()
@@ -462,21 +463,22 @@ def _news_watcher_loop():
             if now_ts % 21600 < 60:
                 _prune_sent_cache()
 
-            # Scheduled haber özeti
+            # Scheduled haber özeti — 09:00 ve 19:00
             if now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 5:
                 run_key = f"{today}_{now_tr.hour}"
                 if _state["last_run_key"] != run_key:
                     _state["last_run_key"] = run_key
-                    hours_back = 10 if now_tr.hour == 9 else 4
+                    hours_back = 10 if now_tr.hour == 9 else 10
                     threading.Thread(
                         target=_fetch_and_send, args=(hours_back,),
                         daemon=True, name="news-scheduled"
                     ).start()
 
-            # Saatlik breaking news kontrolü — scheduled saatlerle çakışmayı önle
-            if now_ts - _state["last_break_ts"] >= 1800:
-                _state["last_break_ts"] = now_ts
-                if not (now_tr.hour in SCHEDULE_HOURS_TR and now_tr.minute < 10):
+            # Breaking news kontrolü — 11:00 ve 23:00
+            if now_tr.hour in BREAK_HOURS_TR and now_tr.minute < 5:
+                break_key = f"{today}_{now_tr.hour}"
+                if _state["last_break_key"] != break_key:
+                    _state["last_break_key"] = break_key
                     threading.Thread(
                         target=_check_breaking_news,
                         daemon=True, name="news-break-check"
