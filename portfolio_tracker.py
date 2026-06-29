@@ -1500,15 +1500,16 @@ def dashboard():
         close_c, close_s = pct_color(sig.get("close_pct"))
         peak_c, peak_s = pct_color(sig.get("peak_pct"))
         sym = sig["symbol"].replace("/USDT", "")
-        tp1_badge = ""
         _cr = sig.get("close_reason", "")
+        tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
         if sig.get("tp1_hit") and _cr == "trailing":
             _fin_p = sig.get("close_pct", 0)
             tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
                          f'TP1 trail aktif → çıkış:{_fin_p:+.2f}%</span>')
         elif sig.get("tp1_hit"):
-            tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
+        else:
+            tp1_badge = f'<span style="color:#3a4a5a;font-size:.58rem">TP1: +{tp1_pct_v}%</span>' if tp1_pct_v else '—'
 
         closed_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
