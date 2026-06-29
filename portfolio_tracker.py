@@ -797,9 +797,9 @@ def _fetch_market_pulse():
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-US,en;q=0.9",
         }
-        _fs = requests.get("https://farside.co.uk/bitcoin-etf/", headers=_hdrs, timeout=15)
-        if _fs.ok:
-            _rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', _fs.text, _re2.DOTALL)
+        _bb = requests.get("https://bitbo.io/treasuries/etf-flows/", headers=_hdrs, timeout=15)
+        if _bb.ok:
+            _rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', _bb.text, _re2.DOTALL)
             _flows = []
             for _row in _rows:
                 _cells = _re2.findall(r'<td[^>]*>(.*?)</td>', _row, _re2.DOTALL)
@@ -814,13 +814,13 @@ def _fetch_market_pulse():
             if len(_flows) >= 5:
                 out["etf_flows"] = _flows[-30:]
                 out["etf_today"] = _flows[-1]
-                print(f"[MARKET] Farside ETF OK: {len(_flows)} gün, bugün {_flows[-1]}M", flush=True)
+                print(f"[MARKET] Bitbo ETF OK: {len(_flows)} gün, bugün {_flows[-1]}M", flush=True)
             else:
-                print(f"[MARKET] Farside ETF: parse edilemedi ({len(_flows)} satır)", flush=True)
+                print(f"[MARKET] Bitbo ETF: parse edilemedi ({len(_flows)} satır)", flush=True)
         else:
-            print(f"[MARKET] Farside ETF HTTP {_fs.status_code}", flush=True)
+            print(f"[MARKET] Bitbo ETF HTTP {_bb.status_code}", flush=True)
     except Exception as e:
-        print(f"[MARKET] Farside ETF hata: {e}", flush=True)
+        print(f"[MARKET] Bitbo ETF hata: {e}", flush=True)
     # others_d hesapla ve 24h anchor güncelle
     _bd = out.get("btc_dominance")
     _ed = out.get("eth_dominance")
