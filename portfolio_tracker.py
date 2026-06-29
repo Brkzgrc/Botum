@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Portföy Takip Sistemi v2.9
+Portföy Takip Sistemi v3.0
 ===========================
-SMC-V2 çıkış: TP1 trailing'i aktive eder (çıkış yok) → peak'ten -%2.5 trail veya TP2'de tam çıkış.
-           Diğer SMC: stop → loss | TP2 → win_tp2 direkt. TP1 milestone.
-PUMP çıkış: hard SL -%5 | TP +%20 (tp2=tp1) | 6h expire | trailing yok.
-Bot (diğer): trailing %3 (peak altı) | TP1 milestone | TP2 hedef | 48h expire.
+SMC CHoCH ROC çıkış: TP seviyesine ulaşınca %2.5 trailing başlar → peak'ten -%2.5 ile çıkar.
+PUMP çıkış: hard SL | hard TP | 6h expire | trailing yok.
 
 Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
 """
@@ -38,13 +36,11 @@ CMC_API_KEY  = os.getenv("CMC_API_KEY", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
-EXPIRE_TRAIL_THRESHOLD = float(os.getenv("EXPIRE_TRAIL_THRESHOLD", "0.80"))
-EXPIRE_TRAIL_PCT = float(os.getenv("EXPIRE_TRAIL_PCT", "2.0"))
 TRAIL_PCT      = 3.0   # bot.py TRAILING_PCT ile eşleşir — peak'in %3 altında kapanır
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
-BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h, diğer bot sinyalleri EXPIRE_HOURS kullanır
+BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
-SMC_MAIN_SOURCES = ("smc", "smc-original", "smc-trailing", "smc-momentum", "smc-v2")
+SMC_MAIN_SOURCES = ("smc-v2",)
 
 # smc-v2: TP1 aktivasyon → %100 pozisyon %2.5 trailing ile çıkar
 FULL_TRAIL_SOURCES  = {"smc-v2"}
@@ -126,19 +122,6 @@ def _migrate_signals():
             if not sig.get("close_reason"):
                 sig["close_reason"] = "legacy_half"
             fixed += 1
-        # Stop olan ama tp2_shadow="watching" kalan sinyalleri temizle
-        if (sig.get("tp2_shadow") == "watching"
-                and sig.get("status") not in ("open",)
-                and not sig.get("tp1_hit")):
-            sig["tp2_shadow"] = "not_reached"
-            fixed += 1
-        # Bot sinyalleri: tp2 vurulmadıysa shadow izleme gereksiz
-        _is_bot = sig.get("source", "bot") not in SMC_MAIN_SOURCES
-        if (_is_bot and sig.get("tp2_shadow") == "watching"
-                and sig.get("status") not in ("open",)
-                and sig.get("status") != "win_tp2"):
-            sig["tp2_shadow"] = "not_reached"
-            fixed += 1
         # tp3 shadow alanlarını yoksa ekle
         if "tp3_shadow" not in sig:
             sig["tp3_shadow"] = None
@@ -185,7 +168,7 @@ def receive_signal():
     # ── AYNI SEMBOLDE AÇIK POZİSYON KONTROLÜ ──
     with _lock:
         for s in signals_db:
-            if s.get("symbol") == data["symbol"] and s.get("status") in ("open", "half_tp1") and s.get("source") == data.get("source", "bot"):
+            if s.get("symbol") == data["symbol"] and s.get("status") == "open" and s.get("source") == data.get("source", "bot"):
                 print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık pozisyonda", flush=True)
                 return jsonify({"error": "already open", "symbol": data["symbol"]}), 409
 
@@ -211,18 +194,7 @@ def receive_signal():
         "low_price": float(data["entry"]), "low_pct": 0.0,
         "current_price": float(data["entry"]), "current_pct": 0.0,
         "tp1_hit": False, "tp1_time": None,
-        "tp2_shadow": "watching", "tp2_hit": False, "tp2_time": None,
-        "tp2_peak_after_tp1": 0.0, "tp2_shadow_end": None,
         "tp3_shadow": None, "tp3_trail_peak": 0.0, "tp3_trail_stop_pct": 2.5, "tp3_hit_time": None,
-        "trailing_shadow": "watching", "trailing_peak": 0.0,
-        "trailing_stop_pct": 2.0, "trailing_exit_price": None,
-        "trailing_exit_pct": None, "trailing_shadow_end": None,
-        # expire trailing alanları
-        "expire_trailing_active": False,
-        "expire_trailing_peak": 0.0,
-        "expire_trailing_stop_pct": EXPIRE_TRAIL_PCT,
-        "expire_trailing_exit_price": None,
-        "expire_trailing_exit_pct": None,
         # analyzer
         "analyzer_decision": None, "analyzer_time": None,
         "last_check": now.isoformat(), "checks": 0,
@@ -265,17 +237,14 @@ def check_open_positions():
     now = tr_now()
     with _lock:
         active = [s for s in signals_db
-                  if s["status"] in ("open", "half_tp1")
-                  or s.get("tp2_shadow") == "watching"
+                  if s["status"] == "open"
                   or s.get("tp3_shadow") == "watching"]
     if not active:
         return
 
     open_count = sum(1 for s in active if s["status"] == "open")
-    half_count = sum(1 for s in active if s["status"] == "half_tp1")
-    shadow_count = sum(1 for s in active if s["status"] not in ("open", "half_tp1") and s.get("tp2_shadow") == "watching")
     tp3_count = sum(1 for s in active if s.get("tp3_shadow") == "watching")
-    print(f"[CHECK] {open_count} açık + {half_count} ½TP1 + {shadow_count} TP2 shadow + {tp3_count} TP3 shadow takip...", flush=True)
+    print(f"[CHECK] {open_count} açık + {tp3_count} TP3 shadow takip...", flush=True)
 
     closed_count = 0
     need_save = False
@@ -305,37 +274,19 @@ def check_open_positions():
             close_reason = None; close_price = None
 
             if is_smc:
-                # SMC: stop → loss, TP2 → win_tp2 direkt. TP1 sadece milestone.
+                # SMC CHoCH ROC: stop → loss | TP1 hit → %2.5 trailing aktif | trail tetik → win_trail/loss
                 if low <= stop:
                     close_reason = "stop"; close_price = stop
                     sig["status"] = "loss"
-                    sig["tp2_shadow"] = "not_reached"
-                elif tp2 and high >= tp2:
-                    tp2_pct_v = round((tp2 - entry) / entry * 100, 2)
-                    close_reason = "tp2"; close_price = tp2
-                    sig["status"] = "win_tp2"
-                    sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
-                    sig["tp2_shadow"] = "hit"
-                    tp3_val = sig.get("tp3")
-                    if tp3_val and tp3_val > tp2:
-                        sig["tp3_shadow"] = "watching"
-                        sig["tp3_trail_peak"] = tp2
-                        print(f"  🌟 TP3 SHADOW BAŞLADI: {symbol.replace('/USDT','')} | Hedef: {tp3_val:.8g}", flush=True)
                 else:
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
-                        tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
                         if sig.get("source") in FULL_TRAIL_SOURCES:
                             sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                            tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
                             sig["tp1_pct"] = tp1_pct_v
                             need_save = True
-                            print(f"  🟡 TP1 TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → %{SMC_FULL_TRAIL_PCT} trailing başladı", flush=True)
-                        else:
-                            sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                            sig["tp1_exit_price"] = round(tp1, 8)
-                            sig["tp1_exit_pct"] = tp1_pct_v
-                            need_save = True
-                            print(f"  🎯 TP1 MİLESTONE: {symbol.replace('/USDT','')} | +{tp1_pct_v}% | TP2 bekleniyor", flush=True)
-                    elif sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+                            print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → %{SMC_FULL_TRAIL_PCT} trailing başladı", flush=True)
+                    if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
                         trail_stop = round(sig["peak_price"] * (1 - SMC_FULL_TRAIL_PCT / 100), 8)
                         trail_ret  = round((trail_stop - entry) / entry * 100, 2)
                         if low <= trail_stop:
@@ -344,23 +295,22 @@ def check_open_positions():
             else:
                 is_pump = sig.get("sig_type") == "pump"
                 if is_pump:
-                    # PUMP: hard SL -5%, TP +20% (tp2=tp1), 6h expire — trailing yok
+                    # PUMP: hard SL, hard TP, 6h expire — trailing yok
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
                         sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                         need_save = True
                         print(f"  🎯 PUMP TP HİT: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}%", flush=True)
                     if tp2 and high >= tp2:
                         close_reason = "tp2"; close_price = tp2
-                        sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
+                        sig["status"] = "win_tp2"
                     elif low <= stop:
                         close_reason = "stop"; close_price = stop
-                        sig["status"] = "loss"; sig["tp2_shadow"] = "not_reached"
+                        sig["status"] = "loss"
                     else:
                         open_time = datetime.fromisoformat(sig["open_time"])
                         if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                         if (now - open_time).total_seconds() / 3600 >= BOT_EXPIRE_H["pump"]:
                             close_reason = "expired"; close_price = close; sig["status"] = "expired"
-                            sig["tp2_shadow"] = "not_reached"
                 else:
                     # Diğer bot sinyalleri: trailing stop primary exit (bot.py ile eşleşir)
                     trail_stop_price = round(sig["peak_price"] * (1 - TRAIL_PCT / 100), 8)
@@ -373,18 +323,16 @@ def check_open_positions():
 
                     if tp2 and high >= tp2:
                         close_reason = "tp2"; close_price = tp2
-                        sig["status"] = "win_tp2"; sig["tp2_shadow"] = "hit"
+                        sig["status"] = "win_tp2"
                     elif low <= trail_stop_price:
                         trail_ret = round((trail_stop_price - entry) / entry * 100, 2)
                         close_reason = "trailing"; close_price = trail_stop_price
                         sig["status"] = "win_trail" if trail_ret > 0 else "loss"
-                        sig["tp2_shadow"] = "not_reached"
                     else:
                         open_time = datetime.fromisoformat(sig["open_time"])
                         if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                         if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
                             close_reason = "expired"; close_price = close; sig["status"] = "expired"
-                            sig["tp2_shadow"] = "not_reached"
 
             if close_reason:
                 sig["close_time"] = now.isoformat()
@@ -402,71 +350,6 @@ def check_open_positions():
                 except Exception as _ae:
                     print(f"[ARCHIVE] {_ae}", flush=True)
 
-
-        # ── ½TP1 SONRASI — KALAN YARI TP2'YE DEVAM ────────────────────────
-        elif sig.get("status") == "half_tp1":
-            tp2 = sig.get("tp2"); stop = sig["stop"]
-            tp1_pct = sig.get("tp1_pct", 0)
-            if high > sig["peak_price"]:
-                sig["peak_price"] = high
-                sig["peak_pct"] = round((high - entry) / entry * 100, 2)
-            if low < sig["low_price"]:
-                sig["low_price"] = low
-                sig["low_pct"] = round((low - entry) / entry * 100, 2)
-            sig["current_price"] = close
-            sig["current_pct"] = round((close - entry) / entry * 100, 2)
-            sig["last_check"] = now.isoformat()
-            sig["checks"] = sig.get("checks", 0) + 1
-            need_save = True
-
-            close_reason_h = None; close_price_h = None; new_status_h = None; avg_pct = None
-
-            # TP1 sonrası %2.5 trailing stop (peak takibi peak_price'ta zaten yapılıyor)
-            SMC_HALF_TRAIL_PCT = 2.5
-            trail_stop = round(sig["peak_price"] * (1 - SMC_HALF_TRAIL_PCT / 100), 8)
-            trail_pct  = round((trail_stop - entry) / entry * 100, 2)
-
-            if tp2 and high >= tp2:
-                tp2_pct = round((tp2 - entry) / entry * 100, 2)
-                avg_pct = round((tp1_pct + tp2_pct) / 2, 2)
-                close_reason_h = "tp2"; close_price_h = tp2; new_status_h = "win_tp2"
-                sig["tp2_hit"] = True; sig["tp2_time"] = now.isoformat()
-                print(f"  🎯 HALF TP2 HIT: {symbol.replace('/USDT','')} | "
-                      f"TP1:{tp1_pct:+.2f}% + TP2:{tp2_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
-            elif trail_stop > stop and low <= trail_stop:
-                avg_pct = round((tp1_pct + trail_pct) / 2, 2)
-                close_reason_h = "half_trail"; close_price_h = trail_stop; new_status_h = "win_trail"
-                print(f"  🟢 HALF TRAIL: {symbol.replace('/USDT','')} | "
-                      f"TP1:{tp1_pct:+.2f}% + trail:{trail_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
-            elif low <= stop:
-                stop_pct = round((stop - entry) / entry * 100, 2)
-                avg_pct = round((tp1_pct + stop_pct) / 2, 2)
-                close_reason_h = "half_stop"; close_price_h = stop; new_status_h = "loss_half"
-                print(f"  🔴 HALF STOP: {symbol.replace('/USDT','')} | "
-                      f"TP1:{tp1_pct:+.2f}% + stop:{stop_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
-            else:
-                open_time = datetime.fromisoformat(sig["open_time"])
-                if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
-                if (now - open_time).total_seconds() / 3600 >= EXPIRE_HOURS:
-                    cur_pct = round((close - entry) / entry * 100, 2)
-                    avg_pct = round((tp1_pct + cur_pct) / 2, 2)
-                    close_reason_h = "expired_half"; close_price_h = close; new_status_h = "expired"
-                    print(f"  ⏰ HALF EXPIRED: {symbol.replace('/USDT','')} | "
-                          f"TP1:{tp1_pct:+.2f}% + cur:{cur_pct:+.2f}% → avg:{avg_pct:+.2f}%", flush=True)
-
-            if close_reason_h and avg_pct is not None:
-                sig["close_time"] = now.isoformat()
-                sig["close_price"] = round(close_price_h, 8)
-                sig["close_reason"] = close_reason_h
-                sig["close_pct"] = avg_pct
-                sig["status"] = new_status_h
-                sig["tp2_shadow"] = "n/a"
-                closed_count += 1; need_save = True
-                try:
-                    _update_archive_outcome(sig.get("id", ""), close_reason_h,
-                                            avg_pct, sig["peak_pct"], sig["open_time"])
-                except Exception as _ae:
-                    print(f"[ARCHIVE] {_ae}", flush=True)
 
         # TP3 shadow takibi (SMC sinyali TP2'de kapandıktan sonra TP3 izleme)
         elif sig.get("tp3_shadow") == "watching" and sig.get("status") == "win_tp2":
@@ -529,8 +412,8 @@ def calc_performance():
 
     result = {
         "total": len(all_sigs),
-        "open": 0, "closed": 0, "half_open": 0,
-        "wins": 0, "win_partial": 0, "win_tp2": 0, "losses": 0, "loss_half": 0, "expired": 0, "tp1_hits": 0,
+        "open": 0, "closed": 0,
+        "wins": 0, "win_tp2": 0, "losses": 0, "expired": 0, "tp1_hits": 0,
         "total_pnl": 0.0, "win_loss_pnl": 0.0, "expired_pnl": 0.0,
         "avg_peak": 0.0, "win_rate": 0.0, "real_win_rate": 0.0,
         "analyzer": {
@@ -543,10 +426,10 @@ def calc_performance():
 
     closed_peaks = []
     type_stats = defaultdict(lambda: {
-        "total": 0, "open": 0, "wins": 0, "win_partial": 0, "losses": 0, "expired": 0,
+        "total": 0, "open": 0, "wins": 0, "losses": 0, "expired": 0,
         "tp1_hits": 0, "total_pnl": 0.0, "peaks": [],
         "tp2_hits": 0, "tp2_total": 0, "tp2_extra_pnl": 0.0,
-        "tp2_stopped": 0, "expired_pnl_sum": 0.0,
+        "expired_pnl_sum": 0.0,
     })
 
     for sig in all_sigs:
@@ -577,9 +460,8 @@ def calc_performance():
         ts = type_stats[type_key]
         ts["total"] += 1
 
-        if status in ("open", "half_tp1"):
+        if status == "open":
             result["open"] += 1; ts["open"] += 1
-            if status == "half_tp1": result["half_open"] += 1
         else:
             result["closed"] += 1
             pct = sig.get("close_pct", 0) or 0
@@ -590,11 +472,6 @@ def calc_performance():
             if status in ("win_tp1", "win_tp2", "win_trail"):
                 result["wins"] += 1; ts["wins"] += 1
                 if status == "win_tp2": result["win_tp2"] += 1
-            elif status == "win_partial":
-                result["wins"] += 1; result["win_partial"] += 1
-                ts["wins"] += 1; ts["win_partial"] += 1
-            elif status == "loss_half":
-                result["losses"] += 1; result["loss_half"] += 1; ts["losses"] += 1
             elif status == "loss": result["losses"] += 1; ts["losses"] += 1
             elif status == "expired":
                 result["expired"] += 1; result["expired_pnl"] += pct
@@ -610,8 +487,8 @@ def calc_performance():
                 if bucket_key:
                     ab = result["analyzer"][bucket_key]
                     ab["total"] += 1; ab["pnl"] += pct
-                    if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"): ab["wins"] += 1
-                    elif status in ("loss", "loss_half"):                             ab["losses"] += 1
+                    if status in ("win_tp1", "win_tp2", "win_trail"): ab["wins"] += 1
+                    elif status == "loss":                             ab["losses"] += 1
 
         # Günlük / haftalık / aylık istatistikleri
         _pct_for_time = (sig.get("close_pct", 0) or 0) if status != "open" else 0
@@ -628,9 +505,9 @@ def calc_performance():
                     if _tk not in _tb:
                         _tb[_tk] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
                     _tb[_tk]["trades"] += 1; _tb[_tk]["pnl"] += _pct_for_time
-                    if status in ("win_tp1", "win_tp2", "win_trail", "win_partial"):
+                    if status in ("win_tp1", "win_tp2", "win_trail"):
                         _tb[_tk]["wins"] += 1
-                    elif status in ("loss", "loss_half"):
+                    elif status == "loss":
                         _tb[_tk]["losses"] += 1
             except Exception: pass
 
@@ -1572,39 +1449,15 @@ def pct_color(pct):
 
 def status_badge(status):
     colors = {
-        "open":        ("#3498db", "AÇIK"),
-        "half_tp1":    ("#f39c12", "½TP1✓ →TP2"),
-        "win_tp1":     ("#2ecc71", "WIN (TP1)"),
-        "win_tp2":     ("#27ae60", "WIN (TP2)"),
-        "win_trail":   ("#27ae60", "WIN (TRAIL)"),
-        "win_partial": ("#27ae60", "WIN (TRAIL)"),
-        "loss":        ("#e74c3c", "LOSS"),
-        "loss_half":   ("#c0392b", "LOSS (½+½)"),
-        "expired":     ("#f39c12", "EXPIRED"),
+        "open":      ("#3498db", "AÇIK"),
+        "win_tp1":   ("#2ecc71", "WIN (TP1)"),
+        "win_tp2":   ("#27ae60", "WIN (TP2)"),
+        "win_trail": ("#27ae60", "WIN (TRAIL)"),
+        "loss":      ("#e74c3c", "LOSS"),
+        "expired":   ("#f39c12", "EXPIRED"),
     }
     c, label = colors.get(status, ("#8a9bb0", status.upper()))
     return f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold;white-space:nowrap">{label}</span>'
-
-def tp2_shadow_badge(sig):
-    shadow = sig.get("tp2_shadow", "n/a")
-    entry = sig.get("entry", 0)
-    m = {"hit": ("#2ecc71", "✅ TP2"), "missed": ("#e74c3c", "❌ MISS"),
-         "watching": ("#3498db", "👁 İZLENİYOR"), "stopped": ("#e74c3c", "🔴 STOP")}
-    if shadow in m:
-        c, l = m[shadow]
-        extra = ""
-        if shadow == "hit":
-            tp2 = sig.get("tp2")
-            if tp2 and entry and entry > 0:
-                tp2_pct = round((tp2 - entry) / entry * 100, 2)
-                extra = f" <span style='color:#a8e6a3;font-size:.58rem'>{fmt_price(tp2)} (+{tp2_pct}%)</span>"
-        elif shadow == "stopped":
-            stop = sig.get("stop")
-            if stop and entry and entry > 0:
-                stop_pct = round((stop - entry) / entry * 100, 2)
-                extra = f" <span style='color:#f1948a;font-size:.58rem'>{fmt_price(stop)} ({stop_pct:+.2f}%)</span>"
-        return f'<span style="background:{c}22;color:{c};padding:1px 6px;border-radius:3px;font-size:.6rem">{l}{extra}</span>'
-    return '<span style="color:#5a6a7a;font-size:.6rem">—</span>'
 
 def type_badge(sig):
     sig_type = sig.get("sig_type", "unknown")
@@ -1672,10 +1525,8 @@ def dashboard():
         all_sigs = list(signals_db)
     all_sigs = [s for s in all_sigs if s.get("sig_type", "unknown") not in HIDDEN_SIG_TYPES]
 
-    open_sigs = [s for s in all_sigs if s.get("status") in ("open", "half_tp1")]
-    closed_sigs = [s for s in all_sigs if s.get("status") not in ("open", "half_tp1")]
-    shadow_watching = [s for s in all_sigs if s.get("tp2_shadow") == "watching" and s.get("status") not in ("open", "half_tp1")]
-    half_open_count = perf.get("half_open", 0)
+    open_sigs = [s for s in all_sigs if s.get("status") == "open"]
+    closed_sigs = [s for s in all_sigs if s.get("status") != "open"]
 
     open_rows = ""
     for sig in open_sigs[:50]:
@@ -1713,14 +1564,9 @@ def dashboard():
         except Exception:
             pass
 
-        is_half = sig.get("status") == "half_tp1"
         is_full_trail_sig = sig.get("source") in FULL_TRAIL_SOURCES
         tp1_milestone = sig.get("tp1_hit")
-        if is_half:
-            _tp1_hit_pct = sig.get("tp1_pct", 0)
-            tp1_cell = (f'<span style="background:#f39c1233;color:#f39c12;padding:1px 5px;border-radius:3px;'
-                        f'font-size:.6rem;white-space:nowrap">🟡 ½ çıkıldı +{_tp1_hit_pct:.2f}% → TP2 bekleniyor</span>')
-        elif tp1_milestone and is_full_trail_sig:
+        if tp1_milestone and is_full_trail_sig:
             _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
             tp1_cell = (f'<span style="background:#f39c1233;color:#f39c12;padding:1px 5px;border-radius:3px;'
                         f'font-size:.6rem;white-space:nowrap">🟡 TRAIL AKTİF +{_tp1_hit_pct:.2f}%</span>')
@@ -1745,23 +1591,10 @@ def dashboard():
         sym = sig["symbol"].replace("/USDT", "")
         tp1_badge = ""
         _cr = sig.get("close_reason", "")
-        _is_full_trail_closed = sig.get("source") in FULL_TRAIL_SOURCES
         if sig.get("tp1_hit") and _cr == "trailing":
-            _tp1_p = sig.get("tp1_pct", 0) or 0
             _fin_p = sig.get("close_pct", 0)
             tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
                          f'TP1 trail aktif → çıkış:{_fin_p:+.2f}%</span>')
-        elif sig.get("tp1_hit") and _cr == "tp2" and _is_full_trail_closed:
-            _tp1_p = sig.get("tp1_pct", 0) or 0
-            _fin_p = sig.get("close_pct", 0)
-            tp1_badge = (f'<span style="color:#2ecc71;font-size:.58rem">'
-                         f'TP1 trail aktif → TP2:{_fin_p:+.2f}%</span>')
-        elif sig.get("tp1_pct") is not None and _cr in ("tp2", "half_stop", "expired_half"):
-            _tp1_p = sig.get("tp1_pct", 0)
-            _fin_p = sig.get("close_pct", 0)
-            _fin_lbl = "TP2" if _cr == "tp2" else ("STOP" if _cr == "half_stop" else "EXP")
-            tp1_badge = (f'<span style="color:#9b59b6;font-size:.58rem">'
-                         f'½TP1:{_tp1_p:+.2f}% + ½{_fin_lbl} → avg:{_fin_p:+.2f}%</span>')
         elif sig.get("tp1_hit"):
             tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 else 0
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 +{tp1_pct_v}%</span>'
@@ -1810,31 +1643,6 @@ def dashboard():
 
     type_rows = smc_type_rows + bot_type_rows
 
-    shadow_rows = ""
-    for sig in shadow_watching[:30]:
-        sym = sig["symbol"].replace("/USDT", "")
-        entry = sig["entry"]; tp1_pct = sig.get("close_pct", 0) or 0
-        tp2 = sig.get("tp2")
-        tp2_pct = round((tp2 - entry) / entry * 100, 1) if tp2 and entry > 0 else 0
-        pa = sig.get("tp2_peak_after_tp1", 0)
-        pa_c = "#2ecc71" if pa > tp1_pct else "#8a9bb0"
-        cur_price = sig.get("current_price", entry)
-        cur_pct = sig.get("current_pct", 0)
-        cur_c = "#2ecc71" if cur_pct > 0 else ("#e74c3c" if cur_pct < 0 else "#8a9bb0")
-        remaining = ""
-        try:
-            ct = datetime.fromisoformat(sig.get("close_time", sig["open_time"]))
-            if ct.tzinfo is None: ct = ct.replace(tzinfo=TR_TZ)
-            remaining = f"{max(0, SHADOW_EXPIRE_HOURS - (now_dt - ct).total_seconds() / 3600):.0f}s"
-        except Exception: pass
-        shadow_rows += f"""<tr>
-            <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
-            <td style="color:{'#2ecc71' if tp1_pct >= 0 else '#e74c3c'}">{tp1_pct:+.2f}%</td>
-            <td style="color:{cur_c}">{fmt_price(cur_price)} ({cur_pct:+.2f}%)</td>
-            <td>{fmt_price(tp2)} (+{tp2_pct}%)</td>
-            <td style="color:{pa_c}">+{pa:.2f}%</td>
-            <td style="color:#7f8c8d;font-size:.7rem">{remaining}</td></tr>"""
-
     daily_rows = ""
     for day_key in sorted(perf.get("daily", {}).keys(), reverse=True)[:14]:
         d = perf["daily"][day_key]; pnl = d.get("pnl", 0)
@@ -1846,7 +1654,6 @@ def dashboard():
 
     total_pnl = perf.get("total_pnl", 0)
     pnl_color_val = "#2ecc71" if total_pnl > 0 else ("#e74c3c" if total_pnl < 0 else "#8a9bb0")
-    win_partial_count = perf.get("win_partial", 0)
 
     az = perf.get("analyzer", {})
     def _az_row(key, label, color):
@@ -1865,19 +1672,6 @@ def dashboard():
         {_az_row("dikkat", "⚠️ DİKKAT",  "#f39c12")}
         {_az_row("riskli", "🚫 RİSKLİ",  "#e74c3c")}
     </div>
-    </details>
-</div>"""
-
-    shadow_section = ""
-    if shadow_rows:
-        shadow_section = f"""
-<div class="section">
-    <details data-id="shadow">
-    <summary>👁 TP2 SHADOW İZLEME ({len(shadow_watching)})</summary>
-    <p class="note">TP1'de kapanmış — TP2'ye stop'a düşmeden ulaşabilir miydi izleniyor.</p>
-    <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Tür</th><th>TP1 Kâr</th><th>Şu An</th><th>TP2 Hedef</th><th>Peak Sonrası</th><th>Kalan</th>
-    </tr></thead><tbody>{shadow_rows}</tbody></table></div>
     </details>
 </div>"""
 
@@ -2039,16 +1833,15 @@ const BY_TYPE = {json.dumps(perf.get('by_type', {}), ensure_ascii=False)};
 const ACTIVE = new Set(Object.keys(BY_TYPE));
 
 function recalc() {{
-  let total=0, open=0, wins=0, win_partial=0, losses=0, expired=0, pnl=0, peaks=[];
+  let total=0, open=0, wins=0, losses=0, expired=0, pnl=0, peaks=[];
   for (const [k, v] of Object.entries(BY_TYPE)) {{
     if (!ACTIVE.has(k)) continue;
-    total      += v.total      || 0;
-    open       += v.open       || 0;
-    wins       += v.wins       || 0;
-    win_partial+= v.win_partial|| 0;
-    losses     += v.losses     || 0;
-    expired    += v.expired    || 0;
-    pnl        += v.total_pnl  || 0;
+    total   += v.total     || 0;
+    open    += v.open      || 0;
+    wins    += v.wins      || 0;
+    losses  += v.losses    || 0;
+    expired += v.expired   || 0;
+    pnl     += v.total_pnl || 0;
     if (v.avg_peak && v.total > 0) peaks.push([v.avg_peak, v.total]);
   }}
   const closed = wins + losses + expired;
@@ -2061,7 +1854,6 @@ function recalc() {{
   document.getElementById('c-total').textContent   = total;
   document.getElementById('c-open').textContent    = open;
   document.getElementById('c-wins').textContent    = wins;
-  document.getElementById('c-trail').textContent   = win_partial;
   document.getElementById('c-loss').textContent    = losses;
   document.getElementById('c-exp').textContent     = expired;
   const wrEl = document.getElementById('c-wr');
@@ -2088,7 +1880,6 @@ function toggleType(key, btn) {{
     <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
     <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
     <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
-    <div class="card"><span class="val" style="color:#27ae60;font-size:.9rem" id="c-trail">{win_partial_count}</span><span class="lbl">Win (Trail)</span></div>
     <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
     <div class="card"><span class="val" id="c-wr" style="color:{'var(--green)' if perf.get('win_rate',0)>=50 else 'var(--red)'}"
@@ -2118,7 +1909,7 @@ function toggleType(key, btn) {{
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
-    <p class="note">Bot sinyalleri: ⚡ trailing stop (%3 peak altı) aktif — TP1 milestone, TP2 hedef. SMC: stop=loss | TP2=kapat direkt, TP1 milestone.</p>
+    <p class="note">SMC CHoCH ROC: TP1 hit → %2.5 trailing başlar → peak'ten -%2.5 ile çıkar | PUMP: hard SL, hard TP, 6h expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
         <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th>
@@ -2127,8 +1918,6 @@ function toggleType(key, btn) {{
     </tbody></table></div>
     </details>
 </div>
-
-{shadow_section}
 
 {tp3_shadow_section}
 
@@ -2156,8 +1945,8 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Portföy Takip v2.8 | Bot: Trailing %3 (TP1 milestone, TP2 hedef) | SMC: stop=loss | TP2=win_tp2 direkt | TP1 milestone | TP3 shadow %2.5 |
-    Kontrol: {CHECK_INTERVAL//60}dk | Expire: {EXPIRE_HOURS}s | {now}
+    Portföy Takip v3.0 | SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire | TP3 shadow %2.5 |
+    Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 </body></html>"""
     return html
