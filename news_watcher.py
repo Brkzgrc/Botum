@@ -85,6 +85,125 @@ BREAK_KEYWORDS = [
 
 SCHEDULE_HOURS_TR = {9, 19}
 
+# ── Impact Scoring ─────────────────────────────────────────────────────────────
+# Keyword → base score.  Additive: her eşleşen anahtar kelime skora eklenir,
+# sonra SOURCE_CREDIBILITY çarpanıyla ölçeklenir.
+# Eşik: <80 → API yok | 80-149 → Haiku | ≥150 → Sonnet
+IMPACT_SCORES: dict[str, int] = {
+    # Tier 1 — 90-100: Piyasayı doğrudan hareket ettirir
+    "stablecoin depeg":       100,
+    "crypto exchange hacked": 100,
+    "etf approved":           100,
+    "etf denied":             100,
+    "etf rejected":           100,
+    "blackrock bitcoin etf":   95,
+    "bridge hack":             95,
+    "smart contract exploit":  95,
+    "defi rug pull":           95,
+    "flash loan attack":       90,
+    "fed rate hike":           90,
+    "fed rate cut":            90,
+    "fed interest rate":       90,
+    "default":                 90,
+    "bankrupt":                90,
+    "insolvent":               90,
+    "executive order":         90,
+    # Tier 2 — 70-89: Önemli, hızlı analiz gerektirir
+    "fomc minutes":            85,
+    "emergency":               85,
+    "war":                     85,
+    "collapse":                85,
+    "sanction":                82,
+    "jerome powell":           82,
+    "bitcoin halving":         80,
+    "blackrock buys":          80,
+    "blackrock sells":         80,
+    "$2 billion":              80,
+    "sec enforcement":         80,
+    "doj":                     78,
+    "sec crypto":              78,
+    "crash":                   78,
+    "indicted":                78,
+    "banned":                  78,
+    "ban":                     75,
+    "bans":                    75,
+    "hacked":                  75,
+    "hack":                    75,
+    "us recession":            75,
+    "gary gensler":            75,
+    "fidelity buys":           75,
+    "spot etf inflows":        75,
+    "spot etf outflows":       75,
+    "whale accumulation":      75,
+    "whale distribution":      75,
+    "hard fork":               75,
+    "solana network outage":   75,
+    "all-time high":           75,
+    "$1 billion":              75,
+    "breach":                  72,
+    "exploit":                 72,
+    "liquidated":              72,
+    "buys bitcoin":            72,
+    "sells bitcoin":           72,
+    "buys btc":                72,
+    "sells btc":               72,
+    "purchases bitcoin":       72,
+    "acquires bitcoin":        72,
+    "microstrategy":           70,
+    "exchange inflows":        70,
+    "exchange outflows":       70,
+    "mainnet launch":          70,
+    "halted":                  70,
+    "suspended":               70,
+    "record high":             70,
+    "ath":                     70,
+    "$500 million":            70,
+    # Tier 3 — 40-69: Dikkat çekici ama tek başına yeterli değil
+    "nonfarm payrolls":        65,
+    "federal reserve hawkish": 65,
+    "federal reserve dovish":  65,
+    "us cpi":                  65,
+    "rate cut":                65,
+    "rate hike":               65,
+    "crisis":                  65,
+    "trump signs":             65,
+    "arrest":                  65,
+    "yield curve inversion":   65,
+    "seized":                  65,
+    "charges":                 60,
+    "cftc crypto":             60,
+    "crypto panic":            60,
+    "us ppi":                  60,
+    "rate increase":           60,
+    "rate decrease":           60,
+    "treasury yields":         60,
+    "sues":                    55,
+    "ethereum gas spike":      55,
+    "golden cross btc":        55,
+    "death cross btc":         55,
+    "token unlock":            55,
+    "$200 million":            55,
+    "dxy":                     50,
+    "$100 million":            50,
+    "layer 2 tvl":             45,
+    "fear and greed":          45,
+}
+
+SOURCE_CREDIBILITY: dict[str, float] = {
+    "Reuters":       1.3,
+    "Bloomberg":     1.3,
+    "WSJ":           1.25,
+    "FT":            1.25,
+    "CoinDesk":      1.1,
+    "The Block":     1.1,
+    "Blockworks":    1.05,
+    "CoinTelegraph": 1.0,
+    "Decrypt":       1.0,
+    "CryptoSlate":   0.95,
+    "Bitcoinist":    0.9,
+    "Google News":   1.0,
+}
+
 _STOP_WORDS = {
     "the", "and", "for", "with", "that", "from", "this", "has", "are",
     "was", "will", "have", "been", "its", "also", "but", "not", "after",
@@ -382,7 +501,14 @@ def _fetch_and_send(hours_back: int):
 # BREAKING NEWS — saatlik kontrol
 # ============================================================
 
-def _breaking_check_claude(items: list[dict]) -> str:
+def _score_item(item: dict) -> int:
+    text = (item.get("title", "") + " " + item.get("desc", "")).lower()
+    score = sum(v for kw, v in IMPACT_SCORES.items() if kw in text)
+    mult = SOURCE_CREDIBILITY.get(item.get("source", ""), 1.0)
+    return int(score * mult)
+
+
+def _breaking_check_claude(items: list[dict], model: str = "claude-haiku-4-5-20251001") -> str:
     if not ANTHROPIC_API_KEY or not items:
         return ""
     import anthropic
@@ -415,7 +541,7 @@ HABERLER:
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -434,7 +560,20 @@ def _check_breaking_news():
         if not items:
             return
 
-        result = _breaking_check_claude(items)
+        scored = [(item, _score_item(item)) for item in items]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        max_score = scored[0][1] if scored else 0
+
+        print(f"[NEWS BREAK] Max impact score: {max_score} ({scored[0][0]['title'][:60] if scored else '-'})", flush=True)
+
+        if max_score < 80:
+            print(f"[NEWS BREAK] Düşük etki ({max_score}), API atlandı.", flush=True)
+            return
+
+        model = "claude-sonnet-4-6" if max_score >= 150 else "claude-haiku-4-5-20251001"
+        print(f"[NEWS BREAK] Model: {model} (score={max_score})", flush=True)
+
+        result = _breaking_check_claude(items, model=model)
         if not result:
             return
 
