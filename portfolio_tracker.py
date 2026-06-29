@@ -1841,7 +1841,7 @@ def push_snapshot_to_github():
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
 
-        payload = {"message": f"snapshot {tr_now_str()}", "content": encoded, "branch": "data"}
+        payload = {"message": f"snapshot {tr_now_str()}", "content": encoded, "branch": "main"}
         if sha:
             payload["sha"] = sha
 
@@ -1868,7 +1868,7 @@ def push_archive_to_github():
         api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/learning_archive.json"
         r = requests.get(api_url, headers=headers, timeout=10)
         sha = r.json().get("sha") if r.status_code == 200 else None
-        payload = {"message": f"archive {tr_now_str()}", "content": encoded, "branch": "data"}
+        payload = {"message": f"archive {tr_now_str()}", "content": encoded, "branch": "main"}
         if sha:
             payload["sha"] = sha
         r = requests.put(api_url, headers=headers, json=payload, timeout=15)
