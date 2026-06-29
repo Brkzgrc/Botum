@@ -172,7 +172,7 @@ FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan. *, #, _, madd
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{text}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"<i>Claude Analyzer · Gün İçi Tarama</i>"
+        f"<i>🐺 ANTON · Gün İçi Tarama</i>"
     )
     send_decision(msg, thread_id=None)
     print("[NABİZ] Tamamlandı, Telegram'a gönderildi.", flush=True)
