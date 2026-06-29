@@ -545,7 +545,7 @@ def _analyze_symbol(symbol):
         t2_str = f"{tp2:.10f}".rstrip("0").rstrip(".")
 
         msg = (
-            f"🚀 <b>CHoCH — SMC V2</b>\n"
+            f"🚀 <b>CHoCH — SMC CHoCH ROC</b>\n"
             f"<b>#{base}</b>  <i>{coin_name}</i>\n"
             f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
             f"📍 <b>Giriş (CHoCH):</b> <code>{e_str}</code>\n"
@@ -585,7 +585,7 @@ def _analyze_symbol(symbol):
                 print(f"[SMC ANALYZER] {ae}", flush=True)
 
         scan_stats["signal_v2"] += 1
-        print(f"🟣 [SMC-V2] {symbol} | entry:{entry:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
+        print(f"🟣 [SMC CHoCH ROC] {symbol} | entry:{entry:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}", flush=True)
