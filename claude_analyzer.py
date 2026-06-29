@@ -405,6 +405,48 @@ def _dominance() -> dict | None:
         print(f"[ANALYZER DOM] {e}", flush=True)
         return _dom_cache["data"]
 
+_etf_cache: dict = {"data": None, "ts": 0}
+
+def _etf_flow() -> str | None:
+    """Bitbo'dan günlük BTC ETF net akışını çeker. Önbellek: 1 saat."""
+    now = time.time()
+    if _etf_cache["data"] is not None and now - _etf_cache["ts"] < 3600:
+        return _etf_cache["data"]
+    try:
+        import re as _re
+        hdrs = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+        }
+        r = requests.get("https://bitbo.io/treasuries/etf-flows/", headers=hdrs, timeout=15)
+        if not r.ok:
+            return _etf_cache["data"]
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', r.text, _re.DOTALL)
+        flows = []
+        for row in rows:
+            cells = _re.findall(r'<td[^>]*>(.*?)</td>', row, _re.DOTALL)
+            if len(cells) < 3:
+                continue
+            raw = _re.sub(r'<[^>]+>', '', cells[-1]).strip().replace(',', '').replace('\xa0', '')
+            raw = raw.replace('(', '-').replace(')', '')
+            try:
+                flows.append(round(float(raw), 1))
+            except (ValueError, TypeError):
+                pass
+        if len(flows) >= 5:
+            today = flows[-1]
+            avg5  = round(sum(flows[-5:]) / 5, 1)
+            sign  = "+" if today >= 0 else ""
+            trend = "pozitif" if avg5 > 0 else ("negatif" if avg5 < 0 else "nötr")
+            result = f"Bugün: {sign}{today}M$ | 5G Ort: {'+' if avg5>=0 else ''}{avg5}M$ | Trend: {trend}"
+            _etf_cache["data"] = result
+            _etf_cache["ts"]   = now
+            return result
+    except Exception as e:
+        print(f"[ANALYZER ETF] {e}", flush=True)
+    return _etf_cache["data"]
+
+
 def _dom_str(dom: dict | None) -> str:
     if not dom:
         return "BTC Dominans: veri yok"
@@ -831,19 +873,21 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     source   = signal.get("source", "bot")
 
     # Tüm verileri paralel çek
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=7) as ex:
         fut_tf    = ex.submit(_fetch_all_tf, symbol)
         fut_fg    = ex.submit(_fear_greed)
         fut_dom   = ex.submit(_dominance)
         fut_macro = ex.submit(_fetch_btc_macro)
         fut_tma   = ex.submit(_tma_3d_btc)
         fut_sweep = ex.submit(_liquidity_sweep, symbol)
+        fut_etf   = ex.submit(_etf_flow)
     tf_data          = fut_tf.result()
     fg_val, fg_label = fut_fg.result()
     dom              = fut_dom.result()
     macro            = fut_macro.result()
     tma              = fut_tma.result()
     sweep            = fut_sweep.result()
+    etf_str          = fut_etf.result()
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
 
     # Piyasa koşulları — arşiv eşleştirmesi için
@@ -933,6 +977,7 @@ Giriş: {_fmt(signal.get('entry'))} | Stop: {_fmt(signal.get('stop'))} | TP1: {_
 [MARKET]
 Fear & Greed: {fg_str}
 {_dom_str(dom)}
+BTC ETF Akış: {etf_str if etf_str else "veri yok"}
 Sinyal clustering: {cluster_str}
 
 [BU COİN GEÇMİŞİ]
