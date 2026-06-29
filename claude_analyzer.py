@@ -1032,7 +1032,7 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{decision}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"<i>🐺 ANTON · {src_str}{num_str}</i>"
+        f"<i>🐾 ANTON 🐾 · {src_str}{num_str}</i>"
     )
 
     send_decision(msg)
@@ -1179,7 +1179,7 @@ def _run_market_check(report_type: str):
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{text}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>🐺 ANTON · Piyasa İzleme</i>"
+            f"<i>🐾 ANTON 🐾 · Piyasa İzleme</i>"
         )
         thread = None if report_type == "daily" else 38
         send_decision(msg, thread_id=thread)
