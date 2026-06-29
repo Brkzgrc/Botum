@@ -1124,17 +1124,12 @@ def market_dashboard():
                          "BTC DOMIN.")
 
     etf_today = mp.get("etf_today")
-    def _etf_fmt(v):
-        a = abs(v)
-        s = "+" if v >= 0 else "-"
-        if a >= 1000: return f"{s}${a/1000:.1f}B"
-        return f"{s}${a:.0f}M"
     if etf_today is None:
         etf_today_fmt, etf_today_c, etf_today_sub = "—", "#5a6a7a", "veri yok"
     elif etf_today >= 0:
-        etf_today_fmt, etf_today_c, etf_today_sub = _etf_fmt(etf_today), "#2ecc71", "net giriş"
+        etf_today_fmt, etf_today_c, etf_today_sub = f"+{etf_today:.0f}M", "#2ecc71", "net giriş"
     else:
-        etf_today_fmt, etf_today_c, etf_today_sub = _etf_fmt(etf_today), "#e74c3c", "net çıkış"
+        etf_today_fmt, etf_today_c, etf_today_sub = f"{etf_today:.0f}M", "#e74c3c", "net çıkış"
 
     return f"""<!DOCTYPE html>
 <html lang="tr">
@@ -1248,7 +1243,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
         <div class="m-sub" style="color:{fr_lc}">{fr_label}</div>
       </div>
       <div class="metric">
-        <div><div class="m-label">ETF Akış</div><div class="m-value" style="color:{etf_today_c}">{etf_today_fmt}</div></div>
+        <div><div class="m-label">ETF Akış</div><div class="m-value" style="color:{etf_today_c};white-space:nowrap;font-size:.82rem">{etf_today_fmt}</div></div>
         <div class="m-sub" style="color:{etf_today_c}">{etf_today_sub}</div>
       </div>
     </div>
