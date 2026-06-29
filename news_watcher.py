@@ -604,7 +604,7 @@ def _check_breaking_news():
 # ============================================================
 
 def _news_watcher_loop():
-    print("[NEWS] Başlatıldı — özet 09/19 TR | breaking 2 saatte bir.", flush=True)
+    print("[NEWS] Başlatıldı — özet 09/19 TR | breaking 30 dakikada bir.", flush=True)
     while True:
         try:
             now_tr = _tr_now()
@@ -625,8 +625,8 @@ def _news_watcher_loop():
                         daemon=True, name="news-scheduled"
                     ).start()
 
-            # Breaking news — 2 saatte bir (günde 12 kontrol)
-            if now_ts - _state["last_break_ts"] >= 7200:
+            # Breaking news — 30 dakikada bir (günde 48 kontrol, çoğu API'siz)
+            if now_ts - _state["last_break_ts"] >= 1800:
                 _state["last_break_ts"] = now_ts
                 threading.Thread(
                     target=_check_breaking_news,
