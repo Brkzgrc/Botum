@@ -1720,13 +1720,10 @@ def dashboard():
     </details>
 </div>"""
 
-    expire_trail_threshold_h = round(EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD, 1)
-
-
     _smc_eski_section = ""
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
-<meta charset="UTF-8"><title>Portföy Takip v2.8</title>
+<meta charset="UTF-8"><title>Portföy Takip v3.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
@@ -1820,7 +1817,7 @@ tr:hover td{{background:var(--card);}}
         </div>
     </div>
     <span class="time">
-        {now} | v2.8
+        {now} | v3.0
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
             onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
@@ -2035,15 +2032,13 @@ def snapshot_loop():
 # ============================================================
 if __name__ == "__main__":
     print("=" * 50, flush=True)
-    print("📊 Portföy Takip Sistemi v2.8", flush=True)
-    print("   Bot: Trailing %3 (TP1 milestone, TP2 hedef)", flush=True)
-    print("   SMC: stop=loss | TP2=win_tp2 direkt | TP1 milestone | TP3 shadow %2.5 trailing", flush=True)
+    print("📊 Portföy Takip Sistemi v3.0", flush=True)
+    print("   SMC CHoCH ROC: TP1 hit → %2.5 trailing → peak'ten -%2.5 çıkış", flush=True)
+    print("   PUMP: hard SL | hard TP | 6h expire | trailing yok", flush=True)
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
-    print(f"  Expire süresi        : {EXPIRE_HOURS} saat", flush=True)
-    print(f"  Expire trail eşiği   : %{EXPIRE_TRAIL_THRESHOLD*100:.0f} ({EXPIRE_HOURS * EXPIRE_TRAIL_THRESHOLD:.1f}s)", flush=True)
-    print(f"  Expire trail %        : %{EXPIRE_TRAIL_PCT}", flush=True)
-    print(f"  TP2 shadow süresi    : {SHADOW_EXPIRE_HOURS} saat", flush=True)
+    print(f"  PUMP expire süresi   : {BOT_EXPIRE_H['pump']} saat", flush=True)
+    print(f"  TP3 shadow süresi    : {SHADOW_EXPIRE_HOURS} saat", flush=True)
     print(f"  Data dizini          : {DATA_DIR}", flush=True)
     print("=" * 50, flush=True)
 
