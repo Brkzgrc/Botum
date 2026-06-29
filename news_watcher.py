@@ -50,23 +50,37 @@ KEYWORDS = [
 ]
 
 BREAK_KEYWORDS = [
-    # Güvenlik / çöküş
-    "ban", "banned", "bans", "hack", "hacked", "breach", "exploit",
-    "crash", "collapse", "bankrupt", "insolvent", "seized", "arrest",
-    "charges", "sues", "indicted", "doj", "emergency",
-    # Makro
+    # Makro / Fed
+    "fed rate hike", "fed rate cut", "fomc minutes", "jerome powell",
+    "us cpi", "us ppi", "nonfarm payrolls", "dxy", "us recession",
+    "fed interest rate", "federal reserve hawkish", "federal reserve dovish",
+    "treasury yields", "yield curve inversion",
     "rate cut", "rate hike", "rate increase", "rate decrease",
+    "executive order", "trump signs", "sanction", "war", "default", "crisis",
+    # Regülasyon
+    "sec crypto", "sec enforcement", "gary gensler", "cftc crypto",
+    "ban", "banned", "bans", "charges", "sues", "indicted", "doj", "emergency",
+    "seized", "arrest",
+    # ETF / Kurumsal
+    "blackrock bitcoin etf", "spot etf inflows", "spot etf outflows",
     "etf approved", "etf rejected", "etf denied",
-    "all-time high", "record high", "ath",
-    "liquidated", "halted", "suspended",
-    "executive order", "trump signs", "sanction",
-    "war", "default", "crisis",
-    # Kurumsal BTC hareketleri
-    "microstrategy", "strategy buys", "strategy sells",
+    "whale accumulation", "whale distribution",
+    "exchange inflows", "exchange outflows",
     "buys bitcoin", "sells bitcoin", "buys btc", "sells btc",
     "purchases bitcoin", "acquires bitcoin",
-    "blackrock buys", "blackrock sells", "fidelity buys",
+    "microstrategy", "blackrock buys", "blackrock sells", "fidelity buys",
     "$100 million", "$200 million", "$500 million", "$1 billion", "$2 billion",
+    # Güvenlik / çöküş
+    "stablecoin depeg", "crypto exchange hacked", "bridge hack",
+    "smart contract exploit", "defi rug pull", "flash loan attack",
+    "hack", "hacked", "breach", "exploit", "crash", "collapse",
+    "bankrupt", "insolvent", "halted", "suspended", "liquidated",
+    # Teknik / Zincir olayları
+    "bitcoin halving", "ethereum gas spike", "token unlock",
+    "mainnet launch", "hard fork", "solana network outage",
+    "layer 2 tvl", "all-time high", "record high", "ath",
+    # Sentiment
+    "fear and greed", "crypto panic", "golden cross btc", "death cross btc",
 ]
 
 SCHEDULE_HOURS_TR = {9, 19}
