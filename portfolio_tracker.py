@@ -1280,6 +1280,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="gauge-wrap">
       {fr_bar_svg}
       <div class="gauge-sub">8 saatlik · Binance BTCUSDT</div>
+      <div class="gauge-sub" style="margin-top:2px">Vadeli (futures) işlemlerde kim baskın</div>
     </div>
   </div>
   <div class="card">
