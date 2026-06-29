@@ -25,6 +25,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
+
+from api_logger import log_usage as _log_usage
+_PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
+_PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -954,13 +958,8 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
             max_tokens=350,
             messages=[{"role": "user", "content": prompt}],
         )
-        _dur = time.time() - _t0
-        print(
-            f"[API_USAGE] module=claude_analyzer model=haiku "
-            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
-            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
-            flush=True,
-        )
+        _log_usage("claude_analyzer", "haiku", _PROMPT_V_SIGNAL,
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
         return resp.content[0].text.strip(), conditions
     except Exception as e:
         print(f"[ANALYZER CLAUDE] {e}", flush=True)
@@ -1105,13 +1104,8 @@ GÖREV: {gorev}"""
             max_tokens=750,
             messages=[{"role": "user", "content": prompt}],
         )
-        _dur = time.time() - _t0
-        print(
-            f"[API_USAGE] module=market_watcher model=haiku "
-            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
-            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
-            flush=True,
-        )
+        _log_usage("market_watcher", "haiku", _PROMPT_V_WATCHER,
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
         return resp.content[0].text.strip()
     except Exception as e:
         print(f"[WATCHER CLAUDE] {e}", flush=True)

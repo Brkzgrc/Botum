@@ -20,6 +20,10 @@ import requests
 import feedparser
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from api_logger import log_usage as _log_usage
+
+_PROMPT_V_SCHEDULED = "1.0"
+_PROMPT_V_BREAKING  = "1.0"
 
 try:
     from rapidfuzz import fuzz as _rfuzz
@@ -442,13 +446,8 @@ HABERLER:
             max_tokens=1400,
             messages=[{"role": "user", "content": prompt}],
         )
-        _dur = time.time() - _t0
-        print(
-            f"[API_USAGE] module=news_scheduled model=haiku "
-            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
-            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
-            flush=True,
-        )
+        _log_usage("news_scheduled", "haiku", _PROMPT_V_SCHEDULED,
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
         return resp.content[0].text.strip()
     except Exception as e:
         print(f"[NEWS CLAUDE] {e}", flush=True)
@@ -569,14 +568,8 @@ HABERLER:
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
-        _dur = time.time() - _t0
-        _model_short = "sonnet" if "sonnet" in model else "haiku"
-        print(
-            f"[API_USAGE] module=news_breaking model={_model_short} "
-            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
-            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
-            flush=True,
-        )
+        _log_usage("news_breaking", model, _PROMPT_V_BREAKING,
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0)
         result = resp.content[0].text.strip()
         if result.upper().startswith("YOK"):
             return ""

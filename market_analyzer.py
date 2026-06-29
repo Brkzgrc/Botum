@@ -8,6 +8,9 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 from market_watch import fetch_all
+from api_logger import log_usage as _log_usage
+
+_PROMPT_V = "1.0"
 
 TR_TZ = timezone(timedelta(hours=3))
 
@@ -357,13 +360,8 @@ def run_daily_analysis(portfolio_context=""):
             max_tokens=10000,
             messages=[{"role": "user", "content": prompt}],
         )
-        _dur = _time.time() - _t0
-        print(
-            f"[API_USAGE] module=market_analyzer model=sonnet "
-            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
-            f"dur={_dur:.1f}s",
-            flush=True,
-        )
+        _log_usage("market_analyzer", "sonnet", _PROMPT_V,
+                   resp.usage.input_tokens, resp.usage.output_tokens, _time.time() - _t0)
         text = resp.content[0].text
     except Exception as e:
         print(f"[MARKET_ANALYZER] Claude API hata: {e}", flush=True)
