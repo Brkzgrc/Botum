@@ -555,6 +555,8 @@ def _btc_macro_str(macro: dict | None, btc_price: float | None = None) -> str:
             marker = ""
             if btc_price:
                 diff = (btc_price - val) / val * 100
+                if abs(diff) > 20:
+                    continue  # Mevcut fiyattan %20'den uzak — irrelevant
                 if abs(diff) < 3:
                     marker = " ◀ YAKINDA"
                 elif diff < 0:
@@ -889,7 +891,7 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
             for s in sweep
         )
     else:
-        sweep_str = "\n[LİKİDİTE SWEEP — Son 24S]\nBelirgin sweep yok."
+        sweep_str = ""
 
     # PANİK PUMP için ADX kalite notu (backtest: ADX≥40+drop≤-8% → WR%92)
     adx_note = ""
@@ -935,10 +937,7 @@ Sinyal clustering: {cluster_str}
 [SİSTEM GENEL PERFORMANS — SMC HARİCİ]
 {sys_hist}
 
-[GEÇMİŞ PIYASA KOŞUL ARŞİVİ]
-{archive_ctx if archive_ctx else "Yeterli arşiv verisi yok."}
-
-{sweep_str}
+{f"[GEÇMİŞ PIYASA KOŞUL ARŞİVİ]{chr(10)}{archive_ctx}" if archive_ctx else ""}{sweep_str}
 
 Haftalık ve 3 günlük yapıya önce bak, sonra anlık sinyali değerlendir.
 Geçmiş istatistikler sadece bağlamdır — anlık koşullar esastır.
