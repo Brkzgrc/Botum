@@ -70,7 +70,6 @@ BREAK_KEYWORDS = [
 ]
 
 SCHEDULE_HOURS_TR = {9, 19}
-BREAK_HOURS_TR    = {11, 23}
 
 _STOP_WORDS = {
     "the", "and", "for", "with", "that", "from", "this", "has", "are",
@@ -84,7 +83,7 @@ _STOP_WORDS = {
 _CACHE_TTL    = 48 * 3600   # 48 saat — bu süreden eski girişler silinir
 _state = {
     "last_run_key":   None,
-    "last_break_key": None,
+    "last_break_ts":  0,
     "sent_hashes":       {},   # hash → timestamp (float)
     "sent_fingerprints": [],   # list[{"words": list, "ts": float}]
 }
@@ -403,7 +402,7 @@ HABERLER:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
+            max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
         result = resp.content[0].text.strip()
@@ -417,7 +416,7 @@ HABERLER:
 
 def _check_breaking_news():
     try:
-        items = _fetch_all(hours_back=12, keywords=BREAK_KEYWORDS)
+        items = _fetch_all(hours_back=2, keywords=BREAK_KEYWORDS)
         if not items:
             return
 
@@ -452,7 +451,7 @@ def _check_breaking_news():
 # ============================================================
 
 def _news_watcher_loop():
-    print("[NEWS] Başlatıldı — özet 09/19 TR | breaking 11/23 TR.", flush=True)
+    print("[NEWS] Başlatıldı — özet 09/19 TR | breaking 2 saatte bir.", flush=True)
     while True:
         try:
             now_tr = _tr_now()
@@ -468,21 +467,18 @@ def _news_watcher_loop():
                 run_key = f"{today}_{now_tr.hour}"
                 if _state["last_run_key"] != run_key:
                     _state["last_run_key"] = run_key
-                    hours_back = 10 if now_tr.hour == 9 else 10
                     threading.Thread(
-                        target=_fetch_and_send, args=(hours_back,),
+                        target=_fetch_and_send, args=(10,),
                         daemon=True, name="news-scheduled"
                     ).start()
 
-            # Breaking news kontrolü — 11:00 ve 23:00
-            if now_tr.hour in BREAK_HOURS_TR and now_tr.minute < 5:
-                break_key = f"{today}_{now_tr.hour}"
-                if _state["last_break_key"] != break_key:
-                    _state["last_break_key"] = break_key
-                    threading.Thread(
-                        target=_check_breaking_news,
-                        daemon=True, name="news-break-check"
-                    ).start()
+            # Breaking news — 2 saatte bir (günde 12 kontrol)
+            if now_ts - _state["last_break_ts"] >= 7200:
+                _state["last_break_ts"] = now_ts
+                threading.Thread(
+                    target=_check_breaking_news,
+                    daemon=True, name="news-break-check"
+                ).start()
 
         except Exception as e:
             print(f"[NEWS LOOP] {e}", flush=True)
