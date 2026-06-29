@@ -417,7 +417,7 @@ HABERLER:
 
 def _check_breaking_news():
     try:
-        items = _fetch_all(hours_back=2, keywords=BREAK_KEYWORDS)
+        items = _fetch_all(hours_back=12, keywords=BREAK_KEYWORDS)
         if not items:
             return
 
