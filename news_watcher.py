@@ -21,6 +21,13 @@ import feedparser
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    from rapidfuzz import fuzz as _rfuzz
+    _DEDUP_THRESHOLD = 80
+except ImportError:
+    _rfuzz = None
+    _DEDUP_THRESHOLD = 80
+
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
@@ -364,13 +371,21 @@ def _fetch_all(hours_back: int, keywords: list = None) -> list[dict]:
 
     raw.sort(key=lambda x: x.get("hours_ago") if x.get("hours_ago") is not None else 999)
 
-    seen_norm = []
     unique = []
     for item in raw:
-        norm = re.sub(r"\W+", "", item["title"].lower())[:60]
-        if norm not in seen_norm:
-            seen_norm.append(norm)
-            unique.append(item)
+        title_lower = item["title"].lower()
+        if _rfuzz:
+            is_dup = any(
+                _rfuzz.token_set_ratio(title_lower, u["title"].lower()) >= _DEDUP_THRESHOLD
+                for u in unique
+            )
+        else:
+            norm = re.sub(r"\W+", "", title_lower)[:60]
+            is_dup = any(re.sub(r"\W+", "", u["title"].lower())[:60] == norm for u in unique)
+        if is_dup:
+            print(f"[NEWS DEDUP] '{item['title'][:55]}' ({item['source']})", flush=True)
+            continue
+        unique.append(item)
 
     print(f"[NEWS] RSS'ten {len(unique)} haber alındı", flush=True)
     return unique[:20]
