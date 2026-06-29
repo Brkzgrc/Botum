@@ -578,8 +578,12 @@ def _check_breaking_news():
             return
 
         tr_time = _tr_now()
+        if max_score >= 150:
+            header = "🔴🔴 <b>BREAKING — KRİTİK HABER</b> 🔴🔴"
+        else:
+            header = "🚨 <b>ÖNEMLİ HABER UYARISI</b>"
         msg = (
-            f"⚡ <b>ÖNEMLİ HABER</b>\n"
+            f"{header}\n"
             f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{result}\n"
