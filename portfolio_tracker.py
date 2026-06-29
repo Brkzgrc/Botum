@@ -812,9 +812,12 @@ def _fetch_market_pulse():
                 except (ValueError, TypeError):
                     pass
             if len(_flows) >= 5:
-                out["etf_flows"] = _flows[-30:]
-                out["etf_today"] = _flows[-1]
-                print(f"[MARKET] Bitbo ETF OK: {len(_flows)} gün, bugün {_flows[-1]}M", flush=True)
+                out["etf_flows"]  = _flows[-30:]
+                out["etf_today"]  = _flows[-1]
+                out["etf_5d_avg"] = round(sum(_flows[-5:]) / 5, 1)
+                out["etf_7d_sum"] = round(sum(_flows[-7:]), 1)
+                out["etf_trend"]  = "pozitif" if sum(_flows[-5:]) > 0 else "negatif"
+                print(f"[MARKET] Bitbo ETF OK: {len(_flows)} gün, bugün {_flows[-1]}M, 5G ort {out['etf_5d_avg']}M", flush=True)
             else:
                 print(f"[MARKET] Bitbo ETF: parse edilemedi ({len(_flows)} satır)", flush=True)
         else:
@@ -1124,12 +1127,16 @@ def market_dashboard():
                          "BTC DOMIN.")
 
     etf_today = mp.get("etf_today")
+    etf_5d    = mp.get("etf_5d_avg")
     if etf_today is None:
         etf_today_fmt, etf_today_c, etf_today_sub = "—", "#5a6a7a", "veri yok"
-    elif etf_today >= 0:
-        etf_today_fmt, etf_today_c, etf_today_sub = f"+{etf_today:.0f}M", "#2ecc71", "net giriş"
     else:
-        etf_today_fmt, etf_today_c, etf_today_sub = f"{etf_today:.0f}M", "#e74c3c", "net çıkış"
+        etf_today_fmt = f"+{etf_today:.0f}M" if etf_today >= 0 else f"{etf_today:.0f}M"
+        etf_today_c   = "#2ecc71" if etf_today >= 0 else "#e74c3c"
+        if etf_5d is not None:
+            etf_today_sub = f"5G ort {'+' if etf_5d>=0 else ''}{etf_5d:.0f}M"
+        else:
+            etf_today_sub = "net giriş" if etf_today >= 0 else "net çıkış"
 
     return f"""<!DOCTYPE html>
 <html lang="tr">
