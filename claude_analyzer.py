@@ -948,10 +948,18 @@ UYARI: (varsa 1 cümle, yoksa yazma)"""
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        resp   = client.messages.create(
+        _t0 = time.time()
+        resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=350,
             messages=[{"role": "user", "content": prompt}],
+        )
+        _dur = time.time() - _t0
+        print(
+            f"[API_USAGE] module=claude_analyzer model=haiku "
+            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
+            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
+            flush=True,
         )
         return resp.content[0].text.strip(), conditions
     except Exception as e:
@@ -1091,10 +1099,18 @@ GÖREV: {gorev}"""
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        resp   = client.messages.create(
+        _t0 = time.time()
+        resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=750,
             messages=[{"role": "user", "content": prompt}],
+        )
+        _dur = time.time() - _t0
+        print(
+            f"[API_USAGE] module=market_watcher model=haiku "
+            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
+            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
+            flush=True,
         )
         return resp.content[0].text.strip()
     except Exception as e:

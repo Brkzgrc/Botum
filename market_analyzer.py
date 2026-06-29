@@ -350,10 +350,19 @@ def run_daily_analysis(portfolio_context=""):
 
     client = _make_client()
     try:
+        import time as _time
+        _t0 = _time.time()
         resp = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=10000,
             messages=[{"role": "user", "content": prompt}],
+        )
+        _dur = _time.time() - _t0
+        print(
+            f"[API_USAGE] module=market_analyzer model=sonnet "
+            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
+            f"dur={_dur:.1f}s",
+            flush=True,
         )
         text = resp.content[0].text
     except Exception as e:

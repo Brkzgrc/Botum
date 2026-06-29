@@ -436,10 +436,18 @@ HABERLER:
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        _t0 = time.time()
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1400,
             messages=[{"role": "user", "content": prompt}],
+        )
+        _dur = time.time() - _t0
+        print(
+            f"[API_USAGE] module=news_scheduled model=haiku "
+            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
+            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
+            flush=True,
         )
         return resp.content[0].text.strip()
     except Exception as e:
@@ -555,10 +563,19 @@ HABERLER:
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        _t0 = time.time()
         resp = client.messages.create(
             model=model,
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
+        )
+        _dur = time.time() - _t0
+        _model_short = "sonnet" if "sonnet" in model else "haiku"
+        print(
+            f"[API_USAGE] module=news_breaking model={_model_short} "
+            f"in={resp.usage.input_tokens} out={resp.usage.output_tokens} "
+            f"dur={_dur:.1f}s ts={_tr_now().strftime('%H:%M')}",
+            flush=True,
         )
         result = resp.content[0].text.strip()
         if result.upper().startswith("YOK"):
