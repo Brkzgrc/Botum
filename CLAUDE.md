@@ -150,3 +150,26 @@ panik_pump_BTCUSDT_20240101_20260624_20260624_1423.html
 - Her sinyali değerlendirip @CLAUDE_ANALYZR_BOT üzerinden karar gönderir
 - Kendi TF verisi çeker (Binance REST), F&G, dominans, portfolio bağlamı dahil
 - SMC dahil her sistemden `process_and_send(signal_dict)` ile çağrılabilir
+
+---
+
+## API Maliyet Baseline — Haziran 2026
+
+> Karşılaştırma için referans. 1 ay sonra Temmuz verisiyle kıyaslanacak.
+
+| Metrik | Değer |
+|---|---|
+| Dönem | 1 Haziran — 29 Haziran 2026 |
+| Toplam maliyet | $5.00 |
+| Kalan kredi | $20.00 |
+| Model dağılımı | Opus 4.8 (baskın, yeşil) + Haiku 4.5 + Sonnet 4.6 |
+| Günlük pik | ~$0.85 (7 Haz), ~$0.60 (13 Haz) |
+| Son trend (19 Haz+) | $0.05–0.10/gün |
+
+**Bu tarihten sonra yapılan optimizasyonlar:**
+- market_analyzer: Opus → Sonnet
+- Dedup (aynı haber tek API)
+- Ondalık budama (token azaltma)
+- Prompt temizliği (boş section'lar kaldırıldı)
+- Breaking check: 2 saatte bir → 30 dakikada bir ama impact scoring ile çoğu API'siz
+- API logger eklendi (api_usage.jsonl)
