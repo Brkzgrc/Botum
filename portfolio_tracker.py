@@ -790,6 +790,37 @@ def _fetch_market_pulse():
             out["ls_ratio"]    = round(float(d7[0]["longShortRatio"]), 2)
     except Exception as e:
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
+    try:
+        import re as _re2
+        _hdrs = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        _fs = requests.get("https://farside.co.uk/bitcoin-etf/", headers=_hdrs, timeout=15)
+        if _fs.ok:
+            _rows = _re2.findall(r'<tr[^>]*>(.*?)</tr>', _fs.text, _re2.DOTALL)
+            _flows = []
+            for _row in _rows:
+                _cells = _re2.findall(r'<td[^>]*>(.*?)</td>', _row, _re2.DOTALL)
+                if len(_cells) < 3:
+                    continue
+                _raw = _re2.sub(r'<[^>]+>', '', _cells[-1]).strip().replace(',', '').replace('\xa0', '')
+                _raw = _raw.replace('(', '-').replace(')', '')
+                try:
+                    _flows.append(round(float(_raw), 1))
+                except (ValueError, TypeError):
+                    pass
+            if len(_flows) >= 5:
+                out["etf_flows"] = _flows[-30:]
+                out["etf_today"] = _flows[-1]
+                print(f"[MARKET] Farside ETF OK: {len(_flows)} gün, bugün {_flows[-1]}M", flush=True)
+            else:
+                print(f"[MARKET] Farside ETF: parse edilemedi ({len(_flows)} satır)", flush=True)
+        else:
+            print(f"[MARKET] Farside ETF HTTP {_fs.status_code}", flush=True)
+    except Exception as e:
+        print(f"[MARKET] Farside ETF hata: {e}", flush=True)
     # others_d hesapla ve 24h anchor güncelle
     _bd = out.get("btc_dominance")
     _ed = out.get("eth_dominance")
@@ -1092,6 +1123,14 @@ def market_dashboard():
                          [("0%","#2ecc71"),("50%","#f1c40f"),("100%","#e67e22")],
                          "BTC DOMIN.")
 
+    etf_today = mp.get("etf_today")
+    if etf_today is None:
+        etf_today_fmt, etf_today_c, etf_today_sub = "—", "#5a6a7a", "veri yok"
+    elif etf_today >= 0:
+        etf_today_fmt, etf_today_c, etf_today_sub = f"+${etf_today:.0f}M", "#2ecc71", "net giriş"
+    else:
+        etf_today_fmt, etf_today_c, etf_today_sub = f"-${abs(etf_today):.0f}M", "#e74c3c", "net çıkış"
+
     return f"""<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -1202,6 +1241,10 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <div class="metric">
         <div><div class="m-label">Funding</div><div class="m-value" style="color:{fr_lc}">{fr_fmt}</div></div>
         <div class="m-sub" style="color:{fr_lc}">{fr_label}</div>
+      </div>
+      <div class="metric">
+        <div><div class="m-label">ETF Akış</div><div class="m-value" style="color:{etf_today_c}">{etf_today_fmt}</div></div>
+        <div class="m-sub" style="color:{etf_today_c}">{etf_today_sub}</div>
       </div>
     </div>
   </div>
