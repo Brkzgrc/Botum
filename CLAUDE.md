@@ -150,3 +150,81 @@ panik_pump_BTCUSDT_20240101_20260624_20260624_1423.html
 - Her sinyali değerlendirip @CLAUDE_ANALYZR_BOT üzerinden karar gönderir
 - Kendi TF verisi çeker (Binance REST), F&G, dominans, portfolio bağlamı dahil
 - SMC dahil her sistemden `process_and_send(signal_dict)` ile çağrılabilir
+
+---
+
+## API Optimizasyon Önerileri (GPT-4o Analizi — 29 Haziran 2026)
+
+> Beklenen kazanım: Input token'da **%40-70**, API çağrılarında **%50-90** azalma.
+> Öncelik sırası: **3 → 4 → 7 → 1 → 6 → 2 → 5**
+
+### 1) market_analyzer.py — Ham veri yerine özet gönder
+
+Claude bu modülde hesaplamıyor, sadece yorum yapıyor. Python tarafında özetlenmiş durum gönder:
+
+| Ham (pahalı) | Özet (ucuz) |
+|---|---|
+| EMA21: 108000, EMA50: 106500, EMA200: 102000 | EMA: Bullish Alignment |
+| 200W MA: 92345, Current: 108123 | 200W MA: Far Above (+17%) |
+| Fibonacci değerleri | Golden Pocket üzerinde / altında |
+| Dominans %: 54.2 | BTC.D: Increasing |
+
+**Beklenen:** Input 3.000 token → 800-1.200 token
+
+### 2) Haber Sistemi — Daha ince skor katmanı
+
+| Skor | Aksiyon | Model |
+|---|---|---|
+| 0-39 | Yoksay | — |
+| 40-79 | Arşivle | — |
+| 80-119 | AI Analizi | Haiku |
+| 120-169 | AI Analizi | Sonnet |
+| 170+ | Kritik Alarm | Sonnet |
+
+### 3) Aynı Haber Sorunu — Dedup
+
+Reuters, CoinDesk, CoinTelegraph, Decrypt, TheBlock aynı haberi veriyor. Şu an muhtemelen 4 API → olması gereken 1.
+
+**Öneri:** `RapidFuzz` veya sentence similarity — başlık benzerliği ≥%80 → aynı haber, birini at.
+Beklenen tasarruf: **%20-30**.
+
+### 4) claude_analyzer.py — Token sıkıştırma
+
+Şu an: 1.500-2.000 token input. Hedef: 600-900 token.
+
+Python'da ön değerlendirme yapıp özeti gönder:
+```
+RSI: 63 → "RSI: Neutral-Bullish"
+MACD değerleri → "MACD: Bullish Cross"
+Likidite verisi → "Buy-side Liquidity Sweep Detected"
+```
+
+### 5) Market Watcher — Çoklu koşul tetikleyici
+
+Şu an: BTC ±5% → Claude çağrılır.
+
+**Öneri:** BTC +4% **VE** OI +10% **VE** Funding değişimi mevcut → Claude çağır.
+Tek başına fiyat hareketi yetmez; OI ve Funding desteklemiyorsa haber değeri düşük.
+
+### 6) Context Memory
+
+Her analizde tüm veriyi sıfırdan gönderme. Önceki analizi cache'le, sadece değişeni gönder:
+```
+Previous: Bullish | Now: Neutral
+Changed: Funding ↑, OI ↓, Volume ↓
+```
+
+### 7) AI Decision Gateway (Büyük Öneri)
+
+```
+Binance Verisi
+    ↓
+Python Analiz Motoru (EMA, RSI, ADX, Hacim, Likidite, Makro)
+    ↓
+Güven Skoru
+    ├── ≥95 → Claude YOK — Python kararı uygulanır
+    ├── 80-94 → Haiku — sadece doğrulama
+    └── <80 veya çelişkili → Sonnet — detaylı analiz
+```
+
+Claude hesap yapan değil, Python'un kararını denetleyen hakem olur.
