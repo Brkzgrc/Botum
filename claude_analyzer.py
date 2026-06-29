@@ -737,16 +737,21 @@ _TYPE_NAMES = {
     "t168":      "UZUN VADE T168 — 7 gün hedef | Stop -8% | TP +25% | WR %40",
     "rocket":    "ROCKET — momentum devam + hacim artışı | Stop -5% | TP +8/15/25%",
     "smc":       "SMC — CHoCH yapısal kırılım | Discount Zone + Micro CHoCH",
+    "pump":      "PUMP — 15m spike ≥15x + 1h hacim ≥5x + 4h ROC ≥24% | Stop -%7 | TP +%20 | 6h expire | WR ~%91",
+    "choch_v2":  "SMC CHoCH ROC — yapısal kırılım + ROC momentum | TP hit → %2.5 trailing çıkış",
 }
 _SOURCE_NAMES = {
-    "bot": "Pump Scanner Bot",
-    "smc": "SMC Sistemi",
+    "bot":   "Pump Scanner Bot",
+    "smc":   "SMC Sistemi",
+    "smc-v2": "SMC CHoCH ROC Sistemi",
 }
 _TYPE_SHORT = {
-    "capit":     "PANİK PUMP",
-    "t72":       "ORTA VADE",
-    "t168":      "UZUN VADE",
-    "smc":       "SMC CHoCH",
+    "capit":    "PANİK PUMP",
+    "t72":      "ORTA VADE",
+    "t168":     "UZUN VADE",
+    "smc":      "SMC CHoCH",
+    "pump":     "PUMP",
+    "choch_v2": "SMC CHoCH ROC",
 }
 
 def _fmt(p):
@@ -760,6 +765,18 @@ def _fmt(p):
 
 def _build_sig_data(signal: dict) -> str:
     sig_type = signal.get("type", "")
+    if sig_type == "pump":
+        vr15  = signal.get("vr15")  or signal.get("spike_ratio")
+        vr1h  = signal.get("vr1h")  or signal.get("vol_ratio")
+        roc   = signal.get("roc_4h") or signal.get("roc_pct")
+        ret15 = signal.get("ret15", 0)
+        parts = []
+        if vr15  is not None: parts.append(f"15m Spike: {float(vr15):.1f}x (eşik ≥15x ✅)")
+        if vr1h  is not None: parts.append(f"1h Hacim: {float(vr1h):.1f}x (eşik ≥5x ✅)")
+        if roc   is not None: parts.append(f"4h ROC: +%{float(roc):.1f} (eşik ≥%24 ✅)")
+        if ret15:              parts.append(f"15m Getiri: +%{float(ret15):.1f}")
+        parts.append("Tüm filtreler geçildi")
+        return " | ".join(parts)
     if sig_type == "capit":
         return (f"Düşüş: {signal.get('ret1',0):+.2f}% | "
                 f"Hacim: {signal.get('vol_ratio',0):.2f}x | "
@@ -879,7 +896,8 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
             else:
                 adx_note = f"\nADX KALİTE: {adx_val:.0f} ⚠️ Zayıf trend — backtest WR %50 segmenti"
 
-    prompt = f"""Sen deneyimli bir kripto risk analistisisin. Ham verileri kendin yorumla.
+    prompt = f"""Bu sinyal otomatik teknik filtrelerden geçti. Görevin, filtrelerin görmediği ek piyasa risklerini tespit etmek — teknik koşullar zaten karşılandı.
+Somut bir neden olmadan RİSKLİ deme. Belirsizlik varsa DİKKAT yeterli.
 
 [SİNYAL]
 Kaynak: {_SOURCE_NAMES.get(source, source)}
@@ -912,11 +930,10 @@ Sinyal clustering: {cluster_str}
 
 {sweep_str}
 
-RSI, EMA, hacim, FBB bölgesi, SSL yönü, TMA kesişimi, likidite sweep bağlamını birlikte değerlendir.
-Yakın döneme takılma — haftalık ve 3 günlük yapıya önce bak, sonra anlık sinyali değerlendir.
+Haftalık ve 3 günlük yapıya önce bak, sonra anlık sinyali değerlendir.
 Geçmiş istatistikler sadece bağlamdır — anlık koşullar esastır.
 
-KARAR: [✅ GİR / ⚠️ DİKKAT / 🚫 RİSKLİ]
+KARAR: [✅ GİR — piyasa koşulları uygun / ⚠️ DİKKAT — belirli risk var / 🚫 RİSKLİ — somut piyasa engeli]
 GEREKÇE: (2-3 cümle — somut veri referansı ver)
 UYARI: (varsa 1 cümle, yoksa yazma)"""
 
