@@ -173,3 +173,24 @@ panik_pump_BTCUSDT_20240101_20260624_20260624_1423.html
 - Prompt temizliği (boş section'lar kaldırıldı)
 - Breaking check: 2 saatte bir → 30 dakikada bir ama impact scoring ile çoğu API'siz
 - API logger eklendi (api_usage.jsonl)
+- SoSoValue kaldırıldı → Bitbo ETF akışı eklendi (dashboard + ANTON prompt)
+
+## Gözlem Fazı — 30 Haziran 2026'dan İtibaren (GPT Tavsiyesi, Onaylandı)
+
+**Faz 1 (şu an, 3-4 hafta):** Hiçbir yeni özellik eklenmiyor. Sadece bug fix. Amaç: son günlerdeki değişikliklerin (dedup, prompt temizliği, ETF akışı, vs.) etkisini karışmadan ölçmek.
+
+**Faz 2 (3-4 hafta sonra):** Mevcut arşiv sistemine (claude_analyzer.py → `_archive_add_entry`) şu alanlar eklenecek — yeni logger yazılmayacak, var olan arşiv genişletilecek:
+```json
+{
+  "etf_today": ...,
+  "etf_5d_avg": ...,
+  "news_score": ...
+}
+```
+
+**Faz 3 (3 ay sonra):** Arşiv verisiyle analiz:
+- ETF pozitifken WR kaç? Negatifken kaç?
+- News Score 150+ iken TP2 oranı ne?
+- Hangi makro koşullarda sistem en iyi performansı veriyor?
+
+**Not (TODO, acil değil):** Arşive `system_version` / `strategy_version` alanı eklenecek (örn. "v3.1") — ileride versiyonlar arası WR karşılaştırması yapılabilsin.
