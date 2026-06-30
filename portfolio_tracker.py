@@ -1200,9 +1200,9 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 <body>
 
 <div class="header">
-  <div style="display:flex;align-items:center;gap:16px">
+  <div>
     <h1>📊 PORTFÖY TAKİP</h1>
-    <div class="tabs">
+    <div class="tabs" style="margin-top:6px">
       <a href="/" class="tab">Portföy</a>
       <a href="/market" class="tab active">Piyasa</a>
     </div>
@@ -1667,9 +1667,9 @@ tr:hover td{{background:var(--card);}}
 </head><body>
 
 <div class="header">
-    <div style="display:flex;align-items:center;gap:16px">
+    <div>
         <h1>📊 PORTFÖY TAKİP</h1>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;margin-top:6px">
             <a href="/" class="nav-tab active">Portföy</a>
             <a href="/market" class="nav-tab">Piyasa</a>
         </div>
