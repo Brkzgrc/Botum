@@ -1082,7 +1082,7 @@ def market_dashboard():
             '<rect x="12" y="30" width="176" height="11" rx="5" fill="#1a2535"/>'
             '<rect x="12" y="30" width="176" height="11" rx="5" fill="url(#lsg)"/>'
             '<line x1="100" y1="26" x2="100" y2="44" stroke="#5a6a7a" stroke-width="1" stroke-dasharray="2,2"/>'
-            f'<text x="{_ls_tx}" y="20" text-anchor="middle" fill="#ecf0f1" font-size="13" font-weight="bold" font-family="monospace">{ls_fmt}</text>'
+            f'<text x="100" y="20" text-anchor="middle" fill="#ecf0f1" font-size="13" font-weight="bold" font-family="monospace">{ls_fmt}</text>'
             f'<circle cx="{_ls_dx}" cy="36" r="7" fill="#ecf0f1" stroke="#0d1421" stroke-width="2"/>'
             f'<text x="12" y="56" text-anchor="start" fill="#e74c3c" font-size="7" font-family="monospace">Short {sr_fmt}</text>'
             f'<text x="188" y="56" text-anchor="end" fill="#2ecc71" font-size="7" font-family="monospace">Long {lr_fmt}</text>'
