@@ -12,9 +12,7 @@ import requests
 
 _cache: dict = {"data": None, "ts": 0}
 _TTL = 300  # 5 dakika
-
-_TOP_N   = 10   # en büyük N duvarı tara
-_MIN_PCT = 0.05  # %0.0 göstermemek için minimum uzaklık (görsel filtre)
+_TOP_N = 10
 
 
 def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict | None:
@@ -27,18 +25,28 @@ def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict
         return None
     ob = r.json()
 
-    bucket_size = price * 0.005  # ~%0.5 genişliğinde bucket
+    bucket_size = price * 0.005  # ~%0.5
 
-    def bucket_sum(orders):
-        buckets: dict[float, float] = {}
+    # Bid: floor — bucket center her zaman gerçek fiyatın ALTINDA
+    def bid_buckets(orders):
+        b: dict[float, float] = {}
         for p_str, q_str in orders:
-            p = float(p_str)
-            b = round(p / bucket_size) * bucket_size
-            buckets[b] = buckets.get(b, 0) + float(q_str)
-        return buckets
+            p   = float(p_str)
+            key = int(p / bucket_size) * bucket_size
+            b[key] = b.get(key, 0) + float(q_str)
+        return b
 
-    bids_b = bucket_sum(ob.get("bids", []))
-    asks_b = bucket_sum(ob.get("asks", []))
+    # Ask: ceil — bucket center her zaman gerçek fiyatın ÜSTÜNDE
+    def ask_buckets(orders):
+        b: dict[float, float] = {}
+        for p_str, q_str in orders:
+            p   = float(p_str)
+            key = (int(p / bucket_size) + 1) * bucket_size
+            b[key] = b.get(key, 0) + float(q_str)
+        return b
+
+    bids_b = bid_buckets(ob.get("bids", []))
+    asks_b = ask_buckets(ob.get("asks", []))
 
     bid_walls = sorted(
         [(p, q) for p, q in bids_b.items() if p < price],
@@ -71,35 +79,24 @@ def get_radar(
 
         result: dict = {"price": price}
 
-        bid_walls = walls.get("bid_walls", [])
-        ask_walls = walls.get("ask_walls", [])
-        print(
-            f"[RADAR] bid={len(bid_walls)} ask={len(ask_walls)} price={price}"
-            + (f" top_bid={bid_walls[0]}" if bid_walls else "")
-            + (f" top_ask={ask_walls[0]}" if ask_walls else ""),
-            flush=True,
-        )
-
-        # En büyük duvarı al, ama pct 0.0% çıkacaksa bir sonrakine geç
         for p, q in walls.get("bid_walls", []):
             pct = (p - price) / price * 100
-            if abs(pct) >= _MIN_PCT:
+            if pct < -0.05:
                 result["support"]     = p
                 result["support_pct"] = round(pct, 1)
                 result["support_qty"] = round(q, 1)
                 result["support_usd"] = round(q * price / 1_000_000, 1)
                 break
 
-        for p, q in ask_walls:
+        for p, q in walls.get("ask_walls", []):
             pct = (p - price) / price * 100
-            if abs(pct) >= _MIN_PCT:
+            if pct > 0.05:
                 result["resistance"]     = p
                 result["resistance_pct"] = round(pct, 1)
                 result["resistance_qty"] = round(q, 1)
                 result["resistance_usd"] = round(q * price / 1_000_000, 1)
                 break
 
-        # Long/Short oranına göre tasfiye yönü
         if long_ratio is not None:
             if long_ratio >= 70:
                 result["risk"], result["risk_dir"] = "yüksek", "aşağı"
@@ -125,7 +122,6 @@ def get_radar(
 
 
 def radar_ui_lines(r: dict | None) -> list[str]:
-    """Long/Short kartı altı için ayrı satırlar."""
     if not r:
         return []
     lines = []
@@ -139,13 +135,11 @@ def radar_ui_lines(r: dict | None) -> list[str]:
 
 
 def radar_ui_text(r: dict | None) -> str:
-    """Geriye dönük uyumluluk için tek satır."""
     lines = radar_ui_lines(r)
     return " | ".join(lines)
 
 
 def radar_prompt_text(r: dict | None) -> str:
-    """ANTON prompt'u için özet metin."""
     if not r:
         return "veri yok"
     lines = []

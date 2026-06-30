@@ -1025,9 +1025,14 @@ def market_dashboard():
     lr_fmt = f"%{lr:.1f}" if lr else "—"
     sr_fmt = f"%{sr:.1f}" if sr else "—"
     if ls is None:
-        ls_fmt, ls_label, ls_lc = "—", "—", "#5a6a7a"
+        ls_dom_text, ls_dom_color, ls_label, ls_lc = "—", "#5a6a7a", "—", "#5a6a7a"
     else:
-        ls_fmt = f"{ls:.2f}"
+        if ls >= 1:
+            ls_dom_text  = f"LONG {ls:.2f}x"
+            ls_dom_color = "#2ecc71"
+        else:
+            ls_dom_text  = f"SHORT {(1/ls):.2f}x"
+            ls_dom_color = "#e74c3c"
         if ls > 1.5:
             ls_label, ls_lc = "çok fazla long", "#e74c3c"
         elif ls > 1.2:
@@ -1082,7 +1087,7 @@ def market_dashboard():
             '<rect x="12" y="30" width="176" height="11" rx="5" fill="#1a2535"/>'
             '<rect x="12" y="30" width="176" height="11" rx="5" fill="url(#lsg)"/>'
             '<line x1="100" y1="26" x2="100" y2="44" stroke="#5a6a7a" stroke-width="1" stroke-dasharray="2,2"/>'
-            f'<text x="100" y="20" text-anchor="middle" fill="#ecf0f1" font-size="13" font-weight="bold" font-family="monospace">{ls_fmt}</text>'
+            f'<text x="100" y="20" text-anchor="middle" fill="{ls_dom_color}" font-size="13" font-weight="bold" font-family="monospace">{ls_dom_text}</text>'
             f'<circle cx="{_ls_dx}" cy="36" r="7" fill="#ecf0f1" stroke="#0d1421" stroke-width="2"/>'
             f'<text x="12" y="56" text-anchor="start" fill="#e74c3c" font-size="7" font-family="monospace">Short {sr_fmt}</text>'
             f'<text x="188" y="56" text-anchor="end" fill="#2ecc71" font-size="7" font-family="monospace">Long {lr_fmt}</text>'
