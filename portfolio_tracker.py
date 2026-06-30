@@ -1171,12 +1171,12 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811}}
 .time{{color:var(--dim);font-size:.7rem}}
 .groups-row{{display:flex;gap:10px;margin-bottom:14px}}
-.group{{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1}}
-.group-title{{font-size:.58rem;letter-spacing:2px;color:var(--accent);text-transform:uppercase;padding:6px 12px;border-bottom:1px solid var(--border);background:#0c1219;font-weight:700}}
-.group-metrics{{display:flex;flex:1}}
-.metric{{flex:1;padding:9px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;text-align:center}}
+.group{{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex:1;min-width:0}}
+.group-title{{font-size:.58rem;letter-spacing:2px;color:var(--accent);text-transform:uppercase;padding:6px 12px;border-bottom:1px solid var(--border);background:#0c1219;font-weight:700;white-space:nowrap}}
+.group-metrics{{display:flex;flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+.metric{{flex:0 0 auto;min-width:80px;padding:9px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;text-align:center}}
 .metric:last-child{{border-right:none}}
-.m-label{{font-size:.5rem;color:#ecf0f1;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;font-weight:bold}}
+.m-label{{font-size:.5rem;color:#ecf0f1;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;font-weight:bold;white-space:nowrap}}
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
@@ -1187,6 +1187,13 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .gauge-label{{font-size:.8rem;font-weight:bold;margin-top:2px}}
 .gauge-sub{{font-size:.5rem;color:var(--dim);margin-top:1px;text-align:center}}
 .stat-card-inner{{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px 8px}}
+@media(max-width:700px){{
+  .header{{flex-wrap:wrap;gap:6px}}
+  .time{{width:100%;text-align:right;font-size:.6rem}}
+  .groups-row{{gap:6px}}
+  .visual-row{{grid-template-columns:repeat(2,1fr)}}
+  body{{padding:10px}}
+}}
 </style>
 </head>
 <body>
