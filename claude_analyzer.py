@@ -27,7 +27,6 @@ ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 
 from api_logger import log_usage as _log_usage
-from liquidity_radar import get_radar as _get_radar, radar_prompt_text as _radar_prompt_text
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
@@ -891,10 +890,6 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     etf_str          = fut_etf.result()
     coin_hist, sys_hist = _portfolio_context(symbol, sig_type)
 
-    btc_price = (tf_data.get("btc_4h") or {}).get("close") or (tf_data.get("btc_1h") or {}).get("close")
-    radar     = _get_radar(price=btc_price) if btc_price else None
-    radar_str = _radar_prompt_text(radar)
-
     # Piyasa koşulları — arşiv eşleştirmesi için
     btc_4h   = tf_data.get("btc_4h") or {}
     coin_1h  = tf_data.get("coin_1h") or {}
@@ -982,8 +977,6 @@ Giriş: {_fmt(signal.get('entry'))} | Stop: {_fmt(signal.get('stop'))} | TP1: {_
 Fear & Greed: {fg_str}
 {_dom_str(dom)}
 BTC ETF Akış: {etf_str if etf_str else "veri yok"}
-Likidite Radarı:
-{radar_str}
 Sinyal clustering: {cluster_str}
 
 [BU COİN GEÇMİŞİ]
