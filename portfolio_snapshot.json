@@ -1,20 +1,20 @@
 {
-  "updated_at": "2026-06-30 16:38:06",
+  "updated_at": "2026-06-30 17:08:08",
   "performance": {
-    "total": 0,
+    "total": 1,
     "open": 0,
-    "closed": 0,
-    "wins": 0,
+    "closed": 1,
+    "wins": 1,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 0,
-    "total_pnl": 0.0,
-    "win_loss_pnl": 0.0,
+    "tp1_hits": 1,
+    "total_pnl": 5.98,
+    "win_loss_pnl": 5.98,
     "expired_pnl": 0.0,
-    "avg_peak": 0.0,
-    "win_rate": 0.0,
-    "real_win_rate": 0,
+    "avg_peak": 8.7,
+    "win_rate": 100.0,
+    "real_win_rate": 100.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -38,11 +38,88 @@
         "wr": 0
       }
     },
-    "by_type": {},
-    "daily": {},
-    "weekly": {},
-    "monthly": {}
+    "by_type": {
+      "SMC CHoCH ROC": {
+        "total": 1,
+        "open": 0,
+        "wins": 1,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 1,
+        "total_pnl": 5.98,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "win_rate": 100.0,
+        "avg_peak": 8.7,
+        "tp2_rate": 0,
+        "expired_pnl": 0.0,
+        "win_loss_pnl": 5.98
+      }
+    },
+    "daily": {
+      "2026-06-30": {
+        "trades": 1,
+        "pnl": 5.98,
+        "wins": 1,
+        "losses": 0
+      }
+    },
+    "weekly": {
+      "2026-W26": {
+        "trades": 1,
+        "pnl": 5.98,
+        "wins": 1,
+        "losses": 0
+      }
+    },
+    "monthly": {
+      "2026-06": {
+        "trades": 1,
+        "pnl": 5.98,
+        "wins": 1,
+        "losses": 0
+      }
+    }
   },
   "open": [],
-  "closed": []
+  "closed": [
+    {
+      "id": "PYTH_USDT_1782828011",
+      "symbol": "PYTH/USDT",
+      "entry": 0.0385,
+      "stop": 0.03531255,
+      "tp1": 0.04168745,
+      "tp2": 0.0448749,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-06-30T17:00:11.051905+03:00",
+      "close_time": "2026-06-30T17:06:38.082632+03:00",
+      "close_price": 0.04080375,
+      "close_reason": "trailing",
+      "close_pct": 5.98,
+      "peak_price": 0.04185,
+      "peak_pct": 8.7,
+      "low_price": 0.0385,
+      "low_pct": 0.0,
+      "current_price": 0.04117,
+      "current_pct": 6.94,
+      "tp1_hit": true,
+      "tp1_time": "2026-06-30T17:06:38.082632+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-06-30T17:06:38.082632+03:00",
+      "checks": 2,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 8.28
+    }
+  ]
 }
