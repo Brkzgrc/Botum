@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-01 00:38:47",
+  "updated_at": "2026-07-01 01:08:50",
   "performance": {
-    "total": 2,
+    "total": 3,
     "open": 0,
-    "closed": 2,
-    "wins": 2,
+    "closed": 3,
+    "wins": 3,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 2,
-    "total_pnl": 11.75,
-    "win_loss_pnl": 11.75,
+    "tp1_hits": 3,
+    "total_pnl": 26.93,
+    "win_loss_pnl": 26.93,
     "expired_pnl": 0.0,
-    "avg_peak": 8.59,
+    "avg_peak": 11.77,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -40,24 +40,30 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 2,
+        "total": 3,
         "open": 0,
-        "wins": 2,
+        "wins": 3,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 2,
-        "total_pnl": 11.75,
+        "tp1_hits": 3,
+        "total_pnl": 26.93,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 8.59,
+        "avg_peak": 11.77,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 11.75
+        "win_loss_pnl": 26.93
       }
     },
     "daily": {
+      "2026-07-01": {
+        "trades": 1,
+        "pnl": 15.18,
+        "wins": 1,
+        "losses": 0
+      },
       "2026-06-30": {
         "trades": 2,
         "pnl": 11.75,
@@ -67,13 +73,19 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 2,
-        "pnl": 11.75,
-        "wins": 2,
+        "trades": 3,
+        "pnl": 26.93,
+        "wins": 3,
         "losses": 0
       }
     },
     "monthly": {
+      "2026-07": {
+        "trades": 1,
+        "pnl": 15.18,
+        "wins": 1,
+        "losses": 0
+      },
       "2026-06": {
         "trades": 2,
         "pnl": 11.75,
@@ -84,6 +96,43 @@
   },
   "open": [],
   "closed": [
+    {
+      "id": "TOWNS_USDT_1782856802",
+      "symbol": "TOWNS/USDT",
+      "entry": 0.00193,
+      "stop": 0.0016915,
+      "tp1": 0.0021685,
+      "tp2": 0.002407,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-01T01:00:02.724649+03:00",
+      "close_time": "2026-07-01T01:01:40.186981+03:00",
+      "close_price": 0.002223,
+      "close_reason": "trailing",
+      "close_pct": 15.18,
+      "peak_price": 0.00228,
+      "peak_pct": 18.13,
+      "low_price": 0.00193,
+      "low_pct": 0.0,
+      "current_price": 0.00219,
+      "current_pct": 13.47,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-01T01:01:40.186981+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-01T01:01:40.186981+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 12.36
+    },
     {
       "id": "BIO_USDT_1782842401",
       "symbol": "BIO/USDT",
