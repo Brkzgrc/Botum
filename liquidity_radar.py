@@ -13,6 +13,8 @@ import requests
 _cache: dict = {"data": None, "ts": 0}
 _TTL = 300  # 5 dakika
 
+_MIN_DIST = 0.003  # en az %0.3 uzaklık — 0.0% duvar göstermeyi önler
+
 
 def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict | None:
     r = requests.get(
@@ -39,11 +41,11 @@ def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict
     asks_b = bucket_sum(ob.get("asks", []))
 
     bid_walls = sorted(
-        [(p, q) for p, q in bids_b.items() if p < price],
+        [(p, q) for p, q in bids_b.items() if p < price * (1 - _MIN_DIST)],
         key=lambda x: x[1], reverse=True,
     )
     ask_walls = sorted(
-        [(p, q) for p, q in asks_b.items() if p > price],
+        [(p, q) for p, q in asks_b.items() if p > price * (1 + _MIN_DIST)],
         key=lambda x: x[1], reverse=True,
     )
 
@@ -76,11 +78,13 @@ def get_radar(
             result["support"]     = top_bid[0]
             result["support_pct"] = round((top_bid[0] - price) / price * 100, 1)
             result["support_qty"] = round(top_bid[1], 1)
+            result["support_usd"] = round(top_bid[1] * price / 1_000_000, 1)
 
         if top_ask:
             result["resistance"]     = top_ask[0]
             result["resistance_pct"] = round((top_ask[0] - price) / price * 100, 1)
             result["resistance_qty"] = round(top_ask[1], 1)
+            result["resistance_usd"] = round(top_ask[1] * price / 1_000_000, 1)
 
         # Long/Short oranına göre tasfiye yönü
         if long_ratio is not None:
@@ -97,8 +101,8 @@ def get_radar(
 
         _cache["data"] = result
         _cache["ts"]   = now
-        _s = f"${result['support']:,.0f}" if result.get("support") else "?"
-        _r = f"${result['resistance']:,.0f}" if result.get("resistance") else "?"
+        _s = f"${result['support']:,.0f} ({result['support_usd']}M$)" if result.get("support") else "—"
+        _r = f"${result['resistance']:,.0f} ({result['resistance_usd']}M$)" if result.get("resistance") else "—"
         print(f"[RADAR] OK — destek {_s} / direnç {_r}", flush=True)
         return result
 
@@ -113,9 +117,11 @@ def radar_ui_lines(r: dict | None) -> list[str]:
         return []
     lines = []
     if r.get("support"):
-        lines.append(f"Destek Duvarı: ${r['support']:,.0f} ({r['support_pct']}%)")
+        usd = f"{r['support_usd']}M$" if r.get("support_usd") is not None else f"{r['support_qty']} BTC"
+        lines.append(f"Destek Duvarı: ${r['support']:,.0f} ({r['support_pct']}%) — {usd}")
     if r.get("resistance"):
-        lines.append(f"Direnç Duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%)")
+        usd = f"{r['resistance_usd']}M$" if r.get("resistance_usd") is not None else f"{r['resistance_qty']} BTC"
+        lines.append(f"Direnç Duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%) — {usd}")
     return lines
 
 
@@ -131,13 +137,11 @@ def radar_prompt_text(r: dict | None) -> str:
         return "veri yok"
     lines = []
     if r.get("support"):
-        lines.append(
-            f"Alım duvarı: ${r['support']:,.0f} ({r['support_pct']}%) — {r['support_qty']} BTC"
-        )
+        usd = f"{r['support_usd']}M$" if r.get("support_usd") is not None else f"{r['support_qty']} BTC"
+        lines.append(f"Alım duvarı: ${r['support']:,.0f} ({r['support_pct']}%) — {usd}")
     if r.get("resistance"):
-        lines.append(
-            f"Satış duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%) — {r['resistance_qty']} BTC"
-        )
+        usd = f"{r['resistance_usd']}M$" if r.get("resistance_usd") is not None else f"{r['resistance_qty']} BTC"
+        lines.append(f"Satış duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%) — {usd}")
     if r.get("risk"):
         dir_str = f" — {r['risk_dir']} yönlü tasfiye riski" if r.get("risk_dir") else ""
         lines.append(f"Likidite riski: {r['risk']}{dir_str}")
