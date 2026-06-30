@@ -71,6 +71,15 @@ def get_radar(
 
         result: dict = {"price": price}
 
+        bid_walls = walls.get("bid_walls", [])
+        ask_walls = walls.get("ask_walls", [])
+        print(
+            f"[RADAR] bid={len(bid_walls)} ask={len(ask_walls)} price={price}"
+            + (f" top_bid={bid_walls[0]}" if bid_walls else "")
+            + (f" top_ask={ask_walls[0]}" if ask_walls else ""),
+            flush=True,
+        )
+
         # En büyük duvarı al, ama pct 0.0% çıkacaksa bir sonrakine geç
         for p, q in walls.get("bid_walls", []):
             pct = (p - price) / price * 100
@@ -81,7 +90,7 @@ def get_radar(
                 result["support_usd"] = round(q * price / 1_000_000, 1)
                 break
 
-        for p, q in walls.get("ask_walls", []):
+        for p, q in ask_walls:
             pct = (p - price) / price * 100
             if abs(pct) >= _MIN_PCT:
                 result["resistance"]     = p
