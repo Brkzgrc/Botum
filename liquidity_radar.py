@@ -97,10 +97,9 @@ def get_radar(
 
         _cache["data"] = result
         _cache["ts"]   = now
-        print(
-            f"[RADAR] OK — destek ${result.get('support', '?'):,.0f} / direnç ${result.get('resistance', '?'):,.0f}",
-            flush=True,
-        )
+        _s = f"${result['support']:,.0f}" if result.get("support") else "?"
+        _r = f"${result['resistance']:,.0f}" if result.get("resistance") else "?"
+        print(f"[RADAR] OK — destek {_s} / direnç {_r}", flush=True)
         return result
 
     except Exception as e:
