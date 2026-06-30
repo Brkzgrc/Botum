@@ -1307,7 +1307,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="gauge-wrap">
       {ls_bar_svg}
       <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
-      {''.join(f'<div class="gauge-sub" style="margin-top:3px;color:#8a9bb0">{l}</div>' for l in _radar_lines)}
+      {''.join(f'<div style="margin-top:{"14px" if i==0 else "3px"};font-size:.58rem;color:#8a9bb0;font-family:monospace">{l}</div>' for i,l in enumerate(_radar_lines))}
     </div>
   </div>
 </div>
