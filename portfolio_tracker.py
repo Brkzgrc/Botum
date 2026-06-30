@@ -1279,6 +1279,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="gauge-wrap">
       {dom_svg}
       <div class="gauge-label" style="color:{btc_dom_nc}">{btc_dom_fmt}</div>
+      <div class="gauge-label" style="color:{btc_dom_lc};font-size:.75rem">{btc_dom_label}</div>
       <div class="gauge-sub">CoinLore · anlık</div>
     </div>
   </div>
