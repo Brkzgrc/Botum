@@ -13,7 +13,8 @@ import requests
 _cache: dict = {"data": None, "ts": 0}
 _TTL = 300  # 5 dakika
 
-_MIN_DIST = 0.003  # en az %0.3 uzaklık — 0.0% duvar göstermeyi önler
+_TOP_N   = 10   # en büyük N duvarı tara
+_MIN_PCT = 0.05  # %0.0 göstermemek için minimum uzaklık (görsel filtre)
 
 
 def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict | None:
@@ -26,8 +27,7 @@ def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict
         return None
     ob = r.json()
 
-    # ~0.5% genişliğinde bucket'lar — çok küçük olunca anlamsız yakın duvarlar çıkıyor
-    bucket_size = price * 0.005
+    bucket_size = price * 0.005  # ~%0.5 genişliğinde bucket
 
     def bucket_sum(orders):
         buckets: dict[float, float] = {}
@@ -41,17 +41,17 @@ def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict
     asks_b = bucket_sum(ob.get("asks", []))
 
     bid_walls = sorted(
-        [(p, q) for p, q in bids_b.items() if p < price * (1 - _MIN_DIST)],
+        [(p, q) for p, q in bids_b.items() if p < price],
         key=lambda x: x[1], reverse=True,
     )
     ask_walls = sorted(
-        [(p, q) for p, q in asks_b.items() if p > price * (1 + _MIN_DIST)],
+        [(p, q) for p, q in asks_b.items() if p > price],
         key=lambda x: x[1], reverse=True,
     )
 
     return {
-        "top_bid": bid_walls[0] if bid_walls else None,
-        "top_ask": ask_walls[0] if ask_walls else None,
+        "bid_walls": bid_walls[:_TOP_N],
+        "ask_walls": ask_walls[:_TOP_N],
     }
 
 
@@ -71,20 +71,24 @@ def get_radar(
 
         result: dict = {"price": price}
 
-        top_bid = walls.get("top_bid")
-        top_ask = walls.get("top_ask")
+        # En büyük duvarı al, ama pct 0.0% çıkacaksa bir sonrakine geç
+        for p, q in walls.get("bid_walls", []):
+            pct = (p - price) / price * 100
+            if abs(pct) >= _MIN_PCT:
+                result["support"]     = p
+                result["support_pct"] = round(pct, 1)
+                result["support_qty"] = round(q, 1)
+                result["support_usd"] = round(q * price / 1_000_000, 1)
+                break
 
-        if top_bid:
-            result["support"]     = top_bid[0]
-            result["support_pct"] = round((top_bid[0] - price) / price * 100, 1)
-            result["support_qty"] = round(top_bid[1], 1)
-            result["support_usd"] = round(top_bid[1] * price / 1_000_000, 1)
-
-        if top_ask:
-            result["resistance"]     = top_ask[0]
-            result["resistance_pct"] = round((top_ask[0] - price) / price * 100, 1)
-            result["resistance_qty"] = round(top_ask[1], 1)
-            result["resistance_usd"] = round(top_ask[1] * price / 1_000_000, 1)
+        for p, q in walls.get("ask_walls", []):
+            pct = (p - price) / price * 100
+            if abs(pct) >= _MIN_PCT:
+                result["resistance"]     = p
+                result["resistance_pct"] = round(pct, 1)
+                result["resistance_qty"] = round(q, 1)
+                result["resistance_usd"] = round(q * price / 1_000_000, 1)
+                break
 
         # Long/Short oranına göre tasfiye yönü
         if long_ratio is not None:
