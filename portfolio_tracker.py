@@ -23,7 +23,7 @@ from claude_analyzer import (process_and_send as _analyzer_process,
                              start_market_watcher as _start_market_watcher,
                              update_archive_outcome as _update_archive_outcome)
 from intraday_scanner import start_intraday_scanner
-from liquidity_radar import get_radar, radar_ui_text
+from liquidity_radar import get_radar, radar_ui_lines
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -1147,7 +1147,7 @@ def market_dashboard():
         else:
             etf_today_sub = "net giriş" if etf_today >= 0 else "net çıkış"
 
-    _radar_ui = radar_ui_text(mp.get("radar"))
+    _radar_lines = radar_ui_lines(mp.get("radar"))
 
     return f"""<!DOCTYPE html>
 <html lang="tr">
@@ -1307,7 +1307,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="gauge-wrap">
       {ls_bar_svg}
       <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
-      {f'<div class="gauge-sub" style="margin-top:3px;color:#8a9bb0">{_radar_ui}</div>' if _radar_ui else ''}
+      {''.join(f'<div class="gauge-sub" style="margin-top:3px;color:#8a9bb0">{l}</div>' for l in _radar_lines)}
     </div>
   </div>
 </div>

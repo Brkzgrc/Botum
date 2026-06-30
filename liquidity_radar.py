@@ -24,8 +24,8 @@ def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict
         return None
     ob = r.json()
 
-    # ~0.2% genişliğinde bucket'lar
-    bucket_size = price * 0.002
+    # ~0.5% genişliğinde bucket'lar — çok küçük olunca anlamsız yakın duvarlar çıkıyor
+    bucket_size = price * 0.005
 
     def bucket_sum(orders):
         buckets: dict[float, float] = {}
@@ -108,16 +108,22 @@ def get_radar(
         return _cache["data"]
 
 
-def radar_ui_text(r: dict | None) -> str:
-    """Long/Short kartı altı için tek satır özet."""
+def radar_ui_lines(r: dict | None) -> list[str]:
+    """Long/Short kartı altı için ayrı satırlar."""
     if not r:
-        return ""
-    parts = []
+        return []
+    lines = []
     if r.get("support"):
-        parts.append(f"↓ ${r['support']:,.0f} ({r['support_pct']}%)")
+        lines.append(f"Destek Duvarı: ${r['support']:,.0f} ({r['support_pct']}%)")
     if r.get("resistance"):
-        parts.append(f"↑ ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%)")
-    return " | ".join(parts)
+        lines.append(f"Direnç Duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%)")
+    return lines
+
+
+def radar_ui_text(r: dict | None) -> str:
+    """Geriye dönük uyumluluk için tek satır."""
+    lines = radar_ui_lines(r)
+    return " | ".join(lines)
 
 
 def radar_prompt_text(r: dict | None) -> str:
