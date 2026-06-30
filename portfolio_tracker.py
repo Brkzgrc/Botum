@@ -23,6 +23,7 @@ from claude_analyzer import (process_and_send as _analyzer_process,
                              start_market_watcher as _start_market_watcher,
                              update_archive_outcome as _update_archive_outcome)
 from intraday_scanner import start_intraday_scanner
+from liquidity_radar import get_radar, radar_ui_text
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -791,6 +792,14 @@ def _fetch_market_pulse():
     except Exception as e:
         print(f"[MARKET] Long/Short hata: {e}", flush=True)
     try:
+        _btc_p = out.get("btc_price")
+        if _btc_p:
+            _radar = get_radar(price=_btc_p, long_ratio=out.get("long_ratio"))
+            if _radar:
+                out["radar"] = _radar
+    except Exception as e:
+        print(f"[MARKET] Radar hata: {e}", flush=True)
+    try:
         import re as _re2
         _hdrs = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -1138,6 +1147,8 @@ def market_dashboard():
         else:
             etf_today_sub = "net giriş" if etf_today >= 0 else "net çıkış"
 
+    _radar_ui = radar_ui_text(mp.get("radar"))
+
     return f"""<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -1296,6 +1307,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="gauge-wrap">
       {ls_bar_svg}
       <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
+      {f'<div class="gauge-sub" style="margin-top:3px;color:#8a9bb0">{_radar_ui}</div>' if _radar_ui else ''}
     </div>
   </div>
 </div>

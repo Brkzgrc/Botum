@@ -1,0 +1,139 @@
+# -*- coding: utf-8 -*-
+"""
+Likidite Radarı
+===============
+Binance order book'tan alım/satış duvarlarını tespit eder.
+Long/Short oranına göre likidite tasfiye riskini değerlendirir.
+5 dakikalık cache, hata durumunda sessizce None döner.
+"""
+
+import time
+import requests
+
+_cache: dict = {"data": None, "ts": 0}
+_TTL = 300  # 5 dakika
+
+
+def _find_walls(price: float, symbol: str = "BTCUSDT", limit: int = 500) -> dict | None:
+    r = requests.get(
+        "https://api.binance.com/api/v3/depth",
+        params={"symbol": symbol, "limit": limit},
+        timeout=10,
+    )
+    if not r.ok:
+        return None
+    ob = r.json()
+
+    # ~0.2% genişliğinde bucket'lar
+    bucket_size = price * 0.002
+
+    def bucket_sum(orders):
+        buckets: dict[float, float] = {}
+        for p_str, q_str in orders:
+            p = float(p_str)
+            b = round(p / bucket_size) * bucket_size
+            buckets[b] = buckets.get(b, 0) + float(q_str)
+        return buckets
+
+    bids_b = bucket_sum(ob.get("bids", []))
+    asks_b = bucket_sum(ob.get("asks", []))
+
+    bid_walls = sorted(
+        [(p, q) for p, q in bids_b.items() if p < price],
+        key=lambda x: x[1], reverse=True,
+    )
+    ask_walls = sorted(
+        [(p, q) for p, q in asks_b.items() if p > price],
+        key=lambda x: x[1], reverse=True,
+    )
+
+    return {
+        "top_bid": bid_walls[0] if bid_walls else None,
+        "top_ask": ask_walls[0] if ask_walls else None,
+    }
+
+
+def get_radar(
+    price: float,
+    long_ratio: float | None = None,
+    symbol: str = "BTCUSDT",
+) -> dict | None:
+    now = time.time()
+    if _cache["data"] and now - _cache["ts"] < _TTL:
+        return _cache["data"]
+
+    try:
+        walls = _find_walls(price, symbol)
+        if not walls:
+            return _cache["data"]
+
+        result: dict = {"price": price}
+
+        top_bid = walls.get("top_bid")
+        top_ask = walls.get("top_ask")
+
+        if top_bid:
+            result["support"]     = top_bid[0]
+            result["support_pct"] = round((top_bid[0] - price) / price * 100, 1)
+            result["support_qty"] = round(top_bid[1], 1)
+
+        if top_ask:
+            result["resistance"]     = top_ask[0]
+            result["resistance_pct"] = round((top_ask[0] - price) / price * 100, 1)
+            result["resistance_qty"] = round(top_ask[1], 1)
+
+        # Long/Short oranına göre tasfiye yönü
+        if long_ratio is not None:
+            if long_ratio >= 70:
+                result["risk"], result["risk_dir"] = "yüksek", "aşağı"
+            elif long_ratio >= 60:
+                result["risk"], result["risk_dir"] = "orta", "aşağı"
+            elif long_ratio <= 30:
+                result["risk"], result["risk_dir"] = "yüksek", "yukarı"
+            elif long_ratio <= 40:
+                result["risk"], result["risk_dir"] = "orta", "yukarı"
+            else:
+                result["risk"], result["risk_dir"] = "düşük", None
+
+        _cache["data"] = result
+        _cache["ts"]   = now
+        print(
+            f"[RADAR] OK — destek ${result.get('support', '?'):,.0f} / direnç ${result.get('resistance', '?'):,.0f}",
+            flush=True,
+        )
+        return result
+
+    except Exception as e:
+        print(f"[RADAR] hata: {e}", flush=True)
+        return _cache["data"]
+
+
+def radar_ui_text(r: dict | None) -> str:
+    """Long/Short kartı altı için tek satır özet."""
+    if not r:
+        return ""
+    parts = []
+    if r.get("support"):
+        parts.append(f"↓ ${r['support']:,.0f} ({r['support_pct']}%)")
+    if r.get("resistance"):
+        parts.append(f"↑ ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%)")
+    return " | ".join(parts)
+
+
+def radar_prompt_text(r: dict | None) -> str:
+    """ANTON prompt'u için özet metin."""
+    if not r:
+        return "veri yok"
+    lines = []
+    if r.get("support"):
+        lines.append(
+            f"Alım duvarı: ${r['support']:,.0f} ({r['support_pct']}%) — {r['support_qty']} BTC"
+        )
+    if r.get("resistance"):
+        lines.append(
+            f"Satış duvarı: ${r['resistance']:,.0f} ({r['resistance_pct']:+.1f}%) — {r['resistance_qty']} BTC"
+        )
+    if r.get("risk"):
+        dir_str = f" — {r['risk_dir']} yönlü tasfiye riski" if r.get("risk_dir") else ""
+        lines.append(f"Likidite riski: {r['risk']}{dir_str}")
+    return "\n".join(lines)
