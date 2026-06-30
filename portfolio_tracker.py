@@ -1275,6 +1275,14 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 
 <div class="visual-row">
   <div class="card">
+    <h3>Long / Short</h3>
+    <div class="gauge-wrap">
+      {ls_bar_svg}
+      <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
+      {''.join(f'<div style="margin-top:{"14px" if i==0 else "3px"};font-size:.58rem;font-weight:bold;color:{"#2ecc71" if "Destek" in l else "#e74c3c"};font-family:monospace">{l}</div>' for i,l in enumerate(_radar_lines))}
+    </div>
+  </div>
+  <div class="card">
     <h3>Korku &amp; Hırs</h3>
     <div class="gauge-wrap">
       {fng_svg}
@@ -1305,14 +1313,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       {fr_bar_svg}
       <div class="gauge-sub">8 saatlik · Binance BTCUSDT</div>
       <div class="gauge-sub" style="margin-top:2px">Vadeli (futures) işlemlerde kim baskın</div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>Long / Short</h3>
-    <div class="gauge-wrap">
-      {ls_bar_svg}
-      <div class="gauge-sub">Binance · hesap bazlı · 1s</div>
-      {''.join(f'<div style="margin-top:{"14px" if i==0 else "3px"};font-size:.58rem;color:#8a9bb0;font-family:monospace">{l}</div>' for i,l in enumerate(_radar_lines))}
     </div>
   </div>
 </div>
