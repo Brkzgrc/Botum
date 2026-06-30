@@ -1187,6 +1187,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .gauge-label{{font-size:.8rem;font-weight:bold;margin-top:2px}}
 .gauge-sub{{font-size:.5rem;color:var(--dim);margin-top:1px;text-align:center}}
 .stat-card-inner{{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px 8px}}
+.btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;}}
 @media(max-width:700px){{
   .header{{flex-wrap:wrap;gap:6px}}
   .time{{width:100%;text-align:right;font-size:.6rem}}
@@ -1206,7 +1207,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <a href="/market" class="tab active">Piyasa</a>
     </div>
   </div>
-  <span class="time">{now} | v3.1</span>
+  <span class="time">{now} | v3.1 &nbsp;<button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button></span>
 </div>
 
 <div class="groups-row">
@@ -1641,7 +1642,9 @@ tr:hover td{{background:var(--card);}}
   letter-spacing:.5px;transition:all .15s;}}
 .filter-btn.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
 @media(max-width:768px){{body{{padding:10px;}}.cards{{grid-template-columns:repeat(3,1fr);}}
-  table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}}}
+  table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}
+  .header{{flex-wrap:wrap;gap:6px;}}
+  .header .time{{width:100%;justify-content:flex-end;}}}}
 </style>
 <script>
 // Details state persistence — runs before body paint to avoid flash
