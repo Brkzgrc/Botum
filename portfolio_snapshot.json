@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-01 19:30:17",
+  "updated_at": "2026-07-01 20:00:20",
   "performance": {
-    "total": 6,
-    "open": 1,
+    "total": 7,
+    "open": 2,
     "closed": 5,
     "wins": 5,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 6,
-        "open": 1,
+        "total": 7,
+        "open": 2,
         "wins": 5,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-01": {
-        "trades": 4,
+        "trades": 5,
         "pnl": 53.95,
         "wins": 3,
         "losses": 0
@@ -73,7 +73,7 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 6,
+        "trades": 7,
         "pnl": 65.7,
         "wins": 5,
         "losses": 0
@@ -81,7 +81,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 4,
+        "trades": 5,
         "pnl": 53.95,
         "wins": 3,
         "losses": 0
@@ -95,6 +95,42 @@
     }
   },
   "open": [
+    {
+      "id": "ARDR_USDT_1782925203",
+      "symbol": "ARDR/USDT",
+      "entry": 0.02453,
+      "stop": 0.0227059,
+      "tp1": 0.0263541,
+      "tp2": 0.0281782,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-01T20:00:03.143918+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.02453,
+      "peak_pct": 0.0,
+      "low_price": 0.02453,
+      "low_pct": 0.0,
+      "current_price": 0.02453,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-01T20:00:03.143918+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "CELO_USDT_1782896406",
       "symbol": "CELO/USDT",
@@ -119,14 +155,14 @@
       "peak_pct": 6.33,
       "low_price": 0.06383,
       "low_pct": -3.57,
-      "current_price": 0.06705,
-      "current_pct": 1.3,
+      "current_price": 0.06706,
+      "current_pct": 1.31,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-01T19:28:32.479767+03:00",
-      "checks": 90,
+      "last_check": "2026-07-01T19:58:34.905770+03:00",
+      "checks": 96,
       "extra": {
         "tp3": null
       }
