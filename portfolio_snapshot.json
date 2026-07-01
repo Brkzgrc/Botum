@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-01 13:59:46",
+  "updated_at": "2026-07-01 14:29:48",
   "performance": {
-    "total": 5,
+    "total": 6,
     "open": 1,
-    "closed": 4,
-    "wins": 4,
+    "closed": 5,
+    "wins": 5,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 4,
-    "total_pnl": 59.17,
-    "win_loss_pnl": 59.17,
+    "tp1_hits": 5,
+    "total_pnl": 65.7,
+    "win_loss_pnl": 65.7,
     "expired_pnl": 0.0,
-    "avg_peak": 17.74,
+    "avg_peak": 16.04,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 1,
-        "wins": 1,
+        "total": 2,
+        "wins": 2,
         "losses": 0,
-        "pnl": 32.24,
+        "pnl": 38.77,
         "wr": 100.0
       },
       "riskli": {
@@ -40,28 +40,28 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 5,
+        "total": 6,
         "open": 1,
-        "wins": 4,
+        "wins": 5,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 4,
-        "total_pnl": 59.17,
+        "tp1_hits": 5,
+        "total_pnl": 65.7,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 17.74,
+        "avg_peak": 16.04,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 59.17
+        "win_loss_pnl": 65.7
       }
     },
     "daily": {
       "2026-07-01": {
-        "trades": 3,
-        "pnl": 47.42,
-        "wins": 2,
+        "trades": 4,
+        "pnl": 53.95,
+        "wins": 3,
         "losses": 0
       },
       "2026-06-30": {
@@ -73,17 +73,17 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 5,
-        "pnl": 59.17,
-        "wins": 4,
+        "trades": 6,
+        "pnl": 65.7,
+        "wins": 5,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 3,
-        "pnl": 47.42,
-        "wins": 2,
+        "trades": 4,
+        "pnl": 53.95,
+        "wins": 3,
         "losses": 0
       },
       "2026-06": {
@@ -119,20 +119,57 @@
       "peak_pct": 2.57,
       "low_price": 0.06383,
       "low_pct": -3.57,
-      "current_price": 0.06673,
-      "current_pct": 0.82,
+      "current_price": 0.06551,
+      "current_pct": -1.03,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-01T13:58:04.241693+03:00",
-      "checks": 24,
+      "last_check": "2026-07-01T14:28:07.570853+03:00",
+      "checks": 30,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "POND_USDT_1782903606",
+      "symbol": "POND/USDT",
+      "entry": 0.00108,
+      "stop": 0.000995,
+      "tp1": 0.001165,
+      "tp2": 0.00125,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-01T14:00:06.527890+03:00",
+      "close_time": "2026-07-01T14:03:04.691069+03:00",
+      "close_price": 0.0011505,
+      "close_reason": "trailing",
+      "close_pct": 6.53,
+      "peak_price": 0.00118,
+      "peak_pct": 9.26,
+      "low_price": 0.00108,
+      "low_pct": 0.0,
+      "current_price": 0.00117,
+      "current_pct": 8.33,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-01T14:03:04.691069+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-01T14:00:15.692948+03:00",
+      "last_check": "2026-07-01T14:03:04.691069+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 7.87
+    },
     {
       "id": "THE_USDT_1782896405",
       "symbol": "THE/USDT",
