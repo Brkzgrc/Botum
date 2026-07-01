@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-01 11:59:36",
+  "updated_at": "2026-07-01 12:29:39",
   "performance": {
-    "total": 3,
-    "open": 0,
-    "closed": 3,
-    "wins": 3,
+    "total": 5,
+    "open": 1,
+    "closed": 4,
+    "wins": 4,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 3,
-    "total_pnl": 26.93,
-    "win_loss_pnl": 26.93,
+    "tp1_hits": 4,
+    "total_pnl": 59.17,
+    "win_loss_pnl": 59.17,
     "expired_pnl": 0.0,
-    "avg_peak": 11.77,
+    "avg_peak": 17.74,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -24,11 +24,11 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 0,
-        "wins": 0,
+        "total": 1,
+        "wins": 1,
         "losses": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "pnl": 32.24,
+        "wr": 100.0
       },
       "riskli": {
         "total": 0,
@@ -40,28 +40,28 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 3,
-        "open": 0,
-        "wins": 3,
+        "total": 5,
+        "open": 1,
+        "wins": 4,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 3,
-        "total_pnl": 26.93,
+        "tp1_hits": 4,
+        "total_pnl": 59.17,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 11.77,
+        "avg_peak": 17.74,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 26.93
+        "win_loss_pnl": 59.17
       }
     },
     "daily": {
       "2026-07-01": {
-        "trades": 1,
-        "pnl": 15.18,
-        "wins": 1,
+        "trades": 3,
+        "pnl": 47.42,
+        "wins": 2,
         "losses": 0
       },
       "2026-06-30": {
@@ -73,17 +73,17 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 3,
-        "pnl": 26.93,
-        "wins": 3,
+        "trades": 5,
+        "pnl": 59.17,
+        "wins": 4,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 1,
-        "pnl": 15.18,
-        "wins": 1,
+        "trades": 3,
+        "pnl": 47.42,
+        "wins": 2,
         "losses": 0
       },
       "2026-06": {
@@ -94,8 +94,82 @@
       }
     }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "CELO_USDT_1782896406",
+      "symbol": "CELO/USDT",
+      "entry": 0.06619,
+      "stop": 0.0553021,
+      "tp1": 0.0770779,
+      "tp2": 0.0879658,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-01T12:00:06.239631+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.06711,
+      "peak_pct": 1.39,
+      "low_price": 0.06559,
+      "low_pct": -0.91,
+      "current_price": 0.06641,
+      "current_pct": 0.33,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
+      "last_check": "2026-07-01T12:27:56.894805+03:00",
+      "checks": 6,
+      "extra": {
+        "tp3": null
+      }
+    }
+  ],
   "closed": [
+    {
+      "id": "THE_USDT_1782896405",
+      "symbol": "THE/USDT",
+      "entry": 0.0508,
+      "stop": 0.049352,
+      "tp1": 0.052248,
+      "tp2": 0.053696,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-01T12:00:05.186785+03:00",
+      "close_time": "2026-07-01T12:02:54.440992+03:00",
+      "close_price": 0.0671775,
+      "close_reason": "trailing",
+      "close_pct": 32.24,
+      "peak_price": 0.0689,
+      "peak_pct": 35.63,
+      "low_price": 0.0508,
+      "low_pct": 0.0,
+      "current_price": 0.0671,
+      "current_pct": 32.09,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-01T12:02:54.440992+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-01T12:00:12.597308+03:00",
+      "last_check": "2026-07-01T12:02:54.440992+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 2.85
+    },
     {
       "id": "TOWNS_USDT_1782856802",
       "symbol": "TOWNS/USDT",
