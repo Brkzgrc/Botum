@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-01 21:30:27",
+  "updated_at": "2026-07-01 22:00:30",
   "performance": {
-    "total": 7,
-    "open": 1,
+    "total": 8,
+    "open": 2,
     "closed": 6,
     "wins": 6,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 7,
-        "open": 1,
+        "total": 8,
+        "open": 2,
         "wins": 6,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-01": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 64.81,
         "wins": 4,
         "losses": 0
@@ -73,7 +73,7 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 7,
+        "trades": 8,
         "pnl": 76.56,
         "wins": 6,
         "losses": 0
@@ -81,7 +81,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 64.81,
         "wins": 4,
         "losses": 0
@@ -95,6 +95,42 @@
     }
   },
   "open": [
+    {
+      "id": "VIC_USDT_1782932410",
+      "symbol": "VIC/USDT",
+      "entry": 0.0397,
+      "stop": 0.034626,
+      "tp1": 0.044774,
+      "tp2": 0.049848,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-01T22:00:10.311097+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.0397,
+      "peak_pct": 0.0,
+      "low_price": 0.0397,
+      "low_pct": 0.0,
+      "current_price": 0.0397,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
+      "last_check": "2026-07-01T22:00:10.311097+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "CELO_USDT_1782896406",
       "symbol": "CELO/USDT",
@@ -119,14 +155,14 @@
       "peak_pct": 6.33,
       "low_price": 0.06383,
       "low_pct": -3.57,
-      "current_price": 0.06855,
-      "current_pct": 3.57,
+      "current_price": 0.06895,
+      "current_pct": 4.17,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-01T21:28:42.608362+03:00",
-      "checks": 114,
+      "last_check": "2026-07-01T21:58:45.041491+03:00",
+      "checks": 120,
       "extra": {
         "tp3": null
       }
