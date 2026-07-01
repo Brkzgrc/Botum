@@ -893,6 +893,7 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
     # Piyasa koşulları — arşiv eşleştirmesi için
     btc_4h   = tf_data.get("btc_4h") or {}
     coin_1h  = tf_data.get("coin_1h") or {}
+    btc_price = btc_4h.get("close")
     conditions = {
         "fg":              fg_val,
         "fg_label":        fg_label,
