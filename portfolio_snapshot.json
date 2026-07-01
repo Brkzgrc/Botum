@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-01 20:00:20",
+  "updated_at": "2026-07-01 20:30:23",
   "performance": {
     "total": 7,
-    "open": 2,
-    "closed": 5,
-    "wins": 5,
+    "open": 1,
+    "closed": 6,
+    "wins": 6,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 5,
-    "total_pnl": 65.7,
-    "win_loss_pnl": 65.7,
+    "tp1_hits": 6,
+    "total_pnl": 76.56,
+    "win_loss_pnl": 76.56,
     "expired_pnl": 0.0,
-    "avg_peak": 16.04,
+    "avg_peak": 15.65,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -41,27 +41,27 @@
     "by_type": {
       "SMC CHoCH ROC": {
         "total": 7,
-        "open": 2,
-        "wins": 5,
+        "open": 1,
+        "wins": 6,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 5,
-        "total_pnl": 65.7,
+        "tp1_hits": 6,
+        "total_pnl": 76.56,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 16.04,
+        "avg_peak": 15.65,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 65.7
+        "win_loss_pnl": 76.56
       }
     },
     "daily": {
       "2026-07-01": {
         "trades": 5,
-        "pnl": 53.95,
-        "wins": 3,
+        "pnl": 64.81,
+        "wins": 4,
         "losses": 0
       },
       "2026-06-30": {
@@ -74,16 +74,16 @@
     "weekly": {
       "2026-W26": {
         "trades": 7,
-        "pnl": 65.7,
-        "wins": 5,
+        "pnl": 76.56,
+        "wins": 6,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
         "trades": 5,
-        "pnl": 53.95,
-        "wins": 3,
+        "pnl": 64.81,
+        "wins": 4,
         "losses": 0
       },
       "2026-06": {
@@ -95,42 +95,6 @@
     }
   },
   "open": [
-    {
-      "id": "ARDR_USDT_1782925203",
-      "symbol": "ARDR/USDT",
-      "entry": 0.02453,
-      "stop": 0.0227059,
-      "tp1": 0.0263541,
-      "tp2": 0.0281782,
-      "tp3": null,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-01T20:00:03.143918+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.02453,
-      "peak_pct": 0.0,
-      "low_price": 0.02453,
-      "low_pct": 0.0,
-      "current_price": 0.02453,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-01T20:00:03.143918+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "CELO_USDT_1782896406",
       "symbol": "CELO/USDT",
@@ -155,20 +119,57 @@
       "peak_pct": 6.33,
       "low_price": 0.06383,
       "low_pct": -3.57,
-      "current_price": 0.06706,
-      "current_pct": 1.31,
+      "current_price": 0.06795,
+      "current_pct": 2.66,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-01T19:58:34.905770+03:00",
-      "checks": 96,
+      "last_check": "2026-07-01T20:28:37.742451+03:00",
+      "checks": 102,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "ARDR_USDT_1782925203",
+      "symbol": "ARDR/USDT",
+      "entry": 0.02453,
+      "stop": 0.0227059,
+      "tp1": 0.0263541,
+      "tp2": 0.0281782,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-01T20:00:03.143918+03:00",
+      "close_time": "2026-07-01T20:03:35.304506+03:00",
+      "close_price": 0.02719275,
+      "close_reason": "trailing",
+      "close_pct": 10.86,
+      "peak_price": 0.02789,
+      "peak_pct": 13.7,
+      "low_price": 0.02453,
+      "low_pct": 0.0,
+      "current_price": 0.02789,
+      "current_pct": 13.7,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-01T20:03:35.304506+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-01T20:03:35.304506+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 7.44
+    },
     {
       "id": "POND_USDT_1782903606",
       "symbol": "POND/USDT",
