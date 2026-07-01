@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-01 13:29:44",
+  "updated_at": "2026-07-01 13:59:46",
   "performance": {
     "total": 5,
     "open": 1,
@@ -115,18 +115,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.06711,
-      "peak_pct": 1.39,
+      "peak_price": 0.06789,
+      "peak_pct": 2.57,
       "low_price": 0.06383,
       "low_pct": -3.57,
-      "current_price": 0.06554,
-      "current_pct": -0.98,
+      "current_price": 0.06673,
+      "current_pct": 0.82,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-01T13:28:01.794419+03:00",
-      "checks": 18,
+      "last_check": "2026-07-01T13:58:04.241693+03:00",
+      "checks": 24,
       "extra": {
         "tp3": null
       }
