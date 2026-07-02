@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-02 15:01:56",
+  "updated_at": "2026-07-02 15:31:59",
   "performance": {
     "total": 9,
     "open": 3,
@@ -115,18 +115,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.058,
-      "peak_pct": 1.93,
+      "peak_price": 0.0582,
+      "peak_pct": 2.28,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0571,
-      "current_pct": 0.35,
+      "current_price": 0.0582,
+      "current_pct": 2.28,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-02T14:57:49.744911+03:00",
-      "checks": 191,
+      "last_check": "2026-07-02T15:27:56.957788+03:00",
+      "checks": 197,
       "extra": {
         "tp3": null
       }
@@ -155,14 +155,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0396,
-      "current_pct": -0.25,
+      "current_price": 0.0392,
+      "current_pct": -1.26,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-02T14:57:49.744911+03:00",
-      "checks": 202,
+      "last_check": "2026-07-02T15:27:56.957788+03:00",
+      "checks": 208,
       "extra": {
         "tp3": null
       }
@@ -191,14 +191,14 @@
       "peak_pct": 7.55,
       "low_price": 0.062,
       "low_pct": -6.33,
-      "current_price": 0.06221,
-      "current_pct": -6.01,
+      "current_price": 0.06235,
+      "current_pct": -5.8,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-02T14:57:49.744911+03:00",
-      "checks": 323,
+      "last_check": "2026-07-02T15:27:56.957788+03:00",
+      "checks": 329,
       "extra": {
         "tp3": null
       }
