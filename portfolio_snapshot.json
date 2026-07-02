@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-02 18:02:12",
+  "updated_at": "2026-07-02 18:32:15",
   "performance": {
     "total": 10,
     "open": 4,
@@ -121,18 +121,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.002053,
-      "peak_pct": 0.0,
-      "low_price": 0.002053,
-      "low_pct": 0.0,
-      "current_price": 0.002053,
-      "current_pct": 0.0,
+      "peak_price": 0.002182,
+      "peak_pct": 6.28,
+      "low_price": 0.001953,
+      "low_pct": -4.87,
+      "current_price": 0.001959,
+      "current_pct": -4.58,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-02T18:00:10.306995+03:00",
-      "checks": 0,
+      "last_check": "2026-07-02T18:28:44.421289+03:00",
+      "checks": 6,
       "extra": {
         "tp3": null
       }
@@ -167,8 +167,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-02T17:58:35.102721+03:00",
-      "checks": 227,
+      "last_check": "2026-07-02T18:28:44.421289+03:00",
+      "checks": 233,
       "extra": {
         "tp3": null
       }
@@ -197,14 +197,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0386,
-      "current_pct": -2.77,
+      "current_price": 0.039,
+      "current_pct": -1.76,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-02T17:58:35.102721+03:00",
-      "checks": 238,
+      "last_check": "2026-07-02T18:28:44.421289+03:00",
+      "checks": 244,
       "extra": {
         "tp3": null
       }
@@ -231,16 +231,16 @@
       "close_pct": null,
       "peak_price": 0.07119,
       "peak_pct": 7.55,
-      "low_price": 0.06114,
-      "low_pct": -7.63,
-      "current_price": 0.06124,
-      "current_pct": -7.48,
+      "low_price": 0.061,
+      "low_pct": -7.84,
+      "current_price": 0.06152,
+      "current_pct": -7.06,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-02T17:58:35.102721+03:00",
-      "checks": 359,
+      "last_check": "2026-07-02T18:28:44.421289+03:00",
+      "checks": 365,
       "extra": {
         "tp3": null
       }
