@@ -1507,6 +1507,7 @@ def dashboard():
             <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
             <td>{status_badge(sig.get('status','unknown'))}</td>
             <td>{fmt_price(sig['entry'])}</td>
+            <td>{fmt_price(sig.get('close_price'))}</td>
             <td style="color:{close_c};font-weight:bold">{close_s}</td>
             <td style="color:{peak_c}">{peak_s}</td>
             <td>{tp1_badge}</td>
@@ -1778,10 +1779,10 @@ function toggleType(key, btn) {{
     <details data-id="closed-list">
     <summary>📋 KAPANMIŞ İŞLEMLER (son 100)</summary>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Getiri</th><th>Peak</th>
+        <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Çıkış</th><th>Getiri</th><th>Peak</th>
         <th>TP1 Hit</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
-        {closed_rows if closed_rows else '<tr><td colspan="10" class="empty">Henüz kapanmış işlem yok</td></tr>'}
+        {closed_rows if closed_rows else '<tr><td colspan="11" class="empty">Henüz kapanmış işlem yok</td></tr>'}
     </tbody></table></div>
     </details>
 </div>
