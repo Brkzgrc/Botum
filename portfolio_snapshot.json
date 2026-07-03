@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-03 04:03:03",
+  "updated_at": "2026-07-03 04:33:06",
   "performance": {
     "total": 10,
     "open": 4,
@@ -125,14 +125,14 @@
       "peak_pct": 6.28,
       "low_price": 0.001953,
       "low_pct": -4.87,
-      "current_price": 0.002008,
-      "current_pct": -2.19,
+      "current_price": 0.002023,
+      "current_pct": -1.46,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-03T04:01:51.001177+03:00",
-      "checks": 117,
+      "last_check": "2026-07-03T04:31:59.619944+03:00",
+      "checks": 122,
       "extra": {
         "tp3": null
       }
@@ -161,14 +161,14 @@
       "peak_pct": 2.28,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.057,
-      "current_pct": 0.18,
+      "current_price": 0.0574,
+      "current_pct": 0.88,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-03T04:01:51.001177+03:00",
-      "checks": 344,
+      "last_check": "2026-07-03T04:31:59.619944+03:00",
+      "checks": 349,
       "extra": {
         "tp3": null
       }
@@ -203,8 +203,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-03T04:01:51.001177+03:00",
-      "checks": 355,
+      "last_check": "2026-07-03T04:31:59.619944+03:00",
+      "checks": 359,
       "extra": {
         "tp3": null
       }
@@ -233,14 +233,14 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.06189,
-      "current_pct": -6.5,
+      "current_price": 0.06265,
+      "current_pct": -5.35,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-03T04:01:51.001177+03:00",
-      "checks": 476,
+      "last_check": "2026-07-03T04:31:59.619944+03:00",
+      "checks": 480,
       "extra": {
         "tp3": null
       }
