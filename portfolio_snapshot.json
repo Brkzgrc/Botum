@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-04 01:31:18",
+  "updated_at": "2026-07-04 02:01:21",
   "performance": {
     "total": 11,
     "open": 4,
@@ -137,8 +137,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-04T01:30:18.629296+03:00",
-      "checks": 339,
+      "last_check": "2026-07-04T02:00:28.388327+03:00",
+      "checks": 345,
       "extra": {
         "tp3": null
       }
@@ -167,14 +167,14 @@
       "peak_pct": 2.99,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0583,
-      "current_pct": 2.46,
+      "current_price": 0.0584,
+      "current_pct": 2.64,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-04T01:30:18.629296+03:00",
-      "checks": 565,
+      "last_check": "2026-07-04T02:00:28.388327+03:00",
+      "checks": 571,
       "extra": {
         "tp3": null
       }
@@ -203,14 +203,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0403,
-      "current_pct": 1.51,
+      "current_price": 0.0405,
+      "current_pct": 2.02,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-04T01:30:18.629296+03:00",
-      "checks": 575,
+      "last_check": "2026-07-04T02:00:28.388327+03:00",
+      "checks": 581,
       "extra": {
         "tp3": null
       }
@@ -239,14 +239,14 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.0639,
-      "current_pct": -3.46,
+      "current_price": 0.06379,
+      "current_pct": -3.63,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-04T01:30:18.629296+03:00",
-      "checks": 697,
+      "last_check": "2026-07-04T02:00:28.388327+03:00",
+      "checks": 703,
       "extra": {
         "tp3": null
       }
