@@ -194,3 +194,59 @@ panik_pump_BTCUSDT_20240101_20260624_20260624_1423.html
 - Hangi makro koşullarda sistem en iyi performansı veriyor?
 
 **Not (TODO, acil değil):** Arşive `system_version` / `strategy_version` alanı eklenecek (örn. "v3.1") — ileride versiyonlar arası WR karşılaştırması yapılabilsin.
+
+---
+
+## Al-Sat Bot Planı (Henüz Yazılmadı — Onaylanmış Tasarım)
+
+### Genel Kurallar
+- Her SMC-v2 sinyali otomatik trade olur — ANTON filtresi YOK, her sinyale giriş
+- Binance **spot** (futures değil)
+- Expire kullanılmayacak
+- Cooldown: SMC sistemi kendi içinde yönetiyor, bot tarafında ek cooldown yok
+- Aynı coinde zaten açık pozisyon varsa yeni sinyal reddedilir (portfolio_tracker mantığı aynen geçerli)
+
+### Pozisyon Boyutlandırma
+```
+pozisyon_büyüklüğü = min(müsait_nakit / kalan_slot_sayısı, 20_000)
+```
+- Max eş zamanlı pozisyon: **5**
+- Max pozisyon başına: **$20.000**
+- Kalan slot = 5 − açık_pozisyon_sayısı
+- Örnek: 30.000$ var, 3 işlem açık → `min(12.000 / 2, 20.000)` = **$6.000**
+
+### Emir Akışı — Sinyal Geldiğinde
+1. `trading_engine.py` sinyali alır, pozisyon büyüklüğünü hesaplar
+2. **İki emir aynı anda** Binance'e gönderilir:
+   - Market/limit buy → coin alınır
+   - Stop-loss sell emri → Binance'te bekletilir (hard SL)
+3. `trade_state.json`'a yazılır: symbol, miktar, giriş, stop, TP1, peak
+
+### Fiyat Takibi — TP1 Öncesi
+`position_monitor.py` WebSocket ile her tick'i izler:
+- `fiyat > peak` → peak güncelle, `trade_state.json`'a yaz
+- `fiyat ≤ stop` → Binance hard SL zaten tetikler; bot onaylar, state'den siler
+- `fiyat ≥ TP1` → trailing moduna geç (aşağı bak)
+
+### Fiyat Takibi — TP1 Sonrası (Trailing Modu)
+1. Binance'teki stop-loss emri **iptal edilir**
+2. Bot her tick'te hesaplar: `trail_stop = peak × 0.975` (%2.5 trailing)
+3. Peak yükseldikçe trail_stop da yükselir — asla aşağı inmez
+4. `fiyat ≤ trail_stop` → bot market sell gönderir → pozisyon kapanır → state'den silinir
+
+### Crash Kurtarma
+- **TP1 öncesi crash:** Binance'teki hard SL emri hâlâ ayakta — zarar korunuyor
+- **TP1 sonrası crash:** `trade_state.json`'da `"trailing": true` yazıyor — bot yeniden başlayınca kaldığı yerden devam eder
+
+### Yazılacak Dosyalar
+| Dosya | Görev |
+|---|---|
+| `trading_engine.py` | Sinyal alır, Binance'e buy + stop-loss emri gönderir |
+| `position_monitor.py` | WebSocket fiyat takibi, trailing yönetimi, kapanış |
+| `trade_state.json` | Açık pozisyonların kalıcı state dosyası |
+
+Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısından sonra `trading_engine.execute(signal)` çağrılacak.
+
+### Henüz Netleşmeyenler
+- Başlangıç sermayesi (kullanıcıdan onay alınacak)
+- Binance API izinleri: sadece spot trade + order yeterlisi açık olmalı, çekim kapalı
