@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-04 20:02:51",
+  "updated_at": "2026-07-04 20:32:53",
   "performance": {
     "total": 14,
-    "open": 5,
-    "closed": 9,
-    "wins": 9,
+    "open": 4,
+    "closed": 10,
+    "wins": 10,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 9,
-    "total_pnl": 108.2,
-    "win_loss_pnl": 108.2,
+    "tp1_hits": 10,
+    "total_pnl": 137.87,
+    "win_loss_pnl": 137.87,
     "expired_pnl": 0.0,
-    "avg_peak": 14.89,
+    "avg_peak": 16.7,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -41,27 +41,27 @@
     "by_type": {
       "SMC CHoCH ROC": {
         "total": 14,
-        "open": 5,
-        "wins": 9,
+        "open": 4,
+        "wins": 10,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 9,
-        "total_pnl": 108.2,
+        "tp1_hits": 10,
+        "total_pnl": 137.87,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 14.89,
+        "avg_peak": 16.7,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 108.2
+        "win_loss_pnl": 137.87
       }
     },
     "daily": {
       "2026-07-04": {
         "trades": 3,
-        "pnl": 15.21,
-        "wins": 2,
+        "pnl": 44.88,
+        "wins": 3,
         "losses": 0
       },
       "2026-07-03": {
@@ -92,16 +92,16 @@
     "weekly": {
       "2026-W26": {
         "trades": 14,
-        "pnl": 108.20000000000002,
-        "wins": 9,
+        "pnl": 137.87,
+        "wins": 10,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
         "trades": 12,
-        "pnl": 96.45000000000002,
-        "wins": 7,
+        "pnl": 126.12,
+        "wins": 8,
         "losses": 0
       },
       "2026-06": {
@@ -113,42 +113,6 @@
     }
   },
   "open": [
-    {
-      "id": "HEI_USDT_1783184408",
-      "symbol": "HEI/USDT",
-      "entry": 0.1197,
-      "stop": 0.100495,
-      "tp1": 0.138905,
-      "tp2": 0.15811,
-      "tp3": null,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-04T20:00:08.438682+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.1197,
-      "peak_pct": 0.0,
-      "low_price": 0.1197,
-      "low_pct": 0.0,
-      "current_price": 0.1197,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-04T20:00:08.438682+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "QKC_USDT_1783004410",
       "symbol": "QKC/USDT",
@@ -173,14 +137,14 @@
       "peak_pct": 6.28,
       "low_price": 0.001953,
       "low_pct": -4.87,
-      "current_price": 0.002102,
-      "current_pct": 2.39,
+      "current_price": 0.002101,
+      "current_pct": 2.34,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-04T19:56:53.725810+03:00",
-      "checks": 542,
+      "last_check": "2026-07-04T20:32:04.015294+03:00",
+      "checks": 545,
       "extra": {
         "tp3": null
       }
@@ -215,8 +179,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-04T19:56:53.725810+03:00",
-      "checks": 768,
+      "last_check": "2026-07-04T20:32:04.015294+03:00",
+      "checks": 771,
       "extra": {
         "tp3": null
       }
@@ -245,14 +209,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0402,
-      "current_pct": 1.26,
+      "current_price": 0.041,
+      "current_pct": 3.27,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-04T19:56:53.725810+03:00",
-      "checks": 778,
+      "last_check": "2026-07-04T20:32:04.015294+03:00",
+      "checks": 781,
       "extra": {
         "tp3": null
       }
@@ -281,20 +245,57 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.06628,
-      "current_pct": 0.14,
+      "current_price": 0.06637,
+      "current_pct": 0.27,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-04T19:56:53.725810+03:00",
-      "checks": 901,
+      "last_check": "2026-07-04T20:32:04.015294+03:00",
+      "checks": 905,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "HEI_USDT_1783184408",
+      "symbol": "HEI/USDT",
+      "entry": 0.1197,
+      "stop": 0.100495,
+      "tp1": 0.138905,
+      "tp2": 0.15811,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-04T20:00:08.438682+03:00",
+      "close_time": "2026-07-04T20:22:00.421274+03:00",
+      "close_price": 0.15522,
+      "close_reason": "trailing",
+      "close_pct": 29.67,
+      "peak_price": 0.1592,
+      "peak_pct": 33.0,
+      "low_price": 0.1197,
+      "low_pct": 0.0,
+      "current_price": 0.154,
+      "current_pct": 28.65,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-04T20:22:00.421274+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-04T20:22:00.421274+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 16.04
+    },
     {
       "id": "VANRY_USDT_1783170001",
       "symbol": "VANRY/USDT",
