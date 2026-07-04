@@ -248,5 +248,6 @@ pozisyon_büyüklüğü = min(müsait_nakit / kalan_slot_sayısı, 20_000)
 Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısından sonra `trading_engine.execute(signal)` çağrılacak.
 
 ### Henüz Netleşmeyenler
-- Başlangıç sermayesi (kullanıcıdan onay alınacak)
+- Başlangıç sermayesi (ne olursa olsun 5'e bölünerek başlanacak, sabit değer gerekmez)
+- **Expire süresi** — şu an yok, test edilecek. Sorun çıkarsa (slot kilitlenmesi) sonradan eklenecek
 - Binance API izinleri: sadece spot trade + order yeterlisi açık olmalı, çekim kapalı
