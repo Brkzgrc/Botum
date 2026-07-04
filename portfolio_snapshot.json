@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-04 13:02:15",
+  "updated_at": "2026-07-04 13:32:18",
   "performance": {
     "total": 12,
-    "open": 5,
-    "closed": 7,
-    "wins": 7,
+    "open": 4,
+    "closed": 8,
+    "wins": 8,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 7,
-    "total_pnl": 92.99,
-    "win_loss_pnl": 92.99,
+    "tp1_hits": 8,
+    "total_pnl": 99.77,
+    "win_loss_pnl": 99.77,
     "expired_pnl": 0.0,
-    "avg_peak": 16.19,
+    "avg_peak": 15.35,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 100.0
       },
       "dikkat": {
-        "total": 2,
-        "wins": 2,
+        "total": 3,
+        "wins": 3,
         "losses": 0,
-        "pnl": 38.77,
+        "pnl": 45.55,
         "wr": 100.0
       },
       "riskli": {
@@ -41,27 +41,27 @@
     "by_type": {
       "SMC CHoCH ROC": {
         "total": 12,
-        "open": 5,
-        "wins": 7,
+        "open": 4,
+        "wins": 8,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 7,
-        "total_pnl": 92.99,
+        "tp1_hits": 8,
+        "total_pnl": 99.77,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 16.19,
+        "avg_peak": 15.35,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 92.99
+        "win_loss_pnl": 99.77
       }
     },
     "daily": {
       "2026-07-04": {
         "trades": 1,
-        "pnl": 0.0,
-        "wins": 0,
+        "pnl": 6.78,
+        "wins": 1,
         "losses": 0
       },
       "2026-07-03": {
@@ -92,16 +92,16 @@
     "weekly": {
       "2026-W26": {
         "trades": 12,
-        "pnl": 92.99000000000001,
-        "wins": 7,
+        "pnl": 99.77000000000001,
+        "wins": 8,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
         "trades": 10,
-        "pnl": 81.24000000000001,
-        "wins": 5,
+        "pnl": 88.02000000000001,
+        "wins": 6,
         "losses": 0
       },
       "2026-06": {
@@ -113,42 +113,6 @@
     }
   },
   "open": [
-    {
-      "id": "ACT_USDT_1783123202",
-      "symbol": "ACT/USDT",
-      "entry": 0.00967,
-      "stop": 0.0089351,
-      "tp1": 0.0104049,
-      "tp2": 0.0111398,
-      "tp3": null,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-04T03:00:02.606578+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.01012,
-      "peak_pct": 4.65,
-      "low_price": 0.00907,
-      "low_pct": -6.2,
-      "current_price": 0.01012,
-      "current_pct": 4.65,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-04T03:00:13.075190+03:00",
-      "last_check": "2026-07-04T12:59:37.593498+03:00",
-      "checks": 108,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "QKC_USDT_1783004410",
       "symbol": "QKC/USDT",
@@ -173,14 +137,14 @@
       "peak_pct": 6.28,
       "low_price": 0.001953,
       "low_pct": -4.87,
-      "current_price": 0.002058,
-      "current_pct": 0.24,
+      "current_price": 0.002056,
+      "current_pct": 0.15,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-04T12:59:37.593498+03:00",
-      "checks": 464,
+      "last_check": "2026-07-04T13:29:47.985901+03:00",
+      "checks": 470,
       "extra": {
         "tp3": null
       }
@@ -209,14 +173,14 @@
       "peak_pct": 4.75,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0591,
-      "current_pct": 3.87,
+      "current_price": 0.0586,
+      "current_pct": 2.99,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-04T12:59:37.593498+03:00",
-      "checks": 690,
+      "last_check": "2026-07-04T13:29:47.985901+03:00",
+      "checks": 696,
       "extra": {
         "tp3": null
       }
@@ -245,14 +209,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0399,
-      "current_pct": 0.5,
+      "current_price": 0.0395,
+      "current_pct": -0.5,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-04T12:59:37.593498+03:00",
-      "checks": 700,
+      "last_check": "2026-07-04T13:29:47.985901+03:00",
+      "checks": 706,
       "extra": {
         "tp3": null
       }
@@ -281,20 +245,57 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.06486,
-      "current_pct": -2.01,
+      "current_price": 0.06454,
+      "current_pct": -2.49,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-04T12:59:37.593498+03:00",
-      "checks": 822,
+      "last_check": "2026-07-04T13:29:47.985901+03:00",
+      "checks": 828,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "ACT_USDT_1783123202",
+      "symbol": "ACT/USDT",
+      "entry": 0.00967,
+      "stop": 0.0089351,
+      "tp1": 0.0104049,
+      "tp2": 0.0111398,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-04T03:00:02.606578+03:00",
+      "close_time": "2026-07-04T13:04:39.575243+03:00",
+      "close_price": 0.01032525,
+      "close_reason": "trailing",
+      "close_pct": 6.78,
+      "peak_price": 0.01059,
+      "peak_pct": 9.51,
+      "low_price": 0.00907,
+      "low_pct": -6.2,
+      "current_price": 0.01055,
+      "current_pct": 9.1,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-04T13:04:39.575243+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-04T03:00:13.075190+03:00",
+      "last_check": "2026-07-04T13:04:39.575243+03:00",
+      "checks": 109,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 7.6
+    },
     {
       "id": "NOM_USDT_1783058403",
       "symbol": "NOM/USDT",
