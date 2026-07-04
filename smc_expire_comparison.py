@@ -230,7 +230,8 @@ def simulate_portfolio(signals, expire_h):
         ts = pd.Timestamp(unix_ts, unit="s", tz="UTC")
         if etype == "signal":
             if open_count >= MAX_POSITIONS: continue
-            pos_size = min(cash/MAX_POSITIONS, MAX_POS_SIZE)
+            remaining_slots = MAX_POSITIONS - open_count
+            pos_size = min(cash / remaining_slots, MAX_POS_SIZE)
             if pos_size < 1: continue
             sig=data; entry_fee=pos_size*FEE_RATE
             cash -= pos_size+entry_fee; open_count+=1
