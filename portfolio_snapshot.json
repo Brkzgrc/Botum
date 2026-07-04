@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-04 15:32:28",
+  "updated_at": "2026-07-04 16:02:31",
   "performance": {
-    "total": 12,
-    "open": 4,
+    "total": 13,
+    "open": 5,
     "closed": 8,
     "wins": 8,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 12,
-        "open": 4,
+        "total": 13,
+        "open": 5,
         "wins": 8,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-04": {
-        "trades": 1,
+        "trades": 2,
         "pnl": 6.78,
         "wins": 1,
         "losses": 0
@@ -91,7 +91,7 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 12,
+        "trades": 13,
         "pnl": 99.77000000000001,
         "wins": 8,
         "losses": 0
@@ -99,7 +99,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 10,
+        "trades": 11,
         "pnl": 88.02000000000001,
         "wins": 6,
         "losses": 0
@@ -113,6 +113,42 @@
     }
   },
   "open": [
+    {
+      "id": "VANRY_USDT_1783170001",
+      "symbol": "VANRY/USDT",
+      "entry": 0.003159,
+      "stop": 0.0028656,
+      "tp1": 0.0034524,
+      "tp2": 0.0037458,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-04T16:00:01.325304+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.003398,
+      "peak_pct": 7.57,
+      "low_price": 0.003159,
+      "low_pct": 0.0,
+      "current_price": 0.003398,
+      "current_pct": 7.57,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-04T16:00:38.159839+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "QKC_USDT_1783004410",
       "symbol": "QKC/USDT",
@@ -137,14 +173,14 @@
       "peak_pct": 6.28,
       "low_price": 0.001953,
       "low_pct": -4.87,
-      "current_price": 0.002085,
-      "current_pct": 1.56,
+      "current_price": 0.002095,
+      "current_pct": 2.05,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-04T15:30:28.630659+03:00",
-      "checks": 493,
+      "last_check": "2026-07-04T16:00:38.159839+03:00",
+      "checks": 499,
       "extra": {
         "tp3": null
       }
@@ -173,14 +209,14 @@
       "peak_pct": 6.15,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0599,
-      "current_pct": 5.27,
+      "current_price": 0.06,
+      "current_pct": 5.45,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-04T15:30:28.630659+03:00",
-      "checks": 719,
+      "last_check": "2026-07-04T16:00:38.159839+03:00",
+      "checks": 725,
       "extra": {
         "tp3": null
       }
@@ -209,14 +245,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0398,
-      "current_pct": 0.25,
+      "current_price": 0.0396,
+      "current_pct": -0.25,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-04T15:30:28.630659+03:00",
-      "checks": 729,
+      "last_check": "2026-07-04T16:00:38.159839+03:00",
+      "checks": 735,
       "extra": {
         "tp3": null
       }
@@ -245,14 +281,14 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.0649,
-      "current_pct": -1.95,
+      "current_price": 0.06519,
+      "current_pct": -1.51,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-04T15:30:28.630659+03:00",
-      "checks": 851,
+      "last_check": "2026-07-04T16:00:38.159839+03:00",
+      "checks": 857,
       "extra": {
         "tp3": null
       }
