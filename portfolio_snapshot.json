@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-04 22:33:03",
+  "updated_at": "2026-07-04 23:03:06",
   "performance": {
-    "total": 14,
-    "open": 4,
+    "total": 15,
+    "open": 5,
     "closed": 10,
     "wins": 10,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 14,
-        "open": 4,
+        "total": 15,
+        "open": 5,
         "wins": 10,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-04": {
-        "trades": 3,
+        "trades": 4,
         "pnl": 44.88,
         "wins": 3,
         "losses": 0
@@ -91,7 +91,7 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 14,
+        "trades": 15,
         "pnl": 137.87,
         "wins": 10,
         "losses": 0
@@ -99,7 +99,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 12,
+        "trades": 13,
         "pnl": 126.12,
         "wins": 8,
         "losses": 0
@@ -113,6 +113,42 @@
     }
   },
   "open": [
+    {
+      "id": "NFP_USDT_1783195204",
+      "symbol": "NFP/USDT",
+      "entry": 0.00626,
+      "stop": 0.0057511,
+      "tp1": 0.0067689,
+      "tp2": 0.0072778,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-04T23:00:04.127193+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00626,
+      "peak_pct": 0.0,
+      "low_price": 0.00626,
+      "low_pct": 0.0,
+      "current_price": 0.00626,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-04T23:00:12.944766+03:00",
+      "last_check": "2026-07-04T23:00:04.127193+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "QKC_USDT_1783004410",
       "symbol": "QKC/USDT",
@@ -143,8 +179,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-04T22:32:44.136094+03:00",
-      "checks": 569,
+      "last_check": "2026-07-04T22:57:52.063871+03:00",
+      "checks": 574,
       "extra": {
         "tp3": null
       }
@@ -173,14 +209,14 @@
       "peak_pct": 6.15,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.059,
-      "current_pct": 3.69,
+      "current_price": 0.0594,
+      "current_pct": 4.39,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-04T22:32:44.136094+03:00",
-      "checks": 795,
+      "last_check": "2026-07-04T22:57:52.063871+03:00",
+      "checks": 800,
       "extra": {
         "tp3": null
       }
@@ -209,14 +245,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0402,
-      "current_pct": 1.26,
+      "current_price": 0.04,
+      "current_pct": 0.76,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-04T22:32:44.136094+03:00",
-      "checks": 805,
+      "last_check": "2026-07-04T22:57:52.063871+03:00",
+      "checks": 810,
       "extra": {
         "tp3": null
       }
@@ -245,14 +281,14 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.06689,
-      "current_pct": 1.06,
+      "current_price": 0.06653,
+      "current_pct": 0.51,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-04T22:32:44.136094+03:00",
-      "checks": 929,
+      "last_check": "2026-07-04T22:57:52.063871+03:00",
+      "checks": 934,
       "extra": {
         "tp3": null
       }
