@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-05 12:49:13",
+  "updated_at": "2026-07-05 13:19:15",
   "performance": {
-    "total": 16,
+    "total": 17,
     "open": 5,
-    "closed": 11,
-    "wins": 11,
+    "closed": 12,
+    "wins": 12,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 11,
-    "total_pnl": 143.62,
-    "win_loss_pnl": 143.62,
+    "tp1_hits": 12,
+    "total_pnl": 156.91,
+    "win_loss_pnl": 156.91,
     "expired_pnl": 0.0,
-    "avg_peak": 15.96,
+    "avg_peak": 15.97,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 100.0
       },
       "dikkat": {
-        "total": 4,
-        "wins": 4,
+        "total": 5,
+        "wins": 5,
         "losses": 0,
-        "pnl": 51.3,
+        "pnl": 64.59,
         "wr": 100.0
       },
       "riskli": {
@@ -40,28 +40,28 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 16,
+        "total": 17,
         "open": 5,
-        "wins": 11,
+        "wins": 12,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 11,
-        "total_pnl": 143.62,
+        "tp1_hits": 12,
+        "total_pnl": 156.91,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 15.96,
+        "avg_peak": 15.97,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 143.62
+        "win_loss_pnl": 156.91
       }
     },
     "daily": {
       "2026-07-05": {
-        "trades": 1,
-        "pnl": 0.0,
-        "wins": 0,
+        "trades": 2,
+        "pnl": 13.29,
+        "wins": 1,
         "losses": 0
       },
       "2026-07-04": {
@@ -97,17 +97,17 @@
     },
     "weekly": {
       "2026-W26": {
-        "trades": 16,
-        "pnl": 143.62,
-        "wins": 11,
+        "trades": 17,
+        "pnl": 156.91,
+        "wins": 12,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 14,
-        "pnl": 131.87,
-        "wins": 9,
+        "trades": 15,
+        "pnl": 145.16,
+        "wins": 10,
         "losses": 0
       },
       "2026-06": {
@@ -143,14 +143,14 @@
       "peak_pct": 3.57,
       "low_price": 2.6e-07,
       "low_pct": -7.14,
-      "current_price": 2.7e-07,
-      "current_pct": -3.57,
+      "current_price": 2.6e-07,
+      "current_pct": -7.14,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-05T00:00:09.916832+03:00",
-      "last_check": "2026-07-05T12:45:43.678482+03:00",
-      "checks": 93,
+      "last_check": "2026-07-05T13:15:56.439699+03:00",
+      "checks": 99,
       "extra": {
         "tp3": null
       }
@@ -179,14 +179,14 @@
       "peak_pct": 6.28,
       "low_price": 0.001953,
       "low_pct": -4.87,
-      "current_price": 0.00206,
-      "current_pct": 0.34,
+      "current_price": 0.002059,
+      "current_pct": 0.29,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-05T12:45:43.678482+03:00",
-      "checks": 674,
+      "last_check": "2026-07-05T13:15:56.439699+03:00",
+      "checks": 680,
       "extra": {
         "tp3": null
       }
@@ -215,14 +215,14 @@
       "peak_pct": 6.15,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0562,
-      "current_pct": -1.23,
+      "current_price": 0.0563,
+      "current_pct": -1.05,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-05T12:45:43.678482+03:00",
-      "checks": 900,
+      "last_check": "2026-07-05T13:15:56.439699+03:00",
+      "checks": 906,
       "extra": {
         "tp3": null
       }
@@ -251,14 +251,14 @@
       "peak_pct": 9.57,
       "low_price": 0.0375,
       "low_pct": -5.54,
-      "current_price": 0.0398,
-      "current_pct": 0.25,
+      "current_price": 0.0401,
+      "current_pct": 1.01,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-05T12:45:43.678482+03:00",
-      "checks": 910,
+      "last_check": "2026-07-05T13:15:56.439699+03:00",
+      "checks": 916,
       "extra": {
         "tp3": null
       }
@@ -287,20 +287,57 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.06477,
-      "current_pct": -2.15,
+      "current_price": 0.06463,
+      "current_pct": -2.36,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-05T12:45:43.678482+03:00",
-      "checks": 1035,
+      "last_check": "2026-07-05T13:15:56.439699+03:00",
+      "checks": 1041,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "AIGENSYN_USDT_1783245601",
+      "symbol": "AIGENSYN/USDT",
+      "entry": 0.02909,
+      "stop": 0.0265068,
+      "tp1": 0.0316732,
+      "tp2": 0.0342564,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-05T13:00:01.220037+03:00",
+      "close_time": "2026-07-05T13:00:49.639444+03:00",
+      "close_price": 0.032955,
+      "close_reason": "trailing",
+      "close_pct": 13.29,
+      "peak_price": 0.0338,
+      "peak_pct": 16.19,
+      "low_price": 0.02909,
+      "low_pct": 0.0,
+      "current_price": 0.03267,
+      "current_pct": 12.31,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-05T13:00:49.639444+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-05T13:00:08.132209+03:00",
+      "last_check": "2026-07-05T13:00:49.639444+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 8.88
+    },
     {
       "id": "NFP_USDT_1783195204",
       "symbol": "NFP/USDT",
