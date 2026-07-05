@@ -249,5 +249,5 @@ Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısın
 
 ### Henüz Netleşmeyenler
 - Başlangıç sermayesi (ne olursa olsun 5'e bölünerek başlanacak, sabit değer gerekmez)
-- **Expire süresi** — şu an yok, test edilecek. Sorun çıkarsa (slot kilitlenmesi) sonradan eklenecek
+- **Expire süresi: 48 saat** — backtest sonucuna göre karar verildi (48H: WR %87.5, MaxDD -%6.56 — en iyi senaryo)
 - Binance API izinleri: sadece spot trade + order yeterlisi açık olmalı, çekim kapalı
