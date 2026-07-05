@@ -125,7 +125,6 @@ def _process_tick(symbol: str, price: float):
             return
 
         pos_snap = dict(pos)   # lock dışı işlemler için kopya
-        qty = _round_qty(float(pos.get("qty", 0)), symbol)
 
         open_time = datetime.fromisoformat(pos["open_time"])
         expired   = datetime.now(timezone.utc) - open_time >= timedelta(hours=EXPIRE_H)
