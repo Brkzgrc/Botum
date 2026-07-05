@@ -105,7 +105,7 @@ def _is_sl_filled(symbol: str, sl_order_id) -> bool:
         return False
     try:
         order = _get_client().get_order(symbol=symbol, orderId=sl_order_id)
-        return order.get("status") in ("FILLED", "CANCELED")
+        return order.get("status") == "FILLED"
     except BinanceAPIException as e:
         print(f"[MONITOR] Order kontrol hatası {symbol}: {e}", flush=True)
         return False
@@ -143,7 +143,12 @@ def _process_tick(symbol: str, price: float):
                 state["positions"][symbol] = pos
                 _save_state(state)
 
-            if price >= float(pos["tp1"]):
+            # SL emri Binance'te yoksa (yerleştirme hatası) stop seviyesini bot izler
+            if not pos.get("sl_order_id") and price <= float(pos["stop"]):
+                sell_reason = f"stop_hit={float(pos['stop']):.6g}"
+                state["positions"].pop(symbol)
+                _save_state(state)
+            elif price >= float(pos["tp1"]):
                 # TP1 vuruldu: trailing moda geç, lock dışında SL iptal et
                 cancel_sl       = True
                 pos["tp1_hit"]  = True
