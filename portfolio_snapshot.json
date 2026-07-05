@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-06 01:20:14",
+  "updated_at": "2026-07-06 01:50:17",
   "performance": {
     "total": 17,
     "open": 5,
@@ -149,8 +149,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-05T00:00:09.916832+03:00",
-      "last_check": "2026-07-06T01:15:34.934765+03:00",
-      "checks": 223,
+      "last_check": "2026-07-06T01:45:46.865269+03:00",
+      "checks": 229,
       "extra": {
         "tp3": null
       }
@@ -185,8 +185,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-02T18:00:26.542959+03:00",
-      "last_check": "2026-07-06T01:15:34.934765+03:00",
-      "checks": 805,
+      "last_check": "2026-07-06T01:45:46.865269+03:00",
+      "checks": 811,
       "extra": {
         "tp3": null
       }
@@ -215,14 +215,14 @@
       "peak_pct": 6.15,
       "low_price": 0.056,
       "low_pct": -1.58,
-      "current_price": 0.0584,
-      "current_pct": 2.64,
+      "current_price": 0.0583,
+      "current_pct": 2.46,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T23:00:10.746948+03:00",
-      "last_check": "2026-07-06T01:15:34.934765+03:00",
-      "checks": 1031,
+      "last_check": "2026-07-06T01:45:46.865269+03:00",
+      "checks": 1037,
       "extra": {
         "tp3": null
       }
@@ -257,8 +257,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T22:00:16.739232+03:00",
-      "last_check": "2026-07-06T01:15:34.934765+03:00",
-      "checks": 1041,
+      "last_check": "2026-07-06T01:45:46.865269+03:00",
+      "checks": 1047,
       "extra": {
         "tp3": null
       }
@@ -287,14 +287,14 @@
       "peak_pct": 7.55,
       "low_price": 0.061,
       "low_pct": -7.84,
-      "current_price": 0.0688,
-      "current_pct": 3.94,
+      "current_price": 0.06835,
+      "current_pct": 3.26,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-01T12:00:12.808766+03:00",
-      "last_check": "2026-07-06T01:15:34.934765+03:00",
-      "checks": 1166,
+      "last_check": "2026-07-06T01:45:46.865269+03:00",
+      "checks": 1172,
       "extra": {
         "tp3": null
       }
