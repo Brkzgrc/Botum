@@ -29,9 +29,11 @@ TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
-AUTH_TOKEN   = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-CMC_API_KEY  = os.getenv("CMC_API_KEY", "")
+AUTH_TOKEN        = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
+CMC_API_KEY       = os.getenv("CMC_API_KEY", "")
+TRADING_BOT_URL   = os.getenv("TRADING_BOT_URL", "")
+TRADING_BOT_TOKEN = os.getenv("TRADING_BOT_TOKEN", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -487,21 +489,46 @@ def calc_performance():
 # ============================================================
 # API ENDPOINT'LERİ
 # ============================================================
+def _forward_to_trading_bot(signal: dict):
+    if not TRADING_BOT_URL:
+        return
+    try:
+        hdrs = {"Content-Type": "application/json"}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.post(
+            f"{TRADING_BOT_URL}/signal",
+            json=signal,
+            headers=hdrs,
+            timeout=10,
+        )
+        print(f"[TRADE] Sinyal iletildi: {signal.get('symbol')} → HTTP {r.status_code}", flush=True)
+    except Exception as e:
+        print(f"[TRADE] İletim hatası: {e}", flush=True)
+
+
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if AUTH_TOKEN and token != AUTH_TOKEN:
         return jsonify({"error": "unauthorized"}), 401
     data = request.get_json(silent=True) or {}
-    signal      = data.get("signal", {})
+    signal       = data.get("signal", {})
     recent_count = data.get("recent_count", 0)
-    sig_num     = data.get("sig_num", 0)
+    sig_num      = data.get("sig_num", 0)
     portfolio_id = data.get("portfolio_id") or ""
     threading.Thread(
         target=_analyzer_process,
         args=(signal, recent_count, sig_num, portfolio_id),
         daemon=True,
     ).start()
+    # Sadece SMC sinyalleri trading bot'a iletilir
+    if signal.get("source") == "smc":
+        threading.Thread(
+            target=_forward_to_trading_bot,
+            args=(signal,),
+            daemon=True,
+        ).start()
     return jsonify({"status": "queued"}), 202
 
 
