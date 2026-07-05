@@ -20,6 +20,19 @@ app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("TRADE_BOT_TOKEN", "")
 
+# Gunicorn ile de çalışması için modül yüklenince monitor başlat
+_monitor_thread = threading.Thread(target=lambda: _safe_start_monitor(), daemon=True)
+
+
+def _safe_start_monitor():
+    try:
+        position_monitor.start()
+    except Exception as e:
+        print(f"[MAIN] position_monitor hatası: {e}", flush=True)
+
+
+_monitor_thread.start()
+
 
 def _auth(req) -> bool:
     if not BOT_TOKEN:
@@ -29,6 +42,7 @@ def _auth(req) -> bool:
 
 # ─── ENDPOINTS ───────────────────────────────────────────────────────────────
 
+@app.route("/")
 @app.route("/health")
 def health():
     return "OK", 200
@@ -59,17 +73,6 @@ def signal():
         return jsonify({"error": str(e)}), 500
 
 
-# ─── BAŞLATMA ────────────────────────────────────────────────────────────────
-
-def _start_monitor():
-    try:
-        position_monitor.start()
-    except Exception as e:
-        print(f"[MAIN] position_monitor hatası: {e}", flush=True)
-
-
 if __name__ == "__main__":
-    t = threading.Thread(target=_start_monitor, daemon=True)
-    t.start()
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
