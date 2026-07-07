@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-07 19:54:02",
+  "updated_at": "2026-07-07 20:24:05",
   "performance": {
-    "total": 3,
+    "total": 4,
     "open": 0,
-    "closed": 3,
-    "wins": 3,
+    "closed": 4,
+    "wins": 4,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 3,
-    "total_pnl": 65.52,
-    "win_loss_pnl": 65.52,
+    "tp1_hits": 4,
+    "total_pnl": 77.61,
+    "win_loss_pnl": 77.61,
     "expired_pnl": 0.0,
-    "avg_peak": 24.96,
+    "avg_peak": 22.46,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 1,
-        "wins": 1,
+        "total": 2,
+        "wins": 2,
         "losses": 0,
-        "pnl": 10.36,
+        "pnl": 22.45,
         "wr": 100.0
       },
       "riskli": {
@@ -40,50 +40,87 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 3,
+        "total": 4,
         "open": 0,
-        "wins": 3,
+        "wins": 4,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 3,
-        "total_pnl": 65.52,
+        "tp1_hits": 4,
+        "total_pnl": 77.61,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 24.96,
+        "avg_peak": 22.46,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 65.52
+        "win_loss_pnl": 77.61
       }
     },
     "daily": {
       "2026-07-07": {
-        "trades": 3,
-        "pnl": 65.52000000000001,
-        "wins": 3,
+        "trades": 4,
+        "pnl": 77.61,
+        "wins": 4,
         "losses": 0
       }
     },
     "weekly": {
       "2026-W27": {
-        "trades": 3,
-        "pnl": 65.52000000000001,
-        "wins": 3,
+        "trades": 4,
+        "pnl": 77.61,
+        "wins": 4,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 3,
-        "pnl": 65.52000000000001,
-        "wins": 3,
+        "trades": 4,
+        "pnl": 77.61,
+        "wins": 4,
         "losses": 0
       }
     }
   },
   "open": [],
   "closed": [
+    {
+      "id": "AUDIO_USDT_1783443605",
+      "symbol": "AUDIO/USDT",
+      "entry": 0.01383,
+      "stop": 0.0134723,
+      "tp1": 0.0141877,
+      "tp2": 0.0145454,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-07T20:00:05.327709+03:00",
+      "close_time": "2026-07-07T20:04:59.152262+03:00",
+      "close_price": 0.0155025,
+      "close_reason": "trailing",
+      "close_pct": 12.09,
+      "peak_price": 0.0159,
+      "peak_pct": 14.97,
+      "low_price": 0.01383,
+      "low_pct": 0.0,
+      "current_price": 0.01494,
+      "current_pct": 8.03,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-07T20:04:59.152262+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-07T20:00:10.923024+03:00",
+      "last_check": "2026-07-07T20:04:59.152262+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 2.59
+    },
     {
       "id": "SPELL_USDT_1783440007",
       "symbol": "SPELL/USDT",
