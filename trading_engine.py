@@ -155,6 +155,10 @@ def execute(signal: dict):
         try:
             ticker = get_client().get_symbol_ticker(symbol=symbol)
             current_price = float(ticker["price"])
+            if current_price >= tp1:
+                print(f"[TRADE] Reddedildi: fiyat TP1 üzerinde | "
+                      f"mevcut={current_price:.6g} tp1={tp1:.6g}", flush=True)
+                return
             if current_price > entry * (1 + MAX_ENTRY_DEV):
                 dev_pct = (current_price / entry - 1) * 100
                 print(f"[TRADE] Reddedildi: fiyat giriş seviyesinden uzak | "
@@ -182,16 +186,15 @@ def execute(signal: dict):
             if fills:
                 total_fill_qty = sum(float(f["qty"]) for f in fills)
                 avg_price      = sum(float(f["price"]) * float(f["qty"]) for f in fills) / total_fill_qty
-                # Komisyon base asset'ten kesildiyse net miktarı hesapla
-                base_asset     = symbol.replace("USDT", "")
-                commission     = sum(float(f.get("commission", 0)) for f in fills
-                                     if f.get("commissionAsset", "") == base_asset)
-                net_qty        = total_fill_qty - commission
             else:
                 avg_price = entry
-                net_qty   = float(buy_order.get("executedQty", 0))
-            qty = _round_qty(net_qty, symbol)
-            print(f"[TRADE] BUY OK: {symbol} {qty} @ {avg_price:.6g} (komisyon={commission if fills else 0:.4g} {base_asset if fills else ''})", flush=True)
+                total_fill_qty = float(buy_order.get("executedQty", 0))
+            # Gerçek cüzdan bakiyesinden qty al — komisyon ne olursa olsun doğru miktar
+            base_asset  = symbol.replace("USDT", "")
+            bal         = get_client().get_asset_balance(asset=base_asset)
+            actual_free = float(bal["free"]) if bal else total_fill_qty
+            qty         = _round_qty(actual_free, symbol)
+            print(f"[TRADE] BUY OK: {symbol} {qty} @ {avg_price:.6g}", flush=True)
         except BinanceAPIException as e:
             print(f"[TRADE] BUY HATASI {symbol}: {e}", flush=True)
             return
