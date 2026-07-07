@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-07 18:53:56",
+  "updated_at": "2026-07-07 19:23:59",
   "performance": {
-    "total": 2,
+    "total": 3,
     "open": 0,
-    "closed": 2,
-    "wins": 2,
+    "closed": 3,
+    "wins": 3,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 2,
-    "total_pnl": 40.79,
-    "win_loss_pnl": 40.79,
+    "tp1_hits": 3,
+    "total_pnl": 65.52,
+    "win_loss_pnl": 65.52,
     "expired_pnl": 0.0,
-    "avg_peak": 23.48,
+    "avg_peak": 24.96,
     "win_rate": 100.0,
     "real_win_rate": 100.0,
     "analyzer": {
@@ -40,50 +40,87 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 2,
+        "total": 3,
         "open": 0,
-        "wins": 2,
+        "wins": 3,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 2,
-        "total_pnl": 40.79,
+        "tp1_hits": 3,
+        "total_pnl": 65.52,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 100.0,
-        "avg_peak": 23.48,
+        "avg_peak": 24.96,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 40.79
+        "win_loss_pnl": 65.52
       }
     },
     "daily": {
       "2026-07-07": {
-        "trades": 2,
-        "pnl": 40.79,
-        "wins": 2,
+        "trades": 3,
+        "pnl": 65.52000000000001,
+        "wins": 3,
         "losses": 0
       }
     },
     "weekly": {
       "2026-W27": {
-        "trades": 2,
-        "pnl": 40.79,
-        "wins": 2,
+        "trades": 3,
+        "pnl": 65.52000000000001,
+        "wins": 3,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 2,
-        "pnl": 40.79,
-        "wins": 2,
+        "trades": 3,
+        "pnl": 65.52000000000001,
+        "wins": 3,
         "losses": 0
       }
     }
   },
   "open": [],
   "closed": [
+    {
+      "id": "SPELL_USDT_1783440007",
+      "symbol": "SPELL/USDT",
+      "entry": 9.13e-05,
+      "stop": 8.68635e-05,
+      "tp1": 9.57365e-05,
+      "tp2": 0.000100173,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-07-07T19:00:07.935254+03:00",
+      "close_time": "2026-07-07T19:04:58.707560+03:00",
+      "close_price": 0.00011388,
+      "close_reason": "trailing",
+      "close_pct": 24.73,
+      "peak_price": 0.0001168,
+      "peak_pct": 27.93,
+      "low_price": 9.13e-05,
+      "low_pct": 0.0,
+      "current_price": 0.0001101,
+      "current_pct": 20.59,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-07T19:04:58.707560+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-07T19:04:58.707560+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 4.86
+    },
     {
       "id": "TST_USDT_1783422006",
       "symbol": "TST/USDT",
