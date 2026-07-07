@@ -21,6 +21,7 @@ ENABLED    = os.getenv("TRADING_ENABLED", "false").lower() == "true"
 MAX_POSITIONS   = 5
 MAX_POS_SIZE    = 20_000.0
 SL_LIMIT_BUFFER = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
+MAX_ENTRY_DEV   = float(os.getenv("MAX_ENTRY_DEVIATION", "0.02"))  # %2 max sapma
 STATE_FILE      = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
 
 _client: Client | None = None
@@ -148,6 +149,24 @@ def execute(signal: dict):
 
         if pos_size < 10:
             print(f"[TRADE] Reddedildi: yetersiz bakiye ({usdt_balance:.2f} USDT)", flush=True)
+            return
+
+        # ── Giriş fiyatı sapma kontrolü ────────────────────────────────────
+        try:
+            ticker = get_client().get_symbol_ticker(symbol=symbol)
+            current_price = float(ticker["price"])
+            if current_price > entry * (1 + MAX_ENTRY_DEV):
+                dev_pct = (current_price / entry - 1) * 100
+                print(f"[TRADE] Reddedildi: fiyat giriş seviyesinden uzak | "
+                      f"mevcut={current_price:.6g} sinyal={entry:.6g} sapma=%{dev_pct:.1f}", flush=True)
+                return
+            if current_price < entry * 0.90:
+                dev_pct = (1 - current_price / entry) * 100
+                print(f"[TRADE] Reddedildi: fiyat giriş altında çok düştü | "
+                      f"mevcut={current_price:.6g} sinyal={entry:.6g} sapma=-%{dev_pct:.1f}", flush=True)
+                return
+        except BinanceAPIException as e:
+            print(f"[TRADE] Reddedildi: fiyat kontrolü hatası {symbol}: {e}", flush=True)
             return
 
         print(f"[TRADE] {symbol} | giriş={entry:.6g} stop={stop:.6g} tp1={tp1:.6g} "
