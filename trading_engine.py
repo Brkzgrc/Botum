@@ -180,12 +180,18 @@ def execute(signal: dict):
             )
             fills = buy_order.get("fills", [])
             if fills:
-                total_qty  = sum(float(f["qty"])                         for f in fills)
-                avg_price  = sum(float(f["price"]) * float(f["qty"])     for f in fills) / total_qty
+                total_fill_qty = sum(float(f["qty"]) for f in fills)
+                avg_price      = sum(float(f["price"]) * float(f["qty"]) for f in fills) / total_fill_qty
+                # Komisyon base asset'ten kesildiyse net miktarı hesapla
+                base_asset     = symbol.replace("USDT", "")
+                commission     = sum(float(f.get("commission", 0)) for f in fills
+                                     if f.get("commissionAsset", "") == base_asset)
+                net_qty        = total_fill_qty - commission
             else:
                 avg_price = entry
-            qty = _round_qty(float(buy_order.get("executedQty", 0)), symbol)
-            print(f"[TRADE] BUY OK: {symbol} {qty} @ {avg_price:.6g}", flush=True)
+                net_qty   = float(buy_order.get("executedQty", 0))
+            qty = _round_qty(net_qty, symbol)
+            print(f"[TRADE] BUY OK: {symbol} {qty} @ {avg_price:.6g} (komisyon={commission if fills else 0:.4g} {base_asset if fills else ''})", flush=True)
         except BinanceAPIException as e:
             print(f"[TRADE] BUY HATASI {symbol}: {e}", flush=True)
             return
