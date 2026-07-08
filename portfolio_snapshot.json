@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-09 00:56:34",
+  "updated_at": "2026-07-09 01:26:37",
   "performance": {
-    "total": 8,
-    "open": 1,
+    "total": 9,
+    "open": 2,
     "closed": 7,
     "wins": 7,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 8,
-        "open": 1,
+        "total": 9,
+        "open": 2,
         "wins": 7,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-09": {
-        "trades": 1,
+        "trades": 2,
         "pnl": 3.86,
         "wins": 1,
         "losses": 0
@@ -79,7 +79,7 @@
     },
     "weekly": {
       "2026-W27": {
-        "trades": 8,
+        "trades": 9,
         "pnl": 122.31,
         "wins": 7,
         "losses": 0
@@ -87,7 +87,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 8,
+        "trades": 9,
         "pnl": 122.31,
         "wins": 7,
         "losses": 0
@@ -95,6 +95,43 @@
     }
   },
   "open": [
+    {
+      "id": "MAV_USDT_1783548004",
+      "symbol": "MAV/USDT",
+      "entry": 0.00965,
+      "stop": 0.0090943,
+      "tp1": 0.0102057,
+      "tp2": 0.0107614,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-09T01:00:04.696990+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.01051,
+      "peak_pct": 8.91,
+      "low_price": 0.00965,
+      "low_pct": 0.0,
+      "current_price": 0.01047,
+      "current_pct": 8.5,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-09T01:20:31.679059+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-09T01:00:12.676901+03:00",
+      "last_check": "2026-07-09T01:25:32.477019+03:00",
+      "checks": 6,
+      "extra": {
+        "tp3": null
+      },
+      "tp1_pct": 5.76
+    },
     {
       "id": "VANRY_USDT_1783530002",
       "symbol": "VANRY/USDT",
@@ -119,14 +156,14 @@
       "peak_pct": 7.21,
       "low_price": 0.007012,
       "low_pct": -8.64,
-      "current_price": 0.007157,
-      "current_pct": -6.75,
+      "current_price": 0.007047,
+      "current_pct": -8.18,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-09T00:55:28.099095+03:00",
-      "checks": 59,
+      "last_check": "2026-07-09T01:25:32.477019+03:00",
+      "checks": 65,
       "extra": {
         "tp3": null
       }
