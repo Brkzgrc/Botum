@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-10 00:28:49",
+  "updated_at": "2026-07-10 00:58:53",
   "performance": {
     "total": 17,
     "open": 5,
@@ -119,14 +119,14 @@
       "peak_pct": 1.59,
       "low_price": 2.056e-05,
       "low_pct": -0.63,
-      "current_price": 2.089e-05,
-      "current_pct": 0.97,
+      "current_price": 2.079e-05,
+      "current_pct": 0.48,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-09T21:00:18.691756+03:00",
-      "last_check": "2026-07-10T00:24:16.864707+03:00",
-      "checks": 41,
+      "last_check": "2026-07-10T00:54:29.169075+03:00",
+      "checks": 47,
       "extra": {
         "tp3": null
       }
@@ -161,8 +161,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T00:24:16.864707+03:00",
-      "checks": 41,
+      "last_check": "2026-07-10T00:54:29.169075+03:00",
+      "checks": 47,
       "extra": {
         "tp3": null
       }
@@ -191,14 +191,14 @@
       "peak_pct": 3.51,
       "low_price": 0.0228,
       "low_pct": 0.0,
-      "current_price": 0.023,
-      "current_pct": 0.88,
+      "current_price": 0.0228,
+      "current_pct": 0.0,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T00:24:16.864707+03:00",
-      "checks": 53,
+      "last_check": "2026-07-10T00:54:29.169075+03:00",
+      "checks": 59,
       "extra": {
         "tp3": null
       }
@@ -233,8 +233,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-09T18:00:23.278956+03:00",
-      "last_check": "2026-07-10T00:24:16.864707+03:00",
-      "checks": 77,
+      "last_check": "2026-07-10T00:54:29.169075+03:00",
+      "checks": 83,
       "extra": {
         "tp3": null
       }
@@ -263,14 +263,14 @@
       "peak_pct": 12.69,
       "low_price": 0.006804,
       "low_pct": -11.35,
-      "current_price": 0.007003,
-      "current_pct": -8.76,
+      "current_price": 0.007107,
+      "current_pct": -7.4,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T00:24:16.864707+03:00",
-      "checks": 340,
+      "last_check": "2026-07-10T00:54:29.169075+03:00",
+      "checks": 346,
       "extra": {
         "tp3": null
       }
