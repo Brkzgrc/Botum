@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-09 17:58:11",
+  "updated_at": "2026-07-09 18:28:13",
   "performance": {
-    "total": 9,
-    "open": 1,
+    "total": 11,
+    "open": 3,
     "closed": 8,
     "wins": 8,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 9,
-        "open": 1,
+        "total": 11,
+        "open": 3,
         "wins": 8,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-09": {
-        "trades": 2,
+        "trades": 4,
         "pnl": 16.92,
         "wins": 2,
         "losses": 0
@@ -79,7 +79,7 @@
     },
     "weekly": {
       "2026-W27": {
-        "trades": 9,
+        "trades": 11,
         "pnl": 135.37,
         "wins": 8,
         "losses": 0
@@ -87,7 +87,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 9,
+        "trades": 11,
         "pnl": 135.37,
         "wins": 8,
         "losses": 0
@@ -95,6 +95,78 @@
     }
   },
   "open": [
+    {
+      "id": "BB_USDT_1783609208",
+      "symbol": "BB/USDT",
+      "entry": 0.0188,
+      "stop": 0.018109,
+      "tp1": 0.019491,
+      "tp2": 0.020182,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-09T18:00:08.254588+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.0191,
+      "peak_pct": 1.6,
+      "low_price": 0.0188,
+      "low_pct": 0.0,
+      "current_price": 0.019,
+      "current_pct": 1.06,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-09T18:00:23.278956+03:00",
+      "last_check": "2026-07-09T18:27:01.098877+03:00",
+      "checks": 6,
+      "extra": {
+        "tp3": null
+      }
+    },
+    {
+      "id": "TOWNS_USDT_1783609204",
+      "symbol": "TOWNS/USDT",
+      "entry": 0.00205,
+      "stop": 0.0019701,
+      "tp1": 0.0021299,
+      "tp2": 0.0022098,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-09T18:00:04.553958+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00207,
+      "peak_pct": 0.98,
+      "low_price": 0.00205,
+      "low_pct": 0.0,
+      "current_price": 0.00205,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-09T18:00:23.285524+03:00",
+      "last_check": "2026-07-09T18:27:01.098877+03:00",
+      "checks": 6,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "VANRY_USDT_1783530002",
       "symbol": "VANRY/USDT",
@@ -119,14 +191,14 @@
       "peak_pct": 12.69,
       "low_price": 0.00698,
       "low_pct": -9.06,
-      "current_price": 0.008109,
-      "current_pct": 5.65,
+      "current_price": 0.007739,
+      "current_pct": 0.83,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-09T17:56:54.629202+03:00",
-      "checks": 263,
+      "last_check": "2026-07-09T18:27:01.098877+03:00",
+      "checks": 269,
       "extra": {
         "tp3": null
       }
