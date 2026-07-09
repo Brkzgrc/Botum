@@ -12,6 +12,7 @@
 - **portfolio_tracker_PASİF.py** — sadece referans, üretim kodu değil
 - **claude_analyzer.py** — AKTİF üretim kodu (portfolio_tracker.py içinde çalışır, `/api/analyze` üzerinden bot.py sinyallerini değerlendirir)
 - **Değişiklikleri direkt main'e push et** — başka branch kesinlikle kullanılmaz
+- **Backtest/analiz `.py` dosyaları repoya gitmez** — kullanıcıya direkt dosya olarak verilir. Local'de backtest klasörü tanımlanmışsa oraya, tanımlanmamışsa remote session'dan dosya olarak iletilir. Repoda backtest scripti bulundurulmaz.
 
 ## Session İş Bölümü
 
