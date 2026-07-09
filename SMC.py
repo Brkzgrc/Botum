@@ -71,6 +71,7 @@ TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
 VOL_RATIO_MIN    = 3.0  # Hacim filtresi: son bar / 20 bar MA
+ROC_FILTER_ENABLED = False  # True → 16H ROC≥7.5% zorunlu | False → ROC filtresi devre dışı
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
@@ -517,7 +518,7 @@ def _analyze_symbol(symbol):
             roc_16h = (curr_close - prev_close) / prev_close * 100.0 if prev_close > 0 else 0.0
         else:
             roc_16h = 0.0
-        if roc_16h < 7.5:
+        if ROC_FILTER_ENABLED and roc_16h < 7.5:
             scan_stats["roc_filter_skip"] += 1
             return
 
