@@ -71,7 +71,7 @@ TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
 VOL_RATIO_MIN    = 3.0  # Hacim filtresi: son bar / 20 bar MA
-ROC_FILTER_ENABLED = False  # True → 16H ROC≥7.5% zorunlu | False → ROC filtresi devre dışı
+ROC_FILTER_ENABLED = os.environ.get("ROC_FILTER_ENABLED", "false").lower() == "true"  # Render env var ile kontrol
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
