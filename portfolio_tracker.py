@@ -1833,42 +1833,39 @@ def dashboard():
             elapsed_str = remaining_str = "—"; rem_color = "#7f8c8d"
 
         # Canlı fiyat
+        sp = sig.get("signal_price")
+        _sp_val = float(sp) if sp else 0.0
         _price_data = get_current_price_hl(sig["symbol"])
         _cur = _price_data["close"] if _price_data else None
         if _cur and lp:
-            _dist_pct = (_cur - lp) / lp * 100   # pozitif = yukarıda, limit'e inmesi lazım
+            _dist_pct = (_cur - lp) / lp * 100   # renk kodu için limit'e uzaklık
             _stop_val = float(sig.get("stop", 0))
             if _cur <= _stop_val:
-                _price_color = "#e74c3c"          # stop altında — tehlike
+                _price_color = "#e74c3c"
             elif _dist_pct <= 0.5:
-                _price_color = "#f39c12"          # limite çok yakın — retest kapıda
+                _price_color = "#f39c12"
             elif _dist_pct <= 3:
-                _price_color = "#00b4d8"          # yaklaşıyor
+                _price_color = "#00b4d8"
             else:
-                _price_color = "#7f8c8d"          # yukarıda bekliyor
-            _dist_str = f'<span style="font-size:.6rem;color:{_price_color}">{_dist_pct:+.2f}%</span>'
-            _cur_cell = f'<span style="color:{_price_color};font-weight:bold">{fmt_price(_cur)}</span><br>{_dist_str}'
+                _price_color = "#7f8c8d"
+            # Alt satır: sinyalden bu yana değişim
+            if _sp_val > 0:
+                _chg_pct = (_cur - _sp_val) / _sp_val * 100
+                _chg_color = "#2ecc71" if _chg_pct < 0 else "#e74c3c"
+                _sub = f'<span style="font-size:.6rem;color:{_chg_color}">{_chg_pct:+.2f}% sinyal</span>'
+            else:
+                _sub = f'<span style="font-size:.6rem;color:{_price_color}">{_dist_pct:+.2f}%</span>'
+            _cur_cell = f'<span style="color:{_price_color};font-weight:bold">{fmt_price(_cur)}</span><br>{_sub}'
         elif _cur:
             _cur_cell = fmt_price(_cur)
         else:
             _cur_cell = '<span style="color:#3a4a5a">—</span>'
 
-        sp = sig.get("signal_price")
         _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
 
         choch_val = float(sig['entry'])
-        _sp_val = float(sp) if sp else 0.0
         if lp and choch_val:
-            # Sinyal fiyatından limite uzaklık: "fill için ne kadar geri çekilme lazım?"
-            if _sp_val > 0:
-                _from_sig_pct = (float(lp) - _sp_val) / _sp_val * 100
-                _pct_str = f'<span style="font-size:.6rem;color:#7f8c8d">{_from_sig_pct:+.2f}% sinyal→limit</span>'
-            else:
-                _pct_str = ''
-            _choch_entry_cell = (
-                f'{fmt_price(choch_val)} / <span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
-                + (f'<br>{_pct_str}' if _pct_str else '')
-            )
+            _choch_entry_cell = f'{fmt_price(choch_val)} / <span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
         elif lp:
             _choch_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
         else:
