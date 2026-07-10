@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-10 05:57:21",
+  "updated_at": "2026-07-10 06:27:24",
   "performance": {
-    "total": 0,
+    "total": 1,
     "open": 0,
     "closed": 0,
     "wins": 0,
@@ -44,5 +44,43 @@
     "monthly": {}
   },
   "open": [],
-  "closed": []
+  "closed": [
+    {
+      "id": "CELO_USDT_1783652406",
+      "symbol": "CELO/USDT",
+      "entry": 0.06713,
+      "stop": 0.06536155,
+      "tp1": 0.06889845,
+      "tp2": 0.0706669,
+      "tp3": null,
+      "limit_price": 0.06713,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-10T06:00:06.691981+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.06713,
+      "peak_pct": 0.0,
+      "low_price": 0.06713,
+      "low_pct": 0.0,
+      "current_price": 0.06713,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T06:00:17.420575+03:00",
+      "last_check": "2026-07-10T06:00:06.691981+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    }
+  ]
 }
