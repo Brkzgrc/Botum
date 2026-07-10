@@ -1865,9 +1865,10 @@ def dashboard():
         else:
             _cur_cell = '<span style="color:#3a4a5a">—</span>'
 
-        if sp and _cur and lp:
+        if sp and lp and _sp_val > 0:
+            _sig_to_limit = (float(lp) - _sp_val) / _sp_val * 100
             _sp_cell = (f'{fmt_price(sp)}<br>'
-                        f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}% girişe</span>')
+                        f'<span style="font-size:.6rem;color:#7f8c8d">{_sig_to_limit:.2f}% girişe</span>')
         else:
             _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
 
