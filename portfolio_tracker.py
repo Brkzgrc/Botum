@@ -1848,13 +1848,17 @@ def dashboard():
                 _price_color = "#00b4d8"
             else:
                 _price_color = "#7f8c8d"
-            # Alt satır: sinyalden bu yana değişim
+            # Alt satır: sinyalden değişim / girişe kalan
             if _sp_val > 0:
                 _chg_pct = (_cur - _sp_val) / _sp_val * 100
                 _chg_color = "#2ecc71" if _chg_pct < 0 else "#e74c3c"
-                _sub = f'<span style="font-size:.6rem;color:{_chg_color}">{_chg_pct:+.2f}% sinyal</span>'
+                _sub = (
+                    f'<span style="font-size:.6rem;color:{_chg_color}">{_chg_pct:+.2f}%</span>'
+                    f'<span style="font-size:.6rem;color:#3a4a5a"> / </span>'
+                    f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}%</span>'
+                )
             else:
-                _sub = f'<span style="font-size:.6rem;color:{_price_color}">{_dist_pct:+.2f}%</span>'
+                _sub = f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}%</span>'
             _cur_cell = f'<span style="color:{_price_color};font-weight:bold">{fmt_price(_cur)}</span><br>{_sub}'
         elif _cur:
             _cur_cell = fmt_price(_cur)
