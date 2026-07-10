@@ -1510,11 +1510,11 @@ new TradingView.widget({{
 def fmt_price(p):
     if p is None: return "—"
     p = float(p)
-    if p >= 100: return f"{p:.2f}"
-    if p >= 1: return f"{p:.3f}"
-    if p >= 0.01:   return f"{p:.4f}"
-    if p >= 0.0001: return f"{p:.6f}"
-    return f"{p:.8f}"
+    if p >= 100:    return f"{p:.2f}"
+    if p >= 1:      return f"{p:.4f}".rstrip('0').rstrip('.')
+    if p >= 0.01:   return f"{p:.6f}".rstrip('0').rstrip('.')
+    if p >= 0.0001: return f"{p:.8f}".rstrip('0').rstrip('.')
+    return f"{p:.10f}".rstrip('0').rstrip('.')
 
 def pct_color(pct):
     if pct is None: return "#8a9bb0", "—"
