@@ -267,7 +267,7 @@ def send_telegram_msg(text):
     except Exception as e:
         print(f"[TELEGRAM] Hata: {e}")
 
-def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type="", stop_price=None, limit_price=None):
+def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type="", stop_price=None, limit_price=None, signal_price=None):
     """entry_price = choch_level (CHoCH seviyesi, LuxAlgo çizgisi)"""
     if not PORTFOLIO_URL:
         return
@@ -289,6 +289,8 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
         }
         if limit_price is not None:
             payload["limit_price"] = limit_price
+        if signal_price is not None:
+            payload["signal_price"] = signal_price
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
             headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
@@ -622,7 +624,7 @@ def _analyze_symbol(symbol):
         send_telegram_msg(msg)
 
         portfolio_id = send_to_portfolio(
-            symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop, limit_price=limit_price
+            symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop, limit_price=limit_price, signal_price=price
         )
         mark_sent(symbol, "choch_v2", "smc-v2")
 

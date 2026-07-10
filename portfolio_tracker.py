@@ -176,6 +176,7 @@ def receive_signal():
         "tp2": float(data.get("tp2") or 0) or None,
         "tp3": float(data.get("tp3") or 0) or None,
         "limit_price": float(data.get("limit_price") or 0) or None,
+        "signal_price": float(data.get("signal_price") or 0) or None,
         "sig_type": data.get("sig_type", data.get("type", "unknown")),
         "sub_type": data.get("sub_type", data.get("subtype", data.get("tp_system", ""))),
         "source": data.get("source", "bot"),
@@ -194,7 +195,7 @@ def receive_signal():
         "last_check": now.isoformat(), "checks": 0,
         "extra": {k: v for k, v in data.items() if k not in required + [
             "sig_type", "type", "sub_type", "subtype", "tp_system",
-            "source", "phase", "candle", "funding_neg", "tp2", "limit_price"
+            "source", "phase", "candle", "funding_neg", "tp2", "limit_price", "signal_price"
         ]},
     }
 
@@ -1707,11 +1708,23 @@ def dashboard():
         else:
             _cur_cell = '<span style="color:#3a4a5a">—</span>'
 
+        sp = sig.get("signal_price")
+        if sp and lp:
+            _drop_pct = (lp - sp) / sp * 100
+            _drop_str = f'<span style="font-size:.6rem;color:#7f8c8d">{_drop_pct:+.2f}%</span>'
+            _signal_entry_cell = (
+                f'{fmt_price(sp)}<br>'
+                f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span> {_drop_str}'
+            )
+        elif lp:
+            _signal_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
+        else:
+            _signal_entry_cell = '—'
+
         pending_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td>
             <td>{_cur_cell}</td>
-            <td>{fmt_price(sig['entry'])}</td>
-            <td style="color:#f39c12;font-weight:bold">{lp_str}</td>
+            <td>{_signal_entry_cell}</td>
             <td>{fmt_price(sig['stop'])}</td>
             <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
             <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
@@ -1724,7 +1737,7 @@ def dashboard():
     <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Anlık Fiyat</th><th>CHoCH</th><th>Limit Buy (Giriş)</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+        <th>Sembol</th><th>Anlık Fiyat</th><th>Sinyal / Giriş</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
     </tr></thead><tbody>
         {pending_rows}
     </tbody></table></div>
