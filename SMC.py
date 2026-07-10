@@ -653,7 +653,7 @@ def _analyze_symbol(symbol):
                 print(f"[SMC ANALYZER] {ae}", flush=True)
 
         scan_stats["signal_v2"] += 1
-        print(f"🟣 [SMC CHoCH ROC] {symbol} | entry:{entry:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
+        print(f"🟣 [SMC CHoCH ROC] {symbol} | choch:{entry:.8g} | limit:{limit_price:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}", flush=True)
