@@ -42,6 +42,7 @@ GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
+MAX_POSITIONS  = 5              # trading_engine ile aynı değer
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
 SMC_MAIN_SOURCES = ("smc-v2",)
 
@@ -359,7 +360,8 @@ def check_pending_retests():
     Bot servisi suspend iken de çalışır — Binance emir durumu yerine fiyat kullanır."""
     now = tr_now()
     with _lock:
-        pending = [s for s in signals_db if s.get("status") == "pending_retest"]
+        pending   = [s for s in signals_db if s.get("status") == "pending_retest"]
+        open_count = len([s for s in signals_db if s.get("status") == "open"])
     if not pending:
         return
 
@@ -402,10 +404,13 @@ def check_pending_retests():
 
         # Fiyat limit seviyesine indi → simülasyon fill
         if low <= float(lp):
+            # Pozisyon limiti: gerçek bot gibi MAX_POSITIONS kontrolü yap
+            if open_count >= MAX_POSITIONS:
+                print(f"[PENDING] {symbol} fill atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
+                continue
             entry = float(lp)
             stop  = float(sig.get("stop", 0))
             tp1   = float(sig.get("tp1", 0))
-            risk  = max(entry - stop, entry * 0.01)
             with _lock:
                 sig["status"]        = "open"
                 sig["entry"]         = entry
@@ -417,6 +422,7 @@ def check_pending_retests():
                 sig["current_price"] = close
                 sig["current_pct"]   = round((close - entry) / entry * 100, 2)
                 sig["tp1_hit"]       = False
+            open_count += 1  # bu döngüde açılan pozisyonu say
             need_save = True
             print(f"[PENDING] RETEST DOLDU (simülasyon): {symbol} @ {entry}", flush=True)
             _send_telegram_pt(
@@ -1892,9 +1898,20 @@ def dashboard():
             <td>{analyzer_badge(sig)}</td></tr>"""
 
     if pending_sigs:
+        _avail_slots  = max(0, MAX_POSITIONS - len(open_sigs))
+        _over_cap     = len(pending_sigs) - _avail_slots
+        _slot_warn    = (
+            f' &nbsp;<span style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;'
+            f'border-radius:4px;padding:1px 7px;font-size:.6rem;font-weight:normal">'
+            f'⚠️ {_avail_slots} slot boş — {_over_cap} emir gerçekte reddedilir</span>'
+        ) if _over_cap > 0 else (
+            f' &nbsp;<span style="background:#2ecc7122;color:#2ecc71;border:1px solid #2ecc7155;'
+            f'border-radius:4px;padding:1px 7px;font-size:.6rem;font-weight:normal">'
+            f'✓ {_avail_slots} slot boş</span>'
+        )
         _pending_section = f"""<div class="section">
     <details data-id="pending-retest" open>
-    <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
+    <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)}){_slot_warn}</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Sinyal Fiyat</th><th>Anlık Fiyat</th><th>CHoCH / Limit Buy</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
