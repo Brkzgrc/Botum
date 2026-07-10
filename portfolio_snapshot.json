@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-10 03:59:17",
+  "updated_at": "2026-07-10 04:29:19",
   "performance": {
-    "total": 19,
-    "open": 7,
+    "total": 20,
+    "open": 8,
     "closed": 12,
     "wins": 12,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 19,
-        "open": 7,
+        "total": 20,
+        "open": 8,
         "wins": 12,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-10": {
-        "trades": 2,
+        "trades": 3,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -85,7 +85,7 @@
     },
     "weekly": {
       "2026-W27": {
-        "trades": 19,
+        "trades": 20,
         "pnl": 150.41,
         "wins": 12,
         "losses": 0
@@ -93,7 +93,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 19,
+        "trades": 20,
         "pnl": 150.41,
         "wins": 12,
         "losses": 0
@@ -101,6 +101,42 @@
     }
   },
   "open": [
+    {
+      "id": "GAS_USDT_1783645210",
+      "symbol": "GAS/USDT",
+      "entry": 1.042,
+      "stop": 1.02485,
+      "tp1": 1.05915,
+      "tp2": 1.0763,
+      "tp3": null,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-10T04:00:10.294986+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 1.044,
+      "peak_pct": 0.19,
+      "low_price": 1.04,
+      "low_pct": -0.19,
+      "current_price": 1.041,
+      "current_pct": -0.1,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T04:00:17.182747+03:00",
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 6,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "ORDI_USDT_1783641607",
       "symbol": "ORDI/USDT",
@@ -121,18 +157,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 3.688,
-      "peak_pct": 3.98,
+      "peak_price": 3.701,
+      "peak_pct": 4.34,
       "low_price": 3.547,
       "low_pct": 0.0,
-      "current_price": 3.681,
-      "current_pct": 3.78,
+      "current_price": 3.644,
+      "current_pct": 2.73,
       "tp1_hit": true,
       "tp1_time": "2026-07-10T03:40:55.656271+03:00",
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-10T03:00:14.147355+03:00",
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 12,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 18,
       "extra": {
         "tp3": null
       },
@@ -162,14 +198,14 @@
       "peak_pct": 1.03,
       "low_price": 0.01148,
       "low_pct": -1.29,
-      "current_price": 0.01164,
-      "current_pct": 0.09,
+      "current_price": 0.01169,
+      "current_pct": 0.52,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 35,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 41,
       "extra": {
         "tp3": null
       }
@@ -198,14 +234,14 @@
       "peak_pct": 1.59,
       "low_price": 2.056e-05,
       "low_pct": -0.63,
-      "current_price": 2.086e-05,
-      "current_pct": 0.82,
+      "current_price": 2.091e-05,
+      "current_pct": 1.06,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-09T21:00:18.691756+03:00",
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 83,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 89,
       "extra": {
         "tp3": null
       }
@@ -234,14 +270,14 @@
       "peak_pct": 1.65,
       "low_price": 0.0849,
       "low_pct": 0.0,
-      "current_price": 0.0853,
-      "current_pct": 0.47,
+      "current_price": 0.0857,
+      "current_pct": 0.94,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 83,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 89,
       "extra": {
         "tp3": null
       }
@@ -270,14 +306,14 @@
       "peak_pct": 3.51,
       "low_price": 0.0222,
       "low_pct": -2.63,
-      "current_price": 0.0226,
-      "current_pct": -0.88,
+      "current_price": 0.0228,
+      "current_pct": 0.0,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 95,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 101,
       "extra": {
         "tp3": null
       }
@@ -306,14 +342,14 @@
       "peak_pct": 2.66,
       "low_price": 0.0188,
       "low_pct": 0.0,
-      "current_price": 0.019,
-      "current_pct": 1.06,
+      "current_price": 0.0191,
+      "current_pct": 1.6,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-09T18:00:23.278956+03:00",
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 119,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 125,
       "extra": {
         "tp3": null
       }
@@ -342,14 +378,14 @@
       "peak_pct": 12.69,
       "low_price": 0.006804,
       "low_pct": -11.35,
-      "current_price": 0.007132,
-      "current_pct": -7.07,
+      "current_price": 0.00727,
+      "current_pct": -5.28,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T03:56:03.961553+03:00",
-      "checks": 382,
+      "last_check": "2026-07-10T04:26:22.600024+03:00",
+      "checks": 388,
       "extra": {
         "tp3": null
       }
