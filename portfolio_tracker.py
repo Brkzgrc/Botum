@@ -329,9 +329,75 @@ def check_open_positions():
         if closed_count > 0:
             print(f"[CHECK] {closed_count} pozisyon kapandı.", flush=True)
 
+def check_pending_retests():
+    """Portfolio tarafında pending_retest sinyallerini fiyata göre günceller.
+    Bot servisi suspend iken de çalışır — Binance emir durumu yerine fiyat kullanır."""
+    now = tr_now()
+    with _lock:
+        pending = [s for s in signals_db if s.get("status") == "pending_retest"]
+    if not pending:
+        return
+
+    need_save = False
+    for sig in pending:
+        symbol  = sig["symbol"]
+        lp      = sig.get("limit_price")
+        open_time = sig.get("open_time")
+
+        # 48H expire kontrolü
+        try:
+            ot = datetime.fromisoformat(open_time)
+            if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
+            if (now - ot).total_seconds() / 3600 >= 48:
+                with _lock:
+                    sig["status"]       = "no_retest"
+                    sig["close_time"]   = now.isoformat()
+                    sig["close_reason"] = "no_retest"
+                need_save = True
+                print(f"[PENDING] 48H doldu, retest yok: {symbol}", flush=True)
+                continue
+        except Exception:
+            pass
+
+        if not lp:
+            continue
+
+        price_data = get_current_price_hl(symbol)
+        if not price_data:
+            continue
+
+        low   = price_data["low"]
+        close = price_data["close"]
+
+        # Fiyat limit seviyesine indi → simülasyon fill
+        if low <= float(lp):
+            entry = float(lp)
+            stop  = float(sig.get("stop", 0))
+            tp1   = float(sig.get("tp1", 0))
+            risk  = max(entry - stop, entry * 0.01)
+            with _lock:
+                sig["status"]        = "open"
+                sig["entry"]         = entry
+                sig["open_time"]     = now.isoformat()
+                sig["peak_price"]    = entry
+                sig["peak_pct"]      = 0.0
+                sig["low_price"]     = entry
+                sig["low_pct"]       = 0.0
+                sig["current_price"] = close
+                sig["current_pct"]   = round((close - entry) / entry * 100, 2)
+                sig["tp1_hit"]       = False
+            need_save = True
+            print(f"[PENDING] RETEST DOLDU (simülasyon): {symbol} @ {entry}", flush=True)
+
+    if need_save:
+        with _lock:
+            save_signals()
+
+
 def position_checker_loop():
     while True:
         try:
+            check_pending_retests()
             check_open_positions()
         except Exception as e:
             print(f"[CHECK] Döngü hatası: {e}", flush=True)
