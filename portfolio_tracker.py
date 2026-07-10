@@ -1384,11 +1384,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   .visual-row{{grid-template-columns:repeat(2,1fr)}}
   body{{padding:10px}}
 }}
-.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap;padding-bottom:7px}}
-.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:100%;background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
-.sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
-.sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
-.sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
+.sym-wrap{{display:inline-flex;align-items:center;white-space:nowrap;cursor:default}}
 </style>
 </head>
 <body>
@@ -1548,6 +1544,8 @@ if (_coinParam) {{
   document.getElementById('tv_chart').scrollIntoView({{behavior:'smooth',block:'center'}});
 }}
 </script>
+<script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
+{_SYM_POPUP_HTML}
 </body>
 </html>"""
 
@@ -1630,19 +1628,38 @@ def analyzer_badge(sig):
 _CHART_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:block"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
 _TV_LOGO   = '<img src="https://www.tradingview.com/favicon.ico" width="14" height="14" style="display:block;border-radius:2px;image-rendering:crisp-edges" alt="TV" onerror="this.outerHTML=\'<span style=font-size:.65rem;font-weight:bold;color:#2962ff>TV</span>\'">'
 
+# Popup position:fixed — table overflow/stacking context'inden bağımsız
+_SYM_POPUP_HTML = (
+    '<div id="_symp" style="display:none;position:fixed;z-index:9999;background:#151d2a;'
+    'border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;'
+    'align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.75)"></div>'
+    '<style>#_symp .spb{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;'
+    'display:flex;align-items:center;transition:color .15s,background .15s}'
+    '#_symp .spb:hover{color:#00b4d8;background:#1a2a3a}</style>'
+    '<script>(function(){'
+    'var pop=document.getElementById("_symp"),t,b=pop.style;'
+    'function mk(h,tg,ti,inn){var a=document.createElement("a");'
+    'a.href=h;if(tg){a.target=tg;a.rel="noopener";}a.title=ti;a.className="spb";a.innerHTML=inn;return a;}'
+    'document.querySelectorAll(".sym-wrap").forEach(function(w){'
+    'w.addEventListener("mouseenter",function(){'
+    'clearTimeout(t);'
+    'var p=w.dataset.pair,r=w.getBoundingClientRect();'
+    'pop.innerHTML="";'
+    'pop.appendChild(mk("/market?coin="+p+"#tv_chart",null,"Grafikte a\\u00e7",SYMCI));'
+    'pop.appendChild(mk("https://www.tradingview.com/chart/?symbol=BINANCE:"+p,"_blank","TradingView\'de a\\u00e7",SYMTV));'
+    'b.left=r.left+"px";b.top=(r.bottom+4)+"px";b.display="flex";'
+    '});'
+    'w.addEventListener("mouseleave",function(){t=setTimeout(function(){b.display="none";},150);});'
+    '});'
+    'pop.addEventListener("mouseenter",function(){clearTimeout(t);});'
+    'pop.addEventListener("mouseleave",function(){b.display="none";});'
+    '})();</script>'
+)
+
 def sym_cell(sym: str) -> str:
-    """Coin adı + hover popup: piyasa grafiği ve TradingView linkleri."""
-    pair   = sym + "USDT"
-    tv_url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{pair}"
-    return (
-        f'<span class="sym-wrap">'
-        f'<b>{sym}</b>'
-        f'<span class="sym-popup">'
-        f'<a class="sym-btn" href="/market?coin={pair}#tv_chart" title="Grafikte aç">{_CHART_SVG}</a>'
-        f'<a class="sym-btn" href="{tv_url}" target="_blank" rel="noopener" title="TradingView\'de aç">{_TV_LOGO}</a>'
-        f'</span>'
-        f'</span>'
-    )
+    """Coin adı — hover ile fixed-position popup açar (JS yönetir)."""
+    pair = sym + "USDT"
+    return f'<span class="sym-wrap" data-pair="{pair}"><b>{sym}</b></span>'
 
 @app.route("/")
 def dashboard():
@@ -1945,11 +1962,7 @@ tr:hover td{{background:var(--card);}}
   table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}
   .header{{flex-wrap:wrap;gap:6px;}}
   .header .time{{width:100%;justify-content:flex-end;}}}}
-.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap;padding-bottom:7px}}
-.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:100%;background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
-.sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
-.sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
-.sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
+.sym-wrap{{display:inline-flex;align-items:center;white-space:nowrap;cursor:default}}
 </style>
 <script>
 // Details state persistence — runs before body paint to avoid flash
@@ -2109,6 +2122,8 @@ function toggleType(key, btn) {{
     SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
+<script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
+{_SYM_POPUP_HTML}
 </body></html>"""
     return html
 
