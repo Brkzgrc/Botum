@@ -1067,6 +1067,9 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
     num_str = f" #{sig_num}" if sig_num else ""
     src_str = _SOURCE_NAMES.get(source, source)
 
+    verdict = _extract_verdict(decision)
+    verdict_line = f"<b>{verdict}</b>\n━━━━━━━━━━━━━━━━━━━━\n" if verdict else ""
+
     msg = (
         f"{source_icon} <b>ANALİZ — #{symbol.replace('/USDT','')} [{type_short}]{num_str}</b>\n"
         f"🕐 {tr_time.strftime('%d/%m/%Y %H:%M')}\n"
@@ -1075,13 +1078,13 @@ def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, port
         f"🛡️ Stop: {_fmt(signal.get('stop'))}  "
         f"🎯 TP1: {_fmt(signal.get('tp1'))}{tp2_str}{tp3_str}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{verdict_line}"
         f"{decision}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"<i>🤖🐾 ANTON🐾 · {src_str}{num_str}</i>"
     )
 
     send_decision(msg)
-    verdict = _extract_verdict(decision)
     _update_portfolio_analyzer(portfolio_id, verdict)
     if portfolio_id:
         _archive_add_entry(portfolio_id, signal, conditions, verdict or decision[:20])
