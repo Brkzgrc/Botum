@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-10 14:37:43",
+  "updated_at": "2026-07-10 15:21:46",
   "performance": {
     "total": 6,
-    "open": 2,
+    "open": 3,
     "closed": 0,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 2,
-        "open": 2,
+        "total": 3,
+        "open": 3,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-10": {
-        "trades": 2,
+        "trades": 3,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -67,7 +67,7 @@
     },
     "weekly": {
       "2026-W27": {
-        "trades": 2,
+        "trades": 3,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -75,7 +75,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 2,
+        "trades": 3,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -105,18 +105,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.01268,
-      "peak_pct": 0.0,
+      "peak_price": 0.01269,
+      "peak_pct": 0.08,
       "low_price": 0.01264,
       "low_pct": -0.32,
-      "current_price": 0.01264,
-      "current_pct": -0.32,
+      "current_price": 0.01269,
+      "current_pct": 0.08,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T14:36:45.077344+03:00",
-      "checks": 1,
+      "last_check": "2026-07-10T15:20:47.305685+03:00",
+      "checks": 4,
       "extra": {
         "tp3": null
       }
@@ -144,15 +144,52 @@
       "close_pct": null,
       "peak_price": 0.06436,
       "peak_pct": 0.0,
-      "low_price": 0.06392,
-      "low_pct": -0.68,
-      "current_price": 0.06401,
-      "current_pct": -0.54,
+      "low_price": 0.06391,
+      "low_pct": -0.7,
+      "current_price": 0.06428,
+      "current_pct": -0.12,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T10:00:14.002336+03:00",
-      "last_check": "2026-07-10T14:36:45.077344+03:00",
+      "last_check": "2026-07-10T15:20:47.305685+03:00",
+      "checks": 4,
+      "extra": {
+        "tp3": null
+      }
+    },
+    {
+      "id": "AIGENSYN_USDT_1783659602",
+      "symbol": "AIGENSYN/USDT",
+      "entry": 0.02719,
+      "stop": 0.02554165,
+      "tp1": 0.02883835,
+      "tp2": 0.0304867,
+      "tp3": null,
+      "limit_price": 0.02719,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-10T14:51:49.934472+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.02719,
+      "peak_pct": 0.0,
+      "low_price": 0.02716,
+      "low_pct": -0.11,
+      "current_price": 0.02716,
+      "current_pct": -0.11,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T08:00:10.011097+03:00",
+      "last_check": "2026-07-10T15:20:47.305685+03:00",
       "checks": 1,
       "extra": {
         "tp3": null
@@ -229,43 +266,6 @@
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T09:00:10.735539+03:00",
       "last_check": "2026-07-10T09:00:04.118507+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
-    {
-      "id": "AIGENSYN_USDT_1783659602",
-      "symbol": "AIGENSYN/USDT",
-      "entry": 0.02719,
-      "stop": 0.02554165,
-      "tp1": 0.02883835,
-      "tp2": 0.0304867,
-      "tp3": null,
-      "limit_price": 0.02719,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-10T08:00:02.987457+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.02719,
-      "peak_pct": 0.0,
-      "low_price": 0.02719,
-      "low_pct": 0.0,
-      "current_price": 0.02719,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-10T08:00:10.011097+03:00",
-      "last_check": "2026-07-10T08:00:02.987457+03:00",
       "checks": 0,
       "extra": {
         "tp3": null
