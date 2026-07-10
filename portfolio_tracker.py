@@ -1861,7 +1861,11 @@ def dashboard():
         else:
             _cur_cell = '<span style="color:#3a4a5a">—</span>'
 
-        _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
+        if sp and _cur and lp:
+            _sp_cell = (f'{fmt_price(sp)}<br>'
+                        f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}% girişe</span>')
+        else:
+            _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
 
         choch_val = float(sig['entry'])
         if lp and choch_val:
