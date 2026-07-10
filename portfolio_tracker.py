@@ -1709,22 +1709,26 @@ def dashboard():
             _cur_cell = '<span style="color:#3a4a5a">—</span>'
 
         sp = sig.get("signal_price")
-        if sp and lp:
-            _drop_pct = (lp - sp) / sp * 100
+        _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
+
+        choch_val = float(sig['entry'])
+        if lp and choch_val:
+            _drop_pct = (lp - choch_val) / choch_val * 100
             _drop_str = f'<span style="font-size:.6rem;color:#7f8c8d">{_drop_pct:+.2f}%</span>'
-            _signal_entry_cell = (
-                f'{fmt_price(sp)}<br>'
+            _choch_entry_cell = (
+                f'{fmt_price(choch_val)}<br>'
                 f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span> {_drop_str}'
             )
         elif lp:
-            _signal_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
+            _choch_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
         else:
-            _signal_entry_cell = '—'
+            _choch_entry_cell = fmt_price(choch_val)
 
         pending_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td>
+            <td>{_sp_cell}</td>
             <td>{_cur_cell}</td>
-            <td>{_signal_entry_cell}</td>
+            <td>{_choch_entry_cell}</td>
             <td>{fmt_price(sig['stop'])}</td>
             <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
             <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
@@ -1737,7 +1741,7 @@ def dashboard():
     <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Anlık Fiyat</th><th>Sinyal / Giriş</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+        <th>Sembol</th><th>Sinyal Fiyat</th><th>Anlık Fiyat</th><th>CHoCH / Giriş</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
     </tr></thead><tbody>
         {pending_rows}
     </tbody></table></div>
