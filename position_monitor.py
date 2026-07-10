@@ -27,7 +27,8 @@ SL_LIMIT_BUFFER  = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
 CHECK_INTERVAL   = 60      # saniye
 
 _client: Client | None = None
-_lock   = threading.Lock()
+_lock         = threading.Lock()
+_streams_lock = threading.Lock()   # _streams dict erişimi için ayrı kilit
 _twm: ThreadedWebsocketManager | None = None
 _streams: dict[str, str] = {}   # symbol → stream_key
 
@@ -54,8 +55,10 @@ def _load_state() -> dict:
 
 
 def _save_state(state: dict):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, default=str)
+    os.replace(tmp, STATE_FILE)
 
 
 # ─── YARDIMCI ────────────────────────────────────────────────────────────────
@@ -251,12 +254,21 @@ def _cancel_pending(symbol: str, pos: dict):
     """48H doldu: limit emri iptal et, state'den sil, bildir."""
     order_id = pos.get("limit_order_id")
     if order_id and ENABLED:
+        cancelled = False
         try:
             _get_client().cancel_order(symbol=symbol, orderId=order_id)
             print(f"[MONITOR] Limit emir iptal: {symbol} orderId={order_id}", flush=True)
+            cancelled = True
         except BinanceAPIException as e:
-            # Zaten dolmuş veya iptal edilmiş olabilir
             print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e}", flush=True)
+
+        if not cancelled:
+            # İptal başarısız: emir expire anında fill olmuş olabilir
+            filled, fill_price, qty = _is_limit_filled(symbol, order_id)
+            if filled:
+                print(f"[MONITOR] Expire anında fill tespit: {symbol} @ {fill_price:.6g}", flush=True)
+                _activate_position(symbol, fill_price, qty, pos)
+                return
 
     with _lock:
         state = _load_state()
@@ -282,18 +294,52 @@ def _check_pending_orders():
         if pos.get("status") != "pending":
             continue
 
+        # Fill kontrolü expire'dan önce — expire anında fill varsa aktivasyon yapılır
+        filled, fill_price, qty = _is_limit_filled(sym, pos.get("limit_order_id"))
+        if filled:
+            _activate_position(sym, fill_price, qty, pos)
+            continue
+
         try:
             open_time = datetime.fromisoformat(pos["open_time"])
             if datetime.now(timezone.utc) - open_time >= timedelta(hours=PENDING_EXPIRE_H):
                 _cancel_pending(sym, pos)
-                continue
         except Exception as e:
             print(f"[MONITOR] Pending expire kontrol hatası {sym}: {e}", flush=True)
-            continue
 
-        filled, fill_price, qty = _is_limit_filled(sym, pos.get("limit_order_id"))
-        if filled:
-            _activate_position(sym, fill_price, qty, pos)
+
+def _reconcile_pending_orders():
+    """Startup: limit_order_id=None olan pending kayıtları için Binance'te eşleştirme.
+    Crash güvenliği: state kaydedilip Binance emri oluşturulmadan crash'te kurtarma."""
+    if not ENABLED:
+        return
+    state = _load_state()
+    updated = False
+    for sym, pos in list(state.get("positions", {}).items()):
+        if pos.get("status") != "pending" or pos.get("limit_order_id") is not None:
+            continue
+        print(f"[MONITOR] Reconcile: {sym} için limit_order_id=None, Binance sorgulanıyor", flush=True)
+        try:
+            open_orders = _get_client().get_open_orders(symbol=sym)
+            limit_price = float(pos.get("limit_price", 0))
+            matched = False
+            for order in open_orders:
+                if order.get("side") == "BUY" and order.get("type") == "LIMIT" and limit_price:
+                    order_price = float(order.get("price", 0))
+                    if abs(order_price - limit_price) / limit_price < 0.001:
+                        pos["limit_order_id"] = order["orderId"]
+                        state["positions"][sym] = pos
+                        updated = True
+                        matched = True
+                        print(f"[MONITOR] Reconcile eşleşti: {sym} orderId={order['orderId']}", flush=True)
+                        break
+            if not matched:
+                print(f"[MONITOR] Reconcile: {sym} open order yok, periyodik kontrol yönetir", flush=True)
+        except BinanceAPIException as e:
+            print(f"[MONITOR] Reconcile hatası {sym}: {e}", flush=True)
+    if updated:
+        with _lock:
+            _save_state(state)
 
 
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
@@ -399,6 +445,8 @@ def _make_handler(symbol: str):
     def handler(msg):
         if msg.get("e") == "error":
             print(f"[MONITOR] WS hata {symbol}: {msg}", flush=True)
+            with _streams_lock:
+                _streams.pop(symbol, None)   # periyodik kontrol yeniden başlatır
             return
         if msg.get("e") != "kline":
             return
@@ -412,15 +460,17 @@ def _make_handler(symbol: str):
 
 def _start_stream(symbol: str):
     global _twm
-    if symbol in _streams:
-        return
-    key = _twm.start_kline_socket(callback=_make_handler(symbol), symbol=symbol, interval="1m")
-    _streams[symbol] = key
+    with _streams_lock:
+        if symbol in _streams:
+            return
+        key = _twm.start_kline_socket(callback=_make_handler(symbol), symbol=symbol, interval="1m")
+        _streams[symbol] = key
     print(f"[MONITOR] WS başladı: {symbol}", flush=True)
 
 
 def _stop_stream(symbol: str):
-    key = _streams.pop(symbol, None)
+    with _streams_lock:
+        key = _streams.pop(symbol, None)
     if key and _twm:
         try:
             _twm.stop_socket(key)
@@ -441,17 +491,24 @@ def _periodic_check():
             positions = state.get("positions", {})
             open_syms = {s for s, p in positions.items() if p.get("status", "open") == "open"}
 
+            with _streams_lock:
+                current_streams = set(_streams.keys())
+
             for sym in open_syms:
-                if sym not in _streams:
+                if sym not in current_streams:
                     _start_stream(sym)
 
-            for sym in list(_streams.keys()):
+            for sym in list(current_streams):
                 if sym not in open_syms:
                     _stop_stream(sym)
 
             for sym in list(open_syms):
                 pos = positions.get(sym, {})
-                if not pos.get("trailing") and _is_sl_filled(sym, pos.get("sl_order_id")):
+                if pos.get("closing"):
+                    continue  # _process_tick zaten yönetiyor
+                sl_order_id = pos.get("sl_order_id")
+                # SL fill trailing dahil kontrol et — trailing başlarken cancel başarısız olmuş olabilir
+                if sl_order_id and _is_sl_filled(sym, sl_order_id):
                     with _lock:
                         s = _load_state()
                         s["positions"].pop(sym, None)
@@ -482,6 +539,8 @@ def start():
 
     _twm = ThreadedWebsocketManager(api_key=API_KEY, api_secret=API_SECRET)
     _twm.start()
+
+    _reconcile_pending_orders()  # limit_order_id=None olan kayıtları onar
 
     state = _load_state()
     for sym, pos in state.get("positions", {}).items():

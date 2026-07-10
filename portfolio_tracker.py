@@ -282,19 +282,19 @@ def check_open_positions():
             sig["checks"] = sig.get("checks", 0) + 1
 
             is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
-            close_reason = None; close_price = None
+            close_reason = None; close_price = None; close_status = None
 
             if is_smc:
                 # SMC CHoCH ROC: stop → loss | TP1 hit → %2.5 trailing aktif | trail tetik → win_trail/loss
                 if low <= stop:
-                    close_reason = "stop"; close_price = stop
-                    sig["status"] = "loss"
+                    close_reason = "stop"; close_price = stop; close_status = "loss"
                 else:
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
                         if sig.get("source") in FULL_TRAIL_SOURCES:
-                            sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                             tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
-                            sig["tp1_pct"] = tp1_pct_v
+                            with _lock:
+                                sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                                sig["tp1_pct"] = tp1_pct_v
                             need_save = True
                             print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → %{SMC_FULL_TRAIL_PCT} trailing başladı", flush=True)
                     if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
@@ -302,32 +302,33 @@ def check_open_positions():
                         trail_ret  = round((trail_stop - entry) / entry * 100, 2)
                         if low <= trail_stop:
                             close_reason = "trailing"; close_price = trail_stop
-                            sig["status"] = "win_trail" if trail_ret > 0 else "loss"
+                            close_status = "win_trail" if trail_ret > 0 else "loss"
             else:
                 is_pump = sig.get("sig_type") == "pump"
                 if is_pump:
                     # PUMP: hard SL, hard TP, 6h expire — trailing yok
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
-                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                        with _lock:
+                            sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                         need_save = True
                         print(f"  🎯 PUMP TP HİT: {symbol.replace('/USDT','')} | +{round((tp1-entry)/entry*100,1)}%", flush=True)
                     if tp2 and high >= tp2:
-                        close_reason = "tp2"; close_price = tp2
-                        sig["status"] = "win_tp2"
+                        close_reason = "tp2"; close_price = tp2; close_status = "win_tp2"
                     elif low <= stop:
-                        close_reason = "stop"; close_price = stop
-                        sig["status"] = "loss"
+                        close_reason = "stop"; close_price = stop; close_status = "loss"
                     else:
                         open_time = datetime.fromisoformat(sig["open_time"])
                         if open_time.tzinfo is None: open_time = open_time.replace(tzinfo=TR_TZ)
                         if (now - open_time).total_seconds() / 3600 >= BOT_EXPIRE_H["pump"]:
-                            close_reason = "expired"; close_price = close; sig["status"] = "expired"
+                            close_reason = "expired"; close_price = close; close_status = "expired"
 
             if close_reason:
-                sig["close_time"] = now.isoformat()
-                sig["close_price"] = round(close_price, 8)
-                sig["close_reason"] = close_reason
-                sig["close_pct"] = round((close_price - entry) / entry * 100, 2)
+                with _lock:
+                    sig["status"]      = close_status
+                    sig["close_time"]  = now.isoformat()
+                    sig["close_price"] = round(close_price, 8)
+                    sig["close_reason"] = close_reason
+                    sig["close_pct"]   = round((close_price - entry) / entry * 100, 2)
                 closed_count += 1; need_save = True
                 emoji = {"tp2": "🟢", "trailing": ("💰" if sig["close_pct"] > 0 else "🔴"),
                          "stop": "🔴", "expired": "⏰"}.get(close_reason, "⚪")
