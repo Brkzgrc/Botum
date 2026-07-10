@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-10 11:57:59",
+  "updated_at": "2026-07-10 12:28:01",
   "performance": {
-    "total": 4,
+    "total": 5,
     "open": 0,
     "closed": 0,
     "wins": 0,
@@ -45,6 +45,43 @@
   },
   "open": [],
   "closed": [
+    {
+      "id": "ACT_USDT_1783674001",
+      "symbol": "ACT/USDT",
+      "entry": 0.00908,
+      "stop": 0.0088754,
+      "tp1": 0.0092846,
+      "tp2": 0.0094892,
+      "tp3": null,
+      "limit_price": 0.00908,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-10T12:00:01.538390+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00908,
+      "peak_pct": 0.0,
+      "low_price": 0.00908,
+      "low_pct": 0.0,
+      "current_price": 0.00908,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T12:00:09.152657+03:00",
+      "last_check": "2026-07-10T12:00:01.538390+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "ME_USDT_1783666807",
       "symbol": "ME/USDT",
