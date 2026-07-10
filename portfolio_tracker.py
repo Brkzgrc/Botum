@@ -1724,7 +1724,7 @@ def dashboard():
     <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Anlık Fiyat</th><th>CHoCH</th><th>Limit Buy</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+        <th>Sembol</th><th>Anlık Fiyat</th><th>CHoCH</th><th>Limit Buy (Giriş)</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
     </tr></thead><tbody>
         {pending_rows}
     </tbody></table></div>
