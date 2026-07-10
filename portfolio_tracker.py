@@ -1384,8 +1384,8 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   .visual-row{{grid-template-columns:repeat(2,1fr)}}
   body{{padding:10px}}
 }}
-.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap}}
-.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:calc(100% + 5px);background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
+.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap;padding-bottom:7px}}
+.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:100%;background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
 .sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
 .sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
 .sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
@@ -1945,8 +1945,8 @@ tr:hover td{{background:var(--card);}}
   table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}
   .header{{flex-wrap:wrap;gap:6px;}}
   .header .time{{width:100%;justify-content:flex-end;}}}}
-.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap}}
-.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:calc(100% + 5px);background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
+.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap;padding-bottom:7px}}
+.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:100%;background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
 .sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
 .sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
 .sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
