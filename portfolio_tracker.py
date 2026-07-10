@@ -1384,6 +1384,11 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
   .visual-row{{grid-template-columns:repeat(2,1fr)}}
   body{{padding:10px}}
 }}
+.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap}}
+.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:calc(100% + 5px);background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
+.sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
+.sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
+.sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
 </style>
 </head>
 <body>
@@ -1530,14 +1535,18 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-new TradingView.widget({{
+var _coinParam = new URLSearchParams(location.search).get('coin');
+var _tvWidget = new TradingView.widget({{
   container_id:"tv_chart",width:"100%",height:460,
-  symbol:"BINANCE:BTCUSDT",interval:"60",
+  symbol: _coinParam ? "BINANCE:" + _coinParam : "BINANCE:BTCUSDT",
+  interval:"60",
   timezone:"Europe/Istanbul",theme:"dark",style:"1",locale:"tr",
   toolbar_bg:"#0f1319",hide_side_toolbar:false,allow_symbol_change:true,
   backgroundColor:"#0a0e14",gridColor:"#1a2030"
 }});
-
+if (_coinParam) {{
+  document.getElementById('tv_chart').scrollIntoView({{behavior:'smooth',block:'center'}});
+}}
 </script>
 </body>
 </html>"""
@@ -1618,6 +1627,23 @@ def analyzer_badge(sig):
     else:            c, l = "#8a9bb0", d[:12]
     return f'<span style="background:{c}22;color:{c};padding:1px 6px;border-radius:3px;font-size:.6rem">{l}</span>'
 
+_CHART_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:block"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
+_TV_LOGO   = '<img src="https://www.tradingview.com/favicon.ico" width="14" height="14" style="display:block;border-radius:2px;image-rendering:crisp-edges" alt="TV" onerror="this.outerHTML=\'<span style=font-size:.65rem;font-weight:bold;color:#2962ff>TV</span>\'">'
+
+def sym_cell(sym: str) -> str:
+    """Coin adı + hover popup: piyasa grafiği ve TradingView linkleri."""
+    pair   = sym + "USDT"
+    tv_url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{pair}"
+    return (
+        f'<span class="sym-wrap">'
+        f'<b>{sym}</b>'
+        f'<span class="sym-popup">'
+        f'<a class="sym-btn" href="/market?coin={pair}#tv_chart" title="Grafikte aç">{_CHART_SVG}</a>'
+        f'<a class="sym-btn" href="{tv_url}" target="_blank" rel="noopener" title="TradingView\'de aç">{_TV_LOGO}</a>'
+        f'</span>'
+        f'</span>'
+    )
+
 @app.route("/")
 def dashboard():
     perf = calc_performance()
@@ -1670,7 +1696,7 @@ def dashboard():
         else:
             tp1_cell = f"{fmt_price(sig['tp1'])} (+{tp1_pct}%)"
         open_rows += f"""<tr>
-            <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
+            <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
             <td>{fmt_price(sig['entry'])}</td>
             <td style="color:{cur_c};font-weight:bold">{fmt_price(sig.get('current_price'))} ({cur_s})</td>
             <td style="color:{peak_c}">{peak_s}</td><td style="color:{low_c}">{low_s}</td>
@@ -1696,7 +1722,7 @@ def dashboard():
             tp1_badge = f'<span style="color:#3a4a5a;font-size:.58rem">TP1: +{tp1_pct_v}%</span>' if tp1_pct_v else '—'
 
         closed_rows += f"""<tr>
-            <td style="color:#ecf0f1"><b>{sym}</b></td><td>{type_badge(sig)}</td>
+            <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
             <td>{status_badge(sig.get('status','unknown'))}</td>
             <td>{fmt_price(sig['entry'])}</td>
             <td>{fmt_price(sig.get('close_price'))}</td>
@@ -1826,7 +1852,7 @@ def dashboard():
             _choch_entry_cell = fmt_price(choch_val)
 
         pending_rows += f"""<tr>
-            <td style="color:#ecf0f1"><b>{sym}</b></td>
+            <td style="color:#ecf0f1">{sym_cell(sym)}</td>
             <td>{_sp_cell}</td>
             <td>{_cur_cell}</td>
             <td>{_choch_entry_cell}</td>
@@ -1919,6 +1945,11 @@ tr:hover td{{background:var(--card);}}
   table{{font-size:.63rem;}}td,th{{padding:5px 5px;}}
   .header{{flex-wrap:wrap;gap:6px;}}
   .header .time{{width:100%;justify-content:flex-end;}}}}
+.sym-wrap{{position:relative;display:inline-flex;align-items:center;white-space:nowrap}}
+.sym-popup{{visibility:hidden;opacity:0;position:absolute;left:0;top:calc(100% + 5px);background:#151d2a;border:1px solid #2a3a50;border-radius:7px;padding:3px 5px;gap:3px;display:flex;align-items:center;z-index:999;box-shadow:0 4px 14px rgba(0,0,0,.75);transition:opacity .13s,visibility .13s;pointer-events:none}}
+.sym-wrap:hover .sym-popup{{visibility:visible;opacity:1;pointer-events:auto}}
+.sym-btn{{color:#6a8aaa;text-decoration:none;padding:4px 5px;border-radius:5px;display:flex;align-items:center;line-height:1;transition:color .15s,background .15s}}
+.sym-btn:hover{{color:#00b4d8;background:#1a2a3a}}
 </style>
 <script>
 // Details state persistence — runs before body paint to avoid flash
