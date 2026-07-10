@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-10 22:48:09",
+  "updated_at": "2026-07-10 23:17:27",
   "performance": {
-    "total": 0,
+    "total": 2,
     "open": 0,
     "closed": 0,
     "wins": 0,
@@ -44,5 +44,82 @@
     "monthly": {}
   },
   "open": [],
-  "closed": []
+  "closed": [
+    {
+      "id": "BEL_USDT_1783713607",
+      "symbol": "BEL/USDT",
+      "entry": 0.1061,
+      "stop": 0.100893,
+      "tp1": 0.111307,
+      "tp2": 0.116514,
+      "tp3": null,
+      "limit_price": 0.1062,
+      "signal_price": 0.1083,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-10T23:00:07.752616+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.1061,
+      "peak_pct": 0.0,
+      "low_price": 0.1061,
+      "low_pct": 0.0,
+      "current_price": 0.1061,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-10T23:00:07.752616+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
+    {
+      "id": "CTK_USDT_1783713606",
+      "symbol": "CTK/USDT",
+      "entry": 0.1081,
+      "stop": 0.1043755,
+      "tp1": 0.1118245,
+      "tp2": 0.115549,
+      "tp3": null,
+      "limit_price": 0.1082,
+      "signal_price": 0.1085,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-10T23:00:06.060188+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.1081,
+      "peak_pct": 0.0,
+      "low_price": 0.1081,
+      "low_pct": 0.0,
+      "current_price": 0.1081,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
+      "last_check": "2026-07-10T23:00:06.060188+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    }
+  ]
 }
