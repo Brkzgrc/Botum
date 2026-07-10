@@ -1,27 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-Position Monitor — WebSocket fiyat takibi + trailing + expire
-=============================================================
-Her açık pozisyon için {symbol}@kline_1m WebSocket dinlenir.
-TP1 öncesi : peak güncelle | Binance SL dolduğu kontrol edilir
-TP1 sonrası: trail_stop = peak × 0.975 → fiyat altına düşünce market sell
-Expire 48h : market sell
+Position Monitor — WebSocket fiyat takibi + trailing + pending order yönetimi
+=============================================================================
+Pending : Limit buy doldu mu? 48H geçti mi?
+Open    : peak güncelle | SL doldu mu? | TP1 → trailing
 """
 
-import json, math, os, time, threading
+import json, math, os, time, threading, requests
 from datetime import datetime, timezone, timedelta
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from binance import ThreadedWebsocketManager
 
-API_KEY    = os.getenv("BINANCE_API_KEY", "")
-API_SECRET = os.getenv("BINANCE_API_SECRET", "")
-ENABLED    = os.getenv("TRADING_ENABLED", "false").lower() == "true"
-STATE_FILE = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
+API_KEY          = os.getenv("BINANCE_API_KEY", "")
+API_SECRET       = os.getenv("BINANCE_API_SECRET", "")
+ENABLED          = os.getenv("TRADING_ENABLED", "false").lower() == "true"
+STATE_FILE       = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
+PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
-TRAIL_PCT      = 0.975   # %2.5 trailing
-EXPIRE_H       = 48
-CHECK_INTERVAL = 60      # saniye — SL doldu mu? periyodik kontrol
+TRAIL_PCT        = 0.975   # %2.5 trailing
+PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat)
+SL_LIMIT_BUFFER  = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
+CHECK_INTERVAL   = 60      # saniye
 
 _client: Client | None = None
 _lock   = threading.Lock()
@@ -73,6 +76,54 @@ def _round_qty(qty: float, symbol: str) -> float:
     return round(qty, 6)
 
 
+def _round_price(price: float, symbol: str) -> float:
+    try:
+        info = _get_client().get_symbol_info(symbol)
+        if not info:
+            return round(price, 8)
+        for f in info.get("filters", []):
+            if f["filterType"] == "PRICE_FILTER":
+                tick = float(f["tickSize"])
+                precision = max(0, int(round(-math.log10(tick))))
+                price = math.floor(price / tick) * tick
+                return round(price, precision)
+    except Exception:
+        pass
+    return round(price, 8)
+
+
+def _send_telegram(text: str):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": text,
+                "message_thread_id": 2,
+                "parse_mode": "HTML",
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[MONITOR] Telegram hata: {e}", flush=True)
+
+
+def _notify_portfolio(endpoint: str, data: dict):
+    if not PORTFOLIO_URL or not PORTFOLIO_TOKEN:
+        return
+    try:
+        requests.post(
+            f"{PORTFOLIO_URL}{endpoint}",
+            json=data,
+            headers={"Authorization": f"Bearer {PORTFOLIO_TOKEN}"},
+            timeout=15,
+        )
+    except Exception as e:
+        print(f"[MONITOR] Portfolio bildirim hatası ({endpoint}): {e}", flush=True)
+
+
 def _market_sell(symbol: str, qty: float, reason: str):
     tag = f"[MONITOR] SELL {symbol} {qty} ({reason})"
     if not ENABLED:
@@ -111,44 +162,159 @@ def _is_sl_filled(symbol: str, sl_order_id) -> bool:
         return False
 
 
+def _is_limit_filled(symbol: str, order_id) -> tuple[bool, float, float]:
+    """Limit buy emri doldu mu? → (filled, fill_price, qty)"""
+    if not order_id or not ENABLED:
+        return False, 0.0, 0.0
+    try:
+        order = _get_client().get_order(symbol=symbol, orderId=order_id)
+        if order.get("status") == "FILLED":
+            executed_qty = float(order.get("executedQty", 0))
+            quote_qty    = float(order.get("cummulativeQuoteQty", 0))
+            fill_price   = quote_qty / executed_qty if executed_qty else 0.0
+            return True, fill_price, executed_qty
+    except BinanceAPIException as e:
+        print(f"[MONITOR] Limit order kontrol hatası {symbol}: {e}", flush=True)
+    return False, 0.0, 0.0
+
+
+# ─── PENDING ORDER YÖNETİMİ ──────────────────────────────────────────────────
+
+def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
+    """Limit doldu: SL koy, state'i open'a çevir, WS başlat, bildir."""
+    sl_order_id = None
+    if ENABLED:
+        try:
+            sl_stop  = _round_price(float(pos["stop"]), symbol)
+            sl_limit = _round_price(float(pos["stop"]) * (1 - SL_LIMIT_BUFFER), symbol)
+            sl_order = _get_client().create_order(
+                symbol=symbol,
+                side="SELL",
+                type="STOP_LOSS_LIMIT",
+                timeInForce="GTC",
+                quantity=qty,
+                stopPrice=sl_stop,
+                price=sl_limit,
+            )
+            sl_order_id = sl_order["orderId"]
+            print(f"[MONITOR] SL emri: {symbol} stop={sl_stop} limit={sl_limit}", flush=True)
+        except BinanceAPIException as e:
+            print(f"[MONITOR] SL emir hatası {symbol}: {e}", flush=True)
+
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        state = _load_state()
+        state["positions"][symbol] = {
+            "status":      "open",
+            "symbol":      symbol,
+            "entry":       fill_price,
+            "qty":         qty,
+            "stop":        float(pos["stop"]),
+            "tp1":         float(pos["tp1"]),
+            "tp2":         pos.get("tp2"),
+            "peak":        fill_price,
+            "sl_order_id": sl_order_id,
+            "trailing":    False,
+            "open_time":   now,
+            "source":      pos.get("source", "smc-v2"),
+        }
+        _save_state(state)
+
+    _notify_portfolio("/api/retest-filled", {
+        "symbol":     symbol,
+        "fill_price": fill_price,
+        "qty":        qty,
+    })
+    _start_stream(symbol)
+
+    sl_status = "aktif" if sl_order_id else "YOK (hata!)"
+    msg = (
+        f"✅ <b>RETEST DOLDU — {symbol}</b>\n"
+        f"Giriş: <b>{fill_price:.6g}</b>\n"
+        f"Miktar: {qty}\n"
+        f"Stop: {float(pos['stop']):.6g} | TP1: {float(pos['tp1']):.6g}\n"
+        f"SL emri {sl_status}."
+    )
+    _send_telegram(msg)
+    print(f"[MONITOR] Pozisyon aktif: {symbol} giriş={fill_price:.6g} qty={qty}", flush=True)
+
+
+def _cancel_pending(symbol: str, pos: dict):
+    """48H doldu: limit emri iptal et, state'den sil, bildir."""
+    order_id = pos.get("limit_order_id")
+    if order_id and ENABLED:
+        try:
+            _get_client().cancel_order(symbol=symbol, orderId=order_id)
+            print(f"[MONITOR] Limit emir iptal: {symbol} orderId={order_id}", flush=True)
+        except BinanceAPIException as e:
+            # Zaten dolmuş veya iptal edilmiş olabilir
+            print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e}", flush=True)
+
+    with _lock:
+        state = _load_state()
+        state["positions"].pop(symbol, None)
+        _save_state(state)
+
+    _notify_portfolio("/api/retest-cancelled", {"symbol": symbol})
+
+    limit_price = pos.get("limit_price", 0)
+    msg = (
+        f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n"
+        f"48 saat içinde limit ({limit_price:.6g}) dolmadı.\n"
+        f"Emir iptal edildi."
+    )
+    _send_telegram(msg)
+    print(f"[MONITOR] Pending süresi doldu: {symbol}", flush=True)
+
+
+def _check_pending_orders():
+    """Pending limit emirleri kontrol et: fill veya 48H expire."""
+    state = _load_state()
+    for sym, pos in list(state.get("positions", {}).items()):
+        if pos.get("status") != "pending":
+            continue
+
+        try:
+            open_time = datetime.fromisoformat(pos["open_time"])
+            if datetime.now(timezone.utc) - open_time >= timedelta(hours=PENDING_EXPIRE_H):
+                _cancel_pending(sym, pos)
+                continue
+        except Exception as e:
+            print(f"[MONITOR] Pending expire kontrol hatası {sym}: {e}", flush=True)
+            continue
+
+        filled, fill_price, qty = _is_limit_filled(sym, pos.get("limit_order_id"))
+        if filled:
+            _activate_position(sym, fill_price, qty, pos)
+
+
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
 
 def _process_tick(symbol: str, price: float):
     sell_reason = None
     cancel_sl   = False
-    pos_snap    = None   # lock dışında kullanılacak snapshot
+    pos_snap    = None
 
     with _lock:
         state = _load_state()
         pos = state["positions"].get(symbol)
-        if pos is None:
+        if pos is None or pos.get("status") == "pending":
             return
 
-        pos_snap = dict(pos)   # lock dışı işlemler için kopya
+        pos_snap = dict(pos)
 
-        open_time = datetime.fromisoformat(pos["open_time"])
-        expired   = datetime.now(timezone.utc) - open_time >= timedelta(hours=EXPIRE_H)
-
-        if expired:
-            # Expire: pozisyonu kaldır, lock dışında sat
-            state["positions"].pop(symbol)
-            _save_state(state)
-            sell_reason = f"expire_{EXPIRE_H}h"
-
-        elif not pos.get("trailing"):
+        if not pos.get("trailing"):
             # ── TP1 Öncesi ──────────────────────────────────────────────────
             if price > float(pos["peak"]):
                 pos["peak"] = price
                 state["positions"][symbol] = pos
                 _save_state(state)
 
-            # SL emri Binance'te yoksa (yerleştirme hatası) stop seviyesini bot izler
             if not pos.get("sl_order_id") and price <= float(pos["stop"]):
                 sell_reason = f"stop_hit={float(pos['stop']):.6g}"
                 state["positions"].pop(symbol)
                 _save_state(state)
             elif price >= float(pos["tp1"]):
-                # TP1 vuruldu: trailing moda geç, lock dışında SL iptal et
                 cancel_sl       = True
                 pos["tp1_hit"]  = True
                 pos["trailing"] = True
@@ -221,27 +387,25 @@ def _stop_stream(symbol: str):
 # ─── PERİYODİK KONTROL ───────────────────────────────────────────────────────
 
 def _periodic_check():
-    """
-    Her CHECK_INTERVAL saniyede:
-    - Yeni pozisyonlar için stream başlat
-    - Kapalı pozisyonların stream'ini durdur
-    - Binance SL dolduğunda state temizle
-    """
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
-            state = _load_state()
-            positions = state.get("positions", {})
+            _check_pending_orders()
 
-            for sym in list(positions.keys()):
+            state     = _load_state()
+            positions = state.get("positions", {})
+            open_syms = {s for s, p in positions.items() if p.get("status", "open") == "open"}
+
+            for sym in open_syms:
                 if sym not in _streams:
                     _start_stream(sym)
 
             for sym in list(_streams.keys()):
-                if sym not in positions:
+                if sym not in open_syms:
                     _stop_stream(sym)
 
-            for sym, pos in list(positions.items()):
+            for sym in list(open_syms):
+                pos = positions.get(sym, {})
                 if not pos.get("trailing") and _is_sl_filled(sym, pos.get("sl_order_id")):
                     with _lock:
                         s = _load_state()
@@ -264,8 +428,10 @@ def start():
     _twm.start()
 
     state = _load_state()
-    for sym in state.get("positions", {}):
-        _start_stream(sym)
+    for sym, pos in state.get("positions", {}).items():
+        # Pending pozisyonlar için WS başlatma; periyodik kontrol yönetir
+        if pos.get("status", "open") == "open":
+            _start_stream(sym)
 
     t = threading.Thread(target=_periodic_check, daemon=True)
     t.start()

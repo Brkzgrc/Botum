@@ -2,9 +2,9 @@
 """
 Trading Engine — SMC CHoCH ROC otomatik emir sistemi
 =====================================================
-Giriş: market buy + Binance stop-loss limit order
+Giriş: CHoCH seviyesi + 1 tick → LIMIT BUY (retest bekler)
 Çıkış: TP1 hit → trailing (position_monitor yönetir)
-       Expire 48h → market sell (position_monitor yönetir)
+       Expire 48h → limit iptal (position_monitor yönetir)
 
 TRADING_ENABLED=false → simülasyon modu, Binance'e emir atılmaz.
 """
@@ -18,11 +18,11 @@ API_KEY    = os.getenv("BINANCE_API_KEY", "")
 API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 ENABLED    = os.getenv("TRADING_ENABLED", "false").lower() == "true"
 
-MAX_POSITIONS   = 5
-MAX_POS_SIZE    = 20_000.0
-SL_LIMIT_BUFFER = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
-MAX_ENTRY_DEV   = float(os.getenv("MAX_ENTRY_DEVIATION", "0.02"))  # %2 max sapma
-STATE_FILE      = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
+MAX_POSITIONS    = 5
+MAX_POS_SIZE     = 20_000.0
+SL_LIMIT_BUFFER  = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
+PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat)
+STATE_FILE       = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
 
 _client: Client | None = None
 _lock   = threading.Lock()
@@ -100,6 +100,20 @@ def _round_price(price: float, symbol: str) -> float:
     return round(price, 8)
 
 
+def _one_tick_above(price: float, symbol: str) -> float:
+    """CHoCH seviyesi + 1 tick → limit buy garantisi için."""
+    info = _get_symbol_info(symbol)
+    if not info:
+        return price
+    for f in info.get("filters", []):
+        if f["filterType"] == "PRICE_FILTER":
+            tick = float(f["tickSize"])
+            precision = max(0, int(round(-math.log10(tick))))
+            floored = math.floor(price / tick) * tick
+            return round(floored + tick, precision)
+    return price
+
+
 def _get_usdt_balance() -> float:
     try:
         bal = get_client().get_asset_balance(asset="USDT")
@@ -114,11 +128,14 @@ def _get_usdt_balance() -> float:
 def execute(signal: dict):
     """
     SMC CHoCH ROC sinyalini işleme al.
+    CHoCH seviyesine (entry) 1 tick üzerine LIMIT BUY koyar — retest bekler.
+    SL emri yalnızca limit dolduğunda (position_monitor'da) verilir.
+
     Beklenen alanlar: symbol, entry, stop, tp1
     Opsiyonel: tp2, source
     """
     symbol = _normalize_symbol(signal.get("symbol", ""))
-    entry  = float(signal.get("entry", 0))
+    entry  = float(signal.get("entry", 0))   # CHoCH seviyesi (swing_high)
     stop   = float(signal.get("stop",  0))
     tp1    = float(signal.get("tp1",   0))
     tp2    = float(signal.get("tp2") or 0) or None
@@ -127,8 +144,11 @@ def execute(signal: dict):
         print(f"[TRADE] Eksik alan, atlandı: {signal}", flush=True)
         return
 
+    # Limit buy fiyatı: CHoCH + 1 tick (retest garantisi)
+    limit_price = _one_tick_above(entry, symbol)
+
     if not ENABLED:
-        print(f"[TRADE] SIMÜLASYON — {symbol} | giriş={entry:.6g} stop={stop:.6g} tp1={tp1:.6g}", flush=True)
+        print(f"[TRADE] SIMÜLASYON — {symbol} | limit={limit_price:.6g} stop={stop:.6g} tp1={tp1:.6g}", flush=True)
         return
 
     with _lock:
@@ -140,7 +160,7 @@ def execute(signal: dict):
             return
 
         if symbol in positions:
-            print(f"[TRADE] Reddedildi: {symbol} zaten açık", flush=True)
+            print(f"[TRADE] Reddedildi: {symbol} zaten aktif (pending/open)", flush=True)
             return
 
         usdt_balance    = _get_usdt_balance()
@@ -151,7 +171,7 @@ def execute(signal: dict):
             print(f"[TRADE] Reddedildi: yetersiz bakiye ({usdt_balance:.2f} USDT)", flush=True)
             return
 
-        # ── Giriş fiyatı sapma kontrolü ────────────────────────────────────
+        # ── Anlık fiyat kontrolleri ─────────────────────────────────────────
         try:
             ticker = get_client().get_symbol_ticker(symbol=symbol)
             current_price = float(ticker["price"])
@@ -159,81 +179,61 @@ def execute(signal: dict):
                 print(f"[TRADE] Reddedildi: fiyat TP1 üzerinde | "
                       f"mevcut={current_price:.6g} tp1={tp1:.6g}", flush=True)
                 return
-            if current_price > entry * (1 + MAX_ENTRY_DEV):
-                dev_pct = (current_price / entry - 1) * 100
-                print(f"[TRADE] Reddedildi: fiyat giriş seviyesinden uzak | "
-                      f"mevcut={current_price:.6g} sinyal={entry:.6g} sapma=%{dev_pct:.1f}", flush=True)
+            if current_price <= stop:
+                print(f"[TRADE] Reddedildi: fiyat stop seviyesinin altında | "
+                      f"mevcut={current_price:.6g} stop={stop:.6g}", flush=True)
                 return
-            if current_price < entry * 0.90:
-                dev_pct = (1 - current_price / entry) * 100
-                print(f"[TRADE] Reddedildi: fiyat giriş altında çok düştü | "
-                      f"mevcut={current_price:.6g} sinyal={entry:.6g} sapma=-%{dev_pct:.1f}", flush=True)
+            if current_price < entry * 0.80:
+                print(f"[TRADE] Reddedildi: fiyat CHoCH'un çok altında | "
+                      f"mevcut={current_price:.6g} choch={entry:.6g}", flush=True)
                 return
         except BinanceAPIException as e:
             print(f"[TRADE] Reddedildi: fiyat kontrolü hatası {symbol}: {e}", flush=True)
             return
 
-        print(f"[TRADE] {symbol} | giriş={entry:.6g} stop={stop:.6g} tp1={tp1:.6g} "
-              f"| boyut=${pos_size:.2f} | kalan_slot={remaining_slots}", flush=True)
-
-        # ── Market Buy ──────────────────────────────────────────────────────
-        try:
-            buy_order = get_client().order_market_buy(
-                symbol=symbol,
-                quoteOrderQty=round(pos_size, 2),
-            )
-            fills = buy_order.get("fills", [])
-            if fills:
-                total_fill_qty = sum(float(f["qty"]) for f in fills)
-                avg_price      = sum(float(f["price"]) * float(f["qty"]) for f in fills) / total_fill_qty
-            else:
-                avg_price = entry
-                total_fill_qty = float(buy_order.get("executedQty", 0))
-            # Gerçek cüzdan bakiyesinden qty al — komisyon ne olursa olsun doğru miktar
-            base_asset  = symbol.replace("USDT", "")
-            bal         = get_client().get_asset_balance(asset=base_asset)
-            actual_free = float(bal["free"]) if bal else total_fill_qty
-            qty         = _round_qty(actual_free, symbol)
-            print(f"[TRADE] BUY OK: {symbol} {qty} @ {avg_price:.6g}", flush=True)
-        except BinanceAPIException as e:
-            print(f"[TRADE] BUY HATASI {symbol}: {e}", flush=True)
+        # ── Limit Buy emri ─────────────────────────────────────────────────
+        # Miktar tahmini: pos_size / limit_price (gerçek fill qty farklı olabilir)
+        qty_estimate = _round_qty(pos_size / limit_price, symbol)
+        if qty_estimate <= 0:
+            print(f"[TRADE] Reddedildi: hesaplanan miktar sıfır ({symbol})", flush=True)
             return
 
-        # ── Stop-Loss Limit Order ───────────────────────────────────────────
-        sl_order_id = None
-        try:
-            sl_stop  = _round_price(stop,                           symbol)
-            sl_limit = _round_price(stop * (1 - SL_LIMIT_BUFFER),  symbol)
-            sl_order = get_client().create_order(
-                symbol=symbol,
-                side="SELL",
-                type="STOP_LOSS_LIMIT",
-                timeInForce="GTC",
-                quantity=qty,
-                stopPrice=sl_stop,
-                price=sl_limit,
-            )
-            sl_order_id = sl_order["orderId"]
-            print(f"[TRADE] SL OK: {symbol} stopPrice={sl_stop} limitPrice={sl_limit}", flush=True)
-        except BinanceAPIException as e:
-            print(f"[TRADE] SL HATASI {symbol}: {e} — pozisyon açık, SL yok!", flush=True)
+        print(f"[TRADE] {symbol} | limit={limit_price:.6g} stop={stop:.6g} tp1={tp1:.6g} "
+              f"| boyut=${pos_size:.2f} | tahmini_qty={qty_estimate}", flush=True)
 
-        # ── State Kaydet ────────────────────────────────────────────────────
+        limit_order_id = None
+        if ENABLED:
+            try:
+                lp = _round_price(limit_price, symbol)
+                limit_order = get_client().create_order(
+                    symbol=symbol,
+                    side="BUY",
+                    type="LIMIT",
+                    timeInForce="GTC",
+                    quantity=qty_estimate,
+                    price=lp,
+                )
+                limit_order_id = limit_order["orderId"]
+                print(f"[TRADE] LİMİT BUY OK: {symbol} {qty_estimate} @ {lp}", flush=True)
+            except BinanceAPIException as e:
+                print(f"[TRADE] LİMİT BUY HATASI {symbol}: {e}", flush=True)
+                return
+
+        # ── Pending State Kaydet ────────────────────────────────────────────
         now = datetime.now(timezone.utc).isoformat()
         positions[symbol] = {
-            "symbol":      symbol,
-            "qty":         qty,
-            "entry":       round(avg_price, 8),
-            "stop":        stop,
-            "tp1":         tp1,
-            "tp2":         tp2,
-            "sl_order_id": sl_order_id,
-            "tp1_hit":     False,
-            "trailing":    False,
-            "peak":        round(avg_price, 8),
-            "open_time":   now,
-            "source":      signal.get("source", "smc-v2"),
+            "status":          "pending",
+            "symbol":          symbol,
+            "limit_order_id":  limit_order_id,
+            "limit_price":     limit_price,
+            "pos_size_usdt":   pos_size,
+            "stop":            stop,
+            "tp1":             tp1,
+            "tp2":             tp2,
+            "open_time":       now,   # CHoCH ateşlenme zamanı (48H sayacı buradan başlar)
+            "source":          signal.get("source", "smc-v2"),
         }
         state["positions"] = positions
         save_state(state)
-        print(f"[TRADE] Pozisyon kaydedildi: {symbol}", flush=True)
+        print(f"[TRADE] PENDING kaydedildi: {symbol} | limit @ {limit_price:.6g} | "
+              f"48H retest bekleniyor", flush=True)

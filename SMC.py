@@ -29,6 +29,7 @@
 
 import asyncio
 import json
+import math
 import os
 import threading
 import time
@@ -266,7 +267,7 @@ def send_telegram_msg(text):
     except Exception as e:
         print(f"[TELEGRAM] Hata: {e}")
 
-def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type="", stop_price=None):
+def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type="", stop_price=None, limit_price=None):
     """entry_price = choch_level (CHoCH seviyesi, LuxAlgo çizgisi)"""
     if not PORTFOLIO_URL:
         return
@@ -286,6 +287,8 @@ def send_to_portfolio(symbol, entry_price, atr_val, phase, source, break_type=""
             "tp1": tp1, "tp2": tp2, "tp3": None, "sig_type": "smc",
             "sub_type": break_type, "source": source, "phase": phase,
         }
+        if limit_price is not None:
+            payload["limit_price"] = limit_price
         headers = {"Content-Type": "application/json"}
         if PORTFOLIO_TOKEN:
             headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
@@ -351,6 +354,31 @@ def calc_rsi(df, period=14):
     loss  = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/period, adjust=False).mean()
     rs    = gain / loss.replace(0, 1e-10)
     return 100 - (100 / (1 + rs))
+
+# ============================================================
+# 5b) TICK SIZE YARDIMCI
+# ============================================================
+def _get_tick_size(symbol):
+    """PRICE_FILTER'dan (tick_size, precision) döner."""
+    try:
+        filters = exchange.markets.get(symbol, {}).get("info", {}).get("filters", [])
+        for f in filters:
+            if f.get("filterType") == "PRICE_FILTER":
+                tick = float(f["tickSize"])
+                precision = max(0, int(round(-math.log10(tick))))
+                return tick, precision
+    except Exception:
+        pass
+    return None, 8
+
+def _choch_plus_one_tick(price, symbol):
+    """CHoCH seviyesi + 1 tick — limit buy fiyatı."""
+    tick, precision = _get_tick_size(symbol)
+    if tick is None:
+        return price, price
+    floored = math.floor(price / tick) * tick
+    limit   = round(floored + tick, precision)
+    return limit, tick
 
 # ============================================================
 # 6) Micro CHoCH tespiti (CHOCH_SWING=5, LuxAlgo uyumlu)
@@ -538,40 +566,48 @@ def _analyze_symbol(symbol):
         tp1    = round(entry + risk * 1.0, 10)
         tp2    = round(entry + risk * 2.0, 10)
 
+        # Limit buy fiyatı: CHoCH seviyesi + 1 tick
+        limit_price, _ = _choch_plus_one_tick(entry, symbol)
+
         base      = symbol.split("/")[0]
         coin_name = get_coin_name(symbol)
         e_str  = f"{entry:.10f}".rstrip("0").rstrip(".")
+        l_str  = f"{limit_price:.10f}".rstrip("0").rstrip(".")
         s_str  = f"{stop:.10f}".rstrip("0").rstrip(".")
         t1_str = f"{tp1:.10f}".rstrip("0").rstrip(".")
         t2_str = f"{tp2:.10f}".rstrip("0").rstrip(".")
+        p_str  = f"{price:.10f}".rstrip("0").rstrip(".")
 
         msg = (
             f"🚀 <b>CHoCH — SMC CHoCH ROC</b>\n"
             f"<b>#{base}</b>  <i>{coin_name}</i>\n"
             f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-            f"📍 <b>Giriş (CHoCH):</b> <code>{e_str}</code>\n"
+            f"📍 <b>CHoCH seviyesi:</b> <code>{e_str}</code>\n"
+            f"📊 <b>Anlık fiyat:</b> <code>{p_str}</code>\n"
+            f"🔵 <b>Limit Alış:</b> <code>{l_str}</code>  ← CHoCH+1 tick\n"
             f"🎯 <b>TP1 (trailing aktifleşir):</b> <code>{t1_str}</code>\n"
             f"🚀 <b>TP2 (tam çıkış):</b> <code>{t2_str}</code>\n"
             f"🛑 <b>STOP:</b> <code>{s_str}</code>\n"
             f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
             f"📊 <b>Hacim:</b> {vol_ratio:.2f}x (20 bar MA)\n"
-            f"🟢 <b>GİRİŞ DEĞERLENDİR!</b> Risk yönetimini unutma."
+            f"⏳ <b>RETEST BEKLENİYOR</b> — 48 saat içinde limit dolmadıysa otomatik iptal."
         )
         send_telegram_msg(msg)
 
         portfolio_id = send_to_portfolio(
-            symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop
+            symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop, limit_price=limit_price
         )
         mark_sent(symbol, "choch_v2", "smc-v2")
 
         if PORTFOLIO_URL and portfolio_id:
             try:
                 sig = {
-                    "symbol":     symbol, "type": "smc", "source": "smc",
-                    "entry":      entry,  "stop": stop,
-                    "tp1":        tp1,    "tp2": tp2,
-                    "vol_ratio":  round(vol_ratio, 2),
-                    "break_type": micro_break,
+                    "symbol":      symbol, "type": "smc", "source": "smc",
+                    "entry":       entry,  "stop": stop,
+                    "tp1":         tp1,    "tp2": tp2,
+                    "limit_price": limit_price,
+                    "vol_ratio":   round(vol_ratio, 2),
+                    "break_type":  micro_break,
                 }
                 hdrs = {"Content-Type": "application/json"}
                 if PORTFOLIO_TOKEN:

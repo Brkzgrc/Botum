@@ -158,11 +158,11 @@ def receive_signal():
         if field not in data:
             return jsonify({"error": f"missing field: {field}"}), 400
 
-    # ── AYNI SEMBOLDE AÇIK POZİSYON KONTROLÜ ──
+    # ── AYNI SEMBOLDE AÇIK/BEKLEYEN POZİSYON KONTROLÜ ──
     with _lock:
         for s in signals_db:
-            if s.get("symbol") == data["symbol"] and s.get("status") == "open" and s.get("source") == data.get("source", "bot"):
-                print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık pozisyonda", flush=True)
+            if s.get("symbol") == data["symbol"] and s.get("status") in ("open", "pending_retest") and s.get("source") == data.get("source", "bot"):
+                print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık/bekleyen pozisyonda", flush=True)
                 return jsonify({"error": "already open", "symbol": data["symbol"]}), 409
 
     now = tr_now()
@@ -174,13 +174,14 @@ def receive_signal():
         "tp1": float(data["tp1"]),
         "tp2": float(data.get("tp2") or 0) or None,
         "tp3": float(data.get("tp3") or 0) or None,
+        "limit_price": float(data.get("limit_price") or 0) or None,
         "sig_type": data.get("sig_type", data.get("type", "unknown")),
         "sub_type": data.get("sub_type", data.get("subtype", data.get("tp_system", ""))),
         "source": data.get("source", "bot"),
         "phase": data.get("phase", ""),
         "candle": data.get("candle", ""),
         "funding_neg": data.get("funding_neg", False),
-        "status": "open",
+        "status": "pending_retest" if data.get("source") in FULL_TRAIL_SOURCES else "open",
         "open_time": now.isoformat(),
         "close_time": None, "close_price": None, "close_reason": None, "close_pct": None,
         "peak_price": float(data["entry"]), "peak_pct": 0.0,
@@ -192,7 +193,7 @@ def receive_signal():
         "last_check": now.isoformat(), "checks": 0,
         "extra": {k: v for k, v in data.items() if k not in required + [
             "sig_type", "type", "sub_type", "subtype", "tp_system",
-            "source", "phase", "candle", "funding_neg", "tp2"
+            "source", "phase", "candle", "funding_neg", "tp2", "limit_price"
         ]},
     }
 
@@ -367,6 +368,10 @@ def calc_performance():
 
     for sig in all_sigs:
         status = sig.get("status", "open")
+        # pending_retest: henüz fill olmadı, istatistiğe dahil etme
+        # no_retest: fill olmadan iptal, istatistiğe dahil etme
+        if status in ("pending_retest", "no_retest"):
+            continue
         sig_type = sig.get("sig_type", "unknown")
         sub = sig.get("sub_type", "")
         source = sig.get("source", "bot")
@@ -618,6 +623,59 @@ def clear_all_signals_ui():
         signals_db.clear()
         save_signals()
     return jsonify({"ok": True, "removed": count})
+
+
+@app.route("/api/retest-filled", methods=["POST"])
+def api_retest_filled():
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    symbol     = data.get("symbol", "")
+    fill_price = float(data.get("fill_price") or 0)
+    qty        = float(data.get("qty") or 0)
+    if not symbol or not fill_price:
+        return jsonify({"error": "missing fields"}), 400
+    sym_norm = symbol.replace("/", "").upper()
+    now = tr_now()
+    with _lock:
+        for s in signals_db:
+            if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "pending_retest":
+                s["status"]        = "open"
+                s["entry"]         = fill_price
+                s["fill_qty"]      = qty
+                s["fill_time"]     = now.isoformat()
+                s["peak_price"]    = fill_price
+                s["low_price"]     = fill_price
+                s["current_price"] = fill_price
+                save_signals()
+                print(f"[RETEST] DOLDU: {sym_norm} @ {fill_price}", flush=True)
+                return jsonify({"ok": True})
+    return jsonify({"error": "pending_retest not found"}), 404
+
+
+@app.route("/api/retest-cancelled", methods=["POST"])
+def api_retest_cancelled():
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    data   = request.get_json(silent=True) or {}
+    symbol = data.get("symbol", "")
+    if not symbol:
+        return jsonify({"error": "missing symbol"}), 400
+    sym_norm = symbol.replace("/", "").upper()
+    now = tr_now()
+    with _lock:
+        for s in signals_db:
+            if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "pending_retest":
+                s["status"]       = "no_retest"
+                s["close_time"]   = now.isoformat()
+                s["close_reason"] = "no_retest"
+                save_signals()
+                print(f"[RETEST] İPTAL: {sym_norm}", flush=True)
+                return jsonify({"ok": True})
+    return jsonify({"error": "pending_retest not found"}), 404
+
 
 # ============================================================
 # PİYASA VERİSİ API
@@ -1398,12 +1456,14 @@ def pct_color(pct):
 
 def status_badge(status):
     colors = {
-        "open":      ("#3498db", "AÇIK"),
-        "win_tp1":   ("#2ecc71", "WIN (TP1)"),
-        "win_tp2":   ("#27ae60", "WIN (TP2)"),
-        "win_trail": ("#27ae60", "WIN (TRAIL)"),
-        "loss":      ("#e74c3c", "LOSS"),
-        "expired":   ("#f39c12", "EXPIRED"),
+        "open":           ("#3498db", "AÇIK"),
+        "pending_retest": ("#f39c12", "RETEST BEKLİYOR"),
+        "no_retest":      ("#95a5a6", "RETEST YOK"),
+        "win_tp1":        ("#2ecc71", "WIN (TP1)"),
+        "win_tp2":        ("#27ae60", "WIN (TP2)"),
+        "win_trail":      ("#27ae60", "WIN (TRAIL)"),
+        "loss":           ("#e74c3c", "LOSS"),
+        "expired":        ("#f39c12", "EXPIRED"),
     }
     c, label = colors.get(status, ("#8a9bb0", status.upper()))
     return f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold;white-space:nowrap">{label}</span>'
@@ -1464,8 +1524,9 @@ def dashboard():
         all_sigs = list(signals_db)
     all_sigs = [s for s in all_sigs if s.get("sig_type", "unknown") not in HIDDEN_SIG_TYPES]
 
-    open_sigs = [s for s in all_sigs if s.get("status") == "open"]
-    closed_sigs = [s for s in all_sigs if s.get("status") != "open"]
+    open_sigs    = [s for s in all_sigs if s.get("status") == "open"]
+    pending_sigs = [s for s in all_sigs if s.get("status") == "pending_retest"]
+    closed_sigs  = [s for s in all_sigs if s.get("status") not in ("open", "pending_retest")]
 
     open_rows = ""
     for sig in open_sigs[:50]:
@@ -1605,6 +1666,49 @@ def dashboard():
 </div>"""
 
     _smc_eski_section = ""
+
+    # ── Retest Bekleyenler ──────────────────────────────────────────────────────
+    pending_rows = ""
+    for sig in pending_sigs[:50]:
+        sym = sig["symbol"].replace("/USDT", "")
+        lp  = sig.get("limit_price")
+        lp_str = fmt_price(lp) if lp else "—"
+        tp1_pct = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
+        try:
+            ot = datetime.fromisoformat(sig["open_time"])
+            if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
+            elapsed_h = (now_dt - ot).total_seconds() / 3600
+            remaining_h = max(0, 48 - elapsed_h)
+            elapsed_str  = f"{int(elapsed_h)}s"
+            remaining_str = f"{int(remaining_h)}s"
+            rem_color = "#e74c3c" if remaining_h < 6 else ("#f39c12" if remaining_h < 12 else "#7f8c8d")
+        except Exception:
+            elapsed_str = remaining_str = "—"; rem_color = "#7f8c8d"
+        pending_rows += f"""<tr>
+            <td style="color:#ecf0f1"><b>{sym}</b></td>
+            <td>{fmt_price(sig['entry'])}</td>
+            <td style="color:#f39c12;font-weight:bold">{lp_str}</td>
+            <td>{fmt_price(sig['stop'])}</td>
+            <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
+            <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
+            <td style="color:{rem_color};font-size:.7rem;font-weight:bold">{remaining_str}</td>
+            <td>{analyzer_badge(sig)}</td></tr>"""
+
+    if pending_sigs:
+        _pending_section = f"""<div class="section">
+    <details data-id="pending-retest" open>
+    <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
+    <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Sembol</th><th>CHoCH (Giriş)</th><th>Limit Fiyat</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+    </tr></thead><tbody>
+        {pending_rows}
+    </tbody></table></div>
+    </details>
+</div>"""
+    else:
+        _pending_section = ""
+
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip</title>
@@ -1801,6 +1905,8 @@ function toggleType(key, btn) {{
     </tbody></table></div>
     </details>
 </div>
+
+{_pending_section}
 
 <div class="section">
     <details data-id="closed-list">
