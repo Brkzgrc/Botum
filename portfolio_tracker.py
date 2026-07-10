@@ -1857,11 +1857,17 @@ def dashboard():
         _sp_cell = fmt_price(sp) if sp else '<span style="color:#3a4a5a">—</span>'
 
         choch_val = float(sig['entry'])
+        _sp_val = float(sp) if sp else 0.0
         if lp and choch_val:
-            _drop_pct = (lp - choch_val) / choch_val * 100
+            # Sinyal fiyatından limite uzaklık: "fill için ne kadar geri çekilme lazım?"
+            if _sp_val > 0:
+                _from_sig_pct = (float(lp) - _sp_val) / _sp_val * 100
+                _pct_str = f'<span style="font-size:.6rem;color:#7f8c8d">{_from_sig_pct:+.2f}% sinyal→limit</span>'
+            else:
+                _pct_str = ''
             _choch_entry_cell = (
-                f'{fmt_price(choch_val)} / <span style="color:#f39c12;font-weight:bold">{lp_str}</span><br>'
-                f'<span style="font-size:.6rem;color:#7f8c8d">{_drop_pct:+.2f}%</span>'
+                f'{fmt_price(choch_val)} / <span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
+                + (f'<br>{_pct_str}' if _pct_str else '')
             )
         elif lp:
             _choch_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
