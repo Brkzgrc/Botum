@@ -1714,10 +1714,9 @@ def dashboard():
         choch_val = float(sig['entry'])
         if lp and choch_val:
             _drop_pct = (lp - choch_val) / choch_val * 100
-            _drop_str = f'<span style="font-size:.6rem;color:#7f8c8d">{_drop_pct:+.2f}%</span>'
             _choch_entry_cell = (
-                f'{fmt_price(choch_val)}<br>'
-                f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span> {_drop_str}'
+                f'{fmt_price(choch_val)} / <span style="color:#f39c12;font-weight:bold">{lp_str}</span><br>'
+                f'<span style="font-size:.6rem;color:#7f8c8d">{_drop_pct:+.2f}%</span>'
             )
         elif lp:
             _choch_entry_cell = f'<span style="color:#f39c12;font-weight:bold">{lp_str}</span>'
