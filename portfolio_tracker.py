@@ -35,8 +35,8 @@ GITHUB_TOKEN            = os.getenv("GITHUB_TOKEN", "")
 CMC_API_KEY             = os.getenv("CMC_API_KEY", "")
 TRADING_BOT_URL         = os.getenv("TRADING_BOT_URL", "")
 TRADING_BOT_TOKEN       = os.getenv("TRADING_BOT_TOKEN", "")
-ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -143,12 +143,17 @@ def tr_now_str():
     return tr_now().strftime("%Y-%m-%d %H:%M:%S")
 
 def _send_telegram_pt(text: str):
-    if not ANALYZER_TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     try:
         requests.post(
-            f"https://api.telegram.org/bot{ANALYZER_TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": text,
+                "message_thread_id": 2,
+                "parse_mode": "HTML",
+            },
             timeout=10,
         )
     except Exception as e:
