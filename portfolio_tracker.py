@@ -1685,10 +1685,33 @@ def dashboard():
             rem_color = "#e74c3c" if remaining_h < 6 else ("#f39c12" if remaining_h < 12 else "#7f8c8d")
         except Exception:
             elapsed_str = remaining_str = "—"; rem_color = "#7f8c8d"
+
+        # Canlı fiyat
+        _price_data = get_current_price_hl(sig["symbol"])
+        _cur = _price_data["close"] if _price_data else None
+        if _cur and lp:
+            _dist_pct = (_cur - lp) / lp * 100   # pozitif = yukarıda, limit'e inmesi lazım
+            _stop_val = float(sig.get("stop", 0))
+            if _cur <= _stop_val:
+                _price_color = "#e74c3c"          # stop altında — tehlike
+            elif _dist_pct <= 0.5:
+                _price_color = "#f39c12"          # limite çok yakın — retest kapıda
+            elif _dist_pct <= 3:
+                _price_color = "#00b4d8"          # yaklaşıyor
+            else:
+                _price_color = "#7f8c8d"          # yukarıda bekliyor
+            _dist_str = f'<span style="font-size:.6rem;color:{_price_color}">{_dist_pct:+.2f}%</span>'
+            _cur_cell = f'<span style="color:{_price_color};font-weight:bold">{fmt_price(_cur)}</span><br>{_dist_str}'
+        elif _cur:
+            _cur_cell = fmt_price(_cur)
+        else:
+            _cur_cell = '<span style="color:#3a4a5a">—</span>'
+
         pending_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td>
             <td>{fmt_price(sig['entry'])}</td>
             <td style="color:#f39c12;font-weight:bold">{lp_str}</td>
+            <td>{_cur_cell}</td>
             <td>{fmt_price(sig['stop'])}</td>
             <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
             <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
@@ -1699,9 +1722,9 @@ def dashboard():
         _pending_section = f"""<div class="section">
     <details data-id="pending-retest" open>
     <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
-    <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal.</p>
+    <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>CHoCH (Giriş)</th><th>Limit Fiyat</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+        <th>Sembol</th><th>CHoCH (Giriş)</th><th>Limit Fiyat</th><th>Anlık Fiyat</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
     </tr></thead><tbody>
         {pending_rows}
     </tbody></table></div>
@@ -1867,6 +1890,7 @@ function toggleType(key, btn) {{
 <div class="cards">
     <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
     <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
+    <div class="card"><span class="val" style="color:var(--orange)" id="c-pending">{len(pending_sigs)}</span><span class="lbl">Beklemede</span></div>
     <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
     <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
@@ -1892,6 +1916,8 @@ function toggleType(key, btn) {{
 
 {_smc_eski_section}
 
+{_pending_section}
+
 {_analyzer_section}
 
 <div class="section">
@@ -1906,8 +1932,6 @@ function toggleType(key, btn) {{
     </tbody></table></div>
     </details>
 </div>
-
-{_pending_section}
 
 <div class="section">
     <details data-id="closed-list">
