@@ -181,7 +181,29 @@ def _is_limit_filled(symbol: str, order_id) -> tuple[bool, float, float]:
 # ─── PENDING ORDER YÖNETİMİ ──────────────────────────────────────────────────
 
 def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
-    """Limit doldu: SL koy, state'i open'a çevir, WS başlat, bildir."""
+    """Limit doldu: state'i open'a çevir, SL koy, WS başlat, bildir."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Önce state'i kaydet (sl_order_id=None) — crash güvenliği
+    with _lock:
+        state = _load_state()
+        state["positions"][symbol] = {
+            "status":      "open",
+            "symbol":      symbol,
+            "entry":       fill_price,
+            "qty":         qty,
+            "stop":        float(pos["stop"]),
+            "tp1":         float(pos["tp1"]),
+            "tp2":         pos.get("tp2"),
+            "peak":        fill_price,
+            "sl_order_id": None,
+            "trailing":    False,
+            "open_time":   now,
+            "source":      pos.get("source", "smc-v2"),
+        }
+        _save_state(state)
+
+    # Sonra SL emri gönder, ID'yi state'e yaz
     sl_order_id = None
     if ENABLED:
         try:
@@ -198,27 +220,13 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
             )
             sl_order_id = sl_order["orderId"]
             print(f"[MONITOR] SL emri: {symbol} stop={sl_stop} limit={sl_limit}", flush=True)
+            with _lock:
+                s = _load_state()
+                if symbol in s["positions"]:
+                    s["positions"][symbol]["sl_order_id"] = sl_order_id
+                    _save_state(s)
         except BinanceAPIException as e:
             print(f"[MONITOR] SL emir hatası {symbol}: {e}", flush=True)
-
-    now = datetime.now(timezone.utc).isoformat()
-    with _lock:
-        state = _load_state()
-        state["positions"][symbol] = {
-            "status":      "open",
-            "symbol":      symbol,
-            "entry":       fill_price,
-            "qty":         qty,
-            "stop":        float(pos["stop"]),
-            "tp1":         float(pos["tp1"]),
-            "tp2":         pos.get("tp2"),
-            "peak":        fill_price,
-            "sl_order_id": sl_order_id,
-            "trailing":    False,
-            "open_time":   now,
-            "source":      pos.get("source", "smc-v2"),
-        }
-        _save_state(state)
 
     _notify_portfolio("/api/retest-filled", {
         "symbol":     symbol,
@@ -290,10 +298,11 @@ def _check_pending_orders():
 
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
 
-def _process_tick(symbol: str, price: float):
-    sell_reason = None
-    cancel_sl   = False
-    pos_snap    = None
+def _process_tick(symbol: str, close: float, high: float, low: float):
+    sell_reason  = None
+    close_price  = None
+    cancel_sl    = False
+    pos_snap     = None
 
     with _lock:
         state = _load_state()
@@ -304,37 +313,42 @@ def _process_tick(symbol: str, price: float):
         pos_snap = dict(pos)
 
         if not pos.get("trailing"):
-            # ── TP1 Öncesi ──────────────────────────────────────────────────
-            if price > float(pos["peak"]):
-                pos["peak"] = price
+            # Peak: mumun high'ına göre güncelle
+            if high > float(pos["peak"]):
+                pos["peak"] = high
                 state["positions"][symbol] = pos
                 _save_state(state)
 
-            if not pos.get("sl_order_id") and price <= float(pos["stop"]):
-                sell_reason = f"stop_hit={float(pos['stop']):.6g}"
+            # SL kontrolü: mumun low'una göre
+            if not pos.get("sl_order_id") and low <= float(pos["stop"]):
+                sell_reason = "stop_hit"
+                close_price = float(pos["stop"])
                 state["positions"].pop(symbol)
                 _save_state(state)
-            elif price >= float(pos["tp1"]):
+            # TP1 kontrolü: mumun high'ına göre
+            elif high >= float(pos["tp1"]):
                 cancel_sl       = True
                 pos["tp1_hit"]  = True
                 pos["trailing"] = True
-                pos["peak"]     = max(price, float(pos["peak"]))
+                pos["peak"]     = max(high, float(pos["peak"]))
                 state["positions"][symbol] = pos
                 _save_state(state)
                 pos_snap = dict(pos)
-                print(f"[MONITOR] TP1 HIT — {symbol} @ {price:.6g} | trailing başladı", flush=True)
+                print(f"[MONITOR] TP1 HIT — {symbol} @ {high:.6g} | trailing başladı", flush=True)
 
         else:
-            # ── TP1 Sonrası Trailing ─────────────────────────────────────────
-            if price > float(pos["peak"]):
-                pos["peak"] = price
+            # Peak: mumun high'ına göre güncelle
+            if high > float(pos["peak"]):
+                pos["peak"] = high
                 state["positions"][symbol] = pos
                 _save_state(state)
                 pos_snap = dict(pos)
 
+            # Trail kontrolü: mumun low'una göre
             trail_stop = float(pos["peak"]) * TRAIL_PCT
-            if price <= trail_stop:
-                sell_reason = f"trail_stop={trail_stop:.6g}"
+            if low <= trail_stop:
+                sell_reason = "trail_stop"
+                close_price = trail_stop
                 state["positions"].pop(symbol)
                 _save_state(state)
 
@@ -343,10 +357,21 @@ def _process_tick(symbol: str, price: float):
         _cancel_sl(symbol, pos_snap.get("sl_order_id"))
 
     if sell_reason:
-        qty = _round_qty(float(pos_snap.get("qty", 0)), symbol)
+        entry = float(pos_snap.get("entry", 0))
+        qty   = _round_qty(float(pos_snap.get("qty", 0)), symbol)
         _market_sell(symbol, qty, sell_reason)
         _stop_stream(symbol)
-        print(f"[MONITOR] Pozisyon kapatıldı: {symbol} ({sell_reason})", flush=True)
+        pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
+        emoji = "💰" if pct > 0 else "🔴"
+        _send_telegram(
+            f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
+            f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+        )
+        _notify_portfolio("/api/position-closed", {
+            "symbol": symbol, "reason": sell_reason,
+            "close_price": close_price, "pnl_pct": pct,
+        })
+        print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
 
 
 # ─── WEBSOCKET ───────────────────────────────────────────────────────────────
@@ -361,7 +386,8 @@ def _make_handler(symbol: str):
         k = msg["k"]
         if not k.get("x"):   # sadece kapanan mum
             return
-        _process_tick(symbol, float(k["c"]))
+        # Peak için high, SL/trail için low, bilgi için close
+        _process_tick(symbol, float(k["c"]), float(k["h"]), float(k["l"]))
     return handler
 
 
@@ -412,7 +438,18 @@ def _periodic_check():
                         s["positions"].pop(sym, None)
                         _save_state(s)
                     _stop_stream(sym)
-                    print(f"[MONITOR] SL doldu (Binance): {sym}", flush=True)
+                    entry = float(pos.get("entry", 0))
+                    sl    = float(pos.get("stop", 0))
+                    pct   = round((sl - entry) / entry * 100, 2) if entry else 0
+                    _send_telegram(
+                        f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
+                        f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
+                    )
+                    _notify_portfolio("/api/position-closed", {
+                        "symbol": sym, "reason": "sl_binance",
+                        "close_price": sl, "pnl_pct": pct,
+                    })
+                    print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
 
         except Exception as e:
             print(f"[MONITOR] Periyodik kontrol hatası: {e}", flush=True)

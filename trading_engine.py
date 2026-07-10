@@ -206,22 +206,21 @@ def execute(signal: dict):
               f"| boyut=${pos_size:.2f} | tahmini_qty={qty_estimate}", flush=True)
 
         limit_order_id = None
-        if ENABLED:
-            try:
-                lp = _round_price(limit_price, symbol)
-                limit_order = get_client().create_order(
-                    symbol=symbol,
-                    side="BUY",
-                    type="LIMIT",
-                    timeInForce="GTC",
-                    quantity=qty_estimate,
-                    price=lp,
-                )
-                limit_order_id = limit_order["orderId"]
-                print(f"[TRADE] LİMİT BUY OK: {symbol} {qty_estimate} @ {lp}", flush=True)
-            except BinanceAPIException as e:
-                print(f"[TRADE] LİMİT BUY HATASI {symbol}: {e}", flush=True)
-                return
+        try:
+            lp = _round_price(limit_price, symbol)
+            limit_order = get_client().create_order(
+                symbol=symbol,
+                side="BUY",
+                type="LIMIT",
+                timeInForce="GTC",
+                quantity=qty_estimate,
+                price=lp,
+            )
+            limit_order_id = limit_order["orderId"]
+            print(f"[TRADE] LİMİT BUY OK: {symbol} {qty_estimate} @ {lp}", flush=True)
+        except BinanceAPIException as e:
+            print(f"[TRADE] LİMİT BUY HATASI {symbol}: {e}", flush=True)
+            return
 
         # ── Pending State Kaydet ────────────────────────────────────────────
         now = datetime.now(timezone.utc).isoformat()
