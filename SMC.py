@@ -358,17 +358,44 @@ def calc_rsi(df, period=14):
 # ============================================================
 # 5b) TICK SIZE YARDIMCI
 # ============================================================
+_tick_cache: dict = {}
+
 def _get_tick_size(symbol):
-    """PRICE_FILTER'dan (tick_size, precision) döner."""
+    """PRICE_FILTER'dan (tick_size, precision) döner. Binance REST ile garanti alır."""
+    if symbol in _tick_cache:
+        return _tick_cache[symbol]
+
+    # 1) ccxt markets önbelleği
     try:
         filters = exchange.markets.get(symbol, {}).get("info", {}).get("filters", [])
         for f in filters:
             if f.get("filterType") == "PRICE_FILTER":
                 tick = float(f["tickSize"])
-                precision = max(0, int(round(-math.log10(tick))))
-                return tick, precision
+                if tick > 0:
+                    precision = max(0, int(round(-math.log10(tick))))
+                    _tick_cache[symbol] = (tick, precision)
+                    return tick, precision
     except Exception:
         pass
+
+    # 2) Binance REST yedek
+    try:
+        pair = symbol.replace("/", "")
+        r = requests.get(
+            "https://api.binance.com/api/v3/exchangeInfo",
+            params={"symbol": pair}, timeout=5
+        )
+        if r.status_code == 200:
+            for f in r.json().get("symbols", [{}])[0].get("filters", []):
+                if f.get("filterType") == "PRICE_FILTER":
+                    tick = float(f["tickSize"])
+                    if tick > 0:
+                        precision = max(0, int(round(-math.log10(tick))))
+                        _tick_cache[symbol] = (tick, precision)
+                        return tick, precision
+    except Exception:
+        pass
+
     return None, 8
 
 def _choch_plus_one_tick(price, symbol):
