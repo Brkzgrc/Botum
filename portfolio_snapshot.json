@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-10 14:05:23",
+  "updated_at": "2026-07-10 14:35:55",
   "performance": {
     "total": 6,
-    "open": 0,
+    "open": 2,
     "closed": 0,
     "wins": 0,
     "win_tp2": 0,
@@ -38,17 +38,55 @@
         "wr": 0
       }
     },
-    "by_type": {},
-    "daily": {},
-    "weekly": {},
-    "monthly": {}
+    "by_type": {
+      "SMC CHoCH ROC": {
+        "total": 2,
+        "open": 2,
+        "wins": 0,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": 0.0,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "win_rate": 0,
+        "avg_peak": 0,
+        "tp2_rate": 0,
+        "expired_pnl": 0.0,
+        "win_loss_pnl": 0.0
+      }
+    },
+    "daily": {
+      "2026-07-10": {
+        "trades": 2,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "weekly": {
+      "2026-W27": {
+        "trades": 2,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "monthly": {
+      "2026-07": {
+        "trades": 2,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    }
   },
-  "open": [],
-  "closed": [
+  "open": [
     {
       "id": "BROCCOLI714_USDT_1783681207",
       "symbol": "BROCCOLI714/USDT",
-      "entry": 0.01267,
+      "entry": 0.01268,
       "stop": 0.01230815,
       "tp1": 0.01303185,
       "tp2": 0.0133937,
@@ -61,28 +99,67 @@
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-10T14:00:07.911592+03:00",
+      "status": "open",
+      "open_time": "2026-07-10T14:34:55.595616+03:00",
       "close_time": null,
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.01267,
+      "peak_price": 0.01268,
       "peak_pct": 0.0,
       "low_price": 0.01267,
-      "low_pct": 0.0,
+      "low_pct": -0.08,
       "current_price": 0.01267,
-      "current_pct": 0.0,
+      "current_pct": -0.08,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-10T14:00:07.911592+03:00",
-      "checks": 0,
+      "last_check": "2026-07-10T14:34:57.493454+03:00",
+      "checks": 1,
       "extra": {
         "tp3": null
       }
     },
+    {
+      "id": "ME_USDT_1783666807",
+      "symbol": "ME/USDT",
+      "entry": 0.06436,
+      "stop": 0.0602174,
+      "tp1": 0.0684826,
+      "tp2": 0.0726152,
+      "tp3": null,
+      "limit_price": 0.06436,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-10T14:34:55.595616+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.06436,
+      "peak_pct": 0.0,
+      "low_price": 0.0639,
+      "low_pct": -0.71,
+      "current_price": 0.06393,
+      "current_pct": -0.67,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-10T10:00:14.002336+03:00",
+      "last_check": "2026-07-10T14:34:57.493454+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      }
+    }
+  ],
+  "closed": [
     {
       "id": "ACT_USDT_1783674001",
       "symbol": "ACT/USDT",
@@ -115,43 +192,6 @@
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T12:00:09.152657+03:00",
       "last_check": "2026-07-10T12:00:01.538390+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
-    {
-      "id": "ME_USDT_1783666807",
-      "symbol": "ME/USDT",
-      "entry": 0.06435,
-      "stop": 0.0602174,
-      "tp1": 0.0684826,
-      "tp2": 0.0726152,
-      "tp3": null,
-      "limit_price": 0.06436,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-10T10:00:07.914718+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.06435,
-      "peak_pct": 0.0,
-      "low_price": 0.06435,
-      "low_pct": 0.0,
-      "current_price": 0.06435,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-10T10:00:14.002336+03:00",
-      "last_check": "2026-07-10T10:00:07.914718+03:00",
       "checks": 0,
       "extra": {
         "tp3": null
