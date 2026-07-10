@@ -2,7 +2,8 @@
 """
 Portföy Takip Sistemi v3.0
 ===========================
-SMC CHoCH ROC çıkış: TP seviyesine ulaşınca %2.5 trailing başlar → peak'ten -%2.5 ile çıkar.
+SMC CHoCH ROC giriş: CHoCH+1tick LIMIT BUY → retest bekler (48H). Fill sonrası SL yerleşir.
+SMC CHoCH ROC çıkış: TP1 hit → %2.5 trailing → peak'ten -%2.5 ile çıkar.
 PUMP çıkış: hard SL | hard TP | 6h expire | trailing yok.
 
 Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
@@ -1896,7 +1897,7 @@ function toggleType(key, btn) {{
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
-    <p class="note">SMC CHoCH ROC: TP1 hit → %2.5 trailing başlar → peak'ten -%2.5 ile çıkar | PUMP: hard SL, hard TP, 6h expire.</p>
+    <p class="note">SMC CHoCH ROC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → %2.5 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
         <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th>
@@ -1932,7 +1933,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    SMC CHoCH ROC: TP1 hit → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
+    SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 </body></html>"""
@@ -2023,7 +2024,7 @@ def snapshot_loop():
 if __name__ == "__main__":
     print("=" * 50, flush=True)
     print("📊 Portföy Takip Sistemi v3.0", flush=True)
-    print("   SMC CHoCH ROC: TP1 hit → %2.5 trailing → peak'ten -%2.5 çıkış", flush=True)
+    print("   SMC CHoCH ROC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing", flush=True)
     print("   PUMP: hard SL | hard TP | 6h expire | trailing yok", flush=True)
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
