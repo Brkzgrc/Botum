@@ -104,13 +104,17 @@ def _one_tick_above(price: float, symbol: str) -> float:
     """CHoCH seviyesi + 1 tick → limit buy garantisi için."""
     info = _get_symbol_info(symbol)
     if not info:
+        print(f"[TRADE] _one_tick_above: symbol info yok, price aynen döndü: {price}", flush=True)
         return price
     for f in info.get("filters", []):
         if f["filterType"] == "PRICE_FILTER":
             tick = float(f["tickSize"])
             precision = max(0, int(round(-math.log10(tick))))
             floored = math.floor(price / tick) * tick
-            return round(floored + tick, precision)
+            result = round(floored + tick, precision)
+            print(f"[TRADE] _one_tick_above: {symbol} | choch={price} tick={tick} → limit={result}", flush=True)
+            return result
+    print(f"[TRADE] _one_tick_above: PRICE_FILTER bulunamadı {symbol}, price aynen döndü: {price}", flush=True)
     return price
 
 
