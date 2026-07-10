@@ -30,11 +30,13 @@ TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
-AUTH_TOKEN        = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
-GITHUB_TOKEN      = os.getenv("GITHUB_TOKEN", "")
-CMC_API_KEY       = os.getenv("CMC_API_KEY", "")
-TRADING_BOT_URL   = os.getenv("TRADING_BOT_URL", "")
-TRADING_BOT_TOKEN = os.getenv("TRADING_BOT_TOKEN", "")
+AUTH_TOKEN              = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+GITHUB_TOKEN            = os.getenv("GITHUB_TOKEN", "")
+CMC_API_KEY             = os.getenv("CMC_API_KEY", "")
+TRADING_BOT_URL         = os.getenv("TRADING_BOT_URL", "")
+TRADING_BOT_TOKEN       = os.getenv("TRADING_BOT_TOKEN", "")
+ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID", "")
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -139,6 +141,18 @@ def tr_now():
 
 def tr_now_str():
     return tr_now().strftime("%Y-%m-%d %H:%M:%S")
+
+def _send_telegram_pt(text: str):
+    if not ANALYZER_TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{ANALYZER_TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[PT] Telegram hata: {e}", flush=True)
 
 # ============================================================
 # SİNYAL ALMA ENDPOINT'İ
@@ -314,6 +328,11 @@ def check_open_positions():
                          "stop": "🔴", "expired": "⏰"}.get(close_reason, "⚪")
                 print(f"  {emoji} KAPANDI: {symbol} | {close_reason.upper()} | "
                       f"{sig['close_pct']:+.2f}% | Peak: {sig['peak_pct']:+.2f}%", flush=True)
+                _send_telegram_pt(
+                    f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
+                    f"Sebep: {close_reason.upper()} | P&L: {sig['close_pct']:+.2f}%\n"
+                    f"Giriş: {entry:.6g} | Çıkış: ~{close_price:.6g} | Peak: {sig['peak_pct']:+.2f}%"
+                )
                 try:
                     _update_archive_outcome(sig.get("id", ""), close_reason,
                                             sig["close_pct"], sig["peak_pct"], sig["open_time"])
@@ -355,6 +374,12 @@ def check_pending_retests():
                     sig["close_reason"] = "no_retest"
                 need_save = True
                 print(f"[PENDING] 48H doldu, retest yok: {symbol}", flush=True)
+                _send_telegram_pt(
+                    f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n"
+                    f"48 saat içinde limit ({float(lp):.6g} $ ) dolmadı. Sinyal iptal edildi."
+                    if lp else
+                    f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n48 saat doldu, sinyal iptal edildi."
+                )
                 continue
         except Exception:
             pass
@@ -388,6 +413,11 @@ def check_pending_retests():
                 sig["tp1_hit"]       = False
             need_save = True
             print(f"[PENDING] RETEST DOLDU (simülasyon): {symbol} @ {entry}", flush=True)
+            _send_telegram_pt(
+                f"✅ <b>RETEST DOLDU — {symbol}</b>\n"
+                f"Limit seviyesi ({entry:.6g} $) test edildi.\n"
+                f"Stop: {stop:.6g} | TP1: {tp1:.6g}"
+            )
 
     if need_save:
         with _lock:

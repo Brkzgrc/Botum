@@ -310,6 +310,10 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         if pos is None or pos.get("status") == "pending":
             return
 
+        # Satış işlemi devam ediyorsa bu tick'i atla
+        if pos.get("closing"):
+            return
+
         pos_snap = dict(pos)
 
         if not pos.get("trailing"):
@@ -323,7 +327,8 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             if not pos.get("sl_order_id") and low <= float(pos["stop"]):
                 sell_reason = "stop_hit"
                 close_price = float(pos["stop"])
-                state["positions"].pop(symbol)
+                pos["closing"] = True
+                state["positions"][symbol] = pos
                 _save_state(state)
             # TP1 kontrolü: mumun high'ına göre
             elif high >= float(pos["tp1"]):
@@ -349,7 +354,8 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             if low <= trail_stop:
                 sell_reason = "trail_stop"
                 close_price = trail_stop
-                state["positions"].pop(symbol)
+                pos["closing"] = True
+                state["positions"][symbol] = pos
                 _save_state(state)
 
     # ── Lock dışı işlemler (Binance API çağrıları) ───────────────────────────
@@ -359,19 +365,32 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
     if sell_reason:
         entry = float(pos_snap.get("entry", 0))
         qty   = _round_qty(float(pos_snap.get("qty", 0)), symbol)
-        _market_sell(symbol, qty, sell_reason)
-        _stop_stream(symbol)
-        pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
-        emoji = "💰" if pct > 0 else "🔴"
-        _send_telegram(
-            f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
-            f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
-        )
-        _notify_portfolio("/api/position-closed", {
-            "symbol": symbol, "reason": sell_reason,
-            "close_price": close_price, "pnl_pct": pct,
-        })
-        print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
+        ok    = _market_sell(symbol, qty, sell_reason)
+        if ok:
+            with _lock:
+                s = _load_state()
+                s["positions"].pop(symbol, None)
+                _save_state(s)
+            _stop_stream(symbol)
+            pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
+            emoji = "💰" if pct > 0 else "🔴"
+            _send_telegram(
+                f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
+                f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+            )
+            _notify_portfolio("/api/position-closed", {
+                "symbol": symbol, "reason": sell_reason,
+                "close_price": close_price, "pnl_pct": pct,
+            })
+            print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
+        else:
+            # Satış başarısız: closing bayrağını kaldır, sonraki tick'te tekrar dene
+            with _lock:
+                s = _load_state()
+                if symbol in s["positions"]:
+                    s["positions"][symbol].pop("closing", None)
+                    _save_state(s)
+            print(f"[MONITOR] SATIŞ BAŞARISIZ: {symbol} ({sell_reason}), sonraki tick tekrar dener", flush=True)
 
 
 # ─── WEBSOCKET ───────────────────────────────────────────────────────────────

@@ -205,9 +205,25 @@ def execute(signal: dict):
         print(f"[TRADE] {symbol} | limit={limit_price:.6g} stop={stop:.6g} tp1={tp1:.6g} "
               f"| boyut=${pos_size:.2f} | tahmini_qty={qty_estimate}", flush=True)
 
-        limit_order_id = None
+        # ── Önce state'e pending kaydet (limit_order_id=None) — crash güvenliği ──
+        now = datetime.now(timezone.utc).isoformat()
+        positions[symbol] = {
+            "status":          "pending",
+            "symbol":          symbol,
+            "limit_order_id":  None,
+            "limit_price":     limit_price,
+            "pos_size_usdt":   pos_size,
+            "stop":            stop,
+            "tp1":             tp1,
+            "tp2":             tp2,
+            "open_time":       now,
+            "source":          signal.get("source", "smc-v2"),
+        }
+        state["positions"] = positions
+        save_state(state)
+
+        lp = _round_price(limit_price, symbol)
         try:
-            lp = _round_price(limit_price, symbol)
             limit_order = get_client().create_order(
                 symbol=symbol,
                 side="BUY",
@@ -218,25 +234,15 @@ def execute(signal: dict):
             )
             limit_order_id = limit_order["orderId"]
             print(f"[TRADE] LİMİT BUY OK: {symbol} {qty_estimate} @ {lp}", flush=True)
+            positions[symbol]["limit_order_id"] = limit_order_id
+            state["positions"] = positions
+            save_state(state)
         except BinanceAPIException as e:
             print(f"[TRADE] LİMİT BUY HATASI {symbol}: {e}", flush=True)
+            positions.pop(symbol, None)
+            state["positions"] = positions
+            save_state(state)
             return
 
-        # ── Pending State Kaydet ────────────────────────────────────────────
-        now = datetime.now(timezone.utc).isoformat()
-        positions[symbol] = {
-            "status":          "pending",
-            "symbol":          symbol,
-            "limit_order_id":  limit_order_id,
-            "limit_price":     limit_price,
-            "pos_size_usdt":   pos_size,
-            "stop":            stop,
-            "tp1":             tp1,
-            "tp2":             tp2,
-            "open_time":       now,   # CHoCH ateşlenme zamanı (48H sayacı buradan başlar)
-            "source":          signal.get("source", "smc-v2"),
-        }
-        state["positions"] = positions
-        save_state(state)
         print(f"[TRADE] PENDING kaydedildi: {symbol} | limit @ {limit_price:.6g} | "
               f"48H retest bekleniyor", flush=True)
