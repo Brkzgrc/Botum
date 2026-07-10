@@ -404,9 +404,11 @@ def _choch_plus_one_tick(price, symbol):
     """CHoCH seviyesi + 1 tick — limit buy fiyatı."""
     tick, precision = _get_tick_size(symbol)
     if tick is None:
+        print(f"[SMC] _choch_plus_one_tick: tick bulunamadı {symbol}, choch={price} aynen döndü", flush=True)
         return price, price
     floored = math.floor(price / tick) * tick
     limit   = round(floored + tick, precision)
+    print(f"[SMC] _choch_plus_one_tick: {symbol} | choch={price} tick={tick} → limit={limit}", flush=True)
     return limit, tick
 
 # ============================================================
