@@ -50,11 +50,80 @@ Opsiyonel: `source` ("smc"), `tp2`, `tp3`, sistem-spesifik metrikler
 ## Sistem Mimarisi
 
 ```
-bot.py        → sinyal → Telegram thread 5 (TELEGRAM_TOKEN)
-               → HTTP  → claude_analyzer.py → karar → Telegram (ANALYZER_TELEGRAM_TOKEN)
+┌─── SİNYAL KAYNAKLARI ───────────────────────────────────────────────┐
+│                                                                      │
+│  SMC.py ──────────────────────────────────────► Telegram (kendi botu)
+│    │ send_to_portfolio(signal_price=price)                           │
+│    └──────────────────────────────────────────► portfolio_tracker    │
+│                                                  /api/signal         │
+│  bot.py ──────────────────────────────────────► Telegram (thread 5) │
+│    │ HTTP                                                            │
+│    └──────────────────────────────────────────► portfolio_tracker    │
+│                                                  /api/analyze        │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─── portfolio_tracker.py  (Render — her zaman çalışır) ──────────────┐
+│                                                                      │
+│  /api/signal   → signals_db'ye ekle (status: pending_retest)        │
+│  /api/analyze  → claude_analyzer.process_and_send() [thread]        │
+│                                                                      │
+│  position_checker_loop() [5dk]:                                      │
+│    ├── check_pending_retests()                                       │
+│    │     ├── 48H doldu   → no_retest  + Telegram bildirimi          │
+│    │     └── low ≤ limit → open       + Telegram bildirimi          │
+│    └── check_open_positions()                                        │
+│          ├── stop/trail/tp2/expire → closed + Telegram bildirimi    │
+│          └── _update_archive_outcome() → learning_archive.json      │
+│                                                                      │
+│  /api/retest-filled    ← position_monitor (bot açıkken)             │
+│  /api/retest-cancelled ← position_monitor (bot açıkken)             │
+│  /api/position-closed  ← position_monitor (bot açıkken)             │
+└───────────────┬─────────────────────────────────────────────────────┘
+                │
+        ┌───────┴───────────────────────────┐
+        ▼                                   ▼
+┌─── claude_analyzer.py ──────┐   ┌─── trading_engine.py ────────────┐
+│                              │   │                                   │
+│ process_and_send(signal)     │   │ execute(signal)                   │
+│ → Binance TF verisi çeker    │   │ → state'e pending yaz (ID=None)  │
+│ → F&G, dominans, portfolio  │   │ → Binance LIMIT BUY emri         │
+│ → Claude API karar üretir    │   │ → orderId state'e güncelle       │
+│ → ANALYZER_TELEGRAM_TOKEN   │   │ → hata olursa state temizle      │
+│ → /api/signal/{id}/analyzer  │   │                                   │
+│   PATCH ile DB'yi güncelle   │   │ TRADING_ENABLED=false →          │
+└──────────────────────────────┘   │ simülasyon (Binance'e git yok)   │
+                                   └──────────────┬────────────────────┘
+                                                  │ trade_state.json
+                                                  ▼
+                                   ┌─── position_monitor.py ──────────┐
+                                   │  (bot servisiyle çalışır)        │
+                                   │                                   │
+                                   │ _check_pending_orders() [60s]:   │
+                                   │   ├── limit fill → _activate     │
+                                   │   │   → SL emri + WS başlat     │
+                                   │   │   → /api/retest-filled       │
+                                   │   └── 48H → _cancel_pending      │
+                                   │       → /api/retest-cancelled    │
+                                   │                                   │
+                                   │ _process_tick(close, high, low): │
+                                   │   ├── peak güncelle (high)        │
+                                   │   ├── SL hit (low)               │
+                                   │   │   closing=True → sell        │
+                                   │   │   → /api/position-closed     │
+                                   │   ├── TP1 hit → trailing modu    │
+                                   │   └── trail stop (low)           │
+                                   │       closing=True → sell        │
+                                   │       → /api/position-closed     │
+                                   └───────────────────────────────────┘
 
-SMC.py        → sinyal → kendi Telegram botu
-               → [İLERDE] claude_analyzer.py → karar → Telegram (ANALYZER_TELEGRAM_TOKEN)
+Kalıcı Dosyalar:
+  trade_state.json       → position_monitor ↔ trading_engine (ortak)
+  portfolio_signals.json → portfolio_tracker signals_db (tüm geçmiş)
+  learning_archive.json  → claude_analyzer arşiv (sonuç öğrenme)
+
+Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
+     fiyat bazlı retest/kapanış takibini devam ettirir.
 ```
 
 ## Environment Variables (Render — bot.py servisi)
@@ -194,7 +263,7 @@ Her analiz/backtest çalıştırıldığında sonuç dosyası şu formatta adlan
 
 ---
 
-## Al-Sat Bot Planı (Henüz Yazılmadı — Onaylanmış Tasarım)
+## Al-Sat Bot Planı (Yazıldı — Aktif)
 
 ### Genel Kurallar
 - Her SMC-v2 sinyali otomatik trade olur — ANTON filtresi YOK, her sinyale giriş
@@ -235,14 +304,14 @@ pozisyon_büyüklüğü = min(müsait_nakit / kalan_slot_sayısı, 20_000)
 - **TP1 öncesi crash:** Binance'teki hard SL emri hâlâ ayakta — zarar korunuyor
 - **TP1 sonrası crash:** `trade_state.json`'da `"trailing": true` yazıyor — bot yeniden başlayınca kaldığı yerden devam eder
 
-### Yazılacak Dosyalar
+### Yazılan Dosyalar
 | Dosya | Görev |
 |---|---|
-| `trading_engine.py` | Sinyal alır, Binance'e buy + stop-loss emri gönderir |
+| `trading_engine.py` | Sinyal alır, Binance'e LIMIT BUY emri gönderir (CHoCH+1tick) |
 | `position_monitor.py` | WebSocket fiyat takibi, trailing yönetimi, kapanış |
 | `trade_state.json` | Açık pozisyonların kalıcı state dosyası |
 
-Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısından sonra `trading_engine.execute(signal)` çağrılacak.
+Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısından sonra `trading_engine.execute(signal)` çağrılacak. (Henüz bağlı değil — SMC.py onayı bekleniyor.)
 
 ### Henüz Netleşmeyenler
 - Başlangıç sermayesi (ne olursa olsun 5'e bölünerek başlanacak, sabit değer gerekmez)
