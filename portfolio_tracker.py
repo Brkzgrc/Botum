@@ -1709,9 +1709,9 @@ def dashboard():
 
         pending_rows += f"""<tr>
             <td style="color:#ecf0f1"><b>{sym}</b></td>
+            <td>{_cur_cell}</td>
             <td>{fmt_price(sig['entry'])}</td>
             <td style="color:#f39c12;font-weight:bold">{lp_str}</td>
-            <td>{_cur_cell}</td>
             <td>{fmt_price(sig['stop'])}</td>
             <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
             <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
@@ -1724,7 +1724,7 @@ def dashboard():
     <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>CHoCH (Giriş)</th><th>Limit Fiyat</th><th>Anlık Fiyat</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
+        <th>Sembol</th><th>Anlık Fiyat</th><th>CHoCH (Giriş)</th><th>Limit Fiyat</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
     </tr></thead><tbody>
         {pending_rows}
     </tbody></table></div>
@@ -1889,8 +1889,8 @@ function toggleType(key, btn) {{
 
 <div class="cards">
     <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
-    <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-pending">{len(pending_sigs)}</span><span class="lbl">Beklemede</span></div>
+    <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
     <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
     <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
