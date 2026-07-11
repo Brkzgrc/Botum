@@ -1,20 +1,20 @@
 {
-  "updated_at": "2026-07-12 01:55:27",
+  "updated_at": "2026-07-12 02:25:35",
   "performance": {
     "total": 34,
-    "open": 5,
-    "closed": 3,
+    "open": 4,
+    "closed": 4,
     "wins": 1,
     "win_tp2": 0,
-    "losses": 0,
+    "losses": 1,
     "expired": 0,
     "tp1_hits": 2,
-    "total_pnl": 0.41,
-    "win_loss_pnl": 0.41,
+    "total_pnl": -0.88,
+    "win_loss_pnl": -0.88,
     "expired_pnl": 0.0,
-    "avg_peak": 1.9,
-    "win_rate": 33.3,
-    "real_win_rate": 100.0,
+    "avg_peak": 1.55,
+    "win_rate": 25.0,
+    "real_win_rate": 50.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -24,11 +24,11 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 2,
+        "total": 3,
         "wins": 0,
-        "losses": 0,
-        "pnl": 0.0,
-        "wr": 0
+        "losses": 1,
+        "pnl": -1.29,
+        "wr": 0.0
       },
       "riskli": {
         "total": 0,
@@ -41,28 +41,28 @@
     "by_type": {
       "SMC CHoCH ROC": {
         "total": 8,
-        "open": 5,
+        "open": 4,
         "wins": 1,
-        "losses": 0,
+        "losses": 1,
         "expired": 0,
         "tp1_hits": 2,
-        "total_pnl": 0.41,
+        "total_pnl": -0.88,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 100.0,
-        "avg_peak": 1.9,
+        "win_rate": 50.0,
+        "avg_peak": 1.55,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 0.41
+        "win_loss_pnl": -0.88
       }
     },
     "daily": {
       "2026-07-11": {
         "trades": 7,
-        "pnl": 0.41,
+        "pnl": -0.8800000000000001,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       },
       "2026-07-10": {
         "trades": 1,
@@ -74,61 +74,21 @@
     "weekly": {
       "2026-W27": {
         "trades": 8,
-        "pnl": 0.41,
+        "pnl": -0.8800000000000001,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       }
     },
     "monthly": {
       "2026-07": {
         "trades": 8,
-        "pnl": 0.41,
+        "pnl": -0.8800000000000001,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       }
     }
   },
   "open": [
-    {
-      "id": "AXS_USDT_1783749607",
-      "symbol": "AXS/USDT",
-      "entry": 1.012,
-      "stop": 0.99898,
-      "tp1": 1.02702,
-      "tp2": 1.04104,
-      "tp3": null,
-      "limit_price": 1.013,
-      "signal_price": 1.017,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-11T09:00:07.940099+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 1.017,
-      "peak_pct": 0.49,
-      "low_price": 1.005,
-      "low_pct": -0.69,
-      "current_price": 1.005,
-      "current_pct": -0.69,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-11T09:00:13.322213+03:00",
-      "last_check": "2026-07-12T01:52:15.973993+03:00",
-      "checks": 177,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 198.63,
-      "fill_time": "2026-07-11T10:52:45.990093+03:00"
-    },
     {
       "id": "AWE_USDT_1783749606",
       "symbol": "AWE/USDT",
@@ -153,16 +113,16 @@
       "close_pct": null,
       "peak_price": 0.06822,
       "peak_pct": 1.26,
-      "low_price": 0.06386,
-      "low_pct": -5.21,
-      "current_price": 0.06386,
-      "current_pct": -5.21,
+      "low_price": 0.06367,
+      "low_pct": -5.49,
+      "current_price": 0.06378,
+      "current_pct": -5.33,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-11T09:00:13.964446+03:00",
-      "last_check": "2026-07-12T01:52:15.973993+03:00",
-      "checks": 177,
+      "last_check": "2026-07-12T02:23:07.697711+03:00",
+      "checks": 183,
       "extra": {
         "tp3": null
       },
@@ -195,14 +155,14 @@
       "peak_pct": 2.2,
       "low_price": 0.00717,
       "low_pct": -1.51,
-      "current_price": 0.00731,
-      "current_pct": 0.41,
+      "current_price": 0.00726,
+      "current_pct": -0.27,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-12T01:52:15.973993+03:00",
-      "checks": 193,
+      "last_check": "2026-07-12T02:23:07.697711+03:00",
+      "checks": 199,
       "extra": {
         "tp3": null
       }
@@ -233,14 +193,14 @@
       "peak_pct": 0.53,
       "low_price": 0.371,
       "low_pct": -1.85,
-      "current_price": 0.372,
-      "current_pct": -1.59,
+      "current_price": 0.373,
+      "current_pct": -1.32,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-12T01:52:15.973993+03:00",
-      "checks": 250,
+      "last_check": "2026-07-12T02:23:07.697711+03:00",
+      "checks": 256,
       "extra": {
         "tp3": null
       }
@@ -271,14 +231,14 @@
       "peak_pct": 0.55,
       "low_price": 0.1064,
       "low_pct": -1.66,
-      "current_price": 0.1074,
-      "current_pct": -0.74,
+      "current_price": 0.1068,
+      "current_pct": -1.29,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-12T01:52:15.973993+03:00",
-      "checks": 258,
+      "last_check": "2026-07-12T02:23:07.697711+03:00",
+      "checks": 264,
       "extra": {
         "tp3": null
       }
@@ -1120,6 +1080,46 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "AXS_USDT_1783749607",
+      "symbol": "AXS/USDT",
+      "entry": 1.012,
+      "stop": 0.99898,
+      "tp1": 1.02702,
+      "tp2": 1.04104,
+      "tp3": null,
+      "limit_price": 1.013,
+      "signal_price": 1.017,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "loss",
+      "open_time": "2026-07-11T09:00:07.940099+03:00",
+      "close_time": "2026-07-12T02:23:07.697711+03:00",
+      "close_price": 0.99898,
+      "close_reason": "stop",
+      "close_pct": -1.29,
+      "peak_price": 1.017,
+      "peak_pct": 0.49,
+      "low_price": 0.996,
+      "low_pct": -1.58,
+      "current_price": 0.996,
+      "current_pct": -1.58,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-11T09:00:13.322213+03:00",
+      "last_check": "2026-07-12T02:23:07.697711+03:00",
+      "checks": 183,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 198.63,
+      "fill_time": "2026-07-11T10:52:45.990093+03:00"
     },
     {
       "id": "THETA_USDT_1783738803",
