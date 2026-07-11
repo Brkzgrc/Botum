@@ -1613,11 +1613,13 @@ if (_coinParam) {{
 def fmt_price(p):
     if p is None: return "—"
     p = float(p)
-    if p >= 100:    return f"{p:.2f}"
-    if p >= 1:      return f"{p:.4f}".rstrip('0').rstrip('.')
-    if p >= 0.01:   return f"{p:.4f}".rstrip('0').rstrip('.')
-    if p >= 0.0001: return f"{p:.6f}".rstrip('0').rstrip('.')
-    return f"{p:.8f}".rstrip('0').rstrip('.')
+    if p <= 0: return "0"
+    if p >= 100: return f"{p:.2f}"
+    if p >= 1:   return f"{p:.4f}".rstrip('0').rstrip('.')
+    import math
+    # İlk anlamlı haneden itibaren 4 rakam — Binance tick size'larıyla örtüşür
+    decimals = min(8, -math.floor(math.log10(p)) + 3)
+    return f"{p:.{decimals}f}".rstrip('0').rstrip('.')
 
 def pct_color(pct):
     if pct is None: return "#8a9bb0", "—"
