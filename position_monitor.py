@@ -22,9 +22,11 @@ PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
 TRAIL_PCT        = 0.975   # %2.5 trailing
-PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat)
+PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat) — monitoring ve pending için ayrı ayrı
 SL_LIMIT_BUFFER  = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
 CHECK_INTERVAL   = 60      # saniye
+MAX_POSITIONS    = 5
+MAX_POS_SIZE     = 20_000.0
 
 _client: Client | None = None
 _lock         = threading.Lock()
@@ -139,6 +141,15 @@ def _market_sell(symbol: str, qty: float, reason: str):
     except BinanceAPIException as e:
         print(f"{tag} — HATA: {e}", flush=True)
         return False
+
+
+def _get_usdt_balance() -> float:
+    try:
+        bal = _get_client().get_asset_balance(asset="USDT")
+        return float(bal["free"]) if bal else 0.0
+    except Exception as e:
+        print(f"[MONITOR] Bakiye hatası: {e}", flush=True)
+        return 0.0
 
 
 def _cancel_sl(symbol: str, sl_order_id):
@@ -306,6 +317,144 @@ def _check_pending_orders():
                 _cancel_pending(sym, pos)
         except Exception as e:
             print(f"[MONITOR] Pending expire kontrol hatası {sym}: {e}", flush=True)
+
+
+def _place_monitoring_order(symbol: str, pos: dict, active_count: int):
+    """Fiyat trigger'a geldi: Binance'e limit buy gönder, monitoring→pending."""
+    limit_price = float(pos.get("limit_price", 0))
+    if not limit_price:
+        print(f"[MONITOR] {symbol} limit_price yok, atlandı", flush=True)
+        return
+
+    usdt_balance    = _get_usdt_balance()
+    remaining_slots = MAX_POSITIONS - active_count
+    pos_size        = min(usdt_balance / remaining_slots if remaining_slots > 0 else 0, MAX_POS_SIZE)
+
+    if pos_size < 10:
+        print(f"[MONITOR] {symbol} yetersiz bakiye ({usdt_balance:.2f} USDT)", flush=True)
+        with _lock:
+            s = _load_state()
+            s["positions"].pop(symbol, None)
+            _save_state(s)
+        _notify_portfolio("/api/retest-cancelled", {"symbol": symbol})
+        return
+
+    qty = _round_qty(pos_size / limit_price, symbol)
+    if qty <= 0:
+        print(f"[MONITOR] {symbol} hesaplanan miktar sıfır", flush=True)
+        return
+
+    lp = _round_price(limit_price, symbol)
+    print(f"[MONITOR] TRİGGER: {symbol} | limit={lp:.6g} boyut=${pos_size:.2f} qty={qty}", flush=True)
+
+    # State'e pending yaz (limit_order_id=None) — crash güvenliği
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock:
+        s = _load_state()
+        s["positions"][symbol] = {
+            "status":         "pending",
+            "symbol":         symbol,
+            "limit_order_id": None,
+            "limit_price":    limit_price,
+            "pos_size_usdt":  pos_size,
+            "stop":           float(pos["stop"]),
+            "tp1":            float(pos["tp1"]),
+            "tp2":            pos.get("tp2"),
+            "open_time":      now,
+            "source":         pos.get("source", "smc-v2"),
+        }
+        _save_state(s)
+
+    try:
+        order = _get_client().create_order(
+            symbol=symbol,
+            side="BUY",
+            type="LIMIT",
+            timeInForce="GTC",
+            quantity=qty,
+            price=lp,
+        )
+        limit_order_id = order["orderId"]
+        print(f"[MONITOR] LİMİT BUY OK: {symbol} {qty} @ {lp}", flush=True)
+        with _lock:
+            s = _load_state()
+            if symbol in s["positions"]:
+                s["positions"][symbol]["limit_order_id"] = limit_order_id
+                _save_state(s)
+    except BinanceAPIException as e:
+        print(f"[MONITOR] LİMİT BUY HATASI {symbol}: {e}", flush=True)
+        with _lock:
+            s = _load_state()
+            s["positions"].pop(symbol, None)
+            _save_state(s)
+        _notify_portfolio("/api/retest-cancelled", {"symbol": symbol})
+
+
+def _check_monitoring_entries():
+    """Monitoring sinyalleri: expire kontrolü veya fiyat trigger → slot kontrolü → limit emir."""
+    if not ENABLED:
+        return
+
+    state     = _load_state()
+    positions = state.get("positions", {})
+    monitoring = [(sym, pos) for sym, pos in positions.items() if pos.get("status") == "monitoring"]
+    if not monitoring:
+        return
+
+    now          = datetime.now(timezone.utc)
+    active_count = sum(1 for p in positions.values() if p.get("status") in ("pending", "open"))
+
+    for sym, pos in monitoring:
+        # 48H expire
+        try:
+            open_time = datetime.fromisoformat(pos["open_time"])
+            if now - open_time >= timedelta(hours=PENDING_EXPIRE_H):
+                with _lock:
+                    s = _load_state()
+                    s["positions"].pop(sym, None)
+                    _save_state(s)
+                _notify_portfolio("/api/retest-cancelled", {"symbol": sym})
+                _send_telegram(
+                    f"⏰ <b>İZLEME DOLDU — {sym}</b>\n"
+                    f"48 saat içinde trigger ({pos.get('trigger_price', 0):.6g}) gelmedi."
+                )
+                print(f"[MONITOR] Monitoring süresi doldu: {sym}", flush=True)
+                continue
+        except Exception as e:
+            print(f"[MONITOR] Monitoring expire hatası {sym}: {e}", flush=True)
+            continue
+
+        # Fiyat kontrolü
+        trigger_price = float(pos.get("trigger_price", 0))
+        if not trigger_price:
+            continue
+        try:
+            ticker        = _get_client().get_symbol_ticker(symbol=sym)
+            current_price = float(ticker["price"])
+        except BinanceAPIException as e:
+            print(f"[MONITOR] Monitoring fiyat hatası {sym}: {e}", flush=True)
+            continue
+
+        if current_price > trigger_price:
+            continue  # henüz yaklaşmadı
+
+        # Trigger seviyesine geldi — slot kontrolü
+        if active_count >= MAX_POSITIONS:
+            print(f"[MONITOR] {sym} trigger @ {current_price:.6g} — slot dolu ({active_count}/{MAX_POSITIONS}) MISS", flush=True)
+            with _lock:
+                s = _load_state()
+                s["positions"].pop(sym, None)
+                _save_state(s)
+            _notify_portfolio("/api/retest-cancelled", {"symbol": sym})
+            _send_telegram(
+                f"⚠️ <b>SLOT DOLU — {sym}</b>\n"
+                f"Fiyat trigger ({pos.get('trigger_price', 0):.6g}) geldi ama {MAX_POSITIONS}/{MAX_POSITIONS} dolu."
+            )
+            continue
+
+        # Slot var — limit emir aç
+        _place_monitoring_order(sym, pos, active_count)
+        active_count += 1  # bu döngüde slot sayacını güncelle
 
 
 def _reconcile_pending_orders():
@@ -485,6 +634,7 @@ def _periodic_check():
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
+            _check_monitoring_entries()
             _check_pending_orders()
 
             state     = _load_state()
