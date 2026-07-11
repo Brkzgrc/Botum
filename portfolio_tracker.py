@@ -1552,6 +1552,7 @@ if (_coinParam) {{
 </script>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
 {_SYM_POPUP_HTML}
+{_PRICE_TT_HTML}
 </body>
 </html>"""
 
@@ -1633,6 +1634,25 @@ def analyzer_badge(sig):
 
 _CHART_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:block"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
 _TV_LOGO   = '<img src="https://www.tradingview.com/favicon.ico" width="14" height="14" style="display:block;border-radius:2px;image-rendering:crisp-edges" alt="TV" onerror="this.outerHTML=\'<span style=font-size:.65rem;font-weight:bold;color:#2962ff>TV</span>\'">'
+
+# Fiyat alt satırı tooltip
+_PRICE_TT_HTML = (
+    '<div id="_ptt" style="display:none;position:fixed;z-index:9998;background:#151d2a;'
+    'border:1px solid #2a3a50;border-radius:6px;padding:6px 10px;font-size:.72rem;'
+    'color:#c9d1d9;pointer-events:none;line-height:1.7;white-space:nowrap"></div>'
+    '<script>(function(){'
+    'var el=document.getElementById("_ptt");'
+    'document.addEventListener("mousemove",function(e){'
+    'var t=e.target.closest("[data-ptt]");'
+    'if(!t){el.style.display="none";return;}'
+    'el.innerHTML=t.getAttribute("data-ptt");'
+    'el.style.display="block";'
+    'var x=e.clientX+14,y=e.clientY+14;'
+    'if(x+el.offsetWidth+8>window.innerWidth)x=e.clientX-el.offsetWidth-8;'
+    'el.style.left=x+"px";el.style.top=y+"px";'
+    '});'
+    '})();</script>'
+)
 
 # Popup position:fixed — table overflow/stacking context'inden bağımsız
 _SYM_POPUP_HTML = (
@@ -1858,10 +1878,13 @@ def dashboard():
             if _sp_val > 0:
                 _chg_pct = (_cur - _sp_val) / _sp_val * 100
                 _chg_color = "#2ecc71" if _chg_pct < 0 else "#e74c3c"
+                _tt = "&#9654; Sinyal fiyatından bu yana değişim<br>&#9654; Limit buy hedefine kalan mesafe"
                 _sub = (
+                    f'<span data-ptt="{_tt}" style="cursor:default">'
                     f'<span style="font-size:.6rem;color:{_chg_color}">{_chg_pct:+.2f}%</span>'
                     f'<span style="font-size:.6rem;color:#3a4a5a"> / </span>'
                     f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}%</span>'
+                    f'</span>'
                 )
             else:
                 _sub = f'<span style="font-size:.6rem;color:{_price_color}">−{_dist_pct:.2f}%</span>'
@@ -2153,6 +2176,7 @@ function toggleType(key, btn) {{
 </div>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
 {_SYM_POPUP_HTML}
+{_PRICE_TT_HTML}
 </body></html>"""
     return html
 
