@@ -165,6 +165,29 @@ def _cancel_sl(symbol: str, sl_order_id):
         print(f"[MONITOR] SL iptal HATA {symbol}: {e}", flush=True)
 
 
+def _place_trail_sl_order(symbol: str, peak: float, qty: float):
+    """Peak × TRAIL_PCT seviyesinde STOP_LOSS_LIMIT emri aç. order_id döndürür."""
+    if not ENABLED:
+        trail_stop = round(peak * TRAIL_PCT, 8)
+        print(f"[MONITOR] Trail SL SİMÜLASYON — {symbol} stop={trail_stop:.6g} qty={qty}", flush=True)
+        return None
+    try:
+        trail_stop  = _round_price(peak * TRAIL_PCT, symbol)
+        trail_limit = _round_price(peak * TRAIL_PCT * (1 - SL_LIMIT_BUFFER), symbol)
+        qty_r = _round_qty(qty, symbol)
+        order = _get_client().create_order(
+            symbol=symbol, side="SELL", type="STOP_LOSS_LIMIT",
+            timeInForce="GTC", quantity=qty_r,
+            stopPrice=trail_stop, price=trail_limit,
+        )
+        oid = order["orderId"]
+        print(f"[MONITOR] Trail SL emri: {symbol} stop={trail_stop} limit={trail_limit} qty={qty_r} id={oid}", flush=True)
+        return oid
+    except BinanceAPIException as e:
+        print(f"[MONITOR] Trail SL emir HATA {symbol}: {e}", flush=True)
+        return None
+
+
 def _is_sl_filled(symbol: str, sl_order_id) -> bool:
     if not sl_order_id or not ENABLED:
         return False
@@ -537,10 +560,16 @@ def _reconcile_pending_orders():
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
 
 def _process_tick(symbol: str, close: float, high: float, low: float):
-    sell_reason  = None
-    close_price  = None
-    cancel_sl    = False
-    pos_snap     = None
+    sell_reason        = None
+    close_price        = None
+    cancel_sl          = False
+    place_trail_sl     = False   # TP1 hit → yeni trail SL emri
+    update_trail_sl    = False   # Peak yükseldi → trail SL yenile
+    cancel_trail_sl_id = None    # Trail tetiklendi → emri iptal et
+    old_trail_sl_id    = None
+    trail_sl_peak      = None
+    trail_sl_qty       = 0.0
+    pos_snap           = None
 
     with _lock:
         state = _load_state()
@@ -570,26 +599,36 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 _save_state(state)
             # TP1 kontrolü: mumun high'ına göre
             elif high >= float(pos["tp1"]):
-                cancel_sl       = True
-                pos["tp1_hit"]  = True
-                pos["trailing"] = True
-                pos["peak"]     = max(high, float(pos["peak"]))
+                cancel_sl          = True
+                pos["tp1_hit"]     = True
+                pos["trailing"]    = True
+                pos["peak"]        = max(high, float(pos["peak"]))
+                pos["trailing_sl_id"] = None
                 state["positions"][symbol] = pos
                 _save_state(state)
-                pos_snap = dict(pos)
+                pos_snap      = dict(pos)
+                place_trail_sl = True
+                trail_sl_peak  = float(pos["peak"])
+                trail_sl_qty   = float(pos.get("qty", 0))
                 print(f"[MONITOR] TP1 HIT — {symbol} @ {high:.6g} | trailing başladı", flush=True)
 
         else:
             # Peak: mumun high'ına göre güncelle
             if high > float(pos["peak"]):
+                old_trail_sl_id = pos.get("trailing_sl_id")
                 pos["peak"] = high
+                pos["trailing_sl_id"] = None   # yeni emir gelene kadar None
                 state["positions"][symbol] = pos
                 _save_state(state)
-                pos_snap = dict(pos)
+                pos_snap       = dict(pos)
+                update_trail_sl = True
+                trail_sl_peak   = high
+                trail_sl_qty    = float(pos.get("qty", 0))
 
             # Trail kontrolü: mumun low'una göre
             trail_stop = float(pos["peak"]) * TRAIL_PCT
             if low <= trail_stop:
+                cancel_trail_sl_id = pos.get("trailing_sl_id")
                 sell_reason = "trail_stop"
                 close_price = trail_stop
                 pos["closing"] = True
@@ -599,6 +638,20 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
     # ── Lock dışı işlemler (Binance API çağrıları) ───────────────────────────
     if cancel_sl:
         _cancel_sl(symbol, pos_snap.get("sl_order_id"))
+
+    if place_trail_sl or update_trail_sl:
+        if update_trail_sl:
+            _cancel_sl(symbol, old_trail_sl_id)
+        new_trail_id = _place_trail_sl_order(symbol, trail_sl_peak, trail_sl_qty)
+        if new_trail_id:
+            with _lock:
+                s = _load_state()
+                if symbol in s["positions"]:
+                    s["positions"][symbol]["trailing_sl_id"] = new_trail_id
+                    _save_state(s)
+
+    if cancel_trail_sl_id:
+        _cancel_sl(symbol, cancel_trail_sl_id)
 
     if sell_reason:
         entry = float(pos_snap.get("entry", 0))
@@ -699,11 +752,32 @@ def _periodic_check():
                 pos = positions.get(sym, {})
                 if pos.get("closing"):
                     continue  # _process_tick zaten yönetiyor
-                sl_order_id = pos.get("sl_order_id")
-                if not sl_order_id and not pos.get("trailing"):
+                sl_order_id      = pos.get("sl_order_id")
+                trailing_sl_id   = pos.get("trailing_sl_id")
+                is_trailing      = pos.get("trailing", False)
+
+                if not is_trailing and not sl_order_id:
+                    # Retroaktif SL — trailing olmayan, SL emri eksik pozisyon
                     _place_retroactive_sl(sym, pos)
-                # SL fill trailing dahil kontrol et — trailing başlarken cancel başarısız olmuş olabilir
-                elif sl_order_id and _is_sl_filled(sym, sl_order_id):
+                elif is_trailing and not trailing_sl_id:
+                    # Retroaktif trail SL — trailing modunda ama Binance emri yok
+                    qty = float(pos.get("qty", 0))
+                    peak = float(pos.get("peak", 0))
+                    if qty > 0 and peak > 0:
+                        new_id = _place_trail_sl_order(sym, peak, qty)
+                        if new_id:
+                            with _lock:
+                                s = _load_state()
+                                if sym in s["positions"]:
+                                    s["positions"][sym]["trailing_sl_id"] = new_id
+                                    _save_state(s)
+                            _send_telegram(
+                                f"🛡 <b>Retroaktif Trail SL — {sym}</b>\n"
+                                f"Peak: {peak:.6g} | Trail stop: {peak * TRAIL_PCT:.6g}"
+                            )
+
+                # SL fill kontrolü
+                if sl_order_id and _is_sl_filled(sym, sl_order_id):
                     with _lock:
                         s = _load_state()
                         s["positions"].pop(sym, None)
@@ -721,6 +795,27 @@ def _periodic_check():
                         "close_price": sl, "pnl_pct": pct,
                     })
                     print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+
+                # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
+                elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
+                    with _lock:
+                        s = _load_state()
+                        s["positions"].pop(sym, None)
+                        _save_state(s)
+                    _stop_stream(sym)
+                    entry = float(pos.get("entry", 0))
+                    peak  = float(pos.get("peak", 0))
+                    cl_price = round(peak * TRAIL_PCT, 8)
+                    pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
+                    _send_telegram(
+                        f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
+                        f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
+                    )
+                    _notify_portfolio("/api/position-closed", {
+                        "symbol": sym, "reason": "trail_binance",
+                        "close_price": cl_price, "pnl_pct": pct,
+                    })
+                    print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
 
         except Exception as e:
             print(f"[MONITOR] Periyodik kontrol hatası: {e}", flush=True)
