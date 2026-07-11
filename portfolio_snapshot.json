@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-11 09:51:07",
+  "updated_at": "2026-07-11 10:21:10",
   "performance": {
-    "total": 13,
+    "total": 14,
     "open": 5,
     "closed": 1,
     "wins": 1,
@@ -113,16 +113,16 @@
       "close_pct": null,
       "peak_price": 0.00731,
       "peak_pct": 0.41,
-      "low_price": 0.00726,
-      "low_pct": -0.27,
-      "current_price": 0.00728,
-      "current_pct": 0.0,
+      "low_price": 0.00723,
+      "low_pct": -0.69,
+      "current_price": 0.00724,
+      "current_pct": -0.55,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-11T09:46:55.210376+03:00",
-      "checks": 14,
+      "last_check": "2026-07-11T10:17:19.300041+03:00",
+      "checks": 20,
       "extra": {
         "tp3": null
       }
@@ -151,16 +151,16 @@
       "close_pct": null,
       "peak_price": 0.0915,
       "peak_pct": 2.01,
-      "low_price": 0.0897,
-      "low_pct": 0.0,
-      "current_price": 0.0901,
-      "current_pct": 0.45,
+      "low_price": 0.0896,
+      "low_pct": -0.11,
+      "current_price": 0.0896,
+      "current_pct": -0.11,
       "tp1_hit": true,
       "tp1_time": "2026-07-11T04:49:06.797489+03:00",
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T04:00:17.872160+03:00",
-      "last_check": "2026-07-11T09:46:55.210376+03:00",
-      "checks": 56,
+      "last_check": "2026-07-11T10:17:19.300041+03:00",
+      "checks": 62,
       "extra": {
         "tp3": null
       },
@@ -198,8 +198,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-11T09:46:55.210376+03:00",
-      "checks": 71,
+      "last_check": "2026-07-11T10:17:19.300041+03:00",
+      "checks": 77,
       "extra": {
         "tp3": null
       }
@@ -230,14 +230,14 @@
       "peak_pct": 0.35,
       "low_price": 0.283,
       "low_pct": -1.05,
-      "current_price": 0.285,
-      "current_pct": -0.35,
+      "current_price": 0.286,
+      "current_pct": 0.0,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:13.584521+03:00",
-      "last_check": "2026-07-11T09:46:55.210376+03:00",
-      "checks": 23,
+      "last_check": "2026-07-11T10:17:19.300041+03:00",
+      "checks": 29,
       "extra": {
         "tp3": null
       }
@@ -268,20 +268,58 @@
       "peak_pct": 0.0,
       "low_price": 0.1064,
       "low_pct": -1.66,
-      "current_price": 0.1064,
-      "current_pct": -1.66,
+      "current_price": 0.1066,
+      "current_pct": -1.48,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-11T09:46:55.210376+03:00",
-      "checks": 79,
+      "last_check": "2026-07-11T10:17:19.300041+03:00",
+      "checks": 85,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "GMT_USDT_1783753212",
+      "symbol": "GMT/USDT",
+      "entry": 0.00774,
+      "stop": 0.00755205,
+      "tp1": 0.00792795,
+      "tp2": 0.0081159,
+      "tp3": null,
+      "limit_price": 0.00775,
+      "signal_price": 0.00775,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-11T10:00:12.339382+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00774,
+      "peak_pct": 0.0,
+      "low_price": 0.00774,
+      "low_pct": 0.0,
+      "current_price": 0.00774,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-11T10:00:19.117706+03:00",
+      "last_check": "2026-07-11T10:00:12.339382+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "VIC_USDT_1783749610",
       "symbol": "VIC/USDT",
