@@ -258,6 +258,12 @@ def _place_retroactive_sl(symbol: str, pos: dict):
         )
     except BinanceAPIException as e:
         print(f"[MONITOR] Retroaktif SL hata {symbol}: {e}", flush=True)
+        _send_telegram(
+            f"⚠️ <b>Retroaktif SL BAŞARISIZ — {symbol}</b>\n"
+            f"Stop: {float(pos.get('stop', 0)):.6g} | Miktar: {qty}\n"
+            f"Hata: {e}\n"
+            f"Manuel stop koy!"
+        )
 
 
 def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
@@ -307,6 +313,12 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
                     _save_state(s)
         except BinanceAPIException as e:
             print(f"[MONITOR] SL emir hatası {symbol}: {e}", flush=True)
+            _send_telegram(
+                f"⚠️ <b>SL EMRİ BAŞARISIZ — {symbol}</b>\n"
+                f"Giriş: {fill_price:.6g} | Stop: {float(pos.get('stop', 0)):.6g}\n"
+                f"Hata: {e}\n"
+                f"Manuel stop koy!"
+            )
 
     _notify_portfolio("/api/retest-filled", {
         "symbol":     symbol,
