@@ -222,17 +222,15 @@ def _place_retroactive_sl(symbol: str, pos: dict):
     if not ENABLED:
         print(f"[MONITOR] Retroaktif SL SİMÜLASYON — {symbol}", flush=True)
         return
-    qty = float(pos.get("qty") or 0)
-    if qty <= 0:
-        asset = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
-        for base in [symbol.replace("USDT", ""), symbol.replace("BTC", ""), symbol.replace("ETH", "")]:
-            try:
-                bal = _get_client().get_asset_balance(asset=base)
-                qty = float(bal["free"]) if bal else 0.0
-                if qty > 0:
-                    break
-            except Exception:
-                pass
+    stored_qty = float(pos.get("qty") or 0)
+    base = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
+    try:
+        bal  = _get_client().get_asset_balance(asset=base)
+        free = float(bal["free"]) if bal else 0.0
+    except Exception:
+        free = 0.0
+    # Komisyon kesintisi olabilir: min(stored, free); stored=0 ise free kullan
+    qty = free if stored_qty <= 0 else min(stored_qty, free)
     qty = _round_qty(qty, symbol)
     if qty <= 0:
         print(f"[MONITOR] Retroaktif SL: {symbol} bakiye sıfır, atlandı", flush=True)
@@ -290,9 +288,19 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
         _save_state(state)
 
     # Sonra SL emri gönder, ID'yi state'e yaz
+    # Komisyon base asset'ten kesildiyse executedQty > free balance olur → gerçek bakiyeyi al
     sl_order_id = None
     if ENABLED:
         try:
+            base = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
+            try:
+                bal = _get_client().get_asset_balance(asset=base)
+                free = float(bal["free"]) if bal else qty
+                sl_qty = _round_qty(min(qty, free), symbol)
+            except Exception:
+                sl_qty = _round_qty(qty, symbol)
+            if sl_qty <= 0:
+                raise BinanceAPIException(None, -1, f"Kullanılabilir bakiye sıfır ({base})")
             sl_stop  = _round_price(float(pos["stop"]), symbol)
             sl_limit = _round_price(float(pos["stop"]) * (1 - SL_LIMIT_BUFFER), symbol)
             sl_order = _get_client().create_order(
@@ -300,16 +308,17 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
                 side="SELL",
                 type="STOP_LOSS_LIMIT",
                 timeInForce="GTC",
-                quantity=qty,
+                quantity=sl_qty,
                 stopPrice=sl_stop,
                 price=sl_limit,
             )
             sl_order_id = sl_order["orderId"]
-            print(f"[MONITOR] SL emri: {symbol} stop={sl_stop} limit={sl_limit}", flush=True)
+            print(f"[MONITOR] SL emri: {symbol} stop={sl_stop} limit={sl_limit} qty={sl_qty}", flush=True)
             with _lock:
                 s = _load_state()
                 if symbol in s["positions"]:
                     s["positions"][symbol]["sl_order_id"] = sl_order_id
+                    s["positions"][symbol]["qty"] = sl_qty  # gerçek miktar
                     _save_state(s)
         except BinanceAPIException as e:
             print(f"[MONITOR] SL emir hatası {symbol}: {e}", flush=True)
