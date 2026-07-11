@@ -122,6 +122,32 @@ Kalıcı Dosyalar:
   portfolio_signals.json → portfolio_tracker signals_db (tüm geçmiş)
   learning_archive.json  → claude_analyzer arşiv (sonuç öğrenme)
 
+## Kalıcı Dosya Yolları (Render — bot servisi)
+
+| Dosya | Yol | Erişim |
+|---|---|---|
+| `trade_state.json` | `/var/data/trade_state.json` | Render Dashboard → bot servisi → **Shell** sekmesi |
+| Env var | `TRADE_STATE_FILE=/var/data/trade_state.json` | Render Dashboard → bot servisi → Environment |
+
+**Shell'den okuma:**
+```bash
+cat /var/data/trade_state.json | python3 -m json.tool
+```
+
+**Shell'den belirli pozisyon silme (örn. OGUSDT):**
+```bash
+python3 -c "
+import json, os
+f = '/var/data/trade_state.json'
+with open(f) as fp: s = json.load(fp)
+removed = s.get('positions', {}).pop('OGUSDT', None)
+print('Silindi' if removed else 'Bulunamadi')
+tmp = f + '.tmp'
+with open(tmp, 'w') as fp: json.dump(s, fp, indent=2, default=str)
+os.replace(tmp, f)
+"
+```
+
 Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
      fiyat bazlı retest/kapanış takibini devam ettirir.
 ```
