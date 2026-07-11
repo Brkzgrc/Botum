@@ -1435,6 +1435,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     <div class="tabs" style="margin-top:6px">
       <a href="/" class="tab">Portföy</a>
       <a href="/market" class="tab active">Piyasa</a>
+      <a href="/alsat" class="tab">Al-Sat Bot</a>
     </div>
   </div>
   <span class="time">{now} | v3.1 &nbsp;<button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button></span>
@@ -2142,6 +2143,7 @@ tr:hover td{{background:var(--card);}}
         <div style="display:flex;gap:6px;margin-top:6px">
             <a href="/" class="nav-tab active">Portföy</a>
             <a href="/market" class="nav-tab">Piyasa</a>
+            <a href="/alsat" class="nav-tab">Al-Sat Bot</a>
         </div>
     </div>
     <span class="time">
@@ -2232,8 +2234,6 @@ function toggleType(key, btn) {{
 
 {_pending_section}
 
-{_trade_section}
-
 {_analyzer_section}
 
 <div class="section">
@@ -2292,6 +2292,170 @@ function deleteTrade(sym,btn){{
 {_PRICE_TT_HTML}
 </body></html>"""
     return html
+
+
+# ============================================================
+# AL-SAT BOT SAYFASI
+# ============================================================
+@app.route("/alsat")
+def alsat_page():
+    now = tr_now_str()
+
+    trade_positions = {}
+    error_msg = ""
+    if TRADING_BOT_URL:
+        try:
+            hdrs = {}
+            if TRADING_BOT_TOKEN:
+                hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+            r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=6)
+            if r.ok:
+                trade_positions = r.json()
+            else:
+                error_msg = f"Trading-bot HTTP {r.status_code}"
+        except Exception as e:
+            error_msg = str(e)
+    else:
+        error_msg = "TRADING_BOT_URL tanımlı değil"
+
+    STATUS_LABEL = {
+        "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
+                       'border-radius:3px;padding:2px 8px;font-size:.65rem">İZLEME</span>'),
+        "pending":    ('<span style="background:#3498db22;color:#3498db;border:1px solid #3498db55;'
+                       'border-radius:3px;padding:2px 8px;font-size:.65rem">EMİR</span>'),
+        "open":       ('<span style="background:#2ecc7122;color:#2ecc71;border:1px solid #2ecc7155;'
+                       'border-radius:3px;padding:2px 8px;font-size:.65rem">AÇIK</span>'),
+    }
+
+    rows = ""
+    now_dt = tr_now()
+    for sym, pos in trade_positions.items():
+        st = pos.get("status", "")
+        badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
+        lp  = fmt_price(pos.get("limit_price", 0))
+        tp  = fmt_price(pos.get("trigger_price", 0))
+        sl  = fmt_price(pos.get("stop", 0))
+        t1  = fmt_price(pos.get("tp1", 0))
+        t2  = fmt_price(pos.get("tp2") or 0) if pos.get("tp2") else "—"
+        try:
+            ot = datetime.fromisoformat(pos["open_time"]).replace(tzinfo=timezone.utc)
+            elapsed = now_dt - ot
+            h, rem = divmod(int(elapsed.total_seconds()), 3600)
+            elapsed_str = f"{h}s {rem//60}d"
+            rem_h = max(0, 48 - h)
+            rem_color = "#e74c3c" if rem_h < 6 else "#f39c12" if rem_h < 12 else "#7f8c8d"
+            rem_str = f'<span style="color:{rem_color}">{rem_h}s kalan</span>'
+        except Exception:
+            elapsed_str = "—"
+            rem_str = "—"
+        sym_disp = sym.replace("USDT", "") + "/USDT"
+        rows += f"""<tr>
+            <td style="font-weight:bold;color:#e8eaf6">{sym_disp}</td>
+            <td>{badge}</td>
+            <td style="color:#00b4d8">{lp}</td>
+            <td style="color:#f39c12">{tp}</td>
+            <td style="color:#e74c3c">{sl}</td>
+            <td style="color:#2ecc71">{t1}</td>
+            <td style="color:#9b59b6">{t2}</td>
+            <td style="font-size:.7rem;color:#7f8c8d">{elapsed_str}</td>
+            <td>{rem_str}</td>
+            <td><button onclick="deleteTrade('{sym}',this)"
+                style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;
+                border-radius:4px;padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit">
+                Sil</button></td>
+        </tr>"""
+
+    if not rows:
+        rows = '<tr><td colspan="10" style="text-align:center;color:#7f8c8d;padding:20px">Aktif pozisyon yok</td></tr>'
+
+    error_banner = (f'<div style="background:#e74c3c22;border:1px solid #e74c3c55;color:#e74c3c;'
+                    f'border-radius:6px;padding:8px 14px;margin-bottom:16px;font-size:.72rem">'
+                    f'⚠ Trading-bot bağlantı hatası: {error_msg}</div>') if error_msg else ""
+
+    count = len(trade_positions)
+    monitoring_n = sum(1 for p in trade_positions.values() if p.get("status") == "monitoring")
+    pending_n    = sum(1 for p in trade_positions.values() if p.get("status") == "pending")
+    open_n       = sum(1 for p in trade_positions.values() if p.get("status") == "open")
+
+    return f"""<!DOCTYPE html>
+<html lang="tr"><head>
+<meta charset="UTF-8"><title>Al-Sat Bot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<style>
+:root{{--bg:#0a0e14;--card:#0f1319;--border:#1e2a3a;--text:#c9d1d9;--text-dim:#7f8c8d;
+  --accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#f39c12;}}
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira Code','Consolas',monospace;
+  padding:20px;max-width:1100px;margin:0 auto;line-height:1.5;}}
+.header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;
+  padding-bottom:16px;border-bottom:1px solid var(--border);}}
+.header h1{{color:var(--accent);font-size:1.1rem;letter-spacing:3px;}}
+.header .time{{color:var(--text-dim);font-size:.75rem;display:flex;align-items:center;gap:10px;}}
+.btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;
+  padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;}}
+.nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
+  border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
+.nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
+.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
+.card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
+.card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
+table{{width:100%;border-collapse:collapse;font-size:.73rem;}}
+th{{background:var(--card);color:var(--text-dim);padding:8px 10px;text-align:left;
+  font-size:.6rem;letter-spacing:.8px;border-bottom:1px solid var(--border);}}
+td{{padding:8px 10px;border-bottom:1px solid #111820;}}
+tr:hover td{{background:#0f151d;}}
+.table-wrap{{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}}
+.note{{color:var(--text-dim);font-size:.65rem;margin-bottom:12px;font-style:italic;}}
+@media(max-width:600px){{.cards{{grid-template-columns:repeat(2,1fr);}}body{{padding:12px;}}}}
+</style></head>
+<body>
+<div class="header">
+  <div>
+    <h1>🤖 AL-SAT BOT</h1>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <a href="/" class="nav-tab">Portföy</a>
+      <a href="/market" class="nav-tab">Piyasa</a>
+      <a href="/alsat" class="nav-tab active">Al-Sat Bot</a>
+    </div>
+  </div>
+  <span class="time">{now}
+    <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+  </span>
+</div>
+
+{error_banner}
+
+<div class="cards">
+  <div class="card"><span class="val" style="color:var(--accent)">{count}</span><span class="lbl">Toplam</span></div>
+  <div class="card"><span class="val" style="color:var(--orange)">{monitoring_n}</span><span class="lbl">İzleme</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{pending_n}</span><span class="lbl">Emir</span></div>
+  <div class="card"><span class="val" style="color:var(--green)">{open_n}</span><span class="lbl">Açık</span></div>
+</div>
+
+<p class="note">İzleme: fiyat CHoCH+3tick'e gelince limit emir açılır (CHoCH+1tick). Emir: Binance'te limit buy bekliyor. Sil butonu sadece state'den siler — Binance emrini kendin iptal et. 30s otomatik yenileme.</p>
+
+<div class="table-wrap"><table><thead><tr>
+  <th>Sembol</th><th>Durum</th><th>Limit Buy</th><th>Tetikleyici</th>
+  <th>Stop</th><th>TP1</th><th>TP2</th><th>Geçen</th><th>Kalan</th><th></th>
+</tr></thead><tbody>
+  {rows}
+</tbody></table></div>
+
+<script>
+function deleteTrade(sym,btn){{
+  if(!confirm(sym+' pozisyonu state\\'den silinsin mi?\\n(Binance emri varsa kendin iptal et)'))return;
+  btn.disabled=true;btn.textContent='...';
+  fetch('/api/trade-positions/'+sym+'/delete',{{method:'POST'}})
+    .then(r=>r.json()).then(d=>{{
+      if(d.ok){{btn.closest('tr').remove();}}
+      else{{btn.textContent='Hata';btn.style.color='#e74c3c';}}
+    }}).catch(()=>{{btn.textContent='Hata';}});
+}}
+</script>
+</body></html>"""
+
 
 # ============================================================
 # GITHUB SNAPSHOT
