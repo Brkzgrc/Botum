@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-11 05:10:02",
+  "updated_at": "2026-07-11 05:23:13",
   "performance": {
     "total": 8,
     "open": 3,
@@ -121,7 +121,7 @@
       "tp1_time": "2026-07-11T04:49:06.797489+03:00",
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T04:00:17.872160+03:00",
-      "last_check": "2026-07-11T05:09:17.176534+03:00",
+      "last_check": "2026-07-11T05:22:15.144860+03:00",
       "checks": 9,
       "extra": {
         "tp3": null
@@ -160,7 +160,7 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-11T05:09:17.176534+03:00",
+      "last_check": "2026-07-11T05:22:15.144860+03:00",
       "checks": 24,
       "extra": {
         "tp3": null
@@ -198,7 +198,7 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-11T05:09:17.176534+03:00",
+      "last_check": "2026-07-11T05:22:15.144860+03:00",
       "checks": 32,
       "extra": {
         "tp3": null
