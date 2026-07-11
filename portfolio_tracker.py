@@ -702,6 +702,24 @@ def delete_signal(signal_id):
             return jsonify({"ok": True, "deleted": signal_id})
         return jsonify({"error": "not found"}), 404
 
+@app.route("/api/signal/<signal_id>/close", methods=["POST"])
+def close_signal(signal_id):
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+    now_str = datetime.now(TR_TZ).isoformat()
+    with _lock:
+        for sig in signals_db:
+            if sig.get("id") == signal_id and sig.get("status") == "open":
+                sig["status"]       = "closed"
+                sig["outcome"]      = "manual"
+                sig["close_reason"] = "manual"
+                sig["close_date"]   = now_str
+                save_signals()
+                return jsonify({"ok": True, "closed": signal_id})
+    return jsonify({"error": "not found or not open"}), 404
+
 @app.route("/api/signals/clear-test", methods=["POST"])
 def clear_test_signals():
     if AUTH_TOKEN:
@@ -1781,7 +1799,11 @@ def dashboard():
             <td>{stop_cell}</td><td>{tp1_cell}</td>
             <td>{fmt_price(tp2_val)} (+{tp2_pct_open}%)</td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
-            <td>{sure_cell}</td><td>{analyzer_badge(sig)}</td></tr>"""
+            <td>{sure_cell}</td><td>{analyzer_badge(sig)}</td>
+            <td><button onclick="closeSignal('{sig['id']}',this)"
+                style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;
+                border-radius:4px;padding:2px 8px;font-size:.6rem;cursor:pointer;font-family:inherit">
+                Kapat</button></td></tr>"""
 
     closed_rows = ""
     for sig in closed_sigs[:100]:
@@ -2231,9 +2253,9 @@ function toggleType(key, btn) {{
     <p class="note">SMC CHoCH ROC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → %2.5 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
-        <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th>
+        <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th><th></th>
     </tr></thead><tbody>
-        {open_rows if open_rows else '<tr><td colspan="12" class="empty">Açık pozisyon yok</td></tr>'}
+        {open_rows if open_rows else '<tr><td colspan="13" class="empty">Açık pozisyon yok</td></tr>'}
     </tbody></table></div>
     </details>
 </div>
@@ -2275,6 +2297,15 @@ function deleteTrade(sym,btn){{
       if(d.ok){{btn.closest('tr').remove();}}
       else{{btn.textContent='Hata';btn.style.color='#e74c3c';}}
     }}).catch(()=>{{btn.textContent='Hata';}});
+}}
+function closeSignal(id,btn){{
+  if(!confirm('Bu pozisyonu manuel kapattı olarak işaretle?'))return;
+  btn.disabled=true;btn.textContent='...';
+  fetch('/api/signal/'+id+'/close',{{method:'POST',headers:{{'Authorization':'Bearer {AUTH_TOKEN}'}}}})
+    .then(r=>r.json()).then(d=>{{
+      if(d.ok){{btn.closest('tr').style.opacity='0.4';btn.textContent='Kapandı';setTimeout(()=>location.reload(),800);}}
+      else{{btn.textContent='Hata';btn.disabled=false;}}
+    }}).catch(()=>{{btn.textContent='Hata';btn.disabled=false;}});
 }}
 </script>
 {_SYM_POPUP_HTML}
