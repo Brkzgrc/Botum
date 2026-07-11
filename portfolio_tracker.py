@@ -107,6 +107,50 @@ def load_signals():
         signals_db = []
     _restore_archive_from_github()
 
+def _sync_from_trading_bot():
+    """Startup: trading bot'taki open pozisyonları portfolio sinyalleriyle eşleştir.
+    pending_retest → open geçişi deploy sırasında kaybolmuşsa burada düzeltilir."""
+    if not TRADING_BOT_URL:
+        return
+    try:
+        hdrs = {"X-Bot-Token": TRADING_BOT_TOKEN} if TRADING_BOT_TOKEN else {}
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=10)
+        if not r.ok:
+            return
+        trade_positions = r.json()
+    except Exception as e:
+        print(f"[SYNC] Trading bot erişim hatası: {e}", flush=True)
+        return
+
+    now_str = tr_now().isoformat()
+    updated = 0
+    with _lock:
+        for sym, pos in trade_positions.items():
+            if pos.get("status") != "open":
+                continue
+            sym_norm = sym.upper()
+            fill_price = float(pos.get("entry") or 0)
+            qty        = float(pos.get("qty") or 0)
+            if not fill_price:
+                continue
+            for sig in signals_db:
+                sig_sym = sig.get("symbol", "").replace("/", "").upper()
+                if sig_sym == sym_norm and sig.get("status") == "pending_retest":
+                    sig["status"]        = "open"
+                    sig["entry"]         = fill_price
+                    sig["fill_qty"]      = qty
+                    sig["fill_time"]     = now_str
+                    sig["peak_price"]    = fill_price
+                    sig["low_price"]     = fill_price
+                    sig["current_price"] = fill_price
+                    updated += 1
+                    print(f"[SYNC] {sym_norm} pending_retest → open (fill={fill_price})", flush=True)
+                    break
+        if updated:
+            save_signals()
+    print(f"[SYNC] Tamamlandı: {updated} sinyal güncellendi.", flush=True)
+
+
 def _migrate_signals():
     """Eski DB kayıtlarındaki bilinen hataları düzelt."""
     fixed = 0
@@ -2573,6 +2617,7 @@ if __name__ == "__main__":
     print("=" * 50, flush=True)
 
     load_signals()
+    _sync_from_trading_bot()
     threading.Thread(target=position_checker_loop, daemon=True).start()
     threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
