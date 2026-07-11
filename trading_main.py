@@ -56,6 +56,22 @@ def status():
     return jsonify(state.get("positions", {}))
 
 
+@app.route("/position/<symbol>", methods=["DELETE"])
+def delete_position(symbol):
+    if not _auth(request):
+        return jsonify({"error": "unauthorized"}), 401
+    symbol = symbol.upper()
+    state = load_state()
+    positions = state.get("positions", {})
+    if symbol not in positions:
+        return jsonify({"error": "not found"}), 404
+    removed = positions.pop(symbol)
+    state["positions"] = positions
+    trading_engine.save_state(state)
+    print(f"[MAIN] Pozisyon silindi: {symbol} (status={removed.get('status')})", flush=True)
+    return jsonify({"ok": True, "removed": symbol})
+
+
 @app.route("/signal", methods=["POST"])
 def signal():
     if not _auth(request):

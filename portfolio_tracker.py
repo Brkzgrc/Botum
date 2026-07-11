@@ -787,6 +787,40 @@ def api_retest_cancelled():
     return jsonify({"error": "pending_retest not found"}), 404
 
 
+@app.route("/api/trade-positions", methods=["GET"])
+def api_trade_positions():
+    """trading-bot servisinden tüm pozisyonları çeker."""
+    if not TRADING_BOT_URL:
+        return jsonify({"error": "TRADING_BOT_URL tanımlı değil"}), 503
+    try:
+        hdrs = {}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=8)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+
+@app.route("/api/trade-positions/<symbol>/delete", methods=["POST"])
+def api_trade_position_delete(symbol):
+    """trading-bot servisinden belirli pozisyonu siler."""
+    if not TRADING_BOT_URL:
+        return jsonify({"error": "TRADING_BOT_URL tanımlı değil"}), 503
+    try:
+        hdrs = {}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.delete(
+            f"{TRADING_BOT_URL}/position/{symbol.upper()}",
+            headers=hdrs,
+            timeout=8,
+        )
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+
 # ============================================================
 # PİYASA VERİSİ API
 # ============================================================
@@ -1946,6 +1980,72 @@ def dashboard():
     else:
         _pending_section = ""
 
+    # ── trading-bot pozisyonları (trade_state.json) ─────────────────────────
+    _trade_positions = {}
+    if TRADING_BOT_URL:
+        try:
+            _th = {}
+            if TRADING_BOT_TOKEN:
+                _th["X-Bot-Token"] = TRADING_BOT_TOKEN
+            _tr = requests.get(f"{TRADING_BOT_URL}/status", headers=_th, timeout=5)
+            if _tr.ok:
+                _trade_positions = _tr.json()
+        except Exception:
+            pass
+
+    _STATUS_LABEL = {
+        "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
+                       'border-radius:3px;padding:1px 6px;font-size:.6rem">İZLEME</span>'),
+        "pending":    ('<span style="background:#3498db22;color:#3498db;border:1px solid #3498db55;'
+                       'border-radius:3px;padding:1px 6px;font-size:.6rem">EMİR</span>'),
+        "open":       ('<span style="background:#2ecc7122;color:#2ecc71;border:1px solid #2ecc7155;'
+                       'border-radius:3px;padding:1px 6px;font-size:.6rem">AÇIK</span>'),
+    }
+
+    _trade_rows = ""
+    for _sym, _pos in _trade_positions.items():
+        _st  = _pos.get("status", "")
+        _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
+        _lp  = fmt_price(_pos.get("limit_price", 0))
+        _tp  = fmt_price(_pos.get("trigger_price", 0))
+        _sl  = fmt_price(_pos.get("stop", 0))
+        _t1  = fmt_price(_pos.get("tp1", 0))
+        try:
+            _ot = datetime.fromisoformat(_pos["open_time"]).replace(tzinfo=timezone.utc)
+            _elapsed = now_dt - _ot
+            _h, _r = divmod(int(_elapsed.total_seconds()), 3600)
+            _elapsed_str = f"{_h}s {_r//60}d"
+        except Exception:
+            _elapsed_str = "—"
+        _trade_rows += f"""<tr>
+            <td style="font-weight:bold">{_sym.replace("USDT","")}/USDT</td>
+            <td>{_st_badge}</td>
+            <td style="font-size:.75rem">{_lp}</td>
+            <td style="font-size:.75rem;color:#f39c12">{_tp}</td>
+            <td style="font-size:.75rem;color:#e74c3c">{_sl}</td>
+            <td style="font-size:.75rem;color:#2ecc71">{_t1}</td>
+            <td style="font-size:.7rem;color:#7f8c8d">{_elapsed_str}</td>
+            <td><button onclick="deleteTrade('{_sym}',this)"
+                style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;
+                border-radius:4px;padding:2px 8px;font-size:.65rem;cursor:pointer">
+                Sil</button></td>
+        </tr>"""
+
+    if _trade_positions:
+        _trade_section = f"""<div class="section">
+    <details data-id="trade-bot" open>
+    <summary>🤖 AL-SAT BOT POZİSYONLARI ({len(_trade_positions)})</summary>
+    <p class="note">trade_state.json içeriği. İzleme: fiyat CHoCH+3tick'e ulaşınca limit emir açılır. Emir: Binance'te limit buy bekliyor. Sil: sadece state'den siler, Binance emrini kendin iptal et.</p>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Sembol</th><th>Durum</th><th>Limit Buy</th><th>Tetikleyici</th><th>Stop</th><th>TP1</th><th>Geçen</th><th></th>
+    </tr></thead><tbody>
+        {_trade_rows}
+    </tbody></table></div>
+    </details>
+</div>"""
+    else:
+        _trade_section = ""
+
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip</title>
@@ -2132,6 +2232,8 @@ function toggleType(key, btn) {{
 
 {_pending_section}
 
+{_trade_section}
+
 {_analyzer_section}
 
 <div class="section">
@@ -2175,6 +2277,17 @@ function toggleType(key, btn) {{
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
+<script>
+function deleteTrade(sym,btn){{
+  if(!confirm(sym+' pozisyonu state\\'den silinsin mi?\\n(Binance emri varsa kendin iptal et)'))return;
+  btn.disabled=true;btn.textContent='...';
+  fetch('/api/trade-positions/'+sym+'/delete',{{method:'POST'}})
+    .then(r=>r.json()).then(d=>{{
+      if(d.ok){{btn.closest('tr').remove();}}
+      else{{btn.textContent='Hata';btn.style.color='#e74c3c';}}
+    }}).catch(()=>{{btn.textContent='Hata';}});
+}}
+</script>
 {_SYM_POPUP_HTML}
 {_PRICE_TT_HTML}
 </body></html>"""

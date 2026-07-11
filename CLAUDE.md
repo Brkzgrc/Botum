@@ -150,7 +150,26 @@ os.replace(tmp, f)
 
 Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
      fiyat bazlı retest/kapanış takibini devam ettirir.
-```
+
+## Trading-Bot Render Servisi
+
+**URL:** https://trading-bot-06wp.onrender.com  
+**Repo dosyaları (included paths):**
+
+| Dosya | Görev |
+|---|---|
+| `trading_main.py` | Flask entry point — `/signal`, `/status`, `/position/<sym>` (DELETE), `/health` |
+| `trading_engine.py` | Sinyali alır, monitoring state'e yazar |
+| `position_monitor.py` | Fiyat izleme, limit emir açma, trailing, kapanış |
+| `requirements_trading.txt` | Bağımlılıklar |
+
+**Auth:** `TRADE_BOT_TOKEN` env var (header: `X-Bot-Token`). Boşsa auth açık.  
+**State dosyası:** `/var/data/trade_state.json` (persistent disk, `TRADE_STATE_FILE` env var)
+
+**Portfolio tracker'dan erişim:**
+- `GET /api/trade-positions` → trading-bot `/status` proxy
+- `POST /api/trade-positions/<symbol>/delete` → trading-bot `DELETE /position/<symbol>` proxy
+- UI: Dashboard'da **AL-SAT BOT POZİSYONLARI** bölümü (Sil butonu Binance emrini silmez, sadece state'den siler)
 
 ## Environment Variables (Render — bot.py servisi)
 
