@@ -194,6 +194,49 @@ def _is_limit_filled(symbol: str, order_id) -> tuple[bool, float, float]:
 
 # ─── PENDING ORDER YÖNETİMİ ──────────────────────────────────────────────────
 
+def _place_retroactive_sl(symbol: str, pos: dict):
+    """sl_order_id=None, trailing=False olan open pozisyon için SL emri retroaktif aç."""
+    if not ENABLED:
+        print(f"[MONITOR] Retroaktif SL SİMÜLASYON — {symbol}", flush=True)
+        return
+    qty = float(pos.get("qty") or 0)
+    if qty <= 0:
+        asset = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
+        for base in [symbol.replace("USDT", ""), symbol.replace("BTC", ""), symbol.replace("ETH", "")]:
+            try:
+                bal = _get_client().get_asset_balance(asset=base)
+                qty = float(bal["free"]) if bal else 0.0
+                if qty > 0:
+                    break
+            except Exception:
+                pass
+    qty = _round_qty(qty, symbol)
+    if qty <= 0:
+        print(f"[MONITOR] Retroaktif SL: {symbol} bakiye sıfır, atlandı", flush=True)
+        return
+    try:
+        sl_stop  = _round_price(float(pos["stop"]), symbol)
+        sl_limit = _round_price(float(pos["stop"]) * (1 - SL_LIMIT_BUFFER), symbol)
+        sl_order = _get_client().create_order(
+            symbol=symbol, side="SELL", type="STOP_LOSS_LIMIT",
+            timeInForce="GTC", quantity=qty, stopPrice=sl_stop, price=sl_limit,
+        )
+        sl_order_id = sl_order["orderId"]
+        with _lock:
+            s = _load_state()
+            if symbol in s["positions"]:
+                s["positions"][symbol]["sl_order_id"] = sl_order_id
+                s["positions"][symbol]["qty"] = qty
+                _save_state(s)
+        print(f"[MONITOR] Retroaktif SL açıldı: {symbol} stop={sl_stop} qty={qty}", flush=True)
+        _send_telegram(
+            f"🛡 <b>Retroaktif SL — {symbol}</b>\n"
+            f"Stop: {sl_stop} | Miktar: {qty}"
+        )
+    except BinanceAPIException as e:
+        print(f"[MONITOR] Retroaktif SL hata {symbol}: {e}", flush=True)
+
+
 def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
     """Limit doldu: state'i open'a çevir, SL koy, WS başlat, bildir."""
     now = datetime.now(timezone.utc).isoformat()
@@ -657,8 +700,10 @@ def _periodic_check():
                 if pos.get("closing"):
                     continue  # _process_tick zaten yönetiyor
                 sl_order_id = pos.get("sl_order_id")
+                if not sl_order_id and not pos.get("trailing"):
+                    _place_retroactive_sl(sym, pos)
                 # SL fill trailing dahil kontrol et — trailing başlarken cancel başarısız olmuş olabilir
-                if sl_order_id and _is_sl_filled(sym, sl_order_id):
+                elif sl_order_id and _is_sl_filled(sym, sl_order_id):
                     with _lock:
                         s = _load_state()
                         s["positions"].pop(sym, None)

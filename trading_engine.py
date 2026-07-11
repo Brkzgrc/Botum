@@ -156,6 +156,12 @@ def execute(signal: dict):
         print(f"[TRADE] Eksik alan, atlandı: {signal}", flush=True)
         return
 
+    # Fiyatları tick size'a yuvarla — SMC ham değerleri ondalık saçmalık üretebilir
+    stop = _round_price(stop, symbol)
+    tp1  = _round_price(tp1, symbol)
+    if tp2:
+        tp2 = _round_price(tp2, symbol)
+
     limit_price   = _one_tick_above(entry, symbol)    # CHoCH+1tick — emir fiyatı
     trigger_price = _n_ticks_above(entry, symbol, 3)  # CHoCH+3tick — izleme tetikleyici
 
