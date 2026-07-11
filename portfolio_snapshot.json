@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-11 08:20:52",
+  "updated_at": "2026-07-11 08:50:55",
   "performance": {
     "total": 10,
-    "open": 4,
+    "open": 5,
     "closed": 1,
     "wins": 1,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "SMC CHoCH ROC": {
-        "total": 5,
-        "open": 4,
+        "total": 6,
+        "open": 5,
         "wins": 1,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-11": {
-        "trades": 4,
+        "trades": 5,
         "pnl": 0.41,
         "wins": 1,
         "losses": 0
@@ -73,7 +73,7 @@
     },
     "weekly": {
       "2026-W27": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 0.41,
         "wins": 1,
         "losses": 0
@@ -81,7 +81,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 0.41,
         "wins": 1,
         "losses": 0
@@ -89,6 +89,44 @@
     }
   },
   "open": [
+    {
+      "id": "BIGTIME_USDT_1783742407",
+      "symbol": "BIGTIME/USDT",
+      "entry": 0.00728,
+      "stop": 0.0069849,
+      "tp1": 0.0075551,
+      "tp2": 0.0078402,
+      "tp3": null,
+      "limit_price": 0.00728,
+      "signal_price": 0.00738,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-11T08:41:07.739340+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00729,
+      "peak_pct": 0.14,
+      "low_price": 0.00728,
+      "low_pct": 0.0,
+      "current_price": 0.00729,
+      "current_pct": 0.14,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-11T08:46:12.000043+03:00",
+      "checks": 2,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "LSK_USDT_1783731605",
       "symbol": "LSK/USDT",
@@ -121,8 +159,8 @@
       "tp1_time": "2026-07-11T04:49:06.797489+03:00",
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T04:00:17.872160+03:00",
-      "last_check": "2026-07-11T08:15:54.949625+03:00",
-      "checks": 38,
+      "last_check": "2026-07-11T08:46:12.000043+03:00",
+      "checks": 44,
       "extra": {
         "tp3": null
       },
@@ -154,14 +192,14 @@
       "peak_pct": 0.53,
       "low_price": 0.371,
       "low_pct": -1.85,
-      "current_price": 0.373,
-      "current_pct": -1.32,
+      "current_price": 0.372,
+      "current_pct": -1.59,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-11T08:15:54.949625+03:00",
-      "checks": 53,
+      "last_check": "2026-07-11T08:46:12.000043+03:00",
+      "checks": 59,
       "extra": {
         "tp3": null
       }
@@ -192,14 +230,14 @@
       "peak_pct": 0.0,
       "low_price": 0.283,
       "low_pct": -1.05,
-      "current_price": 0.284,
-      "current_pct": -0.7,
+      "current_price": 0.285,
+      "current_pct": -0.35,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:13.584521+03:00",
-      "last_check": "2026-07-11T08:15:54.949625+03:00",
-      "checks": 5,
+      "last_check": "2026-07-11T08:46:12.000043+03:00",
+      "checks": 11,
       "extra": {
         "tp3": null
       }
@@ -236,52 +274,14 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-11T08:15:54.949625+03:00",
-      "checks": 61,
+      "last_check": "2026-07-11T08:46:12.000043+03:00",
+      "checks": 67,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
-    {
-      "id": "BIGTIME_USDT_1783742407",
-      "symbol": "BIGTIME/USDT",
-      "entry": 0.00727,
-      "stop": 0.0069849,
-      "tp1": 0.0075551,
-      "tp2": 0.0078402,
-      "tp3": null,
-      "limit_price": 0.00728,
-      "signal_price": 0.00738,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-11T07:00:07.753153+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.00727,
-      "peak_pct": 0.0,
-      "low_price": 0.00727,
-      "low_pct": 0.0,
-      "current_price": 0.00727,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-11T07:00:07.753153+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "THETA_USDT_1783738803",
       "symbol": "THETA/USDT",
