@@ -602,12 +602,14 @@ def _analyze_symbol(symbol):
 
         base      = symbol.split("/")[0]
         coin_name = get_coin_name(symbol)
-        e_str  = f"{entry:.10f}".rstrip("0").rstrip(".")
-        l_str  = f"{limit_price:.10f}".rstrip("0").rstrip(".")
-        s_str  = f"{stop:.10f}".rstrip("0").rstrip(".")
-        t1_str = f"{tp1:.10f}".rstrip("0").rstrip(".")
-        t2_str = f"{tp2:.10f}".rstrip("0").rstrip(".")
-        p_str  = f"{price:.10f}".rstrip("0").rstrip(".")
+        _, prec = _get_tick_size(symbol)
+        def _fmt(v): return f"{v:.{prec}f}"
+        e_str  = _fmt(entry)
+        l_str  = _fmt(limit_price) if limit_price else _fmt(entry)
+        s_str  = _fmt(stop)
+        t1_str = _fmt(tp1)
+        t2_str = _fmt(tp2)
+        p_str  = _fmt(price)
 
         msg = (
             f"🚀 <b>CHoCH — SMC CHoCH ROC</b>\n"
