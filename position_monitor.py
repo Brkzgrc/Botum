@@ -256,12 +256,19 @@ def _place_retroactive_sl(symbol: str, pos: dict):
         )
     except BinanceAPIException as e:
         print(f"[MONITOR] Retroaktif SL hata {symbol}: {e}", flush=True)
-        _send_telegram(
-            f"⚠️ <b>Retroaktif SL BAŞARISIZ — {symbol}</b>\n"
-            f"Stop: {float(pos.get('stop', 0)):.6g} | Miktar: {qty}\n"
-            f"Hata: {e}\n"
-            f"Manuel stop koy!"
-        )
+        with _lock:
+            s = _load_state()
+            if symbol in s["positions"]:
+                fail_count = s["positions"][symbol].get("sl_fail_count", 0) + 1
+                s["positions"][symbol]["sl_fail_count"] = fail_count
+                _save_state(s)
+        if fail_count <= 3:
+            _send_telegram(
+                f"⚠️ <b>SL KOYULAMADI — {symbol}</b> (deneme {fail_count}/3)\n"
+                f"Stop: {float(pos.get('stop', 0)):.6g} | Hata: {e}\n"
+                f"Coinin Binance Earn/Staking'den free'ye çekili olduğunu kontrol et."
+                + ("\n<b>→ Artık tekrar denenmeyecek. Manuel stop koy.</b>" if fail_count == 3 else "")
+            )
 
 
 def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
@@ -544,6 +551,42 @@ def _check_monitoring_entries():
         active_count += 1  # bu döngüde slot sayacını güncelle
 
 
+def _reconcile_sl_orders():
+    """Startup: open pozisyonlar için Binance'teki mevcut SELL emirlerini tara,
+    sl_order_id / trailing_sl_id eksikse eşleştir ve state'e kaydet."""
+    if not ENABLED:
+        return
+    state = _load_state()
+    updated = False
+    for sym, pos in list(state.get("positions", {}).items()):
+        if pos.get("status") != "open":
+            continue
+        has_sl      = pos.get("sl_order_id") is not None
+        has_trail   = pos.get("trailing_sl_id") is not None
+        is_trailing = pos.get("trailing", False)
+        if (is_trailing and has_trail) or (not is_trailing and has_sl):
+            continue  # zaten kayıtlı
+        print(f"[MONITOR] SL reconcile: {sym} için Binance sorgulanıyor", flush=True)
+        try:
+            open_orders = _get_client().get_open_orders(symbol=sym)
+            for order in open_orders:
+                if order.get("side") == "SELL" and order.get("type") == "STOP_LOSS_LIMIT":
+                    oid = order["orderId"]
+                    if is_trailing:
+                        pos["trailing_sl_id"] = oid
+                    else:
+                        pos["sl_order_id"] = oid
+                    state["positions"][sym] = pos
+                    updated = True
+                    print(f"[MONITOR] SL reconcile eşleşti: {sym} orderId={oid}", flush=True)
+                    break
+        except BinanceAPIException as e:
+            print(f"[MONITOR] SL reconcile hatası {sym}: {e}", flush=True)
+    if updated:
+        with _lock:
+            _save_state(state)
+
+
 def _reconcile_pending_orders():
     """Startup: limit_order_id=None olan pending kayıtları için Binance'te eşleştirme.
     Crash güvenliği: state kaydedilip Binance emri oluşturulmadan crash'te kurtarma."""
@@ -778,8 +821,10 @@ def _periodic_check():
                 is_trailing      = pos.get("trailing", False)
 
                 if not is_trailing and not sl_order_id:
-                    # Retroaktif SL — trailing olmayan, SL emri eksik pozisyon
-                    _place_retroactive_sl(sym, pos)
+                    # Retroaktif SL — 3 başarısız deneme sonrası durur (spam önlemi)
+                    if pos.get("sl_fail_count", 0) < 3:
+                        _place_retroactive_sl(sym, pos)
+                    # else: zaten bildirildi, tekrar deneme yok
                 elif is_trailing and not trailing_sl_id:
                     # Retroaktif trail SL — trailing modunda ama Binance emri yok
                     qty = float(pos.get("qty", 0))
@@ -851,7 +896,8 @@ def start():
     _twm = ThreadedWebsocketManager(api_key=API_KEY, api_secret=API_SECRET)
     _twm.start()
 
-    _reconcile_pending_orders()  # limit_order_id=None olan kayıtları onar
+    _reconcile_sl_orders()        # open pozisyonlar için mevcut SL emirlerini eşleştir
+    _reconcile_pending_orders()   # limit_order_id=None olan pending kayıtları onar
 
     state = _load_state()
     for sym, pos in state.get("positions", {}).items():
