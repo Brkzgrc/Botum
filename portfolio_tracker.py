@@ -1956,20 +1956,9 @@ def dashboard():
             <td>{analyzer_badge(sig)}</td></tr>"""
 
     if pending_sigs:
-        _avail_slots  = max(0, MAX_POSITIONS - len(open_sigs))
-        _over_cap     = len(pending_sigs) - _avail_slots
-        _slot_warn    = (
-            f' &nbsp;<span style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;'
-            f'border-radius:4px;padding:1px 7px;font-size:.6rem;font-weight:normal">'
-            f'⚠️ {_avail_slots} slot boş — {_over_cap} emir gerçekte reddedilir</span>'
-        ) if _over_cap > 0 else (
-            f' &nbsp;<span style="background:#2ecc7122;color:#2ecc71;border:1px solid #2ecc7155;'
-            f'border-radius:4px;padding:1px 7px;font-size:.6rem;font-weight:normal">'
-            f'✓ {_avail_slots} slot boş</span>'
-        )
         _pending_section = f"""<div class="section">
     <details data-id="pending-retest" open>
-    <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)}){_slot_warn}</summary>
+    <summary>⏳ RETEST BEKLEYENLER ({len(pending_sigs)})</summary>
     <p class="note">CHoCH seviyesine limit emir konuldu. 48 saat içinde fiyat geri dönmezse otomatik iptal. Anlık fiyattaki % = limite olan uzaklık (limit altına inince emir dolar).</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Sinyal Fiyat</th><th>Anlık Fiyat</th><th>CHoCH / Limit Buy</th><th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th>Analiz</th>
