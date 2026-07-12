@@ -4,19 +4,17 @@
 # ───────────────────────────────────────────────────────────────
 #  SİNYAL KOŞULLARI
 #    • CHoCH Bullish (yapısal kırılım)
-#    • Hacim filtresi  : son bar / 20 bar MA ≥ 3.0x
-#    • ROC filtresi    : 16H ROC ≥ %7.5 (son 16 mum kapanış değişimi)
+#    • Hacim filtresi  : son bar / 20 bar MA ≥ 5.0x
 #    • 24h soğuma      : aynı coinde 24 saat tekrar yok
 #    • BTC crash filtresi aktif
+#    • BTC downtrend filtresi aktif
 #
 #  STOP / TP
 #    • Stop   : yapısal düşük (CHoCH öncesi swing low)
 #    • TP1    : 1:1 risk/ödül
 #    • TP2    : 1:2 risk/ödül
 #
-#  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥3x)
-#    ROC filtreli  → WR %81.8 | MaxDD -%6.12  | 2,556 sinyal
-#    ROC filtresiz → WR %70.5 | MaxDD -%13.28 | 9,791 sinyal
+#  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥5x, BTC crash+downtrend filtreli)
 #    ┌─────────────────────────────────────────────────────────┐
 #    │  TP1'e ulaşınca: KAPATMA YOK — trailing aktifleşir     │
 #    │  Trailing stop : peak'ten -%2.5 geri çekilince çıkış   │
@@ -53,7 +51,7 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
-    return (f"SMC v23 — CHoCH+ROC≥7.5%+vol≥3x | {boot_status} | {cached} coin cached | "
+    return (f"SMC v23 — CHoCH+vol≥5x+BTC filtreli | {boot_status} | {cached} coin cached | "
             f"{btc_cr} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -71,8 +69,7 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
-VOL_RATIO_MIN    = 3.0  # Hacim filtresi: son bar / 20 bar MA
-ROC_FILTER_ENABLED = os.environ.get("ROC_FILTER_ENABLED", "false").lower() == "true"  # Render env var ile kontrol
+VOL_RATIO_MIN    = 5.0  # Hacim filtresi: son bar / 20 bar MA
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
@@ -324,7 +321,7 @@ def get_clean_symbols():
             if any(x in base for x in ["UP", "DOWN", "BULL", "BEAR"]):
                 continue
             result.append(symbol)
-        print(f"  → {len(result)} aktif USDT spot coin (ROC filtresi bar kapanışında uygulanır)", flush=True)
+        print(f"  → {len(result)} aktif USDT spot coin", flush=True)
         return result
     except Exception as e:
         print(f"[HATA] Piyasa verisi: {e}")
@@ -553,6 +550,9 @@ def _analyze_symbol(symbol):
         if check_btc_crash():
             scan_stats["btc_crash_skip"] += 1
             return
+        if check_btc_downtrend_active():
+            scan_stats["btc_downtrend_skip"] += 1
+            return
         # CHoCH tespiti
         micro_break, micro_dir, _, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
 
@@ -568,17 +568,6 @@ def _analyze_symbol(symbol):
         vol_ratio = float(df["volume"].iloc[-1]) / float(vol_ma_20)
         if vol_ratio < VOL_RATIO_MIN:
             scan_stats["vol_filter_skip"] += 1
-            return
-
-        # ROC filtresi: son 16 saat değişimi >= %8
-        if len(df) >= 17:
-            prev_close = float(df["close"].iloc[-17])
-            curr_close = float(df["close"].iloc[-1])
-            roc_16h = (curr_close - prev_close) / prev_close * 100.0 if prev_close > 0 else 0.0
-        else:
-            roc_16h = 0.0
-        if ROC_FILTER_ENABLED and roc_16h < 7.5:
-            scan_stats["roc_filter_skip"] += 1
             return
 
         # Cooldown kontrolü (24 saat)
@@ -612,7 +601,7 @@ def _analyze_symbol(symbol):
         p_str  = _fmt(price)
 
         msg = (
-            f"🚀 <b>CHoCH — SMC CHoCH ROC</b>\n"
+            f"🚀 <b>CHoCH — Legacy SMC</b>\n"
             f"<b>#{base}</b>  <i>{coin_name}</i>\n"
             f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
             f"📍 <b>CHoCH seviyesi:</b> <code>{e_str}</code>\n"
@@ -655,7 +644,7 @@ def _analyze_symbol(symbol):
                 print(f"[SMC ANALYZER] {ae}", flush=True)
 
         scan_stats["signal_v2"] += 1
-        print(f"🟣 [SMC CHoCH ROC] {symbol} | choch:{entry:.8g} | limit:{limit_price:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
+        print(f"🟣 [Legacy SMC] {symbol} | choch:{entry:.8g} | limit:{limit_price:.8g} | stop:{stop:.8g} | vol:{vol_ratio:.2f}x", flush=True)
 
     except Exception as e:
         print(f"[HATA] {symbol}: {e}", flush=True)
@@ -753,9 +742,9 @@ async def periodic_summary():
         print(f"WS bar kapandı   : {ws_1h_closes}", flush=True)
         print(f"CHoCH yok        : {scan_stats.get('no_choch', 0)}", flush=True)
         print(f"Hacim filtresi   : {scan_stats.get('vol_filter_skip', 0)}", flush=True)
-        print(f"ROC filtresi     : {scan_stats.get('roc_filter_skip', 0)}", flush=True)
         print(f"Cooldown skip    : {scan_stats.get('cooldown_skip', 0)}", flush=True)
         print(f"BTC crash skip   : {scan_stats.get('btc_crash_skip', 0)}", flush=True)
+        print(f"BTC downtrend    : {scan_stats.get('btc_downtrend_skip', 0)}", flush=True)
         print(f"Sinyal (V2)      : {scan_stats.get('signal_v2', 0)}", flush=True)
         print(f"------------------------\n", flush=True)
         scan_stats.clear()
@@ -772,13 +761,13 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v23 — CHoCH + ROC≥7.5% + vol≥3x")
+    print("🚀  SMC v23 — CHoCH + vol≥5x + BTC filtreli")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
-    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + 16H ROC≥7.5% + BTC crash yok")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash/downtrend yok")
     print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
     print(f"  TP Yapısı       : TP1=risk×1.0 | TP2=risk×2.0")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
