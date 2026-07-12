@@ -21,9 +21,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
-TRAIL_PCT        = 0.975   # %2.5 trailing
-PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat) — monitoring ve pending için ayrı ayrı
-SL_LIMIT_BUFFER  = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
+TRAIL_PCT              = 0.975   # %2.5 trailing
+PENDING_EXPIRE_H       = 48      # Monitoring süresi: CHoCH+3tick bekleme (saat)
+PENDING_ORDER_EXPIRE_H = 1       # Limit emir süresi: CHoCH+3tick→+1tick arası (saat)
+SL_LIMIT_BUFFER        = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
 CHECK_INTERVAL   = 60      # saniye
 MAX_POSITIONS    = 5
 MAX_POS_SIZE     = 20_000.0
@@ -407,7 +408,7 @@ def _check_pending_orders():
 
         try:
             open_time = datetime.fromisoformat(pos["open_time"])
-            if datetime.now(timezone.utc) - open_time >= timedelta(hours=PENDING_EXPIRE_H):
+            if datetime.now(timezone.utc) - open_time >= timedelta(hours=PENDING_ORDER_EXPIRE_H):
                 _cancel_pending(sym, pos)
         except Exception as e:
             print(f"[MONITOR] Pending expire kontrol hatası {sym}: {e}", flush=True)
