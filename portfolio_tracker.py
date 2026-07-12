@@ -2654,7 +2654,7 @@ if __name__ == "__main__":
     print("=" * 50, flush=True)
 
     load_signals()
-    _sync_from_trading_bot()
+    threading.Thread(target=_sync_from_trading_bot, daemon=True, name="startup-sync").start()
     threading.Thread(target=position_checker_loop, daemon=True).start()
     threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
