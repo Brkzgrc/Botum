@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-12 21:39:26",
+  "updated_at": "2026-07-12 22:09:29",
   "performance": {
     "total": 60,
     "open": 5,
@@ -121,14 +121,14 @@
       "peak_pct": 0.0,
       "low_price": 0.3036,
       "low_pct": -2.69,
-      "current_price": 0.3087,
-      "current_pct": -1.06,
+      "current_price": 0.3084,
+      "current_pct": -1.16,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T20:00:14.585646+03:00",
-      "last_check": "2026-07-12T21:35:15.588986+03:00",
-      "checks": 145,
+      "last_check": "2026-07-12T22:06:45.873908+03:00",
+      "checks": 151,
       "extra": {
         "tp3": null
       },
@@ -161,14 +161,14 @@
       "peak_pct": 1.26,
       "low_price": 0.06044,
       "low_pct": -10.29,
-      "current_price": 0.06176,
-      "current_pct": -8.33,
+      "current_price": 0.06193,
+      "current_pct": -8.07,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-11T09:00:13.964446+03:00",
-      "last_check": "2026-07-12T21:35:15.588986+03:00",
-      "checks": 393,
+      "last_check": "2026-07-12T22:06:45.873908+03:00",
+      "checks": 399,
       "extra": {
         "tp3": null
       },
@@ -207,8 +207,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-12T21:35:15.588986+03:00",
-      "checks": 409,
+      "last_check": "2026-07-12T22:06:45.873908+03:00",
+      "checks": 415,
       "extra": {
         "tp3": null
       }
@@ -239,14 +239,14 @@
       "peak_pct": 0.53,
       "low_price": 0.366,
       "low_pct": -3.17,
-      "current_price": 0.368,
-      "current_pct": -2.65,
+      "current_price": 0.367,
+      "current_pct": -2.91,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-12T21:35:15.588986+03:00",
-      "checks": 466,
+      "last_check": "2026-07-12T22:06:45.873908+03:00",
+      "checks": 472,
       "extra": {
         "tp3": null
       }
@@ -277,14 +277,14 @@
       "peak_pct": 0.55,
       "low_price": 0.1047,
       "low_pct": -3.23,
-      "current_price": 0.1053,
-      "current_pct": -2.68,
+      "current_price": 0.1057,
+      "current_pct": -2.31,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-12T21:35:15.588986+03:00",
-      "checks": 474,
+      "last_check": "2026-07-12T22:06:45.873908+03:00",
+      "checks": 480,
       "extra": {
         "tp3": null
       }
