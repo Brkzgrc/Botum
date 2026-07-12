@@ -577,24 +577,28 @@ def _analyze_symbol(symbol):
             return
 
         # Sinyal hesaplamaları
-        price  = float(df["close"].iloc[-1])
-        entry  = choch_level if choch_level is not None else price
-        stop   = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
+        if choch_level is None:
+            return  # backtest ile tutarlı: swing_high yoksa sinyal üretme
+
+        price = float(df["close"].iloc[-1])
+
+        # Limit buy fiyatı: CHoCH seviyesi + 1 tick (backtest ile aynı fill fiyatı)
+        limit_price, _ = _choch_plus_one_tick(choch_level, symbol)
+        entry = limit_price if limit_price else choch_level  # risk/tp hesabı fill fiyatından
+
+        stop = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
         if stop >= entry:
             stop = round(entry * 0.95, 10)
-        risk   = max(entry - stop, entry * 0.01)
-        tp1    = round(entry + risk * 1.0, 10)
-        tp2    = round(entry + risk * 2.0, 10)
-
-        # Limit buy fiyatı: CHoCH seviyesi + 1 tick
-        limit_price, _ = _choch_plus_one_tick(entry, symbol)
+        risk = max(entry - stop, entry * 0.01)
+        tp1  = round(entry + risk * 1.0, 10)
+        tp2  = round(entry + risk * 2.0, 10)
 
         base      = symbol.split("/")[0]
         coin_name = get_coin_name(symbol)
         _, prec = _get_tick_size(symbol)
         def _fmt(v): return f"{v:.{prec}f}"
-        e_str  = _fmt(entry)
-        l_str  = _fmt(limit_price) if limit_price else _fmt(entry)
+        c_str  = _fmt(choch_level)   # ham CHoCH seviyesi (gösterim için)
+        l_str  = _fmt(limit_price)   # CHoCH+1tick = gerçek fill = risk hesap bazı
         s_str  = _fmt(stop)
         t1_str = _fmt(tp1)
         t2_str = _fmt(tp2)
@@ -604,7 +608,7 @@ def _analyze_symbol(symbol):
             f"🚀 <b>CHoCH — Legacy SMC</b>\n"
             f"<b>#{base}</b>  <i>{coin_name}</i>\n"
             f"<code>━━━━━━━━━━━━━━━━━━━━</code>\n"
-            f"📍 <b>CHoCH seviyesi:</b> <code>{e_str}</code>\n"
+            f"📍 <b>CHoCH seviyesi:</b> <code>{c_str}</code>\n"
             f"📊 <b>Anlık fiyat:</b> <code>{p_str}</code>\n"
             f"🔵 <b>Limit Alış:</b> <code>{l_str}</code>  ← CHoCH+1 tick\n"
             f"🎯 <b>TP1 (trailing aktifleşir):</b> <code>{t1_str}</code>\n"
