@@ -127,12 +127,14 @@ def _sync_from_trading_bot():
     updated = 0
     closed = 0
 
-    # Bot'ta open olan sembolleri bul
+    # Bot'taki tüm semboller (herhangi bir statüde)
+    bot_all_symbols = {sym.upper() for sym in trade_positions.keys()}
     bot_open_symbols = {
         sym.upper() for sym, pos in trade_positions.items()
         if pos.get("status") == "open"
     }
 
+    stale = 0
     with _lock:
         # 1) Portfolio'da open olan ama bot'ta olmayan → kapat (deploy sırasında kapandı)
         for sig in signals_db:
@@ -149,9 +151,23 @@ def _sync_from_trading_bot():
                     (sig.get("current_price", sig["entry"]) - sig["entry"]) / sig["entry"] * 100, 2
                 ) if sig["entry"] else 0
                 closed += 1
-                print(f"[SYNC] {sym_norm} portfolio'da open ama bot'ta yok → kapatıldı", flush=True)
+                print(f"[SYNC] {sym_norm} portfolio open ama bot'ta yok → kapatıldı", flush=True)
 
-        # 2) Bot'ta open olan ama portfolio'da pending_retest → open yap
+        # 2) Portfolio'da pending_retest olan ama bot'ta hiç izlenmeyen → no_retest
+        for sig in signals_db:
+            if sig.get("status") != "pending_retest":
+                continue
+            if sig.get("source") not in SMC_MAIN_SOURCES:
+                continue
+            sym_norm = sig.get("symbol", "").replace("/", "").upper()
+            if sym_norm not in bot_all_symbols:
+                sig["status"]       = "no_retest"
+                sig["close_time"]   = now_str
+                sig["close_reason"] = "stale_pending"
+                stale += 1
+                print(f"[SYNC] {sym_norm} stale pending → no_retest", flush=True)
+
+        # 3) Bot'ta open olan ama portfolio'da pending_retest → open yap
         for sym, pos in trade_positions.items():
             if pos.get("status") != "open":
                 continue
@@ -174,9 +190,9 @@ def _sync_from_trading_bot():
                     print(f"[SYNC] {sym_norm} pending_retest → open (fill={fill_price})", flush=True)
                     break
 
-        if updated or closed:
+        if updated or closed or stale:
             save_signals()
-    print(f"[SYNC] Tamamlandı: {updated} açıldı, {closed} kapatıldı.", flush=True)
+    print(f"[SYNC] Tamamlandı: {updated} açıldı, {closed} kapatıldı, {stale} stale temizlendi.", flush=True)
 
 
 def _migrate_signals():
@@ -853,6 +869,54 @@ def delete_signal_by_id():
         if removed:
             save_signals()
     return jsonify({"ok": True, "removed": removed, "id": sig_id})
+
+@app.route("/api/signals/sync-cleanup", methods=["POST"])
+def sync_cleanup():
+    """Elle tetikle: bot'ta olmayan open → kapat, bot'ta olmayan pending → no_retest, manual → sil."""
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+    if not TRADING_BOT_URL:
+        return jsonify({"error": "TRADING_BOT_URL tanımlı değil"}), 503
+    try:
+        hdrs = {"X-Bot-Token": TRADING_BOT_TOKEN} if TRADING_BOT_TOKEN else {}
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=10)
+        if not r.ok:
+            return jsonify({"error": "trading bot erişilemez"}), 502
+        trade_positions = r.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+    now_str = tr_now().isoformat()
+    bot_all_symbols  = {sym.upper() for sym in trade_positions.keys()}
+    bot_open_symbols = {sym.upper() for sym, pos in trade_positions.items() if pos.get("status") == "open"}
+
+    closed = stale = manual = 0
+    with _lock:
+        for sig in signals_db:
+            src      = sig.get("source", "")
+            sym_norm = sig.get("symbol", "").replace("/", "").upper()
+            status   = sig.get("status", "")
+            if src not in SMC_MAIN_SOURCES:
+                continue
+            if status == "open" and sym_norm not in bot_open_symbols:
+                sig["status"] = "closed"; sig["close_time"] = now_str
+                sig["close_reason"] = "sync_closed"
+                sig["close_pct"] = round(
+                    (sig.get("current_price", sig["entry"]) - sig["entry"]) / sig["entry"] * 100, 2
+                ) if sig.get("entry") else 0
+                closed += 1
+            elif status == "pending_retest" and sym_norm not in bot_all_symbols:
+                sig["status"] = "no_retest"; sig["close_time"] = now_str
+                sig["close_reason"] = "stale_pending"
+                stale += 1
+            elif status == "closed" and sig.get("close_reason") == "manual":
+                sig["_delete"] = True
+                manual += 1
+        signals_db[:] = [s for s in signals_db if not s.get("_delete")]
+        save_signals()
+    return jsonify({"ok": True, "closed": closed, "stale_pending": stale, "manual_removed": manual})
 
 @app.route("/api/signals/delete-manual", methods=["POST"])
 def delete_manual_signals():
