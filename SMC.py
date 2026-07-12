@@ -318,7 +318,7 @@ def get_clean_symbols():
             if symbol in IGNORED_COINS:
                 continue
             base = symbol.split("/")[0]
-            if any(x in base for x in ["UP", "DOWN", "BULL", "BEAR"]):
+            if any(x in base for x in ["UP","DOWN","BULL","BEAR","3L","3S","2L","2S","5L","5S","10L","10S"]):
                 continue
             result.append(symbol)
         print(f"  → {len(result)} aktif USDT spot coin", flush=True)
