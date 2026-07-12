@@ -2569,6 +2569,7 @@ def alsat_page():
     for sym, pos in trade_positions.items():
         st = pos.get("status", "")
         badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
+        cp  = fmt_price(pos.get("current_price", 0))
         lp  = fmt_price(pos.get("limit_price", 0))
         tp  = fmt_price(pos.get("trigger_price", 0))
         sl  = fmt_price(pos.get("stop", 0))
@@ -2589,6 +2590,7 @@ def alsat_page():
         rows += f"""<tr>
             <td style="font-weight:bold;color:#e8eaf6">{sym_disp}</td>
             <td>{badge}</td>
+            <td style="color:#00b4d8;font-weight:bold">{cp}</td>
             <td style="color:#00b4d8">{lp}</td>
             <td style="color:#f39c12">{tp}</td>
             <td style="color:#e74c3c">{sl}</td>
@@ -2674,7 +2676,7 @@ tr:hover td{{background:#0f151d;}}
 <p class="note">İzleme: fiyat CHoCH+3tick'e gelince limit emir açılır (CHoCH+1tick). Emir: Binance'te limit buy bekliyor. Sil butonu sadece state'den siler — Binance emrini kendin iptal et. 30s otomatik yenileme.</p>
 
 <div class="table-wrap"><table><thead><tr>
-  <th>Sembol</th><th>Durum</th><th>Limit Buy</th><th>Tetikleyici</th>
+  <th>Sembol</th><th>Durum</th><th>Anlık Fiyat</th><th>Limit Buy</th><th>Tetikleyici</th>
   <th>Stop</th><th>TP1</th><th>TP2</th><th>Geçen</th><th>Kalan</th><th></th>
 </tr></thead><tbody>
   {rows}
