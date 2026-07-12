@@ -109,7 +109,8 @@ def load_signals():
 
 def _sync_from_trading_bot():
     """Startup: trading bot'taki open pozisyonları portfolio sinyalleriyle eşleştir.
-    pending_retest → open geçişi deploy sırasında kaybolmuşsa burada düzeltilir."""
+    pending_retest → open geçişi deploy sırasında kaybolmuşsa burada düzeltilir.
+    Portfolio'da open olan ama bot'ta olmayan pozisyonlar kapatılır (deploy sırasında kapanan)."""
     if not TRADING_BOT_URL:
         return
     try:
@@ -124,18 +125,40 @@ def _sync_from_trading_bot():
 
     now_str = tr_now().isoformat()
     updated = 0
+    closed = 0
+
+    # Bot'ta open olan sembolleri bul
+    bot_open_symbols = {
+        sym.upper() for sym, pos in trade_positions.items()
+        if pos.get("status") == "open"
+    }
+
     with _lock:
+        # 1) Portfolio'da open olan ama bot'ta olmayan → kapat (deploy sırasında kapandı)
+        for sig in signals_db:
+            if sig.get("status") != "open":
+                continue
+            if sig.get("source") not in SMC_MAIN_SOURCES:
+                continue
+            sym_norm = sig.get("symbol", "").replace("/", "").upper()
+            if sym_norm not in bot_open_symbols:
+                sig["status"]       = "closed"
+                sig["close_time"]   = now_str
+                sig["close_reason"] = "sync_closed"
+                sig["close_pct"]    = round(
+                    (sig.get("current_price", sig["entry"]) - sig["entry"]) / sig["entry"] * 100, 2
+                ) if sig["entry"] else 0
+                closed += 1
+                print(f"[SYNC] {sym_norm} portfolio'da open ama bot'ta yok → kapatıldı", flush=True)
+
+        # 2) Bot'ta open olan ama portfolio'da pending_retest → open yap
         for sym, pos in trade_positions.items():
             if pos.get("status") != "open":
                 continue
-            sym_norm = sym.upper()
+            sym_norm   = sym.upper()
             fill_price = float(pos.get("entry") or 0)
             qty        = float(pos.get("qty") or 0)
             if not fill_price:
-                continue
-            open_count = len([s for s in signals_db if s.get("status") == "open"])
-            if open_count >= MAX_POSITIONS:
-                print(f"[SYNC] {sym_norm} atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
                 continue
             for sig in signals_db:
                 sig_sym = sig.get("symbol", "").replace("/", "").upper()
@@ -150,9 +173,10 @@ def _sync_from_trading_bot():
                     updated += 1
                     print(f"[SYNC] {sym_norm} pending_retest → open (fill={fill_price})", flush=True)
                     break
-        if updated:
+
+        if updated or closed:
             save_signals()
-    print(f"[SYNC] Tamamlandı: {updated} sinyal güncellendi.", flush=True)
+    print(f"[SYNC] Tamamlandı: {updated} açıldı, {closed} kapatıldı.", flush=True)
 
 
 def _migrate_signals():
