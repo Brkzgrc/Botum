@@ -2590,7 +2590,7 @@ def alsat_page():
         rows += f"""<tr>
             <td style="font-weight:bold;color:#e8eaf6">{sym_disp}</td>
             <td>{badge}</td>
-            <td style="color:#00b4d8;font-weight:bold">{cp}</td>
+            <td style="color:#ffffff;font-weight:bold">{cp if cp != "0" else "—"}</td>
             <td style="color:#00b4d8">{lp}</td>
             <td style="color:#f39c12">{tp}</td>
             <td style="color:#e74c3c">{sl}</td>

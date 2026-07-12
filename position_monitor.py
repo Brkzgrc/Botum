@@ -406,6 +406,17 @@ def _check_pending_orders():
             _activate_position(sym, fill_price, qty, pos)
             continue
 
+        # Anlık fiyatı state'e yaz (UI için)
+        try:
+            ticker = _get_client().get_symbol_ticker(symbol=sym)
+            with _lock:
+                s = _load_state()
+                if sym in s.get("positions", {}):
+                    s["positions"][sym]["current_price"] = float(ticker["price"])
+                    _save_state(s)
+        except Exception:
+            pass
+
         try:
             open_time = datetime.fromisoformat(pos["open_time"])
             if datetime.now(timezone.utc) - open_time >= timedelta(hours=PENDING_ORDER_EXPIRE_H):
@@ -526,6 +537,11 @@ def _check_monitoring_entries():
         try:
             ticker        = _get_client().get_symbol_ticker(symbol=sym)
             current_price = float(ticker["price"])
+            with _lock:
+                s = _load_state()
+                if sym in s.get("positions", {}):
+                    s["positions"][sym]["current_price"] = current_price
+                    _save_state(s)
         except BinanceAPIException as e:
             print(f"[MONITOR] Monitoring fiyat hatası {sym}: {e}", flush=True)
             continue
