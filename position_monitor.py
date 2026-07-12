@@ -646,13 +646,15 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         if pos.get("closing"):
             return
 
+        pos["current_price"] = close
+        state["positions"][symbol] = pos
+        _save_state(state)
         pos_snap = dict(pos)
 
         if not pos.get("trailing"):
-            # Peak ve current_price güncelle
-            if high > float(pos["peak"]) or close != float(pos.get("current_price", 0)):
-                pos["peak"] = max(high, float(pos["peak"]))
-                pos["current_price"] = close
+            # Peak: mumun high'ına göre güncelle
+            if high > float(pos["peak"]):
+                pos["peak"] = high
                 state["positions"][symbol] = pos
                 _save_state(state)
 
@@ -683,7 +685,6 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             if high > float(pos["peak"]):
                 old_trail_sl_id = pos.get("trailing_sl_id")
                 pos["peak"] = high
-                pos["current_price"] = close
                 pos["trailing_sl_id"] = None   # yeni emir gelene kadar None
                 state["positions"][symbol] = pos
                 _save_state(state)
