@@ -849,6 +849,35 @@ def api_retest_cancelled():
     return jsonify({"error": "pending_retest not found"}), 404
 
 
+@app.route("/api/position-closed", methods=["POST"])
+def api_position_closed():
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    data        = request.get_json(silent=True) or {}
+    symbol      = data.get("symbol", "")
+    reason      = data.get("reason", "sl_binance")
+    close_price = float(data.get("close_price") or 0)
+    pnl_pct     = float(data.get("pnl_pct") or 0)
+    if not symbol:
+        return jsonify({"error": "missing symbol"}), 400
+    sym_norm = symbol.replace("/", "").upper()
+    now = tr_now()
+    with _lock:
+        for s in signals_db:
+            if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "open":
+                s["status"]       = "closed"
+                s["close_reason"] = reason
+                s["close_time"]   = now.isoformat()
+                s["close_price"]  = close_price
+                s["close_pct"]    = pnl_pct
+                s["outcome"]      = "win" if pnl_pct > 0 else "loss"
+                save_signals()
+                print(f"[POSITION-CLOSED] {sym_norm} @ {close_price} | {reason} | {pnl_pct:+.2f}%", flush=True)
+                return jsonify({"ok": True})
+    return jsonify({"error": "open position not found"}), 404
+
+
 @app.route("/api/trade-positions", methods=["GET"])
 def api_trade_positions():
     """trading-bot servisinden tüm pozisyonları çeker."""
