@@ -550,9 +550,10 @@ def _analyze_symbol(symbol):
         if check_btc_crash():
             scan_stats["btc_crash_skip"] += 1
             return
-        if check_btc_downtrend_active():
-            scan_stats["btc_downtrend_skip"] += 1
-            return
+        # BTC downtrend filtresi kapalı (backtest: crash filtresi yeterli)
+        # if check_btc_downtrend_active():
+        #     scan_stats["btc_downtrend_skip"] += 1
+        #     return
         # CHoCH tespiti
         micro_break, micro_dir, _, choch_level, swing_low = detect_micro_choch(df, CHOCH_SWING)
 
