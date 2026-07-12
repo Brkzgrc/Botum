@@ -133,6 +133,10 @@ def _sync_from_trading_bot():
             qty        = float(pos.get("qty") or 0)
             if not fill_price:
                 continue
+            open_count = len([s for s in signals_db if s.get("status") == "open"])
+            if open_count >= MAX_POSITIONS:
+                print(f"[SYNC] {sym_norm} atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
+                continue
             for sig in signals_db:
                 sig_sym = sig.get("symbol", "").replace("/", "").upper()
                 if sig_sym == sym_norm and sig.get("status") == "pending_retest":
@@ -811,6 +815,10 @@ def api_retest_filled():
     sym_norm = symbol.replace("/", "").upper()
     now = tr_now()
     with _lock:
+        open_count = len([s for s in signals_db if s.get("status") == "open"])
+        if open_count >= MAX_POSITIONS:
+            print(f"[RETEST] {sym_norm} atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
+            return jsonify({"error": "max positions reached"}), 429
         for s in signals_db:
             if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "pending_retest":
                 s["status"]        = "open"
