@@ -448,14 +448,15 @@ def check_pending_retests():
 
         # Fiyat limit seviyesine indi → simülasyon fill
         if low <= float(lp):
-            # Pozisyon limiti: gerçek bot gibi MAX_POSITIONS kontrolü yap
-            if open_count >= MAX_POSITIONS:
-                print(f"[PENDING] {symbol} fill atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
-                continue
             entry = float(lp)
             stop  = float(sig.get("stop", 0))
             tp1   = float(sig.get("tp1", 0))
+            # Kontrol + güncelleme atomik: aynı lock içinde yap (race condition önleme)
             with _lock:
+                open_count = len([s for s in signals_db if s.get("status") == "open"])
+                if open_count >= MAX_POSITIONS:
+                    print(f"[PENDING] {symbol} fill atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
+                    continue
                 sig["status"]        = "open"
                 sig["entry"]         = entry
                 sig["open_time"]     = now.isoformat()
@@ -466,7 +467,6 @@ def check_pending_retests():
                 sig["current_price"] = close
                 sig["current_pct"]   = round((close - entry) / entry * 100, 2)
                 sig["tp1_hit"]       = False
-            open_count += 1  # bu döngüde açılan pozisyonu say
             need_save = True
             print(f"[PENDING] RETEST DOLDU (simülasyon): {symbol} @ {entry}", flush=True)
             _send_telegram_pt(
