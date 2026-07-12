@@ -1,9 +1,9 @@
 {
-  "updated_at": "2026-07-12 20:09:17",
+  "updated_at": "2026-07-12 20:39:20",
   "performance": {
     "total": 60,
-    "open": 6,
-    "closed": 4,
+    "open": 5,
+    "closed": 5,
     "wins": 1,
     "win_tp2": 0,
     "losses": 1,
@@ -12,8 +12,8 @@
     "total_pnl": -0.88,
     "win_loss_pnl": -0.88,
     "expired_pnl": 0.0,
-    "avg_peak": 1.55,
-    "win_rate": 25.0,
+    "avg_peak": 1.24,
+    "win_rate": 20.0,
     "real_win_rate": 50.0,
     "analyzer": {
       "gir": {
@@ -41,7 +41,7 @@
     "by_type": {
       "Legacy SMC": {
         "total": 10,
-        "open": 6,
+        "open": 5,
         "wins": 1,
         "losses": 1,
         "expired": 0,
@@ -51,7 +51,7 @@
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 50.0,
-        "avg_peak": 1.55,
+        "avg_peak": 1.24,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
         "win_loss_pnl": -0.88
@@ -96,44 +96,6 @@
   },
   "open": [
     {
-      "id": "XPL_USDT_1783803603",
-      "symbol": "XPL/USDT",
-      "entry": 0.09437,
-      "stop": 0.089948,
-      "tp1": 0.098792,
-      "tp2": 0.103214,
-      "tp3": null,
-      "limit_price": 0.09437,
-      "signal_price": 0.09456,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-12T02:28:09.781626+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.09437,
-      "peak_pct": 0.0,
-      "low_price": 0.09,
-      "low_pct": -4.63,
-      "current_price": 0.09134,
-      "current_pct": -3.21,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 193,
-      "extra": {
-        "tp3": null
-      }
-    },
-    {
       "id": "LDO_USDT_1783789209",
       "symbol": "LDO/USDT",
       "entry": 0.3120048678852164,
@@ -159,14 +121,14 @@
       "peak_pct": 0.0,
       "low_price": 0.3036,
       "low_pct": -2.69,
-      "current_price": 0.3098,
-      "current_pct": -0.71,
+      "current_price": 0.3093,
+      "current_pct": -0.87,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T20:00:14.585646+03:00",
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 128,
+      "last_check": "2026-07-12T20:37:30.755575+03:00",
+      "checks": 134,
       "extra": {
         "tp3": null
       },
@@ -199,14 +161,14 @@
       "peak_pct": 1.26,
       "low_price": 0.06044,
       "low_pct": -10.29,
-      "current_price": 0.06164,
-      "current_pct": -8.51,
+      "current_price": 0.06139,
+      "current_pct": -8.88,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-11T09:00:13.964446+03:00",
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 376,
+      "last_check": "2026-07-12T20:37:30.755575+03:00",
+      "checks": 382,
       "extra": {
         "tp3": null
       },
@@ -245,8 +207,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 392,
+      "last_check": "2026-07-12T20:37:30.755575+03:00",
+      "checks": 398,
       "extra": {
         "tp3": null
       }
@@ -277,14 +239,14 @@
       "peak_pct": 0.53,
       "low_price": 0.366,
       "low_pct": -3.17,
-      "current_price": 0.368,
-      "current_pct": -2.65,
+      "current_price": 0.369,
+      "current_pct": -2.38,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 449,
+      "last_check": "2026-07-12T20:37:30.755575+03:00",
+      "checks": 455,
       "extra": {
         "tp3": null
       }
@@ -321,52 +283,14 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-12T20:05:58.864950+03:00",
-      "checks": 457,
+      "last_check": "2026-07-12T20:37:30.755575+03:00",
+      "checks": 463,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
-    {
-      "id": "BNSOL_USDT_1783864810",
-      "symbol": "BNSOL/USDT",
-      "entry": 86.4,
-      "stop": 84.6745,
-      "tp1": 88.1255,
-      "tp2": 89.851,
-      "tp3": null,
-      "limit_price": 86.5,
-      "signal_price": 86.5,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-12T17:00:10.864780+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 86.4,
-      "peak_pct": 0.0,
-      "low_price": 86.4,
-      "low_pct": 0.0,
-      "current_price": 86.4,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-12T17:00:17.830969+03:00",
-      "last_check": "2026-07-12T17:00:10.864780+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "GNO_USDT_1783864802",
       "symbol": "GNO/USDT",
@@ -1164,6 +1088,46 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "XPL_USDT_1783803603",
+      "symbol": "XPL/USDT",
+      "entry": 0.09437,
+      "stop": 0.089948,
+      "tp1": 0.098792,
+      "tp2": 0.103214,
+      "tp3": null,
+      "limit_price": 0.09437,
+      "signal_price": 0.09456,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-12T02:28:09.781626+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": "manual",
+      "close_pct": null,
+      "peak_price": 0.09437,
+      "peak_pct": 0.0,
+      "low_price": 0.09,
+      "low_pct": -4.63,
+      "current_price": 0.09121,
+      "current_pct": -3.35,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-12T20:21:44.803842+03:00",
+      "checks": 196,
+      "extra": {
+        "tp3": null
+      },
+      "outcome": "manual",
+      "close_date": "2026-07-12T20:24:05.019337+03:00"
     },
     {
       "id": "XAI_USDT_1783796405",
