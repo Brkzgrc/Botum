@@ -271,6 +271,10 @@ def receive_signal():
         signals_db.insert(0, signal)
         save_signals()
 
+    # SMC sinyallerini trading bot'a ilet (limit emir açılsın)
+    if signal["source"] in SMC_MAIN_SOURCES and TRADING_BOT_URL:
+        threading.Thread(target=_forward_to_trading_bot, args=(signal,), daemon=True).start()
+
     print(f"[SİNYAL] {signal['sig_type'].upper()} | {signal['symbol']} | "
           f"Giriş: {signal['entry']} | Kaynak: {signal['source']}", flush=True)
     return jsonify({"ok": True, "id": signal["id"]}), 201
@@ -329,6 +333,12 @@ def check_open_positions():
             sig["current_pct"] = round((close - entry) / entry * 100, 2)
             sig["last_check"] = now.isoformat()
             sig["checks"] = sig.get("checks", 0) + 1
+
+            # Bot aktifken SMC kapanışını portfolio kapamaz — /api/position-closed bekle
+            if TRADING_BOT_URL and sig.get("source") in SMC_MAIN_SOURCES:
+                need_save = True
+                time.sleep(0.15)
+                continue
 
             is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
             close_reason = None; close_price = None; close_status = None
@@ -406,6 +416,8 @@ def check_open_positions():
 def check_pending_retests():
     """Portfolio tarafında pending_retest sinyallerini fiyata göre günceller.
     Bot servisi suspend iken de çalışır — Binance emir durumu yerine fiyat kullanır."""
+    if TRADING_BOT_URL:
+        return  # fill/cancel/expire bot'tan gelir (/api/retest-filled, /api/retest-cancelled)
     now = tr_now()
     with _lock:
         pending   = [s for s in signals_db if s.get("status") == "pending_retest"]
