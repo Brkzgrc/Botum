@@ -539,7 +539,7 @@ def calc_performance():
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
             type_key = f"SMC-M {phase_label}"
         elif source == "smc-v2":
-            type_key = "SMC CHoCH ROC"
+            type_key = "Legacy SMC"
         elif source in ("smc", "smc-original"):
             phase = sig.get('phase', '')
             phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
@@ -1693,7 +1693,7 @@ def type_badge(sig):
         phase = sig.get("phase", "")
         phase_label = "Discount" if phase == "discount" else ("CHoCH" if phase == "choch" else phase.replace('phase', 'P'))
         if source == "smc-v2":
-            return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">SMC CHoCH ROC</span>'
+            return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">Legacy SMC</span>'
         src_label = ("SMC-T" if source == "smc-trailing" else
                       "SMC-M" if source == "smc-momentum" else "SMC")
         return f'<span style="border:1px solid #e67e22;color:#d0d0d0;padding:1px 6px;border-radius:3px;font-size:.65rem;white-space:nowrap">{src_label} {phase_label}</span>'
@@ -2296,7 +2296,7 @@ function toggleType(key, btn) {{
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
-    <p class="note">SMC CHoCH ROC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → %2.5 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
+    <p class="note">Legacy SMC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → %2.5 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
         <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th><th></th>
@@ -2330,7 +2330,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
+    Legacy SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
