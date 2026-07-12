@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-12 09:58:06",
+  "updated_at": "2026-07-12 10:28:09",
   "performance": {
-    "total": 43,
+    "total": 44,
     "open": 6,
     "closed": 4,
     "wins": 1,
@@ -121,14 +121,14 @@
       "peak_pct": 0.0,
       "low_price": 0.09,
       "low_pct": -4.63,
-      "current_price": 0.09069,
-      "current_pct": -3.9,
+      "current_price": 0.09106,
+      "current_pct": -3.51,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 77,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 83,
       "extra": {
         "tp3": null
       }
@@ -159,14 +159,14 @@
       "peak_pct": 0.0,
       "low_price": 0.3036,
       "low_pct": -2.69,
-      "current_price": 0.3055,
-      "current_pct": -2.08,
+      "current_price": 0.3076,
+      "current_pct": -1.41,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T20:00:14.585646+03:00",
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 12,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 18,
       "extra": {
         "tp3": null
       },
@@ -197,16 +197,16 @@
       "close_pct": null,
       "peak_price": 0.06822,
       "peak_pct": 1.26,
-      "low_price": 0.06123,
-      "low_pct": -9.11,
-      "current_price": 0.06154,
-      "current_pct": -8.65,
+      "low_price": 0.0612,
+      "low_pct": -9.16,
+      "current_price": 0.06123,
+      "current_pct": -9.11,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-11T09:00:13.964446+03:00",
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 260,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 266,
       "extra": {
         "tp3": null
       },
@@ -239,14 +239,14 @@
       "peak_pct": 2.2,
       "low_price": 0.00714,
       "low_pct": -1.92,
-      "current_price": 0.0072,
-      "current_pct": -1.1,
+      "current_price": 0.00722,
+      "current_pct": -0.82,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 276,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 282,
       "extra": {
         "tp3": null
       }
@@ -283,8 +283,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-11T00:00:15.004888+03:00",
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 333,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 339,
       "extra": {
         "tp3": null
       }
@@ -321,14 +321,52 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-10T23:00:17.133902+03:00",
-      "last_check": "2026-07-12T09:54:06.719880+03:00",
-      "checks": 341,
+      "last_check": "2026-07-12T10:25:14.673152+03:00",
+      "checks": 347,
       "extra": {
         "tp3": null
       }
     }
   ],
   "closed": [
+    {
+      "id": "ALT_USDT_1783839607",
+      "symbol": "ALT/USDT",
+      "entry": 0.00673,
+      "stop": 0.006368,
+      "tp1": 0.007092,
+      "tp2": 0.007454,
+      "tp3": null,
+      "limit_price": 0.00673,
+      "signal_price": 0.00676,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-12T10:00:07.091909+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00673,
+      "peak_pct": 0.0,
+      "low_price": 0.00673,
+      "low_pct": 0.0,
+      "current_price": 0.00673,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-12T10:00:07.091909+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "SYN_USDT_1783836009",
       "symbol": "SYN/USDT",
