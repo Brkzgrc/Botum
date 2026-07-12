@@ -2244,9 +2244,11 @@ def dashboard():
             _elapsed_str = f"{_h}s {_r//60}d"
         except Exception:
             _elapsed_str = "—"
+        _cp  = fmt_price(_pos.get("current_price", 0))
         _trade_rows += f"""<tr>
             <td style="font-weight:bold">{_sym.replace("USDT","")}/USDT</td>
             <td>{_st_badge}</td>
+            <td style="font-size:.75rem;color:#00b4d8">{_cp}</td>
             <td style="font-size:.75rem">{_lp}</td>
             <td style="font-size:.75rem;color:#f39c12">{_tp}</td>
             <td style="font-size:.75rem;color:#e74c3c">{_sl}</td>
@@ -2264,7 +2266,7 @@ def dashboard():
     <summary>🤖 AL-SAT BOT POZİSYONLARI ({len(_trade_positions)})</summary>
     <p class="note">trade_state.json içeriği. İzleme: fiyat CHoCH+3tick'e ulaşınca limit emir açılır. Emir: Binance'te limit buy bekliyor. Sil: sadece state'den siler, Binance emrini kendin iptal et.</p>
     <div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Durum</th><th>Limit Buy</th><th>Tetikleyici</th><th>Stop</th><th>TP1</th><th>Geçen</th><th></th>
+        <th>Sembol</th><th>Durum</th><th>Anlık Fiyat</th><th>Limit Buy</th><th>Tetikleyici</th><th>Stop</th><th>TP1</th><th>Geçen</th><th></th>
     </tr></thead><tbody>
         {_trade_rows}
     </tbody></table></div>
