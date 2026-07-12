@@ -812,6 +812,38 @@ def clear_all_signals_ui():
         save_signals()
     return jsonify({"ok": True, "removed": count})
 
+@app.route("/api/signals/delete-by-id", methods=["POST"])
+def delete_signal_by_id():
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    sig_id = data.get("id", "")
+    if not sig_id:
+        return jsonify({"error": "id required"}), 400
+    with _lock:
+        before = len(signals_db)
+        signals_db[:] = [s for s in signals_db if s.get("id") != sig_id]
+        removed = before - len(signals_db)
+        if removed:
+            save_signals()
+    return jsonify({"ok": True, "removed": removed, "id": sig_id})
+
+@app.route("/api/signals/delete-manual", methods=["POST"])
+def delete_manual_signals():
+    if AUTH_TOKEN:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "unauthorized"}), 401
+    with _lock:
+        before = len(signals_db)
+        signals_db[:] = [s for s in signals_db if s.get("close_reason") != "manual"]
+        removed = before - len(signals_db)
+        if removed:
+            save_signals()
+    return jsonify({"ok": True, "removed": removed})
+
 
 @app.route("/api/retest-filled", methods=["POST"])
 def api_retest_filled():
