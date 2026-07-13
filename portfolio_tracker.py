@@ -631,13 +631,24 @@ def _sync_pending_to_bot():
             threading.Thread(target=_forward_to_trading_bot, args=(dict(sig),), daemon=True).start()
 
 
+def _keepalive_bot():
+    if not TRADING_BOT_URL:
+        return
+    try:
+        hdrs = {"X-Bot-Token": TRADING_BOT_TOKEN} if TRADING_BOT_TOKEN else {}
+        requests.get(f"{TRADING_BOT_URL}/health", headers=hdrs, timeout=10)
+    except Exception:
+        pass
+
+
 def position_checker_loop():
     cycle = 0
     while True:
         try:
+            _keepalive_bot()
             check_pending_retests()
             check_open_positions()
-            if cycle % 3 == 0:  # her 15 dakikada bir
+            if cycle % 3 == 0:
                 _sync_pending_to_bot()
             cycle += 1
         except Exception as e:
