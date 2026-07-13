@@ -167,15 +167,19 @@ def _sync_from_trading_bot():
                 stale += 1
                 print(f"[SYNC] {sym_norm} stale pending → no_retest", flush=True)
 
-        # 3) Bot'ta open olan ama portfolio'da pending_retest → open yap
+        # 3) Bot'ta open olan → portfolio'da pending_retest varsa aç, hiç yoksa yeni oluştur
         for sym, pos in trade_positions.items():
             if pos.get("status") != "open":
                 continue
             sym_norm   = sym.upper()
+            sym_slash  = sym_norm.replace("USDT", "/USDT") if not "/" in sym else sym_norm
             fill_price = float(pos.get("entry") or 0)
             qty        = float(pos.get("qty") or 0)
             if not fill_price:
                 continue
+
+            # Önce mevcut pending_retest ile eşleştir
+            matched = False
             for sig in signals_db:
                 sig_sym = sig.get("symbol", "").replace("/", "").upper()
                 if sig_sym == sym_norm and sig.get("status") == "pending_retest":
@@ -187,8 +191,43 @@ def _sync_from_trading_bot():
                     sig["low_price"]     = fill_price
                     sig["current_price"] = fill_price
                     updated += 1
+                    matched = True
                     print(f"[SYNC] {sym_norm} pending_retest → open (fill={fill_price})", flush=True)
                     break
+
+            # Portfolioda hiç kayıt yoksa yeni sinyal oluştur
+            if not matched:
+                already_open = any(
+                    s.get("symbol", "").replace("/", "").upper() == sym_norm
+                    and s.get("status") == "open"
+                    for s in signals_db
+                )
+                if not already_open:
+                    stop  = float(pos.get("stop") or fill_price * 0.95)
+                    tp1   = float(pos.get("tp1") or fill_price * 1.05)
+                    new_sig = {
+                        "id":            f"sync_{sym_norm}_{now_str[:10]}",
+                        "symbol":        sym_slash,
+                        "source":        "smc-v2",
+                        "sig_type":      "choch",
+                        "status":        "open",
+                        "signal_price":  fill_price,
+                        "entry":         fill_price,
+                        "stop":          stop,
+                        "tp1":           tp1,
+                        "fill_qty":      qty,
+                        "open_time":     now_str,
+                        "fill_time":     now_str,
+                        "peak_price":    fill_price,
+                        "low_price":     fill_price,
+                        "current_price": fill_price,
+                        "peak_pct":      0.0,
+                        "low_pct":       0.0,
+                        "current_pct":   0.0,
+                    }
+                    signals_db.append(new_sig)
+                    updated += 1
+                    print(f"[SYNC] {sym_norm} bot'ta open ama portfolioda yok → yeni sinyal oluşturuldu", flush=True)
 
         if updated or closed or stale:
             save_signals()
