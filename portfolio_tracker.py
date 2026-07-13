@@ -603,11 +603,43 @@ def check_pending_retests():
             save_signals()
 
 
+def _sync_pending_to_bot():
+    """Portfolio'daki pending_retest sinyallerini bot'a ilet (eksik olanlar için)."""
+    if not TRADING_BOT_URL:
+        return
+    try:
+        hdrs = {"Content-Type": "application/json"}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=10)
+        if r.status_code != 200:
+            return
+        bot_positions = r.json().get("positions", {})
+        bot_symbols = {s.replace("/", "").upper() for s in bot_positions}
+    except Exception:
+        return
+
+    with _lock:
+        pending = [s for s in signals_db
+                   if s.get("status") == "pending_retest"
+                   and s.get("source") in SMC_MAIN_SOURCES]
+
+    for sig in pending:
+        sym_norm = sig.get("symbol", "").replace("/", "").upper()
+        if sym_norm not in bot_symbols:
+            print(f"[SYNC→BOT] {sym_norm} portfolio'da var, bot'ta yok → iletiliyor", flush=True)
+            threading.Thread(target=_forward_to_trading_bot, args=(dict(sig),), daemon=True).start()
+
+
 def position_checker_loop():
+    cycle = 0
     while True:
         try:
             check_pending_retests()
             check_open_positions()
+            if cycle % 3 == 0:  # her 15 dakikada bir
+                _sync_pending_to_bot()
+            cycle += 1
         except Exception as e:
             print(f"[CHECK] Döngü hatası: {e}", flush=True)
         time.sleep(CHECK_INTERVAL)
