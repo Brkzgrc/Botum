@@ -127,10 +127,10 @@ def _sync_from_trading_bot():
     updated = 0
     closed = 0
 
-    # Bot'taki tüm semboller (herhangi bir statüde)
-    bot_all_symbols = {sym.upper() for sym in trade_positions.keys()}
+    # Bot'taki tüm semboller — slash'sız normalize ("BLUR/USDT" → "BLURUSDT")
+    bot_all_symbols = {sym.replace("/", "").upper() for sym in trade_positions.keys()}
     bot_open_symbols = {
-        sym.upper() for sym, pos in trade_positions.items()
+        sym.replace("/", "").upper() for sym, pos in trade_positions.items()
         if pos.get("status") == "open"
     }
 
@@ -173,8 +173,8 @@ def _sync_from_trading_bot():
             bot_status = pos.get("status")
             if bot_status not in ("monitoring", "pending", "open"):
                 continue
-            sym_norm  = sym.upper()
-            sym_slash = sym_norm.replace("USDT", "/USDT") if "/" not in sym_norm else sym_norm
+            sym_norm  = sym.replace("/", "").upper()   # her zaman slash'sız
+            sym_slash = sym_norm[:-4] + "/USDT" if sym_norm.endswith("USDT") else sym_norm
             entry     = float(pos.get("entry") or pos.get("limit_price") or 0)
             stop      = float(pos.get("stop") or 0)
             tp1       = float(pos.get("tp1") or 0)
@@ -989,10 +989,6 @@ def api_retest_filled():
     sym_norm = symbol.replace("/", "").upper()
     now = tr_now()
     with _lock:
-        open_count = len([s for s in signals_db if s.get("status") == "open"])
-        if open_count >= MAX_POSITIONS:
-            print(f"[RETEST] {sym_norm} atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
-            return jsonify({"error": "max positions reached"}), 429
         for s in signals_db:
             if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "pending_retest":
                 s["status"]        = "open"
