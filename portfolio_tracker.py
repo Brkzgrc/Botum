@@ -498,8 +498,6 @@ def check_open_positions():
 def check_pending_retests():
     """Portfolio tarafında pending_retest sinyallerini fiyata göre günceller.
     Bot servisi suspend iken de çalışır — Binance emir durumu yerine fiyat kullanır."""
-    if TRADING_BOT_URL:
-        return  # fill/cancel/expire bot'tan gelir (/api/retest-filled, /api/retest-cancelled)
     now = tr_now()
     with _lock:
         pending   = [s for s in signals_db if s.get("status") == "pending_retest"]
@@ -513,7 +511,7 @@ def check_pending_retests():
         lp      = sig.get("limit_price")
         open_time = sig.get("open_time")
 
-        # 48H expire kontrolü
+        # 48H expire kontrolü — bot aktif olsa da çalışır (orphan sinyaller için)
         try:
             ot = datetime.fromisoformat(open_time)
             if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
@@ -524,15 +522,13 @@ def check_pending_retests():
                     sig["close_reason"] = "no_retest"
                 need_save = True
                 print(f"[PENDING] 48H doldu, retest yok: {symbol}", flush=True)
-                _send_telegram_pt(
-                    f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n"
-                    f"48 saat içinde limit ({float(lp):.6g} $ ) dolmadı. Sinyal iptal edildi."
-                    if lp else
-                    f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n48 saat doldu, sinyal iptal edildi."
-                )
                 continue
         except Exception:
             pass
+
+        # Fiyat bazlı fill: sadece bot yokken çalışır (bot varsa /api/retest-filled bekle)
+        if TRADING_BOT_URL:
+            continue
 
         if not lp:
             continue
