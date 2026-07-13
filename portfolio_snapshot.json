@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-13 14:00:12",
+  "updated_at": "2026-07-13 14:30:16",
   "performance": {
     "total": 11,
     "open": 4,
@@ -138,14 +138,14 @@
       "peak_pct": 3.05,
       "low_price": 0.01786,
       "low_pct": -1.05,
-      "current_price": 0.01838,
-      "current_pct": 1.83,
+      "current_price": 0.01809,
+      "current_pct": 0.22,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T13:59:22.769105+03:00",
-      "checks": 18,
+      "last_check": "2026-07-13T14:29:32.308622+03:00",
+      "checks": 24,
       "extra": {
         "tp3": null
       },
@@ -166,12 +166,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.062,
+      "current_price": 0.06206,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -7.97,
-      "last_check": "2026-07-13T13:59:22.769105+03:00",
-      "checks": 113
+      "current_pct": -7.88,
+      "last_check": "2026-07-13T14:29:32.308622+03:00",
+      "checks": 119
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -188,12 +188,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
       "low_price": 0.005693,
-      "current_price": 0.005777,
+      "current_price": 0.005766,
       "peak_pct": 0.0,
       "low_pct": -9.51,
-      "current_pct": -8.17,
-      "last_check": "2026-07-13T13:59:22.769105+03:00",
-      "checks": 113
+      "current_pct": -8.35,
+      "last_check": "2026-07-13T14:29:32.308622+03:00",
+      "checks": 119
     },
     {
       "id": "sync_GIGGLEUSDT_2026-07-13",
@@ -209,13 +209,13 @@
       "open_time": "2026-07-12T03:00:09.087164+00:00",
       "peak_price": 27.49,
       "low_price": 26.28,
-      "current_price": 27.35,
+      "current_price": 27.37,
       "peak_pct": 4.6,
       "low_pct": 0.0,
-      "current_pct": 4.07,
+      "current_pct": 4.15,
       "fill_qty": 7.294,
-      "last_check": "2026-07-13T13:59:22.769105+03:00",
-      "checks": 18
+      "last_check": "2026-07-13T14:29:32.308622+03:00",
+      "checks": 24
     }
   ],
   "closed": [
