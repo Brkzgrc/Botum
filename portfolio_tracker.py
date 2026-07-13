@@ -309,12 +309,37 @@ def receive_signal():
         if field not in data:
             return jsonify({"error": f"missing field: {field}"}), 400
 
-    # ── AYNI SEMBOLDE AÇIK/BEKLEYEN POZİSYON KONTROLÜ ──
+    # ── AYNI SEMBOLDE POZİSYON KONTROLÜ ──
+    incoming_source = data.get("source", "bot")
     with _lock:
         for s in signals_db:
-            if s.get("symbol") == data["symbol"] and s.get("status") in ("open", "pending_retest") and s.get("source") == data.get("source", "bot"):
-                print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık/bekleyen pozisyonda", flush=True)
+            if s.get("symbol") != data["symbol"] or s.get("source") != incoming_source:
+                continue
+            if s.get("status") == "open":
+                # Açık pozisyon varsa kesinlikle reddet
+                print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık pozisyonda", flush=True)
                 return jsonify({"error": "already open", "symbol": data["symbol"]}), 409
+            if s.get("status") == "pending_retest":
+                # Yeni CHoCH → eski pending'i güncelle (yeni seviyeleri al, bota ilet)
+                now_u = tr_now()
+                s["entry"]        = float(data["entry"])
+                s["stop"]         = float(data["stop"])
+                s["tp1"]          = float(data["tp1"])
+                s["tp2"]          = float(data.get("tp2") or 0) or None
+                s["limit_price"]  = float(data.get("limit_price") or 0) or None
+                s["signal_price"] = float(data.get("signal_price") or 0) or None
+                s["open_time"]    = now_u.isoformat()
+                s["peak_price"]   = float(data["entry"])
+                s["low_price"]    = float(data["entry"])
+                s["current_price"]= float(data["entry"])
+                s["peak_pct"] = s["low_pct"] = s["current_pct"] = 0.0
+                s["analyzer_decision"] = None
+                s["analyzer_time"]     = None
+                save_signals()
+                print(f"[SİNYAL] GÜNCELLENDI (yeni CHoCH): {data['symbol']}", flush=True)
+                if incoming_source in SMC_MAIN_SOURCES and TRADING_BOT_URL:
+                    threading.Thread(target=_forward_to_trading_bot, args=(dict(s),), daemon=True).start()
+                return jsonify({"ok": True, "id": s["id"]}), 200
 
     now = tr_now()
     signal = {
