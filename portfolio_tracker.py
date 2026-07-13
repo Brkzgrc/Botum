@@ -153,19 +153,28 @@ def _sync_from_trading_bot():
                 closed += 1
                 print(f"[SYNC] {sym_norm} portfolio open ama bot'ta yok → kapatıldı", flush=True)
 
-        # 2) Portfolio'da pending_retest olan ama bot'ta hiç izlenmeyen → no_retest
+        # 2) Portfolio'da pending_retest olan ama bot'ta yok → sadece 48H dolmuşsa kapat
+        now_dt_sync = datetime.fromisoformat(now_str).replace(tzinfo=TR_TZ) if "+" not in now_str else datetime.fromisoformat(now_str)
         for sig in signals_db:
             if sig.get("status") != "pending_retest":
                 continue
             if sig.get("source") not in SMC_MAIN_SOURCES:
                 continue
             sym_norm = sig.get("symbol", "").replace("/", "").upper()
-            if sym_norm not in bot_all_symbols:
-                sig["status"]       = "no_retest"
-                sig["close_time"]   = now_str
-                sig["close_reason"] = "stale_pending"
-                stale += 1
-                print(f"[SYNC] {sym_norm} stale pending → no_retest", flush=True)
+            if sym_norm in bot_all_symbols:
+                continue
+            try:
+                ot = datetime.fromisoformat(sig["open_time"])
+                if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
+                if (now_dt_sync - ot).total_seconds() / 3600 < 48:
+                    continue  # 48 saat dolmamış, dokunma
+            except Exception:
+                continue
+            sig["status"]       = "no_retest"
+            sig["close_time"]   = now_str
+            sig["close_reason"] = "stale_pending"
+            stale += 1
+            print(f"[SYNC] {sym_norm} 48H doldu stale pending → no_retest", flush=True)
 
         # 3) Bot'taki tüm pozisyonları portfolioya yansıt
         #    monitoring/pending → pending_retest | open → open
