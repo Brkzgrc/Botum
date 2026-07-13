@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-13 04:23:34",
+  "updated_at": "2026-07-13 04:31:54",
   "performance": {
-    "total": 0,
-    "open": 0,
+    "total": 5,
+    "open": 5,
     "closed": 0,
     "wins": 0,
     "win_tp2": 0,
@@ -38,11 +38,151 @@
         "wr": 0
       }
     },
-    "by_type": {},
-    "daily": {},
-    "weekly": {},
-    "monthly": {}
+    "by_type": {
+      "Legacy SMC": {
+        "total": 5,
+        "open": 5,
+        "wins": 0,
+        "losses": 0,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": 0.0,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "win_rate": 0,
+        "avg_peak": 0,
+        "tp2_rate": 0,
+        "expired_pnl": 0.0,
+        "win_loss_pnl": 0.0
+      }
+    },
+    "daily": {
+      "2026-07-13": {
+        "trades": 5,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "weekly": {
+      "2026-W28": {
+        "trades": 5,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    },
+    "monthly": {
+      "2026-07": {
+        "trades": 5,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      }
+    }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "sync_AWEUSDT_2026-07-13",
+      "symbol": "AWE/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.06737,
+      "entry": 0.06737,
+      "stop": 0.05702,
+      "tp1": 0.07803,
+      "fill_qty": 2971.0,
+      "open_time": "2026-07-13T04:30:54.754301+03:00",
+      "fill_time": "2026-07-13T04:30:54.754301+03:00",
+      "peak_price": 0.06737,
+      "low_price": 0.06737,
+      "current_price": 0.06737,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_BIGTIMEUSDT_2026-07-13",
+      "symbol": "BIGTIME/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.0072699999999999996,
+      "entry": 0.0072699999999999996,
+      "stop": 0.00698,
+      "tp1": 0.00755,
+      "fill_qty": 27546.0,
+      "open_time": "2026-07-13T04:30:54.754301+03:00",
+      "fill_time": "2026-07-13T04:30:54.754301+03:00",
+      "peak_price": 0.0072699999999999996,
+      "low_price": 0.0072699999999999996,
+      "current_price": 0.0072699999999999996,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_LDOUSDT_2026-07-13",
+      "symbol": "LDO/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.3120048678852164,
+      "entry": 0.3120048678852164,
+      "stop": 0.3029,
+      "tp1": 0.3226,
+      "fill_qty": 632.9,
+      "open_time": "2026-07-13T04:30:54.754301+03:00",
+      "fill_time": "2026-07-13T04:30:54.754301+03:00",
+      "peak_price": 0.3120048678852164,
+      "low_price": 0.3120048678852164,
+      "current_price": 0.3120048678852164,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_VANRYUSDT_2026-07-13",
+      "symbol": "VANRY/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.006291261080851897,
+      "entry": 0.006291261080851897,
+      "stop": 0.005446,
+      "tp1": 0.007161,
+      "fill_qty": 30630.0,
+      "open_time": "2026-07-13T04:30:54.754301+03:00",
+      "fill_time": "2026-07-13T04:30:54.754301+03:00",
+      "peak_price": 0.006291261080851897,
+      "low_price": 0.006291261080851897,
+      "current_price": 0.006291261080851897,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_ZKPUSDT_2026-07-13",
+      "symbol": "ZKP/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.0454,
+      "entry": 0.0454,
+      "stop": 0.0445,
+      "tp1": 0.0464,
+      "fill_qty": 4234.4,
+      "open_time": "2026-07-13T04:30:54.754301+03:00",
+      "fill_time": "2026-07-13T04:30:54.754301+03:00",
+      "peak_price": 0.0454,
+      "low_price": 0.0454,
+      "current_price": 0.0454,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    }
+  ],
   "closed": []
 }
