@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-13 04:31:54",
+  "updated_at": "2026-07-13 04:36:41",
   "performance": {
-    "total": 5,
+    "total": 9,
     "open": 5,
     "closed": 0,
     "wins": 0,
@@ -97,11 +97,13 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
-      "low_price": 0.06737,
-      "current_price": 0.06737,
+      "low_price": 0.06209,
+      "current_price": 0.06212,
       "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
+      "low_pct": -7.84,
+      "current_pct": -7.79,
+      "last_check": "2026-07-13T04:35:41.160469+03:00",
+      "checks": 1
     },
     {
       "id": "sync_BIGTIMEUSDT_2026-07-13",
@@ -117,11 +119,13 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.0072699999999999996,
-      "low_price": 0.0072699999999999996,
-      "current_price": 0.0072699999999999996,
+      "low_price": 0.00709,
+      "current_price": 0.00709,
       "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
+      "low_pct": -2.48,
+      "current_pct": -2.48,
+      "last_check": "2026-07-13T04:35:41.160469+03:00",
+      "checks": 1
     },
     {
       "id": "sync_LDOUSDT_2026-07-13",
@@ -137,11 +141,13 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.3120048678852164,
-      "low_price": 0.3120048678852164,
-      "current_price": 0.3120048678852164,
+      "low_price": 0.3086,
+      "current_price": 0.3092,
       "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
+      "low_pct": -1.09,
+      "current_pct": -0.9,
+      "last_check": "2026-07-13T04:35:41.160469+03:00",
+      "checks": 1
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -157,11 +163,13 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
-      "low_price": 0.006291261080851897,
-      "current_price": 0.006291261080851897,
+      "low_price": 0.006206,
+      "current_price": 0.006228,
       "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
+      "low_pct": -1.36,
+      "current_pct": -1.01,
+      "last_check": "2026-07-13T04:35:41.160469+03:00",
+      "checks": 1
     },
     {
       "id": "sync_ZKPUSDT_2026-07-13",
@@ -177,12 +185,91 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.0454,
-      "low_price": 0.0454,
-      "current_price": 0.0454,
+      "low_price": 0.0453,
+      "current_price": 0.0453,
+      "peak_pct": 0.0,
+      "low_pct": -0.22,
+      "current_pct": -0.22,
+      "last_check": "2026-07-13T04:35:41.160469+03:00",
+      "checks": 1
+    }
+  ],
+  "closed": [
+    {
+      "id": "sync_1MBABYDOGEUSDT_2026-07-13",
+      "symbol": "1MBABYDOGE/USDT",
+      "source": "smc",
+      "sig_type": "choch",
+      "status": "pending_retest",
+      "signal_price": 0.000299,
+      "entry": 0.000299,
+      "limit_price": 0.000299,
+      "stop": 0.0002942,
+      "tp1": 0.0003035,
+      "open_time": "2026-07-11T08:00:10.100001+00:00",
+      "peak_price": 0.000299,
+      "low_price": 0.000299,
+      "current_price": 0.000299,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_BANDUSDT_2026-07-13",
+      "symbol": "BAND/USDT",
+      "source": "smc",
+      "sig_type": "choch",
+      "status": "pending_retest",
+      "signal_price": 0.1662,
+      "entry": 0.1662,
+      "limit_price": 0.1662,
+      "stop": 0.1618,
+      "tp1": 0.1703,
+      "open_time": "2026-07-11T13:00:07.887152+00:00",
+      "peak_price": 0.1662,
+      "low_price": 0.1662,
+      "current_price": 0.1662,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_GIGGLEUSDT_2026-07-13",
+      "symbol": "GIGGLE/USDT",
+      "source": "smc",
+      "sig_type": "choch",
+      "status": "pending_retest",
+      "signal_price": 26.28,
+      "entry": 26.28,
+      "limit_price": 26.28,
+      "stop": 25.78,
+      "tp1": 26.75,
+      "open_time": "2026-07-12T03:00:09.087164+00:00",
+      "peak_price": 26.28,
+      "low_price": 26.28,
+      "current_price": 26.28,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
+    },
+    {
+      "id": "sync_THETAUSDT_2026-07-13",
+      "symbol": "THETA/USDT",
+      "source": "smc",
+      "sig_type": "choch",
+      "status": "pending_retest",
+      "signal_price": 0.141,
+      "entry": 0.141,
+      "limit_price": 0.141,
+      "stop": 0.1353,
+      "tp1": 0.1466,
+      "open_time": "2026-07-11T03:00:05.917004+00:00",
+      "peak_price": 0.141,
+      "low_price": 0.141,
+      "current_price": 0.141,
       "peak_pct": 0.0,
       "low_pct": 0.0,
       "current_pct": 0.0
     }
-  ],
-  "closed": []
+  ]
 }
