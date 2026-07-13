@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-13 13:30:09",
+  "updated_at": "2026-07-13 14:00:12",
   "performance": {
-    "total": 10,
+    "total": 11,
     "open": 4,
     "closed": 3,
     "wins": 0,
@@ -134,18 +134,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.01827,
-      "peak_pct": 1.22,
+      "peak_price": 0.0186,
+      "peak_pct": 3.05,
       "low_price": 0.01786,
       "low_pct": -1.05,
-      "current_price": 0.01794,
-      "current_pct": -0.61,
+      "current_price": 0.01838,
+      "current_pct": 1.83,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T13:29:13.130719+03:00",
-      "checks": 12,
+      "last_check": "2026-07-13T13:59:22.769105+03:00",
+      "checks": 18,
       "extra": {
         "tp3": null
       },
@@ -170,8 +170,8 @@
       "peak_pct": 0.0,
       "low_pct": -8.64,
       "current_pct": -7.97,
-      "last_check": "2026-07-13T13:29:13.130719+03:00",
-      "checks": 107
+      "last_check": "2026-07-13T13:59:22.769105+03:00",
+      "checks": 113
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -188,12 +188,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
       "low_price": 0.005693,
-      "current_price": 0.005853,
+      "current_price": 0.005777,
       "peak_pct": 0.0,
       "low_pct": -9.51,
-      "current_pct": -6.97,
-      "last_check": "2026-07-13T13:29:13.130719+03:00",
-      "checks": 107
+      "current_pct": -8.17,
+      "last_check": "2026-07-13T13:59:22.769105+03:00",
+      "checks": 113
     },
     {
       "id": "sync_GIGGLEUSDT_2026-07-13",
@@ -209,16 +209,54 @@
       "open_time": "2026-07-12T03:00:09.087164+00:00",
       "peak_price": 27.49,
       "low_price": 26.28,
-      "current_price": 27.21,
+      "current_price": 27.35,
       "peak_pct": 4.6,
       "low_pct": 0.0,
-      "current_pct": 3.54,
+      "current_pct": 4.07,
       "fill_qty": 7.294,
-      "last_check": "2026-07-13T13:29:13.130719+03:00",
-      "checks": 12
+      "last_check": "2026-07-13T13:59:22.769105+03:00",
+      "checks": 18
     }
   ],
   "closed": [
+    {
+      "id": "RUNE_USDT_1783940404",
+      "symbol": "RUNE/USDT",
+      "entry": 0.407,
+      "stop": 0.397005,
+      "tp1": 0.416995,
+      "tp2": 0.42699,
+      "tp3": null,
+      "limit_price": 0.407,
+      "signal_price": 0.41,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-13T14:00:04.319633+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.407,
+      "peak_pct": 0.0,
+      "low_price": 0.407,
+      "low_pct": 0.0,
+      "current_price": 0.407,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-13T14:00:04.319633+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "sync_BIGTIMEUSDT_2026-07-13",
       "symbol": "BIGTIME/USDT",
