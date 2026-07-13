@@ -776,7 +776,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
                 f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
             )
-            _notify_portfolio("/api/position-closed", {
+            _notify_portfolio_with_retry("/api/position-closed", {
                 "symbol": symbol, "reason": sell_reason,
                 "close_price": close_price, "pnl_pct": pct,
             })
@@ -899,7 +899,7 @@ def _periodic_check():
                         f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
                         f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
                     )
-                    _notify_portfolio("/api/position-closed", {
+                    _notify_portfolio_with_retry("/api/position-closed", {
                         "symbol": sym, "reason": "sl_binance",
                         "close_price": sl, "pnl_pct": pct,
                     })
@@ -920,7 +920,7 @@ def _periodic_check():
                         f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
                         f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
                     )
-                    _notify_portfolio("/api/position-closed", {
+                    _notify_portfolio_with_retry("/api/position-closed", {
                         "symbol": sym, "reason": "trail_binance",
                         "close_price": cl_price, "pnl_pct": pct,
                     })
