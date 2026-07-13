@@ -211,7 +211,7 @@ def _sync_from_trading_bot():
                 "id":            f"sync_{sym_norm}_{now_str[:10]}",
                 "symbol":        sym_slash,
                 "source":        pos.get("source", "smc-v2"),
-                "sig_type":      pos.get("sig_type", "choch_v2"),
+                "sig_type":      pos.get("sig_type", "choch"),
                 "status":        port_status,
                 "signal_price":  use_entry,
                 "entry":         use_entry,
