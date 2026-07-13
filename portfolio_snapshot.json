@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-13 15:26:39",
+  "updated_at": "2026-07-13 15:40:53",
   "performance": {
     "total": 11,
     "open": 5,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 7,
-        "open": 4,
+        "total": 8,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -55,23 +55,6 @@
         "tp2_rate": 0,
         "expired_pnl": 0.0,
         "win_loss_pnl": -7.28
-      },
-      "SMC ": {
-        "total": 1,
-        "open": 1,
-        "wins": 0,
-        "losses": 0,
-        "expired": 0,
-        "tp1_hits": 0,
-        "total_pnl": 0.0,
-        "tp2_hits": 0,
-        "tp2_total": 0,
-        "tp2_extra_pnl": 0.0,
-        "win_rate": 0,
-        "avg_peak": 0,
-        "tp2_rate": 0,
-        "expired_pnl": 0.0,
-        "win_loss_pnl": 0.0
       }
     },
     "daily": {
@@ -138,14 +121,14 @@
       "peak_pct": 1.48,
       "low_price": 0.403,
       "low_pct": -0.74,
-      "current_price": 0.408,
-      "current_pct": 0.49,
+      "current_price": 0.405,
+      "current_pct": -0.25,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T15:25:39.880179+03:00",
-      "checks": 9,
+      "last_check": "2026-07-13T15:39:53.128243+03:00",
+      "checks": 12,
       "extra": {
         "tp3": null
       },
@@ -175,16 +158,16 @@
       "close_pct": null,
       "peak_price": 0.0186,
       "peak_pct": 3.05,
-      "low_price": 0.01786,
-      "low_pct": -1.05,
-      "current_price": 0.01798,
-      "current_pct": -0.39,
+      "low_price": 0.01774,
+      "low_pct": -1.72,
+      "current_price": 0.01776,
+      "current_pct": -1.61,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T15:25:39.880179+03:00",
-      "checks": 38,
+      "last_check": "2026-07-13T15:39:53.128243+03:00",
+      "checks": 41,
       "extra": {
         "tp3": null
       },
@@ -205,12 +188,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.06266,
+      "current_price": 0.06258,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -6.99,
-      "last_check": "2026-07-13T15:25:39.880179+03:00",
-      "checks": 133
+      "current_pct": -7.11,
+      "last_check": "2026-07-13T15:39:53.128243+03:00",
+      "checks": 136
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -226,18 +209,18 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
-      "low_price": 0.005693,
-      "current_price": 0.005721,
+      "low_price": 0.005657,
+      "current_price": 0.005689,
       "peak_pct": 0.0,
-      "low_pct": -9.51,
-      "current_pct": -9.06,
-      "last_check": "2026-07-13T15:25:39.880179+03:00",
-      "checks": 133
+      "low_pct": -10.08,
+      "current_pct": -9.57,
+      "last_check": "2026-07-13T15:39:53.128243+03:00",
+      "checks": 136
     },
     {
       "id": "sync_GIGGLEUSDT_2026-07-13",
       "symbol": "GIGGLE/USDT",
-      "source": "smc",
+      "source": "smc-v2",
       "sig_type": "choch",
       "status": "open",
       "signal_price": 26.28,
@@ -248,13 +231,13 @@
       "open_time": "2026-07-12T03:00:09.087164+00:00",
       "peak_price": 27.49,
       "low_price": 26.28,
-      "current_price": 26.86,
+      "current_price": 26.79,
       "peak_pct": 4.6,
       "low_pct": 0.0,
-      "current_pct": 2.21,
+      "current_pct": 1.94,
       "fill_qty": 7.294,
-      "last_check": "2026-07-13T15:25:39.880179+03:00",
-      "checks": 38
+      "last_check": "2026-07-13T15:39:53.128243+03:00",
+      "checks": 41
     }
   ],
   "closed": [
@@ -357,9 +340,9 @@
     {
       "id": "sync_BANDUSDT_2026-07-13",
       "symbol": "BAND/USDT",
-      "source": "smc",
+      "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.1662,
       "entry": 0.1662,
       "limit_price": 0.1662,
@@ -371,7 +354,9 @@
       "current_price": 0.1662,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-13T15:39:53.271216+03:00",
+      "close_reason": "stale_pending"
     },
     {
       "id": "sync_THETAUSDT_2026-07-13",
