@@ -383,14 +383,6 @@ def _cancel_pending(symbol: str, pos: dict):
         _save_state(state)
 
     _notify_portfolio("/api/retest-cancelled", {"symbol": symbol})
-
-    limit_price = pos.get("limit_price", 0)
-    msg = (
-        f"⏰ <b>RETEST ZAMANI DOLDU — {symbol}</b>\n"
-        f"48 saat içinde limit ({limit_price:.6g}) dolmadı.\n"
-        f"Emir iptal edildi."
-    )
-    _send_telegram(msg)
     print(f"[MONITOR] Pending süresi doldu: {symbol}", flush=True)
 
 
@@ -521,10 +513,6 @@ def _check_monitoring_entries():
                     s["positions"].pop(sym, None)
                     _save_state(s)
                 _notify_portfolio("/api/retest-cancelled", {"symbol": sym})
-                _send_telegram(
-                    f"⏰ <b>İZLEME DOLDU — {sym}</b>\n"
-                    f"48 saat içinde trigger ({pos.get('trigger_price', 0):.6g}) gelmedi."
-                )
                 print(f"[MONITOR] Monitoring süresi doldu: {sym}", flush=True)
                 continue
         except Exception as e:

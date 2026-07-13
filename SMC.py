@@ -619,8 +619,6 @@ def _analyze_symbol(symbol):
             f"📊 <b>Hacim:</b> {vol_ratio:.2f}x (20 bar MA)\n"
             f"⏳ <b>RETEST BEKLENİYOR</b> — 48 saat içinde limit dolmadıysa otomatik iptal."
         )
-        send_telegram_msg(msg)
-
         portfolio_id = send_to_portfolio(
             symbol, entry, 0, "choch_v2", "smc-v2", micro_break, stop_price=stop, limit_price=limit_price, signal_price=price
         )
