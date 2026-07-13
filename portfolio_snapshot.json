@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-13 07:07:04",
+  "updated_at": "2026-07-13 07:37:07",
   "performance": {
     "total": 9,
     "open": 5,
@@ -98,12 +98,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.06278,
+      "current_price": 0.06244,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -6.81,
-      "last_check": "2026-07-13T07:06:41.384803+03:00",
-      "checks": 31
+      "current_pct": -7.32,
+      "last_check": "2026-07-13T07:36:53.266497+03:00",
+      "checks": 37
     },
     {
       "id": "sync_BIGTIMEUSDT_2026-07-13",
@@ -120,12 +120,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.0072699999999999996,
       "low_price": 0.00693,
-      "current_price": 0.00699,
+      "current_price": 0.00705,
       "peak_pct": 0.0,
       "low_pct": -4.68,
-      "current_pct": -3.85,
-      "last_check": "2026-07-13T07:06:41.384803+03:00",
-      "checks": 31
+      "current_pct": -3.03,
+      "last_check": "2026-07-13T07:36:53.266497+03:00",
+      "checks": 37
     },
     {
       "id": "sync_LDOUSDT_2026-07-13",
@@ -142,12 +142,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.3120048678852164,
       "low_price": 0.2954,
-      "current_price": 0.2961,
+      "current_price": 0.2985,
       "peak_pct": 0.0,
       "low_pct": -5.32,
-      "current_pct": -5.1,
-      "last_check": "2026-07-13T07:06:41.384803+03:00",
-      "checks": 31
+      "current_pct": -4.33,
+      "last_check": "2026-07-13T07:36:53.266497+03:00",
+      "checks": 37
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -164,12 +164,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
       "low_price": 0.00583,
-      "current_price": 0.005869,
+      "current_price": 0.005922,
       "peak_pct": 0.0,
       "low_pct": -7.33,
-      "current_pct": -6.71,
-      "last_check": "2026-07-13T07:06:41.384803+03:00",
-      "checks": 31
+      "current_pct": -5.87,
+      "last_check": "2026-07-13T07:36:53.266497+03:00",
+      "checks": 37
     },
     {
       "id": "sync_ZKPUSDT_2026-07-13",
@@ -184,14 +184,14 @@
       "fill_qty": 4234.4,
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
-      "peak_price": 0.0464,
+      "peak_price": 0.0465,
       "low_price": 0.0453,
-      "current_price": 0.0462,
-      "peak_pct": 2.2,
+      "current_price": 0.0458,
+      "peak_pct": 2.42,
       "low_pct": -0.22,
-      "current_pct": 1.76,
-      "last_check": "2026-07-13T07:06:41.384803+03:00",
-      "checks": 31
+      "current_pct": 0.88,
+      "last_check": "2026-07-13T07:36:53.266497+03:00",
+      "checks": 37
     }
   ],
   "closed": [
