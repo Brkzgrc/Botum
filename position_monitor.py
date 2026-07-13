@@ -117,18 +117,32 @@ def _send_telegram(text: str):
         print(f"[MONITOR] Telegram hata: {e}", flush=True)
 
 
-def _notify_portfolio(endpoint: str, data: dict):
+def _notify_portfolio(endpoint: str, data: dict) -> bool:
     if not PORTFOLIO_URL or not PORTFOLIO_TOKEN:
-        return
+        return False
     try:
-        requests.post(
+        resp = requests.post(
             f"{PORTFOLIO_URL}{endpoint}",
             json=data,
             headers={"Authorization": f"Bearer {PORTFOLIO_TOKEN}"},
             timeout=15,
         )
+        return resp.status_code < 400
     except Exception as e:
         print(f"[MONITOR] Portfolio bildirim hatası ({endpoint}): {e}", flush=True)
+        return False
+
+
+def _notify_portfolio_with_retry(endpoint: str, data: dict, attempts: int = 3, delay: int = 30):
+    for i in range(attempts):
+        if _notify_portfolio(endpoint, data):
+            return
+        if i < attempts - 1:
+            print(f"[MONITOR] {endpoint} başarısız (deneme {i+1}/{attempts}), {delay}s bekleniyor", flush=True)
+            time.sleep(delay)
+    sym = data.get("symbol", "")
+    print(f"[MONITOR] {endpoint} {attempts} denemede başarısız — {sym}", flush=True)
+    _send_telegram(f"⚠️ <b>PORTFOLİO BİLDİRİM HATASI</b>\n{endpoint}\nSembol: {sym}\nManuel kontrol gerek!")
 
 
 def _market_sell(symbol: str, qty: float, reason: str):
@@ -338,7 +352,7 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
                 f"Manuel stop koy!"
             )
 
-    _notify_portfolio("/api/retest-filled", {
+    _notify_portfolio_with_retry("/api/retest-filled", {
         "symbol":     symbol,
         "fill_price": fill_price,
         "qty":        qty,
