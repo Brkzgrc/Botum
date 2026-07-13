@@ -246,6 +246,10 @@ def _migrate_signals():
         if sig.get("sig_type") == "momentum_devam":
             sig["sig_type"] = "rocket"
             fixed += 1
+        # Eski "smc" source → "smc-v2" (aktif kayıtlar için)
+        if sig.get("source") == "smc" and sig.get("status") in ("open", "pending_retest"):
+            sig["source"] = "smc-v2"
+            fixed += 1
         # Eski half_open kayıtlarını win_partial'a çevir (artık bu statü yok)
         if sig.get("status") == "half_open":
             sig["status"] = "win_partial"
@@ -770,19 +774,28 @@ def calc_performance():
 def _forward_to_trading_bot(signal: dict):
     if not TRADING_BOT_URL:
         return
-    try:
-        hdrs = {"Content-Type": "application/json"}
-        if TRADING_BOT_TOKEN:
-            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
-        r = requests.post(
-            f"{TRADING_BOT_URL}/signal",
-            json=signal,
-            headers=hdrs,
-            timeout=10,
-        )
-        print(f"[TRADE] Sinyal iletildi: {signal.get('symbol')} → HTTP {r.status_code}", flush=True)
-    except Exception as e:
-        print(f"[TRADE] İletim hatası: {e}", flush=True)
+    sym = signal.get("symbol", "")
+    hdrs = {"Content-Type": "application/json"}
+    if TRADING_BOT_TOKEN:
+        hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            r = requests.post(
+                f"{TRADING_BOT_URL}/signal",
+                json=signal,
+                headers=hdrs,
+                timeout=30,  # bot uyanma süresi için yüksek
+            )
+            print(f"[TRADE] Sinyal iletildi: {sym} → HTTP {r.status_code} (deneme {attempt})", flush=True)
+            return
+        except Exception as e:
+            print(f"[TRADE] İletim hatası (deneme {attempt}): {sym} — {e}", flush=True)
+            if attempt >= 5:
+                print(f"[TRADE] {sym} 5 denemede iletilemedi, vazgeçildi.", flush=True)
+                return
+            time.sleep(30)
 
 
 @app.route("/api/analyze", methods=["POST"])
