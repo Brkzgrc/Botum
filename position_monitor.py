@@ -24,6 +24,7 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 TRAIL_PCT              = 0.975   # %2.5 trailing
 PENDING_EXPIRE_H       = 48      # Monitoring süresi: CHoCH+3tick bekleme (saat)
 PENDING_ORDER_EXPIRE_H = 1       # Limit emir süresi: CHoCH+3tick→+1tick arası (saat)
+OPEN_EXPIRE_H          = 36      # Açık trade max süresi: fill sonrası 36H geçince market sell
 SL_LIMIT_BUFFER        = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
 CHECK_INTERVAL   = 60      # saniye
 MAX_POSITIONS    = 5
@@ -667,7 +668,25 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         _save_state(state)
         pos_snap = dict(pos)
 
-        if not pos.get("trailing"):
+        # Açık trade expire: fill sonrası OPEN_EXPIRE_H saat geçtiyse market sell
+        fill_time_str = pos.get("open_time")
+        if fill_time_str:
+            try:
+                ft = datetime.fromisoformat(fill_time_str)
+                if ft.tzinfo is None:
+                    ft = ft.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - ft >= timedelta(hours=OPEN_EXPIRE_H):
+                    sell_reason = "expire"
+                    close_price = close
+                    pos["closing"] = True
+                    state["positions"][symbol] = pos
+                    _save_state(state)
+            except Exception:
+                pass
+
+        if sell_reason:
+            pass  # lock dışında işlenecek
+        elif not pos.get("trailing"):
             # Peak: mumun high'ına göre güncelle
             if high > float(pos["peak"]):
                 pos["peak"] = high
@@ -748,7 +767,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 _save_state(s)
             _stop_stream(symbol)
             pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
-            emoji = "💰" if pct > 0 else "🔴"
+            emoji = "⏰" if sell_reason == "expire" else ("💰" if pct > 0 else "🔴")
             _send_telegram(
                 f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
                 f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"

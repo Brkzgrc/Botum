@@ -69,7 +69,7 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
-VOL_RATIO_MIN    = 5.0  # Hacim filtresi: son bar / 20 bar MA
+VOL_RATIO_MIN    = 7.5  # Hacim filtresi: son bar / 20 bar MA
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
