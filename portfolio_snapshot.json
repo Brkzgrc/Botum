@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-13 16:10:57",
+  "updated_at": "2026-07-13 16:23:25",
   "performance": {
     "total": 13,
     "open": 5,
@@ -127,8 +127,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T16:10:09.176111+03:00",
-      "checks": 18,
+      "last_check": "2026-07-13T16:22:25.032339+03:00",
+      "checks": 21,
       "extra": {
         "tp3": null
       },
@@ -160,14 +160,14 @@
       "peak_pct": 3.05,
       "low_price": 0.01762,
       "low_pct": -2.38,
-      "current_price": 0.0178,
-      "current_pct": -1.39,
+      "current_price": 0.01783,
+      "current_pct": -1.22,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-13T16:10:09.176111+03:00",
-      "checks": 47,
+      "last_check": "2026-07-13T16:22:25.032339+03:00",
+      "checks": 50,
       "extra": {
         "tp3": null
       },
@@ -188,12 +188,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.06324,
+      "current_price": 0.06312,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -6.13,
-      "last_check": "2026-07-13T16:10:09.176111+03:00",
-      "checks": 142
+      "current_pct": -6.31,
+      "last_check": "2026-07-13T16:22:25.032339+03:00",
+      "checks": 145
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -209,13 +209,13 @@
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
-      "low_price": 0.005627,
-      "current_price": 0.005628,
+      "low_price": 0.005626,
+      "current_price": 0.005645,
       "peak_pct": 0.0,
-      "low_pct": -10.56,
-      "current_pct": -10.54,
-      "last_check": "2026-07-13T16:10:09.176111+03:00",
-      "checks": 142
+      "low_pct": -10.57,
+      "current_pct": -10.27,
+      "last_check": "2026-07-13T16:22:25.032339+03:00",
+      "checks": 145
     },
     {
       "id": "sync_GIGGLEUSDT_2026-07-13",
@@ -231,13 +231,13 @@
       "open_time": "2026-07-12T03:00:09.087164+00:00",
       "peak_price": 27.49,
       "low_price": 26.28,
-      "current_price": 26.92,
+      "current_price": 26.95,
       "peak_pct": 4.6,
       "low_pct": 0.0,
-      "current_pct": 2.44,
+      "current_pct": 2.55,
       "fill_qty": 7.294,
-      "last_check": "2026-07-13T16:10:09.176111+03:00",
-      "checks": 47
+      "last_check": "2026-07-13T16:22:25.032339+03:00",
+      "checks": 50
     }
   ],
   "closed": [
@@ -257,11 +257,11 @@
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "pending_retest",
+      "status": "no_retest",
       "open_time": "2026-07-13T16:00:07.595827+03:00",
-      "close_time": null,
+      "close_time": "2026-07-13T16:22:25.250161+03:00",
       "close_price": null,
-      "close_reason": null,
+      "close_reason": "stale_pending",
       "close_pct": null,
       "peak_price": 0.0004068,
       "peak_pct": 0.0,
@@ -295,11 +295,11 @@
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "pending_retest",
+      "status": "no_retest",
       "open_time": "2026-07-13T16:00:06.228230+03:00",
-      "close_time": null,
+      "close_time": "2026-07-13T16:22:25.250161+03:00",
       "close_price": null,
-      "close_reason": null,
+      "close_reason": "stale_pending",
       "close_pct": null,
       "peak_price": 2.82,
       "peak_pct": 0.0,
