@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-13 11:37:40",
+  "updated_at": "2026-07-13 12:07:48",
   "performance": {
-    "total": 9,
+    "total": 10,
     "open": 5,
     "closed": 0,
     "wins": 0,
@@ -98,12 +98,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.06197,
+      "current_price": 0.06185,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -8.02,
-      "last_check": "2026-07-13T11:33:28.947685+03:00",
-      "checks": 84
+      "current_pct": -8.19,
+      "last_check": "2026-07-13T12:03:41.685155+03:00",
+      "checks": 90
     },
     {
       "id": "sync_BIGTIMEUSDT_2026-07-13",
@@ -124,8 +124,8 @@
       "peak_pct": 0.0,
       "low_pct": -4.68,
       "current_pct": -3.16,
-      "last_check": "2026-07-13T11:33:28.947685+03:00",
-      "checks": 84
+      "last_check": "2026-07-13T12:03:41.685155+03:00",
+      "checks": 90
     },
     {
       "id": "sync_LDOUSDT_2026-07-13",
@@ -140,14 +140,14 @@
       "fill_qty": 632.9,
       "open_time": "2026-07-13T04:30:54.754301+03:00",
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
-      "peak_price": 0.3128,
+      "peak_price": 0.3129,
       "low_price": 0.2954,
-      "current_price": 0.31,
-      "peak_pct": 0.25,
+      "current_price": 0.3115,
+      "peak_pct": 0.29,
       "low_pct": -5.32,
-      "current_pct": -0.64,
-      "last_check": "2026-07-13T11:33:28.947685+03:00",
-      "checks": 84
+      "current_pct": -0.16,
+      "last_check": "2026-07-13T12:03:41.685155+03:00",
+      "checks": 90
     },
     {
       "id": "sync_VANRYUSDT_2026-07-13",
@@ -164,12 +164,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.006291261080851897,
       "low_price": 0.005693,
-      "current_price": 0.005977,
+      "current_price": 0.005984,
       "peak_pct": 0.0,
       "low_pct": -9.51,
-      "current_pct": -5.0,
-      "last_check": "2026-07-13T11:33:28.947685+03:00",
-      "checks": 84
+      "current_pct": -4.88,
+      "last_check": "2026-07-13T12:03:41.685155+03:00",
+      "checks": 90
     },
     {
       "id": "sync_ZKPUSDT_2026-07-13",
@@ -186,15 +186,53 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.0465,
       "low_price": 0.0433,
-      "current_price": 0.0434,
+      "current_price": 0.0437,
       "peak_pct": 2.42,
       "low_pct": -4.63,
-      "current_pct": -4.41,
-      "last_check": "2026-07-13T11:33:28.947685+03:00",
-      "checks": 84
+      "current_pct": -3.74,
+      "last_check": "2026-07-13T12:03:41.685155+03:00",
+      "checks": 90
     }
   ],
   "closed": [
+    {
+      "id": "BLUR_USDT_1783933210",
+      "symbol": "BLUR/USDT",
+      "entry": 0.01806,
+      "stop": 0.01634785,
+      "tp1": 0.01977215,
+      "tp2": 0.0214843,
+      "tp3": null,
+      "limit_price": 0.01806,
+      "signal_price": 0.01817,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-13T12:00:10.003949+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.01806,
+      "peak_pct": 0.0,
+      "low_price": 0.01806,
+      "low_pct": 0.0,
+      "current_price": 0.01806,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-13T12:00:10.003949+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "sync_1MBABYDOGEUSDT_2026-07-13",
       "symbol": "1MBABYDOGE/USDT",
