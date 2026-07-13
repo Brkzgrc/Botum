@@ -133,16 +133,18 @@ def _notify_portfolio(endpoint: str, data: dict) -> bool:
         return False
 
 
-def _notify_portfolio_with_retry(endpoint: str, data: dict, attempts: int = 3, delay: int = 30):
-    for i in range(attempts):
-        if _notify_portfolio(endpoint, data):
-            return
-        if i < attempts - 1:
-            print(f"[MONITOR] {endpoint} başarısız (deneme {i+1}/{attempts}), {delay}s bekleniyor", flush=True)
-            time.sleep(delay)
-    sym = data.get("symbol", "")
-    print(f"[MONITOR] {endpoint} {attempts} denemede başarısız — {sym}", flush=True)
-    _send_telegram(f"⚠️ <b>PORTFOLİO BİLDİRİM HATASI</b>\n{endpoint}\nSembol: {sym}\nManuel kontrol gerek!")
+def _notify_portfolio_with_retry(endpoint: str, data: dict):
+    def _attempt():
+        sym = data.get("symbol", "")
+        attempt = 0
+        while True:
+            attempt += 1
+            if _notify_portfolio(endpoint, data):
+                print(f"[MONITOR] {endpoint} OK (deneme {attempt}) — {sym}", flush=True)
+                return
+            print(f"[MONITOR] {endpoint} başarısız (deneme {attempt}), 60s sonra tekrar — {sym}", flush=True)
+            time.sleep(60)
+    threading.Thread(target=_attempt, daemon=True).start()
 
 
 def _market_sell(symbol: str, qty: float, reason: str):
