@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-14 22:04:54",
+  "updated_at": "2026-07-14 22:34:57",
   "performance": {
     "total": 39,
     "open": 5,
@@ -133,8 +133,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-14T22:02:26.664339+03:00",
-      "checks": 120,
+      "last_check": "2026-07-14T22:32:43.236508+03:00",
+      "checks": 126,
       "extra": {
         "tp3": null
       },
@@ -172,8 +172,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-14T22:02:26.664339+03:00",
-      "checks": 120,
+      "last_check": "2026-07-14T22:32:43.236508+03:00",
+      "checks": 126,
       "extra": {
         "tp3": null
       },
@@ -211,8 +211,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-14T04:00:15.514105+03:00",
-      "last_check": "2026-07-14T22:02:26.664339+03:00",
-      "checks": 120,
+      "last_check": "2026-07-14T22:32:43.236508+03:00",
+      "checks": 126,
       "extra": {
         "tp3": null
       },
@@ -244,14 +244,14 @@
       "peak_pct": 2.96,
       "low_price": 0.4,
       "low_pct": -1.48,
-      "current_price": 0.417,
-      "current_pct": 2.71,
+      "current_price": 0.416,
+      "current_pct": 2.46,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-14T22:02:26.664339+03:00",
-      "checks": 376,
+      "last_check": "2026-07-14T22:32:43.236508+03:00",
+      "checks": 382,
       "extra": {
         "tp3": null
       },
@@ -272,12 +272,12 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06155,
-      "current_price": 0.06294,
+      "current_price": 0.06299,
       "peak_pct": 0.0,
       "low_pct": -8.64,
-      "current_pct": -6.58,
-      "last_check": "2026-07-14T22:02:26.664339+03:00",
-      "checks": 500
+      "current_pct": -6.5,
+      "last_check": "2026-07-14T22:32:43.236508+03:00",
+      "checks": 506
     }
   ],
   "closed": [
