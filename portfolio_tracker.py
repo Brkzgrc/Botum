@@ -1222,6 +1222,21 @@ def api_trade_positions():
         return jsonify({"error": str(e)}), 503
 
 
+@app.route("/api/trade-balance", methods=["GET"])
+def api_trade_balance():
+    """trading-bot servisinden kullanılabilir (free) USDT bakiyesini çeker."""
+    if not TRADING_BOT_URL:
+        return jsonify({"error": "TRADING_BOT_URL tanımlı değil"}), 503
+    try:
+        hdrs = {}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.get(f"{TRADING_BOT_URL}/balance", headers=hdrs, timeout=8)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 503
+
+
 @app.route("/api/trade-positions/<symbol>/delete", methods=["POST"])
 def api_trade_position_delete(symbol):
     """trading-bot servisinden belirli pozisyonu siler."""
@@ -2398,6 +2413,7 @@ def dashboard():
 
     # ── trading-bot pozisyonları (trade_state.json) ─────────────────────────
     _trade_positions = {}
+    _usdt_balance = None
     if TRADING_BOT_URL:
         try:
             _th = {}
@@ -2408,6 +2424,21 @@ def dashboard():
                 _trade_positions = _tr.json()
         except Exception:
             pass
+        try:
+            _bh = {}
+            if TRADING_BOT_TOKEN:
+                _bh["X-Bot-Token"] = TRADING_BOT_TOKEN
+            _br = requests.get(f"{TRADING_BOT_URL}/balance", headers=_bh, timeout=5)
+            if _br.ok:
+                _usdt_balance = _br.json().get("usdt_balance")
+        except Exception:
+            pass
+
+    _balance_html = (
+        f'<span style="color:var(--green)">${_usdt_balance:,.2f}</span> kullanılabilir USDT'
+        if _usdt_balance is not None else
+        '<span style="color:var(--text-dim)">bakiye alınamadı</span>'
+    )
 
     _STATUS_LABEL = {
         "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
@@ -2449,16 +2480,21 @@ def dashboard():
                 Sil</button></td>
         </tr>"""
 
-    if _trade_positions:
-        _trade_section = f"""<div class="section">
-    <details data-id="trade-bot" open>
-    <summary>🤖 AL-SAT BOT POZİSYONLARI ({len(_trade_positions)})</summary>
-    <p class="note">trade_state.json içeriği. İzleme: fiyat CHoCH+3tick'e ulaşınca limit emir açılır. Emir: Binance'te limit buy bekliyor. Sil: sadece state'den siler, Binance emrini kendin iptal et.</p>
-    <div class="table-wrap"><table><thead><tr>
+    if TRADING_BOT_URL:
+        _trade_table = (
+            f"""<div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Durum</th><th>Anlık Fiyat</th><th>Limit Buy</th><th>Tetikleyici</th><th>Stop</th><th>TP1</th><th>Geçen</th><th></th>
     </tr></thead><tbody>
         {_trade_rows}
-    </tbody></table></div>
+    </tbody></table></div>"""
+            if _trade_positions else
+            '<p class="empty">Açık pozisyon yok.</p>'
+        )
+        _trade_section = f"""<div class="section">
+    <details data-id="trade-bot" open>
+    <summary>🤖 AL-SAT BOT POZİSYONLARI ({len(_trade_positions)}) — {_balance_html}</summary>
+    <p class="note">trade_state.json içeriği. İzleme: fiyat CHoCH+3tick'e ulaşınca limit emir açılır. Emir: Binance'te limit buy bekliyor. Sil: sadece state'den siler, Binance emrini kendin iptal et.</p>
+    {_trade_table}
     </details>
 </div>"""
     else:

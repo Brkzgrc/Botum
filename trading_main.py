@@ -56,6 +56,13 @@ def status():
     return jsonify(state.get("positions", {}))
 
 
+@app.route("/balance")
+def balance():
+    if not _auth(request):
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"usdt_balance": trading_engine.get_usdt_balance()})
+
+
 @app.route("/position/<symbol>", methods=["DELETE"])
 def delete_position(symbol):
     if not _auth(request):

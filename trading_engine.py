@@ -136,6 +136,11 @@ def _get_usdt_balance() -> float:
         return 0.0
 
 
+def get_usdt_balance() -> float:
+    """Bot'un kullanabileceği (free) USDT bakiyesi — locked/açık emirlerdeki tutar hariç."""
+    return _get_usdt_balance()
+
+
 # ─── ANA FONKSİYON ───────────────────────────────────────────────────────────
 
 def execute(signal: dict):
