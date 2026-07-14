@@ -138,13 +138,23 @@ def _get_usdt_balance() -> float:
 
 # ─── ANA FONKSİYON ───────────────────────────────────────────────────────────
 
-def execute(signal: dict):
+def execute(signal: dict) -> str:
     """
     SMC CHoCH sinyalini izleme listesine al.
     Fiyat CHoCH+3tick'e gelince position_monitor limit buy açar (CHoCH+1tick).
 
     Beklenen alanlar: symbol, entry, stop, tp1
     Opsiyonel: tp2, source
+
+    Dönüş değerleri:
+      "ok"              → monitoring listesine eklendi
+      "duplicate"       → sembol zaten aktif (portfolio kaydı korunur)
+      "price_above_tp1" → fiyat TP1 üzerinde (portfolio kaydı iptal edilmeli)
+      "price_below_stop"→ fiyat stop altında  (portfolio kaydı iptal edilmeli)
+      "price_too_low"   → fiyat CHoCH'un çok altında (portfolio kaydı iptal edilmeli)
+      "simulation"      → TRADING_ENABLED=false, state'e yazılmadı
+      "bad_signal"      → eksik alan
+      "price_error"     → Binance fiyat kontrolü başarısız (geçici, tekrar dene)
     """
     symbol = _normalize_symbol(signal.get("symbol", ""))
     entry  = float(signal.get("entry", 0))   # CHoCH seviyesi (swing_high)
@@ -154,7 +164,7 @@ def execute(signal: dict):
 
     if not symbol or not entry or not stop or not tp1:
         print(f"[TRADE] Eksik alan, atlandı: {signal}", flush=True)
-        return
+        return "bad_signal"
 
     # Fiyatları tick size'a yuvarla — SMC ham değerleri ondalık saçmalık üretebilir
     stop = _round_price(stop, symbol)
@@ -167,7 +177,7 @@ def execute(signal: dict):
 
     if not ENABLED:
         print(f"[TRADE] SIMÜLASYON — {symbol} | trigger≤{trigger_price:.6g} → limit@{limit_price:.6g} stop={stop:.6g} tp1={tp1:.6g}", flush=True)
-        return
+        return "simulation"
 
     with _lock:
         state     = load_state()
@@ -175,7 +185,7 @@ def execute(signal: dict):
 
         if symbol in positions:
             print(f"[TRADE] Reddedildi: {symbol} zaten aktif ({positions[symbol].get('status')})", flush=True)
-            return
+            return "duplicate"
 
         # ── Anlık fiyat kontrolleri ─────────────────────────────────────────
         try:
@@ -184,18 +194,18 @@ def execute(signal: dict):
             if current_price >= tp1:
                 print(f"[TRADE] Reddedildi: fiyat TP1 üzerinde | "
                       f"mevcut={current_price:.6g} tp1={tp1:.6g}", flush=True)
-                return
+                return "price_above_tp1"
             if current_price <= stop:
                 print(f"[TRADE] Reddedildi: fiyat stop seviyesinin altında | "
                       f"mevcut={current_price:.6g} stop={stop:.6g}", flush=True)
-                return
+                return "price_below_stop"
             if current_price < entry * 0.80:
                 print(f"[TRADE] Reddedildi: fiyat CHoCH'un çok altında | "
                       f"mevcut={current_price:.6g} choch={entry:.6g}", flush=True)
-                return
+                return "price_too_low"
         except BinanceAPIException as e:
-            print(f"[TRADE] Reddedildi: fiyat kontrolü hatası {symbol}: {e}", flush=True)
-            return
+            print(f"[TRADE] Fiyat kontrolü hatası {symbol}: {e}", flush=True)
+            return "price_error"
 
         now = datetime.now(timezone.utc).isoformat()
         positions[symbol] = {
@@ -212,3 +222,4 @@ def execute(signal: dict):
         state["positions"] = positions
         save_state(state)
         print(f"[TRADE] MONİTORİNG: {symbol} | fiyat ≤{trigger_price:.6g} bekleniyor → limit@{limit_price:.6g}", flush=True)
+        return "ok"
