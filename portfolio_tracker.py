@@ -623,7 +623,7 @@ def _sync_pending_to_bot():
         r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=10)
         if r.status_code != 200:
             return
-        bot_positions = r.json().get("positions", {})
+        bot_positions = r.json()  # /status doğrudan {symbol: pos} döndürür
         bot_symbols = {s.replace("/", "").upper() for s in bot_positions}
     except Exception:
         return
@@ -638,6 +638,60 @@ def _sync_pending_to_bot():
         if sym_norm not in bot_symbols:
             print(f"[SYNC→BOT] {sym_norm} portfolio'da var, bot'ta yok → iletiliyor", flush=True)
             threading.Thread(target=_forward_to_trading_bot, args=(dict(sig),), daemon=True).start()
+
+
+def _sync_open_from_bot():
+    """Periyodik: Bot'ta open olan ama portfolio'da hâlâ pending_retest olan kayıtları open'a çevir.
+    /api/retest-filled webhook başarısız olduğunda (bot yeniden başlatma vb.) drift'i giderir."""
+    if not TRADING_BOT_URL:
+        return
+    try:
+        hdrs = {"X-Bot-Token": TRADING_BOT_TOKEN} if TRADING_BOT_TOKEN else {}
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=10)
+        if not r.ok:
+            return
+        trade_positions = r.json()
+    except Exception as e:
+        print(f"[SYNC] Bot erişim hatası: {e}", flush=True)
+        return
+
+    bot_open = {
+        sym.replace("/", "").upper(): pos
+        for sym, pos in trade_positions.items()
+        if pos.get("status") == "open"
+    }
+    if not bot_open:
+        return
+
+    updated = 0
+    now_str = tr_now().isoformat()
+    with _lock:
+        for sig in signals_db:
+            if sig.get("status") != "pending_retest":
+                continue
+            if sig.get("source") not in SMC_MAIN_SOURCES:
+                continue
+            sym_norm = sig.get("symbol", "").replace("/", "").upper()
+            if sym_norm not in bot_open:
+                continue
+            pos = bot_open[sym_norm]
+            entry = float(pos.get("entry") or pos.get("limit_price") or sig.get("entry") or 0)
+            qty   = float(pos.get("qty") or 0)
+            sig["status"]        = "open"
+            if entry:
+                sig["entry"]     = entry
+            if qty:
+                sig["fill_qty"]  = qty
+            sig["fill_time"]     = now_str
+            sig["peak_price"]    = entry or sig.get("entry", 0)
+            sig["low_price"]     = entry or sig.get("entry", 0)
+            sig["current_price"] = entry or sig.get("entry", 0)
+            updated += 1
+            print(f"[SYNC] {sym_norm} pending_retest → open (periyodik sync)", flush=True)
+        if updated:
+            save_signals()
+    if updated:
+        print(f"[SYNC] Periyodik sync: {updated} pending_retest → open çevrildi", flush=True)
 
 
 def _keepalive_bot():
@@ -659,6 +713,7 @@ def position_checker_loop():
             check_open_positions()
             if cycle % 3 == 0:
                 _sync_pending_to_bot()
+                _sync_open_from_bot()
             cycle += 1
         except Exception as e:
             print(f"[CHECK] Döngü hatası: {e}", flush=True)
@@ -1140,6 +1195,16 @@ def api_position_closed():
                 print(f"[POSITION-CLOSED] {sym_norm} @ {close_price} | {reason} | {pnl_pct:+.2f}%", flush=True)
                 return jsonify({"ok": True})
     return jsonify({"error": "open position not found"}), 404
+
+
+@app.route("/api/manual-sync", methods=["POST"])
+def api_manual_sync():
+    """Bot'tan anlık sync: pending_retest→open dönüşümü + stale temizliği."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    _sync_from_trading_bot()
+    return jsonify({"ok": True, "message": "sync tamamlandı"})
 
 
 @app.route("/api/trade-positions", methods=["GET"])
