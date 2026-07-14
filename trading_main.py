@@ -83,16 +83,10 @@ def signal():
 
     # Eksik alan kontrolü burada değil — trading_engine.execute içinde yapılıyor
     try:
-        result = trading_engine.execute(data)
+        trading_engine.execute(data)
+        return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-    if result == "ok":
-        return jsonify({"ok": True}), 200
-    if result == "duplicate":
-        return jsonify({"ok": False, "reason": result}), 409
-    # Fiyat bazlı red → portfolio sinyali iptal etmeli
-    return jsonify({"ok": False, "reason": result}), 422
 
 
 if __name__ == "__main__":
