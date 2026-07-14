@@ -2764,6 +2764,7 @@ def alsat_page():
     now = tr_now_str()
 
     trade_positions = {}
+    usdt_balance = None
     error_msg = ""
     if TRADING_BOT_URL:
         try:
@@ -2777,8 +2778,19 @@ def alsat_page():
                 error_msg = f"Trading-bot HTTP {r.status_code}"
         except Exception as e:
             error_msg = str(e)
+        try:
+            bh = {}
+            if TRADING_BOT_TOKEN:
+                bh["X-Bot-Token"] = TRADING_BOT_TOKEN
+            br = requests.get(f"{TRADING_BOT_URL}/balance", headers=bh, timeout=6)
+            if br.ok:
+                usdt_balance = br.json().get("usdt_balance")
+        except Exception:
+            pass
     else:
         error_msg = "TRADING_BOT_URL tanımlı değil"
+
+    balance_val = f"${usdt_balance:,.2f}" if usdt_balance is not None else "—"
 
     STATUS_LABEL = {
         "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
@@ -2861,7 +2873,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -2872,7 +2884,7 @@ td{{padding:8px 10px;border-bottom:1px solid #111820;}}
 tr:hover td{{background:#0f151d;}}
 .table-wrap{{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}}
 .note{{color:var(--text-dim);font-size:.65rem;margin-bottom:12px;font-style:italic;}}
-@media(max-width:600px){{.cards{{grid-template-columns:repeat(2,1fr);}}body{{padding:12px;}}}}
+@media(max-width:700px){{.cards{{grid-template-columns:repeat(3,1fr);}}body{{padding:12px;}}}}
 </style></head>
 <body>
 <div class="header">
@@ -2896,6 +2908,7 @@ tr:hover td{{background:#0f151d;}}
   <div class="card"><span class="val" style="color:var(--orange)">{monitoring_n}</span><span class="lbl">İzleme</span></div>
   <div class="card"><span class="val" style="color:#3498db">{pending_n}</span><span class="lbl">Emir</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{open_n}</span><span class="lbl">Açık</span></div>
+  <div class="card"><span class="val" style="color:var(--green)">{balance_val}</span><span class="lbl">Kullanılabilir USDT</span></div>
 </div>
 
 <p class="note">İzleme: fiyat CHoCH+3tick'e gelince limit emir açılır (CHoCH+1tick). Emir: Binance'te limit buy bekliyor. Sil butonu sadece state'den siler — Binance emrini kendin iptal et. 30s otomatik yenileme.</p>
