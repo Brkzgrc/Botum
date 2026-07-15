@@ -761,6 +761,13 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     pos["closing"] = True
                     state["positions"][symbol] = pos
                     _save_state(state)
+                    # Aktif resting emir (SL ya da trailing SL) iptal edilmezse coin'ler
+                    # o emirde kilitli kalır — market_sell "insufficient balance" alıp
+                    # sonsuza kadar başarısız olur (AWE/ZKC'de yaşandı).
+                    if pos.get("trailing"):
+                        cancel_trail_sl_id = pos.get("trailing_sl_id")
+                    else:
+                        cancel_sl = True
             except Exception:
                 pass
 
