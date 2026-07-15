@@ -21,10 +21,13 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 PORTFOLIO_URL    = os.getenv("PORTFOLIO_URL", "")
 PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 
-TRAIL_PCT              = 0.975   # %2.5 trailing
+ATR_PERIOD             = 14      # ATR periyodu (1H bar)
+ATR_MULT               = 0.6     # trail_stop = peak - ATR_MULT * ATR(14, 1H)
+ATR_REFRESH_S          = 1800    # ATR en fazla bu kadar saniyede bir yeniden çekilir
+FALLBACK_TRAIL_PCT     = 0.9816  # ATR çekilemezse: peak * bu değer (%1.84 sabit trailing)
 PENDING_EXPIRE_H       = 48      # Monitoring süresi: CHoCH+3tick bekleme (saat)
 PENDING_ORDER_EXPIRE_H = 1       # Limit emir süresi: CHoCH+3tick→+1tick arası (saat)
-OPEN_EXPIRE_H          = 36      # Açık trade max süresi: fill sonrası 36H geçince market sell
+OPEN_EXPIRE_H          = 24      # Açık trade max süresi: fill sonrası 24H geçince market sell
 SL_LIMIT_BUFFER        = 0.003   # SL limit fiyatı = stop * (1 - 0.003)
 CHECK_INTERVAL   = 60      # saniye
 MAX_POSITIONS    = 5
@@ -183,15 +186,58 @@ def _cancel_sl(symbol: str, sl_order_id):
         print(f"[MONITOR] SL iptal HATA {symbol}: {e}", flush=True)
 
 
-def _place_trail_sl_order(symbol: str, peak: float, qty: float):
-    """Peak × TRAIL_PCT seviyesinde STOP_LOSS_LIMIT emri aç. order_id döndürür."""
+def _compute_atr(symbol: str, period: int = ATR_PERIOD):
+    """Binance'ten son 1H mumları çekip Wilder ATR(period) hesaplar. Hata/yetersiz veri → None."""
+    try:
+        klines = _get_client().get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1HOUR, limit=period * 5)
+    except BinanceAPIException as e:
+        print(f"[MONITOR] ATR kline hatası {symbol}: {e}", flush=True)
+        return None
+    except Exception as e:
+        print(f"[MONITOR] ATR kline hatası {symbol}: {e}", flush=True)
+        return None
+    if len(klines) < period + 1:
+        return None
+    highs  = [float(k[2]) for k in klines]
+    lows   = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+    trs = []
+    for i in range(1, len(klines)):
+        trs.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return atr
+
+
+def _trail_stop_price(peak: float, atr) -> float:
+    """peak - ATR_MULT*ATR; ATR yoksa/geçersizse sabit %1.84 yedeğe düşer."""
+    if atr and atr > 0:
+        return peak - ATR_MULT * atr
+    return peak * FALLBACK_TRAIL_PCT
+
+
+def _atr_is_stale(pos: dict) -> bool:
+    ts = pos.get("atr_updated_at")
+    if not ts:
+        return True
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
+        return age >= ATR_REFRESH_S
+    except Exception:
+        return True
+
+
+def _place_trail_sl_order(symbol: str, peak: float, qty: float, atr=None):
+    """peak - ATR_MULT*ATR (veya ATR yoksa peak*FALLBACK_TRAIL_PCT) seviyesinde STOP_LOSS_LIMIT emri aç. order_id döndürür."""
+    trail_stop_raw = _trail_stop_price(peak, atr)
     if not ENABLED:
-        trail_stop = round(peak * TRAIL_PCT, 8)
+        trail_stop = round(trail_stop_raw, 8)
         print(f"[MONITOR] Trail SL SİMÜLASYON — {symbol} stop={trail_stop:.6g} qty={qty}", flush=True)
         return None
     try:
-        trail_stop  = _round_price(peak * TRAIL_PCT, symbol)
-        trail_limit = _round_price(peak * TRAIL_PCT * (1 - SL_LIMIT_BUFFER), symbol)
+        trail_stop  = _round_price(trail_stop_raw, symbol)
+        trail_limit = _round_price(trail_stop_raw * (1 - SL_LIMIT_BUFFER), symbol)
         qty_r = _round_qty(qty, symbol)
         order = _get_client().create_order(
             symbol=symbol, side="SELL", type="STOP_LOSS_LIMIT",
@@ -732,8 +778,8 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 trail_sl_peak   = high
                 trail_sl_qty    = float(pos.get("qty", 0))
 
-            # Trail kontrolü: mumun low'una göre
-            trail_stop = float(pos["peak"]) * TRAIL_PCT
+            # Trail kontrolü: mumun low'una göre (cache'li ATR — network çağrısı lock içinde yapılmaz)
+            trail_stop = _trail_stop_price(float(pos["peak"]), pos.get("atr"))
             if low <= trail_stop:
                 cancel_trail_sl_id = pos.get("trailing_sl_id")
                 sell_reason = "trail_stop"
@@ -749,12 +795,21 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
     if place_trail_sl or update_trail_sl:
         if update_trail_sl:
             _cancel_sl(symbol, old_trail_sl_id)
-        new_trail_id = _place_trail_sl_order(symbol, trail_sl_peak, trail_sl_qty)
+
+        atr_val = pos_snap.get("atr")
+        if place_trail_sl or _atr_is_stale(pos_snap):
+            fresh_atr = _compute_atr(symbol)
+            if fresh_atr:
+                atr_val = fresh_atr
+
+        new_trail_id = _place_trail_sl_order(symbol, trail_sl_peak, trail_sl_qty, atr_val)
         if new_trail_id:
             with _lock:
                 s = _load_state()
                 if symbol in s["positions"]:
                     s["positions"][symbol]["trailing_sl_id"] = new_trail_id
+                    s["positions"][symbol]["atr"] = atr_val
+                    s["positions"][symbol]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                     _save_state(s)
 
     if cancel_trail_sl_id:
@@ -873,17 +928,37 @@ def _periodic_check():
                     qty = float(pos.get("qty", 0))
                     peak = float(pos.get("peak", 0))
                     if qty > 0 and peak > 0:
-                        new_id = _place_trail_sl_order(sym, peak, qty)
+                        atr_val = pos.get("atr") or _compute_atr(sym)
+                        new_id = _place_trail_sl_order(sym, peak, qty, atr_val)
                         if new_id:
                             with _lock:
                                 s = _load_state()
                                 if sym in s["positions"]:
                                     s["positions"][sym]["trailing_sl_id"] = new_id
+                                    s["positions"][sym]["atr"] = atr_val
+                                    s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                                     _save_state(s)
                             _send_telegram(
                                 f"🛡 <b>Retroaktif Trail SL — {sym}</b>\n"
-                                f"Peak: {peak:.6g} | Trail stop: {peak * TRAIL_PCT:.6g}"
+                                f"Peak: {peak:.6g} | Trail stop: {_trail_stop_price(peak, atr_val):.6g}"
                             )
+                elif is_trailing and trailing_sl_id and _atr_is_stale(pos):
+                    # ATR bayatladı (peak uzun süredir yükselmedi) — yenile, trail SL emrini güncelle
+                    qty = float(pos.get("qty", 0))
+                    peak = float(pos.get("peak", 0))
+                    fresh_atr = _compute_atr(sym)
+                    if fresh_atr and qty > 0 and peak > 0:
+                        new_id = _place_trail_sl_order(sym, peak, qty, fresh_atr)
+                        if new_id:
+                            _cancel_sl(sym, trailing_sl_id)
+                            with _lock:
+                                s = _load_state()
+                                if sym in s["positions"]:
+                                    s["positions"][sym]["trailing_sl_id"] = new_id
+                                    s["positions"][sym]["atr"] = fresh_atr
+                                    s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                    _save_state(s)
+                            print(f"[MONITOR] ATR yenilendi: {sym} atr={fresh_atr:.6g}", flush=True)
 
                 # SL fill kontrolü
                 if sl_order_id and _is_sl_filled(sym, sl_order_id):
@@ -914,7 +989,7 @@ def _periodic_check():
                     _stop_stream(sym)
                     entry = float(pos.get("entry", 0))
                     peak  = float(pos.get("peak", 0))
-                    cl_price = round(peak * TRAIL_PCT, 8)
+                    cl_price = round(_trail_stop_price(peak, pos.get("atr")), 8)
                     pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
                     _send_telegram(
                         f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"

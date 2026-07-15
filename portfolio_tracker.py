@@ -3,7 +3,7 @@
 Portföy Takip Sistemi v3.0
 ===========================
 SMC CHoCH ROC giriş: CHoCH+1tick LIMIT BUY → retest bekler (48H). Fill sonrası SL yerleşir.
-SMC CHoCH ROC çıkış: TP1 hit → %2.5 trailing → peak'ten -%2.5 ile çıkar.
+SMC CHoCH ROC çıkış: TP1 hit → ATR×0.6 trailing → peak'ten -ATR×0.6 ile çıkar (fallback: -%1.84 sabit).
 PUMP çıkış: hard SL | hard TP | 6h expire | trailing yok.
 
 Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
@@ -46,9 +46,12 @@ MAX_POSITIONS  = 5              # trading_engine ile aynı değer
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
 SMC_MAIN_SOURCES = ("smc-v2",)
 
-# smc-v2: TP1 aktivasyon → %100 pozisyon %2.5 trailing ile çıkar
+# smc-v2: TP1 aktivasyon → %100 pozisyon ATR trailing ile çıkar (bot devre dışıyken fallback takip)
 FULL_TRAIL_SOURCES  = {"smc-v2"}
-SMC_FULL_TRAIL_PCT  = 2.5
+ATR_PERIOD          = 14
+ATR_MULT            = 0.6      # trail_stop = peak - ATR_MULT * ATR(14, 1H)
+ATR_REFRESH_S       = 1800     # ATR en fazla bu kadar saniyede bir yeniden çekilir
+FALLBACK_TRAIL_PCT  = 1.84     # ATR çekilemezse: peak'ten bu % ile sabit trailing
 
 # Kaldırılmış sinyal tipleri (sig_type) — DB'de kalır ama UI'da gösterilmez.
 HIDDEN_SIG_TYPES = (
@@ -417,6 +420,51 @@ def get_current_price_hl(symbol):
         print(f"[BINANCE] {symbol} hata: {e}", flush=True)
     return None
 
+
+def compute_atr(symbol, period=ATR_PERIOD):
+    """Son 1H mumları çekip Wilder ATR(period) hesaplar. Hata/yetersiz veri → None."""
+    pair = symbol.replace("/", "").replace("USDT", "USDT")
+    try:
+        r = requests.get(BINANCE_KLINE_URL, params={
+            "symbol": pair, "interval": "1h", "limit": period * 5
+        }, timeout=10)
+        if r.status_code != 200:
+            return None
+        klines = r.json()
+    except Exception as e:
+        print(f"[BINANCE] ATR {symbol} hata: {e}", flush=True)
+        return None
+    if len(klines) < period + 1:
+        return None
+    highs  = [float(k[2]) for k in klines]
+    lows   = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+    trs = []
+    for i in range(1, len(klines)):
+        trs.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return atr
+
+
+def trail_stop_price(peak, atr):
+    """peak - ATR_MULT*ATR; ATR yoksa/geçersizse sabit %1.84 yedeğe düşer."""
+    if atr and atr > 0:
+        return peak - ATR_MULT * atr
+    return peak * (1 - FALLBACK_TRAIL_PCT / 100)
+
+
+def _atr_is_stale(sig):
+    ts = sig.get("atr_updated_at")
+    if not ts:
+        return True
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
+        return age >= ATR_REFRESH_S
+    except Exception:
+        return True
+
 # ============================================================
 # POZİSYON KONTROL DÖNGÜSÜ
 # ============================================================
@@ -464,20 +512,30 @@ def check_open_positions():
             close_reason = None; close_price = None; close_status = None
 
             if is_smc:
-                # SMC CHoCH ROC: stop → loss | TP1 hit → %2.5 trailing aktif | trail tetik → win_trail/loss
+                # SMC CHoCH ROC: stop → loss | TP1 hit → ATR trailing aktif | trail tetik → win_trail/loss
                 if low <= stop:
                     close_reason = "stop"; close_price = stop; close_status = "loss"
                 else:
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
                         if sig.get("source") in FULL_TRAIL_SOURCES:
                             tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
+                            atr_val = compute_atr(symbol)
                             with _lock:
                                 sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
                                 sig["tp1_pct"] = tp1_pct_v
+                                sig["atr"] = atr_val
+                                sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                             need_save = True
-                            print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → %{SMC_FULL_TRAIL_PCT} trailing başladı", flush=True)
+                            print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → ATR×{ATR_MULT} trailing başladı", flush=True)
                     if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
-                        trail_stop = round(sig["peak_price"] * (1 - SMC_FULL_TRAIL_PCT / 100), 8)
+                        if _atr_is_stale(sig):
+                            fresh_atr = compute_atr(symbol)
+                            if fresh_atr:
+                                with _lock:
+                                    sig["atr"] = fresh_atr
+                                    sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                need_save = True
+                        trail_stop = round(trail_stop_price(sig["peak_price"], sig.get("atr")), 8)
                         trail_ret  = round((trail_stop - entry) / entry * 100, 2)
                         if low <= trail_stop:
                             close_reason = "trailing"; close_price = trail_stop
@@ -2692,7 +2750,7 @@ function toggleType(key, btn) {{
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
-    <p class="note">Legacy SMC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → %2.5 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
+    <p class="note">Legacy SMC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → ATR×0.6 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
         <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th><th></th>
@@ -2726,7 +2784,7 @@ function toggleType(key, btn) {{
 </div>
 
 <div class="footer">
-    Legacy SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing | PUMP: hard SL/TP, 6h expire |
+    Legacy SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → ATR×0.6 trailing | PUMP: hard SL/TP, 6h expire |
     Kontrol: {CHECK_INTERVAL//60}dk | {now}
 </div>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
@@ -3019,7 +3077,7 @@ def snapshot_loop():
 if __name__ == "__main__":
     print("=" * 50, flush=True)
     print("📊 Portföy Takip Sistemi v3.0", flush=True)
-    print("   SMC CHoCH ROC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → %2.5 trailing", flush=True)
+    print("   SMC CHoCH ROC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → ATR×0.6 trailing", flush=True)
     print("   PUMP: hard SL | hard TP | 6h expire | trailing yok", flush=True)
     print("=" * 50, flush=True)
     print(f"  Kontrol aralığı      : {CHECK_INTERVAL}s ({CHECK_INTERVAL // 60} dk)", flush=True)
