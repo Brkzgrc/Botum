@@ -152,12 +152,40 @@ def _notify_portfolio_with_retry(endpoint: str, data: dict):
 
 
 def _market_sell(symbol: str, qty: float, reason: str):
-    tag = f"[MONITOR] SELL {symbol} {qty} ({reason})"
+    """State'teki qty gerçek bakiyeden fazla olabilir (komisyon kesintisi, manuel
+    müdahale, eski kayıt drift'i vb.) — satıştan önce gerçek free balance'a kırpılır.
+    Aksi halde -2010 (insufficient balance) hatası her tick'te aynı yanlış miktarla
+    sonsuza kadar tekrar eder ve pozisyon asla kapanmaz."""
     if not ENABLED:
-        print(f"{tag} — SİMÜLASYON", flush=True)
+        print(f"[MONITOR] SELL {symbol} {qty} ({reason}) — SİMÜLASYON", flush=True)
         return True
+
+    base = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
+    balance_checked = False
     try:
-        _get_client().order_market_sell(symbol=symbol, quantity=qty)
+        bal = _get_client().get_asset_balance(asset=base)
+        free = float(bal["free"]) if bal else None
+        if free is not None:
+            balance_checked = True
+            sell_qty = _round_qty(min(qty, free), symbol)
+        else:
+            sell_qty = _round_qty(qty, symbol)
+    except Exception:
+        sell_qty = _round_qty(qty, symbol)
+
+    if sell_qty <= 0:
+        if balance_checked:
+            # Bakiye gerçekten sıfır/dust — muhtemelen başka bir yolla (Binance'teki
+            # resting SL/trail emri) zaten satılmış. Tekrar denemek imkansız bir şeyi
+            # sonsuza kadar denemek olur; pozisyonu kapatılmış say.
+            print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır, zaten satılmış kabul ediliyor", flush=True)
+            return True
+        print(f"[MONITOR] SELL {symbol} ({reason}) — miktar hesaplanamadı, tekrar denenecek", flush=True)
+        return False
+
+    tag = f"[MONITOR] SELL {symbol} {sell_qty} ({reason})" + (f" [state qty={qty} idi]" if sell_qty != qty else "")
+    try:
+        _get_client().order_market_sell(symbol=symbol, quantity=sell_qty)
         print(f"{tag} — OK", flush=True)
         return True
     except BinanceAPIException as e:
@@ -868,11 +896,18 @@ def _make_handler(symbol: str):
 
 
 def _start_stream(symbol: str):
+    """Tek bir sembolün stream'i başlatılamazsa exception fırlatmaz —
+    aksi halde _periodic_check'teki tek try/except TÜM döngüyü (diğer semboller dahil)
+    o turda erkenden keser. Hata loglanır, çağıran taraf sonraki turda tekrar dener."""
     global _twm
     with _streams_lock:
         if symbol in _streams:
             return
-        key = _twm.start_kline_socket(callback=_make_handler(symbol), symbol=symbol, interval="1m")
+        try:
+            key = _twm.start_kline_socket(callback=_make_handler(symbol), symbol=symbol, interval="1m")
+        except Exception as e:
+            print(f"[MONITOR] Stream başlatma HATA {symbol}: {e}", flush=True)
+            return
         _streams[symbol] = key
     print(f"[MONITOR] WS başladı: {symbol}", flush=True)
 
@@ -940,95 +975,100 @@ def _periodic_check():
                     _start_stream(sym)
 
             for sym in list(open_syms):
-                pos = positions.get(sym, {})
-                if pos.get("closing"):
-                    continue  # _process_tick zaten yönetiyor
-                sl_order_id      = pos.get("sl_order_id")
-                trailing_sl_id   = pos.get("trailing_sl_id")
-                is_trailing      = pos.get("trailing", False)
+                try:
+                    pos = positions.get(sym, {})
+                    if pos.get("closing"):
+                        continue  # _process_tick zaten yönetiyor
+                    sl_order_id      = pos.get("sl_order_id")
+                    trailing_sl_id   = pos.get("trailing_sl_id")
+                    is_trailing      = pos.get("trailing", False)
 
-                if not is_trailing and not sl_order_id:
-                    # Retroaktif SL — 3 başarısız deneme sonrası durur (spam önlemi)
-                    if pos.get("sl_fail_count", 0) < 3:
-                        _place_retroactive_sl(sym, pos)
-                    # else: zaten bildirildi, tekrar deneme yok
-                elif is_trailing and not trailing_sl_id:
-                    # Retroaktif trail SL — trailing modunda ama Binance emri yok
-                    qty = float(pos.get("qty", 0))
-                    peak = float(pos.get("peak", 0))
-                    if qty > 0 and peak > 0:
-                        atr_val = pos.get("atr") or _compute_atr(sym)
-                        new_id = _place_trail_sl_order(sym, peak, qty, atr_val)
-                        if new_id:
-                            with _lock:
-                                s = _load_state()
-                                if sym in s["positions"]:
-                                    s["positions"][sym]["trailing_sl_id"] = new_id
-                                    s["positions"][sym]["atr"] = atr_val
-                                    s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
-                                    _save_state(s)
-                            _send_telegram(
-                                f"🛡 <b>Retroaktif Trail SL — {sym}</b>\n"
-                                f"Peak: {peak:.6g} | Trail stop: {_trail_stop_price(peak, atr_val):.6g}"
-                            )
-                elif is_trailing and trailing_sl_id and _atr_is_stale(pos):
-                    # ATR bayatladı (peak uzun süredir yükselmedi) — yenile, trail SL emrini güncelle
-                    qty = float(pos.get("qty", 0))
-                    peak = float(pos.get("peak", 0))
-                    fresh_atr = _compute_atr(sym)
-                    if fresh_atr and qty > 0 and peak > 0:
-                        new_id = _place_trail_sl_order(sym, peak, qty, fresh_atr)
-                        if new_id:
-                            _cancel_sl(sym, trailing_sl_id)
-                            with _lock:
-                                s = _load_state()
-                                if sym in s["positions"]:
-                                    s["positions"][sym]["trailing_sl_id"] = new_id
-                                    s["positions"][sym]["atr"] = fresh_atr
-                                    s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
-                                    _save_state(s)
-                            print(f"[MONITOR] ATR yenilendi: {sym} atr={fresh_atr:.6g}", flush=True)
+                    if not is_trailing and not sl_order_id:
+                        # Retroaktif SL — 3 başarısız deneme sonrası durur (spam önlemi)
+                        if pos.get("sl_fail_count", 0) < 3:
+                            _place_retroactive_sl(sym, pos)
+                        # else: zaten bildirildi, tekrar deneme yok
+                    elif is_trailing and not trailing_sl_id:
+                        # Retroaktif trail SL — trailing modunda ama Binance emri yok
+                        qty = float(pos.get("qty", 0))
+                        peak = float(pos.get("peak", 0))
+                        if qty > 0 and peak > 0:
+                            atr_val = pos.get("atr") or _compute_atr(sym)
+                            new_id = _place_trail_sl_order(sym, peak, qty, atr_val)
+                            if new_id:
+                                with _lock:
+                                    s = _load_state()
+                                    if sym in s["positions"]:
+                                        s["positions"][sym]["trailing_sl_id"] = new_id
+                                        s["positions"][sym]["atr"] = atr_val
+                                        s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                        _save_state(s)
+                                _send_telegram(
+                                    f"🛡 <b>Retroaktif Trail SL — {sym}</b>\n"
+                                    f"Peak: {peak:.6g} | Trail stop: {_trail_stop_price(peak, atr_val):.6g}"
+                                )
+                    elif is_trailing and trailing_sl_id and _atr_is_stale(pos):
+                        # ATR bayatladı (peak uzun süredir yükselmedi) — yenile, trail SL emrini güncelle
+                        qty = float(pos.get("qty", 0))
+                        peak = float(pos.get("peak", 0))
+                        fresh_atr = _compute_atr(sym)
+                        if fresh_atr and qty > 0 and peak > 0:
+                            new_id = _place_trail_sl_order(sym, peak, qty, fresh_atr)
+                            if new_id:
+                                _cancel_sl(sym, trailing_sl_id)
+                                with _lock:
+                                    s = _load_state()
+                                    if sym in s["positions"]:
+                                        s["positions"][sym]["trailing_sl_id"] = new_id
+                                        s["positions"][sym]["atr"] = fresh_atr
+                                        s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                        _save_state(s)
+                                print(f"[MONITOR] ATR yenilendi: {sym} atr={fresh_atr:.6g}", flush=True)
 
-                # SL fill kontrolü
-                if sl_order_id and _is_sl_filled(sym, sl_order_id):
-                    with _lock:
-                        s = _load_state()
-                        s["positions"].pop(sym, None)
-                        _save_state(s)
-                    _stop_stream(sym)
-                    entry = float(pos.get("entry", 0))
-                    sl    = float(pos.get("stop", 0))
-                    pct   = round((sl - entry) / entry * 100, 2) if entry else 0
-                    _send_telegram(
-                        f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
-                        f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
-                    )
-                    _notify_portfolio_with_retry("/api/position-closed", {
-                        "symbol": sym, "reason": "sl_binance",
-                        "close_price": sl, "pnl_pct": pct,
-                    })
-                    print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                    # SL fill kontrolü
+                    if sl_order_id and _is_sl_filled(sym, sl_order_id):
+                        with _lock:
+                            s = _load_state()
+                            s["positions"].pop(sym, None)
+                            _save_state(s)
+                        _stop_stream(sym)
+                        entry = float(pos.get("entry", 0))
+                        sl    = float(pos.get("stop", 0))
+                        pct   = round((sl - entry) / entry * 100, 2) if entry else 0
+                        _send_telegram(
+                            f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
+                            f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
+                        )
+                        _notify_portfolio_with_retry("/api/position-closed", {
+                            "symbol": sym, "reason": "sl_binance",
+                            "close_price": sl, "pnl_pct": pct,
+                        })
+                        print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
 
-                # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
-                elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
-                    with _lock:
-                        s = _load_state()
-                        s["positions"].pop(sym, None)
-                        _save_state(s)
-                    _stop_stream(sym)
-                    entry = float(pos.get("entry", 0))
-                    peak  = float(pos.get("peak", 0))
-                    cl_price = round(_trail_stop_price(peak, pos.get("atr")), 8)
-                    pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
-                    _send_telegram(
-                        f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
-                        f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
-                    )
-                    _notify_portfolio_with_retry("/api/position-closed", {
-                        "symbol": sym, "reason": "trail_binance",
-                        "close_price": cl_price, "pnl_pct": pct,
-                    })
-                    print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                    # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
+                    elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
+                        with _lock:
+                            s = _load_state()
+                            s["positions"].pop(sym, None)
+                            _save_state(s)
+                        _stop_stream(sym)
+                        entry = float(pos.get("entry", 0))
+                        peak  = float(pos.get("peak", 0))
+                        cl_price = round(_trail_stop_price(peak, pos.get("atr")), 8)
+                        pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
+                        _send_telegram(
+                            f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
+                            f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
+                        )
+                        _notify_portfolio_with_retry("/api/position-closed", {
+                            "symbol": sym, "reason": "trail_binance",
+                            "close_price": cl_price, "pnl_pct": pct,
+                        })
+                        print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+
+                except Exception as e:
+                    print(f"[MONITOR] Periyodik SL/reconcile hatası {sym}: {e}", flush=True)
+                    continue
 
         except Exception as e:
             print(f"[MONITOR] Periyodik kontrol hatası: {e}", flush=True)
