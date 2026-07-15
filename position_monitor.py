@@ -24,6 +24,7 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 ATR_PERIOD             = 14      # ATR periyodu (1H bar)
 ATR_MULT               = 0.6     # trail_stop = peak - ATR_MULT * ATR(14, 1H)
 ATR_REFRESH_S          = 1800    # ATR en fazla bu kadar saniyede bir yeniden çekilir
+STREAM_STALE_S         = 300     # Bu kadar saniye tick gelmezse stream zombi kabul edilip yeniden başlatılır
 FALLBACK_TRAIL_PCT     = 0.9816  # ATR çekilemezse: peak * bu değer (%1.84 sabit trailing)
 PENDING_EXPIRE_H       = 48      # Monitoring süresi: CHoCH+3tick bekleme (saat)
 PENDING_ORDER_EXPIRE_H = 1       # Limit emir süresi: CHoCH+3tick→+1tick arası (saat)
@@ -714,6 +715,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             return
 
         pos["current_price"] = close
+        pos["last_tick_at"]  = datetime.now(timezone.utc).isoformat()
         state["positions"][symbol] = pos
         _save_state(state)
         pos_snap = dict(pos)
@@ -909,6 +911,33 @@ def _periodic_check():
             for sym in list(current_streams):
                 if sym not in open_syms:
                     _stop_stream(sym)
+
+            # Zombi stream tespiti: "aktif" görünüyor ama uzun süredir tick gelmiyor
+            with _streams_lock:
+                current_streams = set(_streams.keys())
+            now_utc = datetime.now(timezone.utc)
+            for sym in open_syms:
+                if sym not in current_streams:
+                    continue  # az önce başlatıldı veya hiç başlamadı, üstteki blok yönetiyor
+                pos = positions.get(sym, {})
+                if pos.get("closing"):
+                    continue  # satış sürüyor, dokunma
+                # Tick hiç gelmediyse (yeni açılan pozisyon) open_time referans alınır —
+                # stream'e daha ilk tick'i gelme fırsatı bile vermeden yeniden başlatmayı önler
+                last_tick_str = pos.get("last_tick_at") or pos.get("open_time")
+                is_stale = True
+                if last_tick_str:
+                    try:
+                        last_tick = datetime.fromisoformat(last_tick_str)
+                        if last_tick.tzinfo is None:
+                            last_tick = last_tick.replace(tzinfo=timezone.utc)
+                        is_stale = (now_utc - last_tick).total_seconds() >= STREAM_STALE_S
+                    except Exception:
+                        is_stale = True
+                if is_stale:
+                    print(f"[MONITOR] Zombi stream tespit edildi: {sym} (son tick: {pos.get('last_tick_at') or 'hiç'}) — yeniden başlatılıyor", flush=True)
+                    _stop_stream(sym)
+                    _start_stream(sym)
 
             for sym in list(open_syms):
                 pos = positions.get(sym, {})
