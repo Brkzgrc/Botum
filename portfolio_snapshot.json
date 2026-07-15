@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-15 22:38:50",
+  "updated_at": "2026-07-15 23:08:53",
   "performance": {
     "total": 24,
     "open": 4,
@@ -101,15 +101,15 @@
       "stop": 0.00244,
       "tp1": 0.00259,
       "open_time": "2026-07-14T01:05:22.424159+00:00",
-      "peak_price": 0.00264,
+      "peak_price": 0.00269,
       "low_price": 0.00253,
-      "current_price": 0.00264,
-      "peak_pct": 4.35,
+      "current_price": 0.00269,
+      "peak_pct": 6.32,
       "low_pct": 0.0,
-      "current_pct": 4.35,
+      "current_pct": 6.32,
       "fill_qty": 70959.2,
-      "last_check": "2026-07-15T22:35:03.350392+03:00",
-      "checks": 31,
+      "last_check": "2026-07-15T23:05:20.840610+03:00",
+      "checks": 37,
       "bot_miss_count": 0
     },
     {
@@ -126,13 +126,13 @@
       "open_time": "2026-07-15T16:06:46.773803+00:00",
       "peak_price": 0.064,
       "low_price": 0.0625,
-      "current_price": 0.064,
+      "current_price": 0.0634,
       "peak_pct": 2.07,
       "low_pct": -0.32,
-      "current_pct": 2.07,
+      "current_pct": 1.12,
       "fill_qty": 3401.9,
-      "last_check": "2026-07-15T22:35:03.350392+03:00",
-      "checks": 31,
+      "last_check": "2026-07-15T23:05:20.840610+03:00",
+      "checks": 37,
       "bot_miss_count": 0
     },
     {
@@ -156,8 +156,8 @@
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-15T22:35:03.350392+03:00",
-      "checks": 7
+      "last_check": "2026-07-15T23:05:20.840610+03:00",
+      "checks": 13
     },
     {
       "id": "sync_YBUSDT_2026-07-15",
@@ -173,13 +173,13 @@
       "open_time": "2026-07-14T08:34:13.294455+00:00",
       "peak_price": 0.0756,
       "low_price": 0.07392169196466856,
-      "current_price": 0.0749,
+      "current_price": 0.0745,
       "peak_pct": 2.27,
       "low_pct": 0.0,
-      "current_pct": 1.32,
+      "current_pct": 0.78,
       "fill_qty": 2329.8,
-      "last_check": "2026-07-15T22:35:03.350392+03:00",
-      "checks": 31,
+      "last_check": "2026-07-15T23:05:20.840610+03:00",
+      "checks": 37,
       "bot_miss_count": 0
     }
   ],
