@@ -43,6 +43,8 @@ BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 MAX_POSITIONS  = 5              # trading_engine ile aynı değer
+BOT_MISS_THRESHOLD = 2           # _sync_from_trading_bot: art arda kaç periyodik kontrolde
+                                  # bot'ta bulunamazsa "open" kaydı kapatılır (tek blip'e güvenilmez)
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
 SMC_MAIN_SOURCES = ("smc-v2",)
 
@@ -111,9 +113,11 @@ def load_signals():
     _restore_archive_from_github()
 
 def _sync_from_trading_bot():
-    """Startup: trading bot'taki open pozisyonları portfolio sinyalleriyle eşleştir.
-    pending_retest → open geçişi deploy sırasında kaybolmuşsa burada düzeltilir.
-    Portfolio'da open olan ama bot'ta olmayan pozisyonlar kapatılır (deploy sırasında kapanan)."""
+    """Startup'ta VE periyodik olarak (position_checker_loop, 15dk'da bir) çalışır.
+    Trading bot'taki open pozisyonları portfolio sinyalleriyle eşleştir.
+    pending_retest → open geçişi kaybolmuşsa burada düzeltilir.
+    Portfolio'da open olan ama bot'ta olmayan pozisyonlar (BOT_MISS_THRESHOLD kez üst üste
+    doğrulanınca) kapatılır — /api/position-closed webhook'u kaçırılırsa bu telafi eder."""
     if not TRADING_BOT_URL:
         return
     try:
@@ -140,21 +144,30 @@ def _sync_from_trading_bot():
     stale = 0
     with _lock:
         # 1) Portfolio'da open olan ama bot'ta olmayan → kapat (deploy sırasında kapandı)
+        #    Tek snapshot'a güvenilmez (bot restart sırasında /status geçici eksik dönebilir) —
+        #    art arda BOT_MISS_THRESHOLD periyodik kontrolde de yoksa kapatılır.
         for sig in signals_db:
             if sig.get("status") != "open":
                 continue
             if sig.get("source") not in SMC_MAIN_SOURCES:
                 continue
             sym_norm = sig.get("symbol", "").replace("/", "").upper()
-            if sym_norm not in bot_open_symbols:
-                sig["status"]       = "closed"
-                sig["close_time"]   = now_str
-                sig["close_reason"] = "sync_closed"
-                sig["close_pct"]    = round(
-                    (sig.get("current_price", sig["entry"]) - sig["entry"]) / sig["entry"] * 100, 2
-                ) if sig["entry"] else 0
-                closed += 1
-                print(f"[SYNC] {sym_norm} portfolio open ama bot'ta yok → kapatıldı", flush=True)
+            if sym_norm in bot_open_symbols:
+                sig["bot_miss_count"] = 0
+                continue
+            miss = sig.get("bot_miss_count", 0) + 1
+            sig["bot_miss_count"] = miss
+            if miss < BOT_MISS_THRESHOLD:
+                print(f"[SYNC] {sym_norm} portfolio open ama bot'ta yok ({miss}/{BOT_MISS_THRESHOLD}) — henüz kapatılmadı", flush=True)
+                continue
+            sig["status"]       = "closed"
+            sig["close_time"]   = now_str
+            sig["close_reason"] = "sync_closed"
+            sig["close_pct"]    = round(
+                (sig.get("current_price", sig["entry"]) - sig["entry"]) / sig["entry"] * 100, 2
+            ) if sig["entry"] else 0
+            closed += 1
+            print(f"[SYNC] {sym_norm} portfolio open ama bot'ta yok ({miss}/{BOT_MISS_THRESHOLD}) → kapatıldı", flush=True)
 
         # 2) Portfolio'da pending_retest olan ama bot'ta yok → sadece 48H dolmuşsa kapat
         now_dt_sync = datetime.fromisoformat(now_str).replace(tzinfo=TR_TZ) if "+" not in now_str else datetime.fromisoformat(now_str)
@@ -772,6 +785,7 @@ def position_checker_loop():
             if cycle % 3 == 0:
                 _sync_pending_to_bot()
                 _sync_open_from_bot()
+                _sync_from_trading_bot()
             cycle += 1
         except Exception as e:
             print(f"[CHECK] Döngü hatası: {e}", flush=True)
