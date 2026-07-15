@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-15 19:08:28",
+  "updated_at": "2026-07-15 19:38:31",
   "performance": {
-    "total": 45,
-    "open": 4,
+    "total": 46,
+    "open": 5,
     "closed": 10,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 14,
-        "open": 4,
+        "total": 15,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -65,7 +65,7 @@
         "losses": 0
       },
       "2026-07-14": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 9.950000000000001,
         "wins": 0,
         "losses": 0
@@ -85,7 +85,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 13,
+        "trades": 14,
         "pnl": -6.799999999999999,
         "wins": 0,
         "losses": 0
@@ -99,7 +99,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 14,
+        "trades": 15,
         "pnl": -6.799999999999999,
         "wins": 0,
         "losses": 0
@@ -129,18 +129,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.06269999999999999,
-      "peak_pct": 0.0,
+      "peak_price": 0.0632,
+      "peak_pct": 0.8,
       "low_price": 0.06269999999999999,
       "low_pct": 0.0,
-      "current_price": 0.06269999999999999,
-      "current_pct": 0.0,
+      "current_price": 0.0631,
+      "current_pct": 0.64,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-15T10:00:16.406438+03:00",
-      "last_check": "2026-07-15T10:00:04.115364+03:00",
-      "checks": 0,
+      "last_check": "2026-07-15T19:33:20.929485+03:00",
+      "checks": 5,
       "extra": {
         "tp3": null
       },
@@ -174,14 +174,14 @@
       "peak_pct": 4.03,
       "low_price": 0.0736,
       "low_pct": -0.44,
-      "current_price": 0.0759,
-      "current_pct": 2.68,
+      "current_price": 0.0758,
+      "current_pct": 2.54,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-15T19:07:53.020386+03:00",
-      "checks": 372,
+      "last_check": "2026-07-15T19:33:20.929485+03:00",
+      "checks": 377,
       "extra": {
         "tp3": null
       },
@@ -214,14 +214,14 @@
       "peak_pct": 2.77,
       "low_price": 0.00249,
       "low_pct": -1.58,
-      "current_price": 0.00258,
-      "current_pct": 1.98,
+      "current_price": 0.00257,
+      "current_pct": 1.58,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-14T04:00:15.514105+03:00",
-      "last_check": "2026-07-15T19:07:53.020386+03:00",
-      "checks": 372,
+      "last_check": "2026-07-15T19:33:20.929485+03:00",
+      "checks": 377,
       "extra": {
         "tp3": null
       },
@@ -243,13 +243,33 @@
       "fill_time": "2026-07-13T04:30:54.754301+03:00",
       "peak_price": 0.06737,
       "low_price": 0.06099,
-      "current_price": 0.0619,
+      "current_price": 0.06128,
       "peak_pct": 0.0,
       "low_pct": -9.47,
-      "current_pct": -8.12,
-      "last_check": "2026-07-15T19:07:53.020386+03:00",
-      "checks": 752,
+      "current_pct": -9.04,
+      "last_check": "2026-07-15T19:33:20.929485+03:00",
+      "checks": 757,
       "bot_miss_count": 0
+    },
+    {
+      "id": "sync_ZKCUSDT_2026-07-15",
+      "symbol": "ZKC/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.0445,
+      "entry": 0.0445,
+      "limit_price": 0.0445,
+      "stop": 0.0423,
+      "tp1": 0.0467,
+      "open_time": "2026-07-14T04:10:18+03:00",
+      "peak_price": 0.0445,
+      "low_price": 0.0445,
+      "current_price": 0.0445,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0,
+      "fill_qty": 4034.2
     }
   ],
   "closed": [
