@@ -175,10 +175,21 @@ def _market_sell(symbol: str, qty: float, reason: str):
 
     if sell_qty <= 0:
         if balance_checked:
-            # Bakiye gerçekten sıfır/dust — muhtemelen başka bir yolla (Binance'teki
-            # resting SL/trail emri) zaten satılmış. Tekrar denemek imkansız bir şeyi
-            # sonsuza kadar denemek olur; pozisyonu kapatılmış say.
-            print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır, zaten satılmış kabul ediliyor", flush=True)
+            # Bakiye sıfır/dust görünüyor ama bu YANLIŞ pozitif olabilir: coin'ler
+            # hâlâ iptal edilememiş bir emirde kilitli olabilir (ZKC'de yaşandı —
+            # cancel_sl başarısız/atlanmış, biz "satılmış" sanıp state'i sildik,
+            # oysa emir Binance'te hâlâ aynen duruyordu). Gerçekten açık emir kalmış
+            # mı diye sormadan "satılmış" DEME.
+            try:
+                open_orders = _get_client().get_open_orders(symbol=symbol)
+            except Exception as e:
+                print(f"[MONITOR] SELL {symbol} ({reason}) — açık emir kontrolü başarısız ({e}), güvenli tarafta kal, tekrar denenecek", flush=True)
+                return False
+            if open_orders:
+                oids = [o.get("orderId") for o in open_orders]
+                print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır AMA hâlâ açık emir var {oids}, satılmış SAYILMIYOR, tekrar denenecek", flush=True)
+                return False
+            print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır, açık emir de yok, zaten satılmış kabul ediliyor", flush=True)
             return True
         print(f"[MONITOR] SELL {symbol} ({reason}) — miktar hesaplanamadı, tekrar denenecek", flush=True)
         return False
@@ -932,12 +943,85 @@ def _stop_stream(symbol: str):
 
 # ─── PERİYODİK KONTROL ───────────────────────────────────────────────────────
 
+def _check_expired_positions_no_tick():
+    """Expire kontrolü normalde SADECE _process_tick içinde (websocket tick geldiğinde)
+    çalışır. Stream hiç veri akıtmazsa (AWE'de yaşandı — 2 günden fazla tek tick
+    gelmedi) expire matematiksel olarak asla tetiklenemez, pozisyon sonsuza kadar
+    açık kalır. Bu fonksiyon tick'ten tamamen bağımsız, periyodik döngüde çalışan
+    bir güvenlik ağı — aynı cancel-önce-sat mantığını tick'siz de uygular."""
+    state = _load_state()
+    positions = dict(state.get("positions", {}))
+    now = datetime.now(timezone.utc)
+
+    for sym, pos in positions.items():
+        try:
+            if pos.get("status") != "open" or pos.get("closing"):
+                continue
+            fill_time_str = pos.get("open_time")
+            if not fill_time_str:
+                continue
+            try:
+                ft = datetime.fromisoformat(fill_time_str)
+                if ft.tzinfo is None:
+                    ft = ft.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+            if now - ft < timedelta(hours=OPEN_EXPIRE_H):
+                continue
+
+            with _lock:
+                s = _load_state()
+                p = s["positions"].get(sym)
+                if not p or p.get("status") != "open" or p.get("closing"):
+                    continue
+                p["closing"] = True
+                s["positions"][sym] = p
+                _save_state(s)
+
+            if pos.get("trailing"):
+                _cancel_sl(sym, pos.get("trailing_sl_id"))
+            else:
+                _cancel_sl(sym, pos.get("sl_order_id"))
+
+            entry       = float(pos.get("entry", 0))
+            qty         = _round_qty(float(pos.get("qty", 0)), sym)
+            close_price = float(pos.get("current_price") or entry)
+            ok = _market_sell(sym, qty, "expire_no_tick")
+            if ok:
+                with _lock:
+                    s = _load_state()
+                    s["positions"].pop(sym, None)
+                    _save_state(s)
+                _stop_stream(sym)
+                pct = round((close_price - entry) / entry * 100, 2) if entry else 0
+                _send_telegram(
+                    f"⏰ <b>POZİSYON KAPANDI (tick akışı yoktu) — {sym}</b>\n"
+                    f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+                )
+                _notify_portfolio_with_retry("/api/position-closed", {
+                    "symbol": sym, "reason": "expire_no_tick",
+                    "close_price": close_price, "pnl_pct": pct,
+                })
+                print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
+            else:
+                with _lock:
+                    s = _load_state()
+                    if sym in s["positions"]:
+                        s["positions"][sym].pop("closing", None)
+                        _save_state(s)
+                print(f"[MONITOR] SATIŞ BAŞARISIZ (tick'siz expire): {sym}, sonraki periyodik turda tekrar dener", flush=True)
+        except Exception as e:
+            print(f"[MONITOR] Tick'siz expire hatası {sym}: {e}", flush=True)
+            continue
+
+
 def _periodic_check():
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
             _check_monitoring_entries()
             _check_pending_orders()
+            _check_expired_positions_no_tick()
 
             state     = _load_state()
             positions = state.get("positions", {})
