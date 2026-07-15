@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-15 21:38:44",
+  "updated_at": "2026-07-15 22:08:47",
   "performance": {
     "total": 24,
-    "open": 3,
+    "open": 4,
     "closed": 0,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 3,
-        "open": 3,
+        "total": 4,
+        "open": 4,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -65,7 +65,7 @@
         "losses": 0
       },
       "2026-07-15": {
-        "trades": 1,
+        "trades": 2,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -73,7 +73,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 3,
+        "trades": 4,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -81,7 +81,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 3,
+        "trades": 4,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -101,15 +101,15 @@
       "stop": 0.00244,
       "tp1": 0.00259,
       "open_time": "2026-07-14T01:05:22.424159+00:00",
-      "peak_price": 0.00263,
+      "peak_price": 0.00264,
       "low_price": 0.00253,
-      "current_price": 0.00263,
-      "peak_pct": 3.95,
+      "current_price": 0.00262,
+      "peak_pct": 4.35,
       "low_pct": 0.0,
-      "current_pct": 3.95,
+      "current_pct": 3.56,
       "fill_qty": 70959.2,
-      "last_check": "2026-07-15T21:34:35.707210+03:00",
-      "checks": 19,
+      "last_check": "2026-07-15T22:04:48.640222+03:00",
+      "checks": 25,
       "bot_miss_count": 0
     },
     {
@@ -124,16 +124,40 @@
       "stop": 0.0613,
       "tp1": 0.0642,
       "open_time": "2026-07-15T16:06:46.773803+00:00",
-      "peak_price": 0.063,
+      "peak_price": 0.0637,
       "low_price": 0.0625,
-      "current_price": 0.0629,
-      "peak_pct": 0.48,
+      "current_price": 0.0636,
+      "peak_pct": 1.59,
       "low_pct": -0.32,
-      "current_pct": 0.32,
+      "current_pct": 1.44,
       "fill_qty": 3401.9,
-      "last_check": "2026-07-15T21:34:35.707210+03:00",
-      "checks": 19,
+      "last_check": "2026-07-15T22:04:48.640222+03:00",
+      "checks": 25,
       "bot_miss_count": 0
+    },
+    {
+      "id": "sync_XLMUSDT_2026-07-15",
+      "symbol": "XLM/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.1868,
+      "entry": 0.1867,
+      "limit_price": 0.1868,
+      "stop": 0.1824,
+      "tp1": 0.1911,
+      "open_time": "2026-07-15T16:54:02.209461+00:00",
+      "peak_price": 0.1871,
+      "low_price": 0.1867,
+      "current_price": 0.187,
+      "peak_pct": 0.21,
+      "low_pct": 0.0,
+      "current_pct": 0.16,
+      "fill_qty": 1006.0,
+      "fill_time": "2026-07-15T21:59:48.457067+03:00",
+      "bot_miss_count": 0,
+      "last_check": "2026-07-15T22:04:48.640222+03:00",
+      "checks": 1
     },
     {
       "id": "sync_YBUSDT_2026-07-15",
@@ -149,13 +173,13 @@
       "open_time": "2026-07-14T08:34:13.294455+00:00",
       "peak_price": 0.0756,
       "low_price": 0.07392169196466856,
-      "current_price": 0.0755,
+      "current_price": 0.0753,
       "peak_pct": 2.27,
       "low_pct": 0.0,
-      "current_pct": 2.14,
+      "current_pct": 1.86,
       "fill_qty": 2329.8,
-      "last_check": "2026-07-15T21:34:35.707210+03:00",
-      "checks": 19,
+      "last_check": "2026-07-15T22:04:48.640222+03:00",
+      "checks": 25,
       "bot_miss_count": 0
     }
   ],
@@ -555,25 +579,6 @@
       "peak_price": 0.0329,
       "low_price": 0.0329,
       "current_price": 0.0329,
-      "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
-    },
-    {
-      "id": "sync_XLMUSDT_2026-07-15",
-      "symbol": "XLM/USDT",
-      "source": "smc-v2",
-      "sig_type": "choch",
-      "status": "pending_retest",
-      "signal_price": 0.1868,
-      "entry": 0.1868,
-      "limit_price": 0.1868,
-      "stop": 0.1824,
-      "tp1": 0.1911,
-      "open_time": "2026-07-15T16:54:02.209461+00:00",
-      "peak_price": 0.1868,
-      "low_price": 0.1868,
-      "current_price": 0.1868,
       "peak_pct": 0.0,
       "low_pct": 0.0,
       "current_pct": 0.0
