@@ -776,17 +776,14 @@ def _keepalive_bot():
 
 
 def position_checker_loop():
-    cycle = 0
     while True:
         try:
             _keepalive_bot()
             check_pending_retests()
             check_open_positions()
-            if cycle % 3 == 0:
-                _sync_pending_to_bot()
-                _sync_open_from_bot()
-                _sync_from_trading_bot()
-            cycle += 1
+            _sync_pending_to_bot()
+            _sync_open_from_bot()
+            _sync_from_trading_bot()
         except Exception as e:
             print(f"[CHECK] Döngü hatası: {e}", flush=True)
         time.sleep(CHECK_INTERVAL)
