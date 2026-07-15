@@ -864,34 +864,39 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         _cancel_sl(symbol, cancel_trail_sl_id)
 
     if sell_reason:
-        entry = float(pos_snap.get("entry", 0))
-        qty   = _round_qty(float(pos_snap.get("qty", 0)), symbol)
-        ok    = _market_sell(symbol, qty, sell_reason)
-        if ok:
-            with _lock:
-                s = _load_state()
-                s["positions"].pop(symbol, None)
-                _save_state(s)
-            _stop_stream(symbol)
-            pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
-            emoji = "⏰" if sell_reason == "expire" else ("💰" if pct > 0 else "🔴")
-            _send_telegram(
-                f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
-                f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
-            )
-            _notify_portfolio_with_retry("/api/position-closed", {
-                "symbol": symbol, "reason": sell_reason,
-                "close_price": close_price, "pnl_pct": pct,
-            })
-            print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
-        else:
-            # Satış başarısız: closing bayrağını kaldır, sonraki tick'te tekrar dene
-            with _lock:
-                s = _load_state()
-                if symbol in s["positions"]:
-                    s["positions"][symbol].pop("closing", None)
+        # try/finally: closing=True'dan sonra beklenmeyen bir hata olursa bile
+        # bayrak temizlenir — aksi halde pozisyon sessizce sonsuza kadar atlanır.
+        closed = False
+        try:
+            entry = float(pos_snap.get("entry", 0) or 0)
+            qty   = _round_qty(float(pos_snap.get("qty", 0) or 0), symbol)
+            closed = _market_sell(symbol, qty, sell_reason)
+            if closed:
+                with _lock:
+                    s = _load_state()
+                    s["positions"].pop(symbol, None)
                     _save_state(s)
-            print(f"[MONITOR] SATIŞ BAŞARISIZ: {symbol} ({sell_reason}), sonraki tick tekrar dener", flush=True)
+                _stop_stream(symbol)
+                pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
+                emoji = "⏰" if sell_reason == "expire" else ("💰" if pct > 0 else "🔴")
+                _send_telegram(
+                    f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
+                    f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+                )
+                _notify_portfolio_with_retry("/api/position-closed", {
+                    "symbol": symbol, "reason": sell_reason,
+                    "close_price": close_price, "pnl_pct": pct,
+                })
+                print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
+        finally:
+            if not closed:
+                # Satış başarısız: closing bayrağını kaldır, sonraki tick'te tekrar dene
+                with _lock:
+                    s = _load_state()
+                    if symbol in s["positions"]:
+                        s["positions"][symbol].pop("closing", None)
+                        _save_state(s)
+                print(f"[MONITOR] SATIŞ BAŞARISIZ: {symbol} ({sell_reason}), sonraki tick tekrar dener", flush=True)
 
 
 # ─── WEBSOCKET ───────────────────────────────────────────────────────────────
@@ -978,38 +983,45 @@ def _check_expired_positions_no_tick():
                 s["positions"][sym] = p
                 _save_state(s)
 
-            if pos.get("trailing"):
-                _cancel_sl(sym, pos.get("trailing_sl_id"))
-            else:
-                _cancel_sl(sym, pos.get("sl_order_id"))
+            # closing=True'dan sonraki her şey try/finally ile korunuyor —
+            # aksi halde beklenmeyen bir hata "closing" bayrağını sonsuza kadar
+            # takılı bırakır ve pozisyon sessizce (hiçbir log satırı olmadan)
+            # her turda atlanır (AWE'de tam bu yaşandı).
+            closed = False
+            try:
+                if pos.get("trailing"):
+                    _cancel_sl(sym, pos.get("trailing_sl_id"))
+                else:
+                    _cancel_sl(sym, pos.get("sl_order_id"))
 
-            entry       = float(pos.get("entry", 0))
-            qty         = _round_qty(float(pos.get("qty", 0)), sym)
-            close_price = float(pos.get("current_price") or entry)
-            ok = _market_sell(sym, qty, "expire_no_tick")
-            if ok:
-                with _lock:
-                    s = _load_state()
-                    s["positions"].pop(sym, None)
-                    _save_state(s)
-                _stop_stream(sym)
-                pct = round((close_price - entry) / entry * 100, 2) if entry else 0
-                _send_telegram(
-                    f"⏰ <b>POZİSYON KAPANDI (tick akışı yoktu) — {sym}</b>\n"
-                    f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
-                )
-                _notify_portfolio_with_retry("/api/position-closed", {
-                    "symbol": sym, "reason": "expire_no_tick",
-                    "close_price": close_price, "pnl_pct": pct,
-                })
-                print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
-            else:
-                with _lock:
-                    s = _load_state()
-                    if sym in s["positions"]:
-                        s["positions"][sym].pop("closing", None)
+                entry       = float(pos.get("entry", 0) or 0)
+                qty         = _round_qty(float(pos.get("qty", 0) or 0), sym)
+                close_price = float(pos.get("current_price") or entry or 0)
+                closed = _market_sell(sym, qty, "expire_no_tick")
+                if closed:
+                    with _lock:
+                        s = _load_state()
+                        s["positions"].pop(sym, None)
                         _save_state(s)
-                print(f"[MONITOR] SATIŞ BAŞARISIZ (tick'siz expire): {sym}, sonraki periyodik turda tekrar dener", flush=True)
+                    _stop_stream(sym)
+                    pct = round((close_price - entry) / entry * 100, 2) if entry else 0
+                    _send_telegram(
+                        f"⏰ <b>POZİSYON KAPANDI (tick akışı yoktu) — {sym}</b>\n"
+                        f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+                    )
+                    _notify_portfolio_with_retry("/api/position-closed", {
+                        "symbol": sym, "reason": "expire_no_tick",
+                        "close_price": close_price, "pnl_pct": pct,
+                    })
+                    print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
+            finally:
+                if not closed:
+                    with _lock:
+                        s = _load_state()
+                        if sym in s["positions"]:
+                            s["positions"][sym].pop("closing", None)
+                            _save_state(s)
+                    print(f"[MONITOR] SATIŞ BAŞARISIZ (tick'siz expire): {sym}, sonraki periyodik turda tekrar dener", flush=True)
         except Exception as e:
             print(f"[MONITOR] Tick'siz expire hatası {sym}: {e}", flush=True)
             continue
