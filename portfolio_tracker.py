@@ -778,6 +778,38 @@ def _sync_open_from_bot():
     if updated:
         print(f"[SYNC] Periyodik sync: {updated} pending_retest → open çevrildi", flush=True)
 
+    # TP1/trailing onayı SADECE /api/tp1-hit webhook'una bağımlı kalmasın —
+    # webhook kaybolursa (bugün defalarca oldu) dashboard sonsuza kadar
+    # "onay bekleniyor" yazabilir, oysa bot'un kendi /status'u zaten gerçeği
+    # söylüyor. Burada da (webhook'tan bağımsız) trailing=true görülen
+    # pozisyonlar onaylanır.
+    confirmed = 0
+    with _lock:
+        for sig in signals_db:
+            if sig.get("status") != "open" or sig.get("tp1_confirmed"):
+                continue
+            if sig.get("source") not in FULL_TRAIL_SOURCES:
+                continue
+            sym_norm = sig.get("symbol", "").replace("/", "").upper()
+            pos = bot_open.get(sym_norm)
+            if not pos or not pos.get("trailing"):
+                continue
+            sig["tp1_hit"] = True
+            sig["tp1_confirmed"] = True
+            if not sig.get("tp1_time"):
+                sig["tp1_time"] = tr_now().isoformat()
+            peak = float(pos.get("peak") or 0)
+            if peak and peak > sig.get("peak_price", 0):
+                sig["peak_price"] = peak
+            atr = pos.get("atr")
+            if atr:
+                sig["atr"] = float(atr)
+                sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+            confirmed += 1
+            print(f"[SYNC] {sym_norm} trailing onaylandı (periyodik /status kontrolü, webhook'tan bağımsız)", flush=True)
+        if confirmed:
+            save_signals()
+
 
 def _keepalive_bot():
     if not TRADING_BOT_URL:
