@@ -2410,8 +2410,7 @@ def dashboard():
                 border-radius:4px;padding:2px 8px;font-size:.6rem;cursor:pointer;font-family:inherit">
                 Kapat</button></td></tr>"""
 
-    closed_rows = ""
-    for sig in closed_sigs[:100]:
+    def _closed_row(sig):
         close_c, close_s = pct_color(sig.get("close_pct"))
         peak_c, peak_s = pct_color(sig.get("peak_pct"))
         sym = sig["symbol"].replace("/USDT", "")
@@ -2426,7 +2425,7 @@ def dashboard():
         else:
             tp1_badge = f'<span style="color:#3a4a5a;font-size:.58rem">TP1: +{tp1_pct_v}%</span>' if tp1_pct_v else '—'
 
-        closed_rows += f"""<tr>
+        return f"""<tr>
             <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
             <td>{status_badge(sig.get('status','unknown'))}</td>
             <td>{fmt_price(sig['entry'])}</td>
@@ -2437,6 +2436,12 @@ def dashboard():
             <td>{analyzer_badge(sig)}</td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['open_time']).strftime('%d/%m/%Y') if sig.get('open_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['open_time']).strftime('%H:%M') if sig.get('open_time') else ''}</span></td>
             <td style="font-size:.7rem;color:#7f8c8d;white-space:nowrap;text-align:center">{datetime.fromisoformat(sig['close_time']).strftime('%d/%m/%Y') if sig.get('close_time') else '—'}<br><span style="font-size:.65rem;color:#5a6a7a">{datetime.fromisoformat(sig['close_time']).strftime('%H:%M') if sig.get('close_time') else ''}</span></td></tr>"""
+
+    no_retest_sigs = [s for s in closed_sigs if s.get("status") == "no_retest"]
+    closed_sigs_real = [s for s in closed_sigs if s.get("status") != "no_retest"]
+
+    closed_rows = "".join(_closed_row(sig) for sig in closed_sigs_real[:100])
+    no_retest_rows = "".join(_closed_row(sig) for sig in no_retest_sigs[:100])
 
     # Sinyal türü tabloları — SMC vs Bot ayrımı
     smc_type_rows = ""
@@ -2503,6 +2508,17 @@ def dashboard():
     _smc_eski_section = ""
 
     # ── Retest Bekleyenler ──────────────────────────────────────────────────────
+    _pending_price_cache = {s["symbol"]: get_current_price_hl(s["symbol"]) for s in pending_sigs}
+
+    def _retest_proximity(sig):
+        lp = sig.get("limit_price")
+        pd = _pending_price_cache.get(sig["symbol"])
+        if not pd or not lp:
+            return float("inf")
+        return abs((pd["close"] - lp) / lp * 100)
+
+    pending_sigs.sort(key=_retest_proximity)  # buy anına (limit seviyesine) en yakın en üstte
+
     pending_rows = ""
     for sig in pending_sigs[:50]:
         sym = sig["symbol"].replace("/USDT", "")
@@ -2523,7 +2539,7 @@ def dashboard():
         # Canlı fiyat
         sp = sig.get("signal_price")
         _sp_val = float(sp) if sp else 0.0
-        _price_data = get_current_price_hl(sig["symbol"])
+        _price_data = _pending_price_cache.get(sig["symbol"])
         _cur = _price_data["close"] if _price_data else None
         if _cur and lp:
             _dist_pct = (_cur - lp) / lp * 100   # renk kodu için limit'e uzaklık
@@ -2896,6 +2912,18 @@ function toggleType(key, btn) {{
         <th>TP1 Hit</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
     </tr></thead><tbody>
         {closed_rows if closed_rows else '<tr><td colspan="11" class="empty">Henüz kapanmış işlem yok</td></tr>'}
+    </tbody></table></div>
+    </details>
+</div>
+
+<div class="section">
+    <details data-id="no-retest-list">
+    <summary>🚫 RETEST OLMAYANLAR ({len(no_retest_sigs)})</summary>
+    <div class="table-wrap"><table><thead><tr>
+        <th>Sembol</th><th>Tür</th><th>Sonuç</th><th>Giriş</th><th>Çıkış</th><th>Getiri</th><th>Peak</th>
+        <th>TP1 Hit</th><th>Analiz</th><th>Açılış</th><th>Kapanış</th>
+    </tr></thead><tbody>
+        {no_retest_rows if no_retest_rows else '<tr><td colspan="11" class="empty">Retest olmayan işlem yok</td></tr>'}
     </tbody></table></div>
     </details>
 </div>
