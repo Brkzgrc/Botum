@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 14:33:34",
+  "updated_at": "2026-07-16 15:03:37",
   "performance": {
     "total": 29,
     "open": 5,
@@ -121,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.223,
-      "current_pct": -0.62,
+      "current_price": 0.2243,
+      "current_pct": -0.04,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T14:32:49.571582+03:00",
-      "checks": 123,
+      "last_check": "2026-07-16T15:03:06.277935+03:00",
+      "checks": 129,
       "extra": {
         "tp3": null
       },
@@ -147,17 +147,17 @@
       "stop": 0.00351,
       "tp1": 0.00374,
       "open_time": "2026-07-15T16:48:55.584692+00:00",
-      "peak_price": 0.00364,
+      "peak_price": 0.00365,
       "low_price": 0.00362,
       "current_price": 0.00363,
-      "peak_pct": 0.55,
+      "peak_pct": 0.83,
       "low_pct": 0.0,
       "current_pct": 0.28,
       "fill_qty": 49245.4,
       "fill_time": "2026-07-16T13:27:49.401260+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T14:32:49.571582+03:00",
-      "checks": 13
+      "last_check": "2026-07-16T15:03:06.277935+03:00",
+      "checks": 19
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -173,15 +173,15 @@
       "open_time": "2026-07-15T16:49:11.672615+00:00",
       "peak_price": 0.0241,
       "low_price": 0.0236,
-      "current_price": 0.0236,
+      "current_price": 0.0237,
       "peak_pct": 0.0,
       "low_pct": -2.07,
-      "current_pct": -2.07,
+      "current_pct": -1.66,
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T14:32:49.571582+03:00",
-      "checks": 130
+      "last_check": "2026-07-16T15:03:06.277935+03:00",
+      "checks": 136
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -204,8 +204,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T14:32:49.571582+03:00",
-      "checks": 40
+      "last_check": "2026-07-16T15:03:06.277935+03:00",
+      "checks": 46
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -219,17 +219,23 @@
       "stop": 0.1824,
       "tp1": 0.1911,
       "open_time": "2026-07-15T16:54:02.209461+00:00",
-      "peak_price": 0.1901,
+      "peak_price": 0.1924,
       "low_price": 0.1858,
-      "current_price": 0.1888,
-      "peak_pct": 1.82,
+      "current_price": 0.1923,
+      "peak_pct": 3.05,
       "low_pct": -0.48,
-      "current_pct": 1.12,
+      "current_pct": 3.0,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T14:32:49.571582+03:00",
-      "checks": 199
+      "last_check": "2026-07-16T15:03:06.277935+03:00",
+      "checks": 205,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-16T15:03:06.277935+03:00",
+      "tp1_pct": 2.36,
+      "atr": 0.002228775751030057,
+      "atr_updated_at": "2026-07-16T12:03:08.878046+00:00",
+      "tp1_confirmed": true
     }
   ],
   "closed": [
