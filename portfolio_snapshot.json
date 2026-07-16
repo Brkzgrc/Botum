@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-16 12:50:02",
+  "updated_at": "2026-07-16 13:20:04",
   "performance": {
-    "total": 27,
+    "total": 28,
     "open": 4,
     "closed": 5,
     "wins": 0,
@@ -121,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.2227,
-      "current_pct": -0.76,
+      "current_price": 0.2222,
+      "current_pct": -0.98,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T12:47:30.620863+03:00",
-      "checks": 102,
+      "last_check": "2026-07-16T13:17:43.352653+03:00",
+      "checks": 108,
       "extra": {
         "tp3": null
       },
@@ -156,8 +156,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:47:30.620863+03:00",
-      "checks": 109
+      "last_check": "2026-07-16T13:17:43.352653+03:00",
+      "checks": 115
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -180,8 +180,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:47:30.620863+03:00",
-      "checks": 19
+      "last_check": "2026-07-16T13:17:43.352653+03:00",
+      "checks": 25
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -195,20 +195,58 @@
       "stop": 0.1824,
       "tp1": 0.1911,
       "open_time": "2026-07-15T16:54:02.209461+00:00",
-      "peak_price": 0.1899,
+      "peak_price": 0.1901,
       "low_price": 0.1858,
-      "current_price": 0.1888,
-      "peak_pct": 1.71,
+      "current_price": 0.1896,
+      "peak_pct": 1.82,
       "low_pct": -0.48,
-      "current_pct": 1.12,
+      "current_pct": 1.55,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:47:30.620863+03:00",
-      "checks": 178
+      "last_check": "2026-07-16T13:17:43.352653+03:00",
+      "checks": 184
     }
   ],
   "closed": [
+    {
+      "id": "CITY_USDT_1784196008",
+      "symbol": "CITY/USDT",
+      "entry": 0.397,
+      "stop": 0.38805,
+      "tp1": 0.40595,
+      "tp2": 0.4149,
+      "tp3": null,
+      "limit_price": 0.397,
+      "signal_price": 0.405,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-16T13:00:08.148958+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.397,
+      "peak_pct": 0.0,
+      "low_price": 0.397,
+      "low_pct": 0.0,
+      "current_price": 0.397,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-16T13:00:15.307211+03:00",
+      "last_check": "2026-07-16T13:00:08.148958+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "ASR_USDT_1784192404",
       "symbol": "ASR/USDT",
