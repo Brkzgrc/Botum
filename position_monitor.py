@@ -27,8 +27,8 @@ ATR_REFRESH_S          = 1800    # ATR en fazla bu kadar saniyede bir yeniden ç
 STREAM_STALE_S         = 300     # Bu kadar saniye tick gelmezse stream zombi kabul edilip yeniden başlatılır
 CLOSING_STUCK_S        = 300     # closing=True bu kadar saniyeden uzun takılıysa (sebep ne olursa olsun) otomatik temizlenir
 FALLBACK_TRAIL_PCT     = 0.9816  # ATR çekilemezse: peak * bu değer (%1.84 sabit trailing)
-TRAILING_DELTA_MIN_BIPS = 180    # Binance native trailing: %1.80 alt sınır
-TRAILING_DELTA_MAX_BIPS = 184    # Binance native trailing: %1.84 üst sınır
+TRAILING_DELTA_MIN_BIPS = 10     # Binance platform alt sınırı (%0.10) — sadece API güvenliği, ATR'yi kırpmaz
+TRAILING_DELTA_MAX_BIPS = 2000   # Binance platform üst sınırı (%20.0) — sadece API güvenliği, ATR'yi kırpmaz
 PENDING_EXPIRE_H       = 48      # Monitoring süresi: CHoCH+3tick bekleme (saat)
 PENDING_ORDER_EXPIRE_H = 1       # Limit emir süresi: CHoCH+3tick→+1tick arası (saat)
 OPEN_EXPIRE_H          = 24      # Açık trade max süresi: fill sonrası 24H geçince market sell
@@ -307,12 +307,16 @@ def _place_trail_sl_order(symbol: str, peak: float, qty: float, atr=None, entry:
 
 def _place_trailing_delta_order(symbol: str, peak: float, qty: float, atr=None):
     """Binance NATIVE trailing stop (trailingDelta, sunucu tarafında) — TP1 sonrası
-    tercih edilen yöntem. Mesafe ATR'den hesaplanır ama %1.80-%1.84 aralığına
-    kırpılır (ATR'nin tam dinamikliği yerine doğrulanmış, dar bir bant).
+    tercih edilen yöntem. Mesafe, o anki gerçek ATR_MULT*ATR yüzdesi — backtestin
+    (smc_atr_trail.py exit_trail) formülüyle birebir aynı. Sadece Binance'in
+    platform sınırlarına (10-2000 bips) kırpılır, sabit dar banda değil.
     Sunucu tarafında çalıştığı için bot çökse/tick kaybetse bile emir kendi
     kendine güncellenir — zombi-stream/cancel-replace sınıfı sorunları ortadan
-    kaldırır. Başarısız olursa None döner, çağıran taraf eski ATR
-    cancel-replace yöntemine (_place_trail_sl_order) düşer."""
+    kaldırır. Ancak mesafe kuruluşta sabitlenir (Binance kendisi güncellemez) —
+    bu yüzden çağıran taraf ATR bayatladıkça bu emri periyodik olarak iptal edip
+    güncel ATR ile yeniden kurar (bkz. _periodic_check reconcile döngüsü).
+    Başarısız olursa None döner, çağıran taraf eski ATR cancel-replace
+    yöntemine (_place_trail_sl_order) düşer."""
     if not ENABLED:
         print(f"[MONITOR] TrailingDelta SİMÜLASYON — {symbol} qty={qty}", flush=True)
         return None
@@ -1311,8 +1315,31 @@ def _periodic_check():
                                     f"🛡 <b>Retroaktif Trail SL — {sym}</b>\n"
                                     f"Peak: {peak:.6g} | Trail stop: {_trail_stop_price(peak, atr_val, entry_val):.6g}"
                                 )
+                    elif is_trailing and trailing_sl_id and pos.get("trail_native") and _atr_is_stale(pos):
+                        # Native trailing'in mesafesi kuruluşta sabitleniyor, backtestteki
+                        # gibi bar-bar yenilenmiyor — ATR bayatladıysa iptal edip güncel
+                        # ATR ile (mümkünse yine native) yeniden kuruyoruz.
+                        qty  = float(pos.get("qty", 0))
+                        peak = float(pos.get("peak", 0))
+                        fresh_atr = _compute_atr(sym)
+                        if fresh_atr and qty > 0 and peak > 0:
+                            new_id = _place_trailing_delta_order(sym, peak, qty, fresh_atr)
+                            is_native = new_id is not None
+                            if new_id is None:
+                                new_id = _place_trail_sl_order(sym, peak, qty, fresh_atr, float(pos.get("entry", 0)))
+                            if new_id:
+                                _cancel_sl(sym, trailing_sl_id)
+                                with _lock:
+                                    s = _load_state()
+                                    if sym in s["positions"]:
+                                        s["positions"][sym]["trailing_sl_id"] = new_id
+                                        s["positions"][sym]["atr"] = fresh_atr
+                                        s["positions"][sym]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                                        s["positions"][sym]["trail_native"] = is_native
+                                        _save_state(s)
+                                print(f"[MONITOR] Native trailing yenilendi: {sym} atr={fresh_atr:.6g} native={is_native}", flush=True)
                     elif is_trailing and trailing_sl_id and pos.get("trail_native"):
-                        pass  # Native trailing sunucu tarafında kendi güncelleniyor — dokunma
+                        pass  # ATR henüz bayatlamadı — dokunma
                     elif is_trailing and trailing_sl_id and _atr_is_stale(pos):
                         # ATR bayatladı (peak uzun süredir yükselmedi) — yenile, trail SL emrini güncelle
                         qty = float(pos.get("qty", 0))

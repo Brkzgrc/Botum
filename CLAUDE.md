@@ -362,3 +362,18 @@ Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısın
 - Başlangıç sermayesi (ne olursa olsun 5'e bölünerek başlanacak, sabit değer gerekmez)
 - **Expire süresi: 48 saat** — backtest sonucuna göre karar verildi (48H: WR %87.5, MaxDD -%6.56 — en iyi senaryo)
 - Binance API izinleri: sadece spot trade + order yeterlisi açık olmalı, çekim kapalı
+
+### TP1 Sonrası Trailing — Güncel Durum (2026-07-16)
+
+**Not:** Yukarıdaki "Fiyat Takibi — TP1 Sonrası" bölümü eski (%2.5 sabit) — artık geçerli değil. Güncel sistem:
+
+- **Trail formülü:** `trail_stop = peak - ATR(14, 1H) × 0.6` — backtestteki `smc_atr_trail.py`'nin `exit_trail()` fonksiyonuyla birebir aynı olacak şekilde kuruldu (amaç: canlı sonuçlar backtestten sapmasın, sapma olursa backtest anlamsız kalır — kullanıcının açık talebi).
+- **Entry floor:** Trail seviyesi entry'nin altına inemez (`_trail_stop_price` içinde clamp, 2026-07-16'da eklendi) — backtestteki `if trail < entry: trail = entry` ile eşleşiyor.
+- **İki farklı trailing mekanizması var, davranışları FARKLI:**
+  1. **ATR cancel-replace** (`position_monitor.py` — `_place_trail_sl_order` / `_trail_stop_price`): her tick'te / ATR yenilendikçe (30dk) yeniden hesaplanır, gerçek dinamik ATR'yi takip eder → backtestle birebir örtüşür.
+  2. **Native Binance trailing** (`trailingDelta`, `_place_trailing_delta_order`): TP1 anında BİR KERE kuruluyor, mesafe (%1.80-1.84 bips aralığı) Binance sunucusunda hiç güncellenmiyor ("kur, unut" — bot dokunmuyor). Avantajı: bot çökse/tick kaybetse bile emir ayakta kalır. Dezavantajı: backtestteki gibi ATR her bar'da yenilenmiyor, pozisyon boyunca o ilk anki mesafede sabit kalıyor → zamanla backtestten sapabilir.
+- **Kullanıcının net tercihi:** "%1.84 sabit değil, hep ATR×0.6 kullan" — 180-184 bips clamp'i sadece o anki ATR'nin yaklaşık karşılığı olsun diye konmuştu, kalıcı sabit olarak kastedilmemişti.
+- **Bekleyen karar (henüz uygulanmadı):** Native trailing'in bu "sabit kalma" sorunu nasıl çözülecek?
+  - **Seçenek 1 (basit):** 180-184 bips clamp'i kaldır, native'e girilen mesafeyi o anki gerçek ATR×0.6 yüzdesi yap — ama yine de TP1 anındaki tek seferlik ATR'de sabit kalır, sonrasında güncellenmez.
+  - **Seçenek 2 (tam çözüm):** Native trailing emrini de ATR değiştikçe periyodik olarak iptal edip yeni mesafeyle yeniden kur (ATR cancel-replace'in native'e uygulanmış hali). Backtestle tam örtüşür ama native'in "kur unut" avantajını azaltır (daha sık emir iptal/yeniden kurma).
+  - Sorun tekrar gündeme gelirse (örn. bir pozisyon backtestten belirgin saparsa) buraya bakılacak — kullanıcı: "md'ye kayıt yapmıştık sorun oldu mesele neydi derim sen de konuyu anlarsın."
