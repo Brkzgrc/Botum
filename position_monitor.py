@@ -947,6 +947,18 @@ def _start_stream(symbol: str):
             return
         _streams[symbol] = key
     print(f"[MONITOR] WS başladı: {symbol}", flush=True)
+    # Watchdog "son tick" referansını open_time'a düşürmesin (pozisyon günlerdir
+    # açıksa bu HER ZAMAN bayat görünür, stream'i ilk tick'ini almadan tekrar
+    # tekrar yeniden başlatıp kendi kendini sabote eder — DGB'de tam bu yaşandı).
+    # Stream (yeniden) başladığı anı "canlı" kabul et, gerçek tick gelince
+    # zaten üzerine yazılacak.
+    with _lock:
+        s = _load_state()
+        p = s["positions"].get(symbol)
+        if p is not None:
+            p["last_tick_at"] = datetime.now(timezone.utc).isoformat()
+            s["positions"][symbol] = p
+            _save_state(s)
 
 
 def _stop_stream(symbol: str):

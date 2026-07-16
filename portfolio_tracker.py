@@ -531,8 +531,14 @@ def check_open_positions():
                         sig["tp1_pct"] = tp1_pct_v
                         sig["atr"] = atr_val
                         sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                        # ÖNEMLİ: bu SADECE portfolio'nun fiyattan gördüğü, bot'un
+                        # Binance'te GERÇEKTEN emri değiştirdiğinin kanıtı değil.
+                        # Bot yoksa (TRADING_BOT_URL boş) portfolio zaten tek otorite —
+                        # onaylı sayılır. Bot varsa /api/tp1-hit webhook'u gelene kadar
+                        # onaysız — dashboard bunu asla "güvenli" gibi göstermemeli.
+                        sig["tp1_confirmed"] = not bool(TRADING_BOT_URL)
                     need_save = True
-                    print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → ATR×{ATR_MULT} trailing başladı (bağımsız tespit)", flush=True)
+                    print(f"  🟡 TP TESPİT EDİLDİ: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% (bağımsız gözlem, bot onayı {'gerekmiyor' if not TRADING_BOT_URL else 'bekleniyor'})", flush=True)
                 elif sig.get("tp1_hit") and _atr_is_stale(sig):
                     fresh_atr = compute_atr(symbol)
                     if fresh_atr:
@@ -1247,9 +1253,10 @@ def api_retest_cancelled():
 
 @app.route("/api/tp1-hit", methods=["POST"])
 def api_tp1_hit():
-    """Al-Sat bot TP1 vurup trailing'e geçtiğinde bildirir — bot aktifken
-    portfolio kendi tp1_hit tespitini yapmıyor (check_open_positions'ta
-    bot'a devrediliyor), bu webhook olmadan dashboard hiç haberdar olmuyordu."""
+    """Al-Sat bot TP1 vurup Binance'te GERÇEKTEN trailing emrini koyduğunda
+    bildirir. Bu, tp1_confirmed=True yapan TEK yol — portfolio'nun kendi
+    bağımsız fiyat gözlemi (tp1_hit) bunu ASLA "onaylı" yapamaz, sadece bu
+    webhook yapar. Dashboard confirmed olmayan durumu ayrı (uyarı) gösterir."""
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if AUTH_TOKEN and token != AUTH_TOKEN:
         return jsonify({"error": "unauthorized"}), 401
@@ -1265,7 +1272,8 @@ def api_tp1_hit():
     with _lock:
         for s in signals_db:
             if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "open":
-                s["tp1_hit"]  = True
+                s["tp1_hit"]       = True
+                s["tp1_confirmed"] = True
                 s["tp1_time"] = now.isoformat()
                 s["tp1_pct"]  = tp1_pct
                 if peak and peak > s.get("peak_price", 0):
@@ -1275,7 +1283,7 @@ def api_tp1_hit():
                     s["atr"] = float(atr)
                 s["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                 save_signals()
-                print(f"[TP1] {sym_norm} trailing başladı (+{tp1_pct:.2f}%)", flush=True)
+                print(f"[TP1] {sym_norm} trailing başladı (+{tp1_pct:.2f}%) — BOT ONAYLI", flush=True)
                 return jsonify({"ok": True})
     return jsonify({"error": "open position not found"}), 404
 
@@ -2295,10 +2303,19 @@ def dashboard():
         tp2_val = sig.get("tp2")
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
-        if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+        _tp1_confirmed = sig.get("tp1_confirmed")
+        if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES and _tp1_confirmed:
+            # SADECE bot onayladıysa (gerçekten Binance'te emir değişti) canlı trail
+            # seviyesini "güvenli" gibi gösteriyoruz.
             _live_trail = trail_stop_price(sig.get("peak_price", sig["entry"]), sig.get("atr"))
             _trail_pct  = round((_live_trail - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
-            stop_cell = f"🟡 {fmt_price(_live_trail)} ({_trail_pct:+.2f}%)"
+            stop_cell = f"✅ {fmt_price(_live_trail)} ({_trail_pct:+.2f}%)"
+        elif sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+            # TP1 fiyattan görüldü ama bot HENÜZ onaylamadı — gerçek koruma hâlâ
+            # eski stop seviyesinde olabilir, bunu ASLA "trailing" gibi gösterme.
+            stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
+            stop_cell = (f'<span style="color:#f39c12" title="TP1 fiyattan görüldü ama bot henüz Binance emrini '
+                         f'değiştirmedi — gerçek koruma hâlâ bu seviyede">⚠️ {fmt_price(sig["stop"])} ({stop_pct:+.2f}%)</span>')
         else:
             stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
             stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
@@ -2319,10 +2336,15 @@ def dashboard():
 
         is_full_trail_sig = sig.get("source") in FULL_TRAIL_SOURCES
         tp1_milestone = sig.get("tp1_hit")
-        if tp1_milestone and is_full_trail_sig:
+        if tp1_milestone and is_full_trail_sig and _tp1_confirmed:
+            _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
+            tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;'
+                        f'font-size:.6rem;white-space:nowrap">✅ TRAİLİNG AKTİF (onaylı) +{_tp1_hit_pct:.2f}%</span>')
+        elif tp1_milestone and is_full_trail_sig:
             _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
             tp1_cell = (f'<span style="background:#f39c1233;color:#f39c12;padding:1px 5px;border-radius:3px;'
-                        f'font-size:.6rem;white-space:nowrap">🟡 TRAIL AKTİF +{_tp1_hit_pct:.2f}%</span>')
+                        f'font-size:.6rem;white-space:nowrap" title="Portfolio fiyattan gördü ama bot henüz '
+                        f'Binance emrini değiştirmediğini onaylamadı">⚠️ TP1 GEÇİLDİ (onay bekleniyor) +{_tp1_hit_pct:.2f}%</span>')
         elif tp1_milestone:
             tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;font-size:.6rem;white-space:nowrap">✅ +{tp1_pct}% milestone</span>')
         else:
