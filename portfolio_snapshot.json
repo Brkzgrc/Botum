@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-16 13:20:04",
+  "updated_at": "2026-07-16 13:50:07",
   "performance": {
     "total": 28,
-    "open": 4,
+    "open": 5,
     "closed": 5,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 9,
-        "open": 4,
+        "total": 10,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -65,7 +65,7 @@
         "losses": 0
       },
       "2026-07-15": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 5.63,
         "wins": 0,
         "losses": 0
@@ -79,7 +79,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 9,
+        "trades": 10,
         "pnl": 9.54,
         "wins": 0,
         "losses": 0
@@ -87,7 +87,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 9,
+        "trades": 10,
         "pnl": 9.54,
         "wins": 0,
         "losses": 0
@@ -121,19 +121,43 @@
       "peak_pct": 1.2,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.2222,
-      "current_pct": -0.98,
+      "current_price": 0.2217,
+      "current_pct": -1.2,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T13:17:43.352653+03:00",
-      "checks": 108,
+      "last_check": "2026-07-16T13:47:56.896087+03:00",
+      "checks": 114,
       "extra": {
         "tp3": null
       },
       "fill_qty": 777.99,
       "bot_miss_count": 0
+    },
+    {
+      "id": "sync_ANKRUSDT_2026-07-15",
+      "symbol": "ANKR/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.00363,
+      "entry": 0.00362,
+      "limit_price": 0.00363,
+      "stop": 0.00351,
+      "tp1": 0.00374,
+      "open_time": "2026-07-15T16:48:55.584692+00:00",
+      "peak_price": 0.00364,
+      "low_price": 0.00362,
+      "current_price": 0.00363,
+      "peak_pct": 0.55,
+      "low_pct": 0.0,
+      "current_pct": 0.28,
+      "fill_qty": 49245.4,
+      "fill_time": "2026-07-16T13:27:49.401260+03:00",
+      "bot_miss_count": 0,
+      "last_check": "2026-07-16T13:47:56.896087+03:00",
+      "checks": 4
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -156,8 +180,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:17:43.352653+03:00",
-      "checks": 115
+      "last_check": "2026-07-16T13:47:56.896087+03:00",
+      "checks": 121
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -180,8 +204,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:17:43.352653+03:00",
-      "checks": 25
+      "last_check": "2026-07-16T13:47:56.896087+03:00",
+      "checks": 31
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -197,15 +221,15 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1901,
       "low_price": 0.1858,
-      "current_price": 0.1896,
+      "current_price": 0.1889,
       "peak_pct": 1.82,
       "low_pct": -0.48,
-      "current_pct": 1.55,
+      "current_pct": 1.18,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:17:43.352653+03:00",
-      "checks": 184
+      "last_check": "2026-07-16T13:47:56.896087+03:00",
+      "checks": 190
     }
   ],
   "closed": [
@@ -363,25 +387,6 @@
       "extra": {
         "tp3": null
       }
-    },
-    {
-      "id": "sync_ANKRUSDT_2026-07-15",
-      "symbol": "ANKR/USDT",
-      "source": "smc-v2",
-      "sig_type": "choch",
-      "status": "pending_retest",
-      "signal_price": 0.00363,
-      "entry": 0.00363,
-      "limit_price": 0.00363,
-      "stop": 0.00351,
-      "tp1": 0.00374,
-      "open_time": "2026-07-15T16:48:55.584692+00:00",
-      "peak_price": 0.00363,
-      "low_price": 0.00363,
-      "current_price": 0.00363,
-      "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
     },
     {
       "id": "sync_BARUSDT_2026-07-15",
