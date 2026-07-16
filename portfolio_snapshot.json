@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 03:51:43",
+  "updated_at": "2026-07-16 03:53:16",
   "performance": {
     "total": 24,
     "open": 4,
@@ -103,13 +103,13 @@
       "open_time": "2026-07-14T01:05:22.424159+00:00",
       "peak_price": 0.00278,
       "low_price": 0.00253,
-      "current_price": 0.00272,
+      "current_price": 0.00273,
       "peak_pct": 9.88,
       "low_pct": 0.0,
-      "current_pct": 7.51,
+      "current_pct": 7.91,
       "fill_qty": 70959.2,
-      "last_check": "2026-07-16T03:50:43.327532+03:00",
-      "checks": 95,
+      "last_check": "2026-07-16T03:52:16.220067+03:00",
+      "checks": 96,
       "bot_miss_count": 0,
       "tp1_hit": true,
       "tp1_time": "2026-07-16T03:08:31.110491+03:00",
@@ -138,8 +138,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T03:50:43.327532+03:00",
-      "checks": 2
+      "last_check": "2026-07-16T03:52:16.220067+03:00",
+      "checks": 3
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -162,8 +162,8 @@
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T03:50:43.327532+03:00",
-      "checks": 71
+      "last_check": "2026-07-16T03:52:16.220067+03:00",
+      "checks": 72
     },
     {
       "id": "sync_YBUSDT_2026-07-15",
@@ -184,8 +184,8 @@
       "low_pct": 0.0,
       "current_pct": 0.92,
       "fill_qty": 2329.8,
-      "last_check": "2026-07-16T03:50:43.327532+03:00",
-      "checks": 95,
+      "last_check": "2026-07-16T03:52:16.220067+03:00",
+      "checks": 96,
       "bot_miss_count": 0
     }
   ],
