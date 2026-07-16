@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-16 13:50:07",
+  "updated_at": "2026-07-16 14:03:32",
   "performance": {
-    "total": 28,
+    "total": 29,
     "open": 5,
     "closed": 5,
     "wins": 0,
@@ -127,8 +127,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T13:47:56.896087+03:00",
-      "checks": 114,
+      "last_check": "2026-07-16T14:02:32.338314+03:00",
+      "checks": 117,
       "extra": {
         "tp3": null
       },
@@ -156,8 +156,8 @@
       "fill_qty": 49245.4,
       "fill_time": "2026-07-16T13:27:49.401260+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:47:56.896087+03:00",
-      "checks": 4
+      "last_check": "2026-07-16T14:02:32.338314+03:00",
+      "checks": 7
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -180,8 +180,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:47:56.896087+03:00",
-      "checks": 121
+      "last_check": "2026-07-16T14:02:32.338314+03:00",
+      "checks": 124
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -204,8 +204,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:47:56.896087+03:00",
-      "checks": 31
+      "last_check": "2026-07-16T14:02:32.338314+03:00",
+      "checks": 34
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -221,18 +221,56 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1901,
       "low_price": 0.1858,
-      "current_price": 0.1889,
+      "current_price": 0.1886,
       "peak_pct": 1.82,
       "low_pct": -0.48,
-      "current_pct": 1.18,
+      "current_pct": 1.02,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T13:47:56.896087+03:00",
-      "checks": 190
+      "last_check": "2026-07-16T14:02:32.338314+03:00",
+      "checks": 193
     }
   ],
   "closed": [
+    {
+      "id": "MANTRA_USDT_1784199604",
+      "symbol": "MANTRA/USDT",
+      "entry": 0.00648,
+      "stop": 0.0063481,
+      "tp1": 0.0066119,
+      "tp2": 0.0067438,
+      "tp3": null,
+      "limit_price": 0.00648,
+      "signal_price": 0.0066,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-16T14:00:04.186088+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.00648,
+      "peak_pct": 0.0,
+      "low_price": 0.00648,
+      "low_pct": 0.0,
+      "current_price": 0.00648,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-16T14:00:04.186088+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "CITY_USDT_1784196008",
       "symbol": "CITY/USDT",
@@ -742,7 +780,7 @@
       "symbol": "TOWNS/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.00195,
       "entry": 0.00195,
       "limit_price": 0.00195,
@@ -754,7 +792,9 @@
       "current_price": 0.00195,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T14:02:32.335084+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_TURTLEUSDT_2026-07-15",
