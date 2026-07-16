@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 06:19:25",
+  "updated_at": "2026-07-16 06:49:28",
   "performance": {
     "total": 25,
     "open": 4,
@@ -121,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.223,
       "low_pct": -0.62,
-      "current_price": 0.2247,
-      "current_pct": 0.13,
+      "current_price": 0.2244,
+      "current_pct": -0.0,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T06:19:20.690002+03:00",
-      "checks": 25,
+      "last_check": "2026-07-16T06:44:31.921789+03:00",
+      "checks": 30,
       "extra": {
         "tp3": null
       },
@@ -149,13 +149,13 @@
       "open_time": "2026-07-14T01:05:22.424159+00:00",
       "peak_price": 0.00278,
       "low_price": 0.00253,
-      "current_price": 0.00274,
+      "current_price": 0.00272,
       "peak_pct": 9.88,
       "low_pct": 0.0,
-      "current_pct": 8.3,
+      "current_pct": 7.51,
       "fill_qty": 70959.2,
-      "last_check": "2026-07-16T06:19:20.690002+03:00",
-      "checks": 125,
+      "last_check": "2026-07-16T06:44:31.921789+03:00",
+      "checks": 130,
       "bot_miss_count": 0,
       "tp1_hit": true,
       "tp1_time": "2026-07-16T03:08:31.110491+03:00",
@@ -185,8 +185,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T06:19:20.690002+03:00",
-      "checks": 32
+      "last_check": "2026-07-16T06:44:31.921789+03:00",
+      "checks": 37
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -202,15 +202,15 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1899,
       "low_price": 0.1858,
-      "current_price": 0.188,
+      "current_price": 0.1879,
       "peak_pct": 1.71,
       "low_pct": -0.48,
-      "current_pct": 0.7,
+      "current_pct": 0.64,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T06:19:20.690002+03:00",
-      "checks": 101
+      "last_check": "2026-07-16T06:44:31.921789+03:00",
+      "checks": 106
     }
   ],
   "closed": [
