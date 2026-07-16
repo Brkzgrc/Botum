@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 02:39:12",
+  "updated_at": "2026-07-16 03:09:30",
   "performance": {
     "total": 24,
     "open": 4,
@@ -103,14 +103,19 @@
       "open_time": "2026-07-14T01:05:22.424159+00:00",
       "peak_price": 0.00278,
       "low_price": 0.00253,
-      "current_price": 0.00269,
+      "current_price": 0.0027,
       "peak_pct": 9.88,
       "low_pct": 0.0,
-      "current_pct": 6.32,
+      "current_pct": 6.72,
       "fill_qty": 70959.2,
-      "last_check": "2026-07-16T02:36:57.929400+03:00",
-      "checks": 79,
-      "bot_miss_count": 0
+      "last_check": "2026-07-16T03:08:31.110491+03:00",
+      "checks": 86,
+      "bot_miss_count": 0,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-16T03:08:31.110491+03:00",
+      "tp1_pct": 2.37,
+      "atr": 3.587073157388471e-05,
+      "atr_updated_at": "2026-07-16T00:08:31.891167+00:00"
     },
     {
       "id": "sync_OPNUSDT_2026-07-15",
@@ -126,13 +131,13 @@
       "open_time": "2026-07-15T16:06:46.773803+00:00",
       "peak_price": 0.064,
       "low_price": 0.0625,
-      "current_price": 0.0633,
+      "current_price": 0.0638,
       "peak_pct": 2.07,
       "low_pct": -0.32,
-      "current_pct": 0.96,
+      "current_pct": 1.75,
       "fill_qty": 3401.9,
-      "last_check": "2026-07-16T02:36:57.929400+03:00",
-      "checks": 79,
+      "last_check": "2026-07-16T03:08:31.110491+03:00",
+      "checks": 86,
       "bot_miss_count": 0
     },
     {
@@ -156,8 +161,8 @@
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T02:36:57.929400+03:00",
-      "checks": 55
+      "last_check": "2026-07-16T03:08:31.110491+03:00",
+      "checks": 62
     },
     {
       "id": "sync_YBUSDT_2026-07-15",
@@ -173,13 +178,13 @@
       "open_time": "2026-07-14T08:34:13.294455+00:00",
       "peak_price": 0.0756,
       "low_price": 0.07392169196466856,
-      "current_price": 0.0747,
+      "current_price": 0.0746,
       "peak_pct": 2.27,
       "low_pct": 0.0,
-      "current_pct": 1.05,
+      "current_pct": 0.92,
       "fill_qty": 2329.8,
-      "last_check": "2026-07-16T02:36:57.929400+03:00",
-      "checks": 79,
+      "last_check": "2026-07-16T03:08:31.110491+03:00",
+      "checks": 86,
       "bot_miss_count": 0
     }
   ],
