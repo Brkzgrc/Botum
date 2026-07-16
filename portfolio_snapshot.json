@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-16 12:19:59",
+  "updated_at": "2026-07-16 12:50:02",
   "performance": {
     "total": 27,
-    "open": 5,
-    "closed": 4,
+    "open": 4,
+    "closed": 5,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 3,
-    "total_pnl": 13.39,
-    "win_loss_pnl": 13.39,
+    "total_pnl": 9.54,
+    "win_loss_pnl": 9.54,
     "expired_pnl": 0.0,
-    "avg_peak": 5.17,
+    "avg_peak": 4.29,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -41,26 +41,26 @@
     "by_type": {
       "Legacy SMC": {
         "total": 9,
-        "open": 5,
+        "open": 4,
         "wins": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 3,
-        "total_pnl": 13.39,
+        "total_pnl": 9.54,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 5.17,
+        "avg_peak": 4.29,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 13.39
+        "win_loss_pnl": 9.54
       }
     },
     "daily": {
       "2026-07-16": {
         "trades": 2,
-        "pnl": 0.0,
+        "pnl": -3.85,
         "wins": 0,
         "losses": 0
       },
@@ -80,7 +80,7 @@
     "weekly": {
       "2026-W28": {
         "trades": 9,
-        "pnl": 13.39,
+        "pnl": 9.54,
         "wins": 0,
         "losses": 0
       }
@@ -88,54 +88,13 @@
     "monthly": {
       "2026-07": {
         "trades": 9,
-        "pnl": 13.39,
+        "pnl": 9.54,
         "wins": 0,
         "losses": 0
       }
     }
   },
   "open": [
-    {
-      "id": "PYR_USDT_1784188802",
-      "symbol": "PYR/USDT",
-      "entry": 0.13,
-      "stop": 0.12537,
-      "tp1": 0.14463,
-      "tp2": 0.15426,
-      "tp3": null,
-      "limit_price": 0.135,
-      "signal_price": 0.14,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-16T11:00:02.689045+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.131,
-      "peak_pct": 0.77,
-      "low_price": 0.128,
-      "low_pct": -1.54,
-      "current_price": 0.129,
-      "current_pct": -0.77,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-16T12:17:15.385858+03:00",
-      "checks": 6,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 1376.334,
-      "fill_time": "2026-07-16T11:46:59.331138+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "API3_USDT_1784163605",
       "symbol": "API3/USDT",
@@ -162,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.2222,
-      "current_pct": -0.98,
+      "current_price": 0.2227,
+      "current_pct": -0.76,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T12:17:15.385858+03:00",
-      "checks": 96,
+      "last_check": "2026-07-16T12:47:30.620863+03:00",
+      "checks": 102,
       "extra": {
         "tp3": null
       },
@@ -197,8 +156,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:17:15.385858+03:00",
-      "checks": 103
+      "last_check": "2026-07-16T12:47:30.620863+03:00",
+      "checks": 109
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -221,8 +180,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:17:15.385858+03:00",
-      "checks": 13
+      "last_check": "2026-07-16T12:47:30.620863+03:00",
+      "checks": 19
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -238,15 +197,15 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1899,
       "low_price": 0.1858,
-      "current_price": 0.1879,
+      "current_price": 0.1888,
       "peak_pct": 1.71,
       "low_pct": -0.48,
-      "current_pct": 0.64,
+      "current_pct": 1.12,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T12:17:15.385858+03:00",
-      "checks": 172
+      "last_check": "2026-07-16T12:47:30.620863+03:00",
+      "checks": 178
     }
   ],
   "closed": [
@@ -287,6 +246,47 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "PYR_USDT_1784188802",
+      "symbol": "PYR/USDT",
+      "entry": 0.13,
+      "stop": 0.12537,
+      "tp1": 0.14463,
+      "tp2": 0.15426,
+      "tp3": null,
+      "limit_price": 0.135,
+      "signal_price": 0.14,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-16T11:00:02.689045+03:00",
+      "close_time": "2026-07-16T12:32:26.474655+03:00",
+      "close_price": null,
+      "close_reason": "sync_closed",
+      "close_pct": -3.85,
+      "peak_price": 0.131,
+      "peak_pct": 0.77,
+      "low_price": 0.121,
+      "low_pct": -6.92,
+      "current_price": 0.125,
+      "current_pct": -3.85,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-16T12:32:23.896462+03:00",
+      "checks": 9,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 1376.334,
+      "fill_time": "2026-07-16T11:46:59.331138+03:00",
+      "bot_miss_count": 2
     },
     {
       "id": "SKL_USDT_1784138401",
@@ -550,7 +550,7 @@
       "symbol": "LISTA/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.0474,
       "entry": 0.0474,
       "limit_price": 0.0474,
@@ -562,7 +562,9 @@
       "current_price": 0.0474,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T12:22:18.289248+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_METABUSDT_2026-07-15",
