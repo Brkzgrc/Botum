@@ -1126,31 +1126,41 @@ def _check_price_conditions_no_tick():
     stale_after = CHECK_INTERVAL * 2
 
     for sym, pos in positions.items():
-        if pos.get("status") != "open" or pos.get("closing"):
-            continue
-        last_tick_str = pos.get("last_tick_at")
-        if last_tick_str:
+        try:
+            if pos.get("status") != "open" or pos.get("closing"):
+                continue
+            last_tick_str = pos.get("last_tick_at")
+            if last_tick_str:
+                try:
+                    lt = datetime.fromisoformat(last_tick_str)
+                    if lt.tzinfo is None:
+                        lt = lt.replace(tzinfo=timezone.utc)
+                    if (now - lt).total_seconds() < stale_after:
+                        continue  # websocket zaten çalışıyor, tekrar sorgulamaya gerek yok
+                except Exception:
+                    pass
+            print(f"[MONITOR] Tick'siz fiyat kontrolü: {sym} REST'ten sorgulanıyor (websocket sessiz)", flush=True)
             try:
-                lt = datetime.fromisoformat(last_tick_str)
-                if lt.tzinfo is None:
-                    lt = lt.replace(tzinfo=timezone.utc)
-                if (now - lt).total_seconds() < stale_after:
-                    continue  # websocket zaten çalışıyor, tekrar sorgulamaya gerek yok
+                klines = _get_client().get_klines(symbol=sym, interval="1m", limit=2)
+            except Exception as e:
+                print(f"[MONITOR] Tick'siz fiyat kontrolü hatası {sym}: {e}", flush=True)
+                continue
+            if not klines:
+                continue
+            k = klines[-1]
+            try:
+                high, low, close = float(k[2]), float(k[3]), float(k[4])
             except Exception:
-                pass
-        try:
-            klines = _get_client().get_klines(symbol=sym, interval="1m", limit=2)
+                continue
+            _process_tick(sym, close, high, low)
         except Exception as e:
-            print(f"[MONITOR] Tick'siz fiyat kontrolü hatası {sym}: {e}", flush=True)
+            # Tek bir sembolün beklenmeyen hatası diğer sembollerin kontrolünü
+            # engellemesin — bugün aynı sınıf hatayı SL reconciliation'da bulup
+            # düzeltmiştik, burayı unutmuşum. Bu satır olmadan tek bir sembol
+            # çökünce TÜM fonksiyon (DGB dahil, sırası ne olursa olsun) o turda
+            # sessizce durabiliyordu.
+            print(f"[MONITOR] Tick'siz fiyat kontrolü genel hata {sym}: {e}", flush=True)
             continue
-        if not klines:
-            continue
-        k = klines[-1]
-        try:
-            high, low, close = float(k[2]), float(k[3]), float(k[4])
-        except Exception:
-            continue
-        _process_tick(sym, close, high, low)
 
 
 def _periodic_check():
