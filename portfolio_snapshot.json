@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-16 10:49:50",
+  "updated_at": "2026-07-16 11:19:53",
   "performance": {
-    "total": 25,
-    "open": 4,
+    "total": 26,
+    "open": 5,
     "closed": 3,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 7,
-        "open": 4,
+        "total": 8,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -65,7 +65,7 @@
         "losses": 0
       },
       "2026-07-15": {
-        "trades": 4,
+        "trades": 5,
         "pnl": 1.28,
         "wins": 0,
         "losses": 0
@@ -79,7 +79,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 7,
+        "trades": 8,
         "pnl": 9.040000000000001,
         "wins": 0,
         "losses": 0
@@ -87,7 +87,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 7,
+        "trades": 8,
         "pnl": 9.040000000000001,
         "wins": 0,
         "losses": 0
@@ -119,16 +119,16 @@
       "close_pct": null,
       "peak_price": 0.2271,
       "peak_pct": 1.2,
-      "low_price": 0.223,
-      "low_pct": -0.62,
-      "current_price": 0.226,
-      "current_pct": 0.71,
+      "low_price": 0.221,
+      "low_pct": -1.52,
+      "current_price": 0.2215,
+      "current_pct": -1.29,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T10:46:21.513738+03:00",
-      "checks": 78,
+      "last_check": "2026-07-16T11:16:36.730200+03:00",
+      "checks": 84,
       "extra": {
         "tp3": null
       },
@@ -149,15 +149,15 @@
       "open_time": "2026-07-15T09:28:01.103739+00:00",
       "peak_price": 0.281,
       "low_price": 0.276,
-      "current_price": 0.28,
+      "current_price": 0.278,
       "peak_pct": 1.81,
       "low_pct": 0.0,
-      "current_pct": 1.45,
+      "current_pct": 0.72,
       "fill_qty": 644.87,
       "fill_time": "2026-07-16T07:09:47.215298+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T10:46:21.513738+03:00",
-      "checks": 43
+      "last_check": "2026-07-16T11:16:36.730200+03:00",
+      "checks": 49
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -172,16 +172,40 @@
       "tp1": 0.0247,
       "open_time": "2026-07-15T16:49:11.672615+00:00",
       "peak_price": 0.0241,
-      "low_price": 0.0239,
-      "current_price": 0.0239,
+      "low_price": 0.0237,
+      "current_price": 0.0237,
       "peak_pct": 0.0,
-      "low_pct": -0.83,
-      "current_pct": -0.83,
+      "low_pct": -1.66,
+      "current_pct": -1.66,
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T10:46:21.513738+03:00",
-      "checks": 85
+      "last_check": "2026-07-16T11:16:36.730200+03:00",
+      "checks": 91
+    },
+    {
+      "id": "sync_NOMUSDT_2026-07-15",
+      "symbol": "NOM/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "open",
+      "signal_price": 0.00155,
+      "entry": 0.00154,
+      "limit_price": 0.00155,
+      "stop": 0.00151,
+      "tp1": 0.00158,
+      "open_time": "2026-07-15T16:45:46.777445+00:00",
+      "peak_price": 0.00154,
+      "low_price": 0.00154,
+      "current_price": 0.00154,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0,
+      "fill_qty": 54156.0,
+      "fill_time": "2026-07-16T11:11:36.202974+03:00",
+      "bot_miss_count": 0,
+      "last_check": "2026-07-16T11:16:36.730200+03:00",
+      "checks": 1
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -197,18 +221,56 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1899,
       "low_price": 0.1858,
-      "current_price": 0.1873,
+      "current_price": 0.1864,
       "peak_pct": 1.71,
       "low_pct": -0.48,
-      "current_pct": 0.32,
+      "current_pct": -0.16,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T10:46:21.513738+03:00",
-      "checks": 154
+      "last_check": "2026-07-16T11:16:36.730200+03:00",
+      "checks": 160
     }
   ],
   "closed": [
+    {
+      "id": "PYR_USDT_1784188802",
+      "symbol": "PYR/USDT",
+      "entry": 0.135,
+      "stop": 0.12537,
+      "tp1": 0.14463,
+      "tp2": 0.15426,
+      "tp3": null,
+      "limit_price": 0.135,
+      "signal_price": 0.14,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-16T11:00:02.689045+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.135,
+      "peak_pct": 0.0,
+      "low_price": 0.135,
+      "low_pct": 0.0,
+      "current_price": 0.135,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-16T11:00:02.689045+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "SKL_USDT_1784138401",
       "symbol": "SKL/USDT",
@@ -360,7 +422,7 @@
       "symbol": "FF/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.0613,
       "entry": 0.0613,
       "limit_price": 0.0613,
@@ -372,7 +434,9 @@
       "current_price": 0.0613,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T11:01:28.089576+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_GNSUSDT_2026-07-15",
@@ -465,25 +529,6 @@
       "peak_price": 658.43,
       "low_price": 658.43,
       "current_price": 658.43,
-      "peak_pct": 0.0,
-      "low_pct": 0.0,
-      "current_pct": 0.0
-    },
-    {
-      "id": "sync_NOMUSDT_2026-07-15",
-      "symbol": "NOM/USDT",
-      "source": "smc-v2",
-      "sig_type": "choch",
-      "status": "pending_retest",
-      "signal_price": 0.00155,
-      "entry": 0.00155,
-      "limit_price": 0.00155,
-      "stop": 0.00151,
-      "tp1": 0.00158,
-      "open_time": "2026-07-15T16:45:46.777445+00:00",
-      "peak_price": 0.00155,
-      "low_price": 0.00155,
-      "current_price": 0.00155,
       "peak_pct": 0.0,
       "low_pct": 0.0,
       "current_pct": 0.0
