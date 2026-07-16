@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 16:33:46",
+  "updated_at": "2026-07-16 17:03:49",
   "performance": {
     "total": 29,
     "open": 5,
@@ -121,14 +121,14 @@
       "peak_pct": 1.43,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.2274,
-      "current_pct": 1.34,
+      "current_price": 0.2262,
+      "current_pct": 0.8,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T16:28:46.664219+03:00",
-      "checks": 146,
+      "last_check": "2026-07-16T16:59:04.815694+03:00",
+      "checks": 152,
       "extra": {
         "tp3": null
       },
@@ -159,16 +159,16 @@
       "close_pct": null,
       "peak_price": 0.00433,
       "peak_pct": 0.46,
-      "low_price": 0.00431,
-      "low_pct": 0.0,
-      "current_price": 0.00431,
-      "current_pct": 0.0,
+      "low_price": 0.00426,
+      "low_pct": -1.16,
+      "current_price": 0.00427,
+      "current_pct": -0.93,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-15T21:00:14.302755+03:00",
-      "last_check": "2026-07-16T16:28:46.664219+03:00",
-      "checks": 1,
+      "last_check": "2026-07-16T16:59:04.815694+03:00",
+      "checks": 7,
       "extra": {
         "tp3": null
       },
@@ -197,8 +197,8 @@
       "fill_qty": 49245.4,
       "fill_time": "2026-07-16T13:27:49.401260+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T16:28:46.664219+03:00",
-      "checks": 36
+      "last_check": "2026-07-16T16:59:04.815694+03:00",
+      "checks": 42
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -221,8 +221,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T16:28:46.664219+03:00",
-      "checks": 153
+      "last_check": "2026-07-16T16:59:04.815694+03:00",
+      "checks": 159
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -245,8 +245,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T16:28:46.664219+03:00",
-      "checks": 63
+      "last_check": "2026-07-16T16:59:04.815694+03:00",
+      "checks": 69
     }
   ],
   "closed": [
@@ -786,7 +786,7 @@
       "symbol": "TURTLE/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.0329,
       "entry": 0.0329,
       "limit_price": 0.0329,
@@ -798,7 +798,9 @@
       "current_price": 0.0329,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T16:38:51.633228+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
