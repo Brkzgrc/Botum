@@ -759,32 +759,15 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         _save_state(state)
         pos_snap = dict(pos)
 
-        # Açık trade expire: fill sonrası OPEN_EXPIRE_H saat geçtiyse market sell
-        fill_time_str = pos.get("open_time")
-        if fill_time_str:
-            try:
-                ft = datetime.fromisoformat(fill_time_str)
-                if ft.tzinfo is None:
-                    ft = ft.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) - ft >= timedelta(hours=OPEN_EXPIRE_H):
-                    sell_reason = "expire"
-                    close_price = close
-                    pos["closing"] = True
-                    state["positions"][symbol] = pos
-                    _save_state(state)
-                    # Aktif resting emir (SL ya da trailing SL) iptal edilmezse coin'ler
-                    # o emirde kilitli kalır — market_sell "insufficient balance" alıp
-                    # sonsuza kadar başarısız olur (AWE/ZKC'de yaşandı).
-                    if pos.get("trailing"):
-                        cancel_trail_sl_id = pos.get("trailing_sl_id")
-                    else:
-                        cancel_sl = True
-            except Exception:
-                pass
-
-        if sell_reason:
-            pass  # lock dışında işlenecek
-        elif not pos.get("trailing"):
+        # ÖNEMLİ SIRALAMA: TP1/stop kontrolü HER ZAMAN önce çalışır, expire kontrolü
+        # SADECE trailing'e hiç geçmemiş ("gelişmeyen") pozisyonlar için, en son
+        # çare olarak devreye girer. Eskiden expire en başta koşulsuz çalışıyordu —
+        # süre dolunca o pozisyon için bir daha ASLA TP1/stop kontrol edilmiyordu,
+        # fiyat TP1'i geçip trailing'e hak kazansa bile bot bunu hiç görmüyordu
+        # (DGB'de yaşandı: peak +%9.88 oldu ama bot expire'a takılı kaldığı için
+        # trailing'e hiç geçemedi). Trailing'e geçmiş pozisyon artık expire'dan
+        # tamamen muaf — sadece trail_stop'a düşünce kapanır, saat sınırı yok.
+        if not pos.get("trailing"):
             # Peak: mumun high'ına göre güncelle
             if high > float(pos["peak"]):
                 pos["peak"] = high
@@ -812,6 +795,26 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 trail_sl_peak  = float(pos["peak"])
                 trail_sl_qty   = float(pos.get("qty", 0))
                 print(f"[MONITOR] TP1 HIT — {symbol} @ {high:.6g} | trailing başladı", flush=True)
+            else:
+                # Ne stop ne TP1 — gelişmeyen işlem, expire burada devreye girer
+                fill_time_str = pos.get("open_time")
+                if fill_time_str:
+                    try:
+                        ft = datetime.fromisoformat(fill_time_str)
+                        if ft.tzinfo is None:
+                            ft = ft.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) - ft >= timedelta(hours=OPEN_EXPIRE_H):
+                            sell_reason = "expire"
+                            close_price = close
+                            pos["closing"] = True
+                            state["positions"][symbol] = pos
+                            _save_state(state)
+                            # Aktif resting SL emri iptal edilmezse coin'ler o emirde
+                            # kilitli kalır — market_sell "insufficient balance" alıp
+                            # sonsuza kadar başarısız olur (AWE/ZKC'de yaşandı).
+                            cancel_sl = True
+                    except Exception:
+                        pass
 
         else:
             # Peak: mumun high'ına göre güncelle
@@ -859,6 +862,17 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     s["positions"][symbol]["atr"] = atr_val
                     s["positions"][symbol]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                     _save_state(s)
+
+        if place_trail_sl:
+            # Portfolio dashboard'a TP1 vurulduğunu bildir — aksi halde bot devredeyken
+            # portfolio bunu hiç öğrenemiyor, "TRAIL AKTİF" hiç görünmüyor, Trail/Stop
+            # sütunu orijinal stop'ta donuk kalıyor.
+            entry = float(pos_snap.get("entry", 0) or 0)
+            peak  = float(pos_snap.get("peak", 0) or 0)
+            tp1_pct = round((peak - entry) / entry * 100, 2) if entry else 0
+            _notify_portfolio_with_retry("/api/tp1-hit", {
+                "symbol": symbol, "peak": peak, "tp1_pct": tp1_pct, "atr": atr_val,
+            })
 
     if cancel_trail_sl_id:
         _cancel_sl(symbol, cancel_trail_sl_id)
@@ -962,6 +976,11 @@ def _check_expired_positions_no_tick():
         try:
             if pos.get("status") != "open" or pos.get("closing"):
                 continue
+            # Trailing'e geçmiş (TP1 vurmuş) pozisyon expire'dan muaf — sadece
+            # trail_stop'a düşünce kapanır, saat sınırı yok (DGB'nin yaşadığı
+            # "expire trailing'i bloke ediyor" sorunuyla aynı prensip).
+            if pos.get("trailing"):
+                continue
             fill_time_str = pos.get("open_time")
             if not fill_time_str:
                 continue
@@ -977,7 +996,7 @@ def _check_expired_positions_no_tick():
             with _lock:
                 s = _load_state()
                 p = s["positions"].get(sym)
-                if not p or p.get("status") != "open" or p.get("closing"):
+                if not p or p.get("status") != "open" or p.get("closing") or p.get("trailing"):
                     continue
                 p["closing"] = True
                 s["positions"][sym] = p
@@ -989,10 +1008,9 @@ def _check_expired_positions_no_tick():
             # her turda atlanır (AWE'de tam bu yaşandı).
             closed = False
             try:
-                if pos.get("trailing"):
-                    _cancel_sl(sym, pos.get("trailing_sl_id"))
-                else:
-                    _cancel_sl(sym, pos.get("sl_order_id"))
+                # trailing=True olan pozisyonlar üstteki kontrolle zaten atlanıyor —
+                # buraya gelen her şey her zaman sabit sl_order_id ile korunuyordur.
+                _cancel_sl(sym, pos.get("sl_order_id"))
 
                 entry       = float(pos.get("entry", 0) or 0)
                 qty         = _round_qty(float(pos.get("qty", 0) or 0), sym)

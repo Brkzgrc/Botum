@@ -43,6 +43,7 @@ BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 MAX_POSITIONS  = 5              # trading_engine ile aynı değer
+OPEN_EXPIRE_H  = 24              # position_monitor.py'deki OPEN_EXPIRE_H ile aynı tutulmalı (sadece görüntüleme)
 BOT_MISS_THRESHOLD = 2           # _sync_from_trading_bot: art arda kaç periyodik kontrolde
                                   # bot'ta bulunamazsa "open" kaydı kapatılır (tek blip'e güvenilmez)
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
@@ -515,44 +516,51 @@ def check_open_positions():
             sig["last_check"] = now.isoformat()
             sig["checks"] = sig.get("checks", 0) + 1
 
-            # Bot aktifken SMC kapanışını portfolio kapamaz — /api/position-closed bekle
+            is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
+
+            # TP1/trailing DURUMU her zaman bağımsız tespit edilir (sadece takip/
+            # görüntüleme amaçlı, KAPATMA kararı değil) — bot webhook'u (/api/tp1-hit)
+            # gelmese bile portfolio Binance'te gerçekte ne olduğunu kendi başına bilsin.
+            # Aşağıdaki "bot aktifken" bloğu sadece KAPATMA aksiyonunu erteliyor.
+            if is_smc and sig.get("source") in FULL_TRAIL_SOURCES:
+                if tp1 and high >= tp1 and not sig.get("tp1_hit"):
+                    tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
+                    atr_val = compute_atr(symbol)
+                    with _lock:
+                        sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
+                        sig["tp1_pct"] = tp1_pct_v
+                        sig["atr"] = atr_val
+                        sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                    need_save = True
+                    print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → ATR×{ATR_MULT} trailing başladı (bağımsız tespit)", flush=True)
+                elif sig.get("tp1_hit") and _atr_is_stale(sig):
+                    fresh_atr = compute_atr(symbol)
+                    if fresh_atr:
+                        with _lock:
+                            sig["atr"] = fresh_atr
+                            sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                        need_save = True
+
+            # Bot aktifken SMC kapanış KARARINI portfolio vermez — /api/position-closed
+            # bekle. TP1 tespiti yukarıda zaten bağımsız yapıldığı için bot'un webhook'u
+            # gelmese bile dashboard doğru gösterir; sadece kapatma aksiyonu erteleniyor.
             if TRADING_BOT_URL and sig.get("source") in SMC_MAIN_SOURCES:
                 need_save = True
                 time.sleep(0.15)
                 continue
 
-            is_smc = sig.get("source", "bot") in SMC_MAIN_SOURCES
             close_reason = None; close_price = None; close_status = None
 
             if is_smc:
-                # SMC CHoCH ROC: stop → loss | TP1 hit → ATR trailing aktif | trail tetik → win_trail/loss
+                # SMC CHoCH ROC: stop → loss | trail tetik → win_trail/loss
                 if low <= stop:
                     close_reason = "stop"; close_price = stop; close_status = "loss"
-                else:
-                    if tp1 and high >= tp1 and not sig.get("tp1_hit"):
-                        if sig.get("source") in FULL_TRAIL_SOURCES:
-                            tp1_pct_v = round((tp1 - entry) / entry * 100, 2)
-                            atr_val = compute_atr(symbol)
-                            with _lock:
-                                sig["tp1_hit"] = True; sig["tp1_time"] = now.isoformat()
-                                sig["tp1_pct"] = tp1_pct_v
-                                sig["atr"] = atr_val
-                                sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
-                            need_save = True
-                            print(f"  🟡 TP TRAIL AKTİF: {symbol.replace('/USDT','')} | +{tp1_pct_v:.2f}% → ATR×{ATR_MULT} trailing başladı", flush=True)
-                    if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
-                        if _atr_is_stale(sig):
-                            fresh_atr = compute_atr(symbol)
-                            if fresh_atr:
-                                with _lock:
-                                    sig["atr"] = fresh_atr
-                                    sig["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
-                                need_save = True
-                        trail_stop = round(trail_stop_price(sig["peak_price"], sig.get("atr")), 8)
-                        trail_ret  = round((trail_stop - entry) / entry * 100, 2)
-                        if low <= trail_stop:
-                            close_reason = "trailing"; close_price = trail_stop
-                            close_status = "win_trail" if trail_ret > 0 else "loss"
+                elif sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+                    trail_stop = round(trail_stop_price(sig["peak_price"], sig.get("atr")), 8)
+                    trail_ret  = round((trail_stop - entry) / entry * 100, 2)
+                    if low <= trail_stop:
+                        close_reason = "trailing"; close_price = trail_stop
+                        close_status = "win_trail" if trail_ret > 0 else "loss"
             else:
                 is_pump = sig.get("sig_type") == "pump"
                 if is_pump:
@@ -1235,6 +1243,41 @@ def api_retest_cancelled():
                 print(f"[RETEST] İPTAL: {sym_norm}", flush=True)
                 return jsonify({"ok": True})
     return jsonify({"error": "pending_retest not found"}), 404
+
+
+@app.route("/api/tp1-hit", methods=["POST"])
+def api_tp1_hit():
+    """Al-Sat bot TP1 vurup trailing'e geçtiğinde bildirir — bot aktifken
+    portfolio kendi tp1_hit tespitini yapmıyor (check_open_positions'ta
+    bot'a devrediliyor), bu webhook olmadan dashboard hiç haberdar olmuyordu."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if AUTH_TOKEN and token != AUTH_TOKEN:
+        return jsonify({"error": "unauthorized"}), 401
+    data    = request.get_json(silent=True) or {}
+    symbol  = data.get("symbol", "")
+    peak    = float(data.get("peak") or 0)
+    tp1_pct = float(data.get("tp1_pct") or 0)
+    atr     = data.get("atr")
+    if not symbol:
+        return jsonify({"error": "missing symbol"}), 400
+    sym_norm = symbol.replace("/", "").upper()
+    now = tr_now()
+    with _lock:
+        for s in signals_db:
+            if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "open":
+                s["tp1_hit"]  = True
+                s["tp1_time"] = now.isoformat()
+                s["tp1_pct"]  = tp1_pct
+                if peak and peak > s.get("peak_price", 0):
+                    s["peak_price"] = peak
+                    s["peak_pct"]   = tp1_pct
+                if atr:
+                    s["atr"] = float(atr)
+                s["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
+                save_signals()
+                print(f"[TP1] {sym_norm} trailing başladı (+{tp1_pct:.2f}%)", flush=True)
+                return jsonify({"ok": True})
+    return jsonify({"error": "open position not found"}), 404
 
 
 @app.route("/api/position-closed", methods=["POST"])
@@ -2252,8 +2295,13 @@ def dashboard():
         tp2_val = sig.get("tp2")
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
-        stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
-        stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
+        if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES:
+            _live_trail = trail_stop_price(sig.get("peak_price", sig["entry"]), sig.get("atr"))
+            _trail_pct  = round((_live_trail - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
+            stop_cell = f"🟡 {fmt_price(_live_trail)} ({_trail_pct:+.2f}%)"
+        else:
+            stop_pct = round((sig["stop"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
+            stop_cell = f"{fmt_price(sig['stop'])} ({stop_pct:+.2f}%)"
 
         sure_cell = '<span style="font-size:.7rem;color:#7f8c8d">—</span>'
         try:
@@ -2878,7 +2926,11 @@ def alsat_page():
         cp  = fmt_price(pos.get("current_price", 0))
         lp  = fmt_price(pos.get("limit_price", 0))
         tp  = fmt_price(pos.get("trigger_price", 0))
-        sl  = fmt_price(pos.get("stop", 0))
+        is_trailing_pos = bool(pos.get("trailing"))
+        if is_trailing_pos:
+            sl = "🟡 " + fmt_price(trail_stop_price(pos.get("peak", 0), pos.get("atr")))
+        else:
+            sl = fmt_price(pos.get("stop", 0))
         t1  = fmt_price(pos.get("tp1", 0))
         t2  = fmt_price(pos.get("tp2") or 0) if pos.get("tp2") else "—"
         try:
@@ -2886,9 +2938,13 @@ def alsat_page():
             elapsed = now_dt - ot
             h, rem = divmod(int(elapsed.total_seconds()), 3600)
             elapsed_str = f"{h}s {rem//60}d"
-            rem_h = max(0, 48 - h)
-            rem_color = "#e74c3c" if rem_h < 6 else "#f39c12" if rem_h < 12 else "#7f8c8d"
-            rem_str = f'<span style="color:{rem_color}">{rem_h}s kalan</span>'
+            if is_trailing_pos:
+                # Trailing'e geçmiş pozisyon expire'dan muaf — saat sınırı yok
+                rem_str = '<span style="color:#2ecc71">trailing (süre yok)</span>'
+            else:
+                rem_h = max(0, OPEN_EXPIRE_H - h) if st == "open" else max(0, 48 - h)
+                rem_color = "#e74c3c" if rem_h < 6 else "#f39c12" if rem_h < 12 else "#7f8c8d"
+                rem_str = f'<span style="color:{rem_color}">{rem_h}s kalan</span>'
         except Exception:
             elapsed_str = "—"
             rem_str = "—"
