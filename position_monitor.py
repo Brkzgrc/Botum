@@ -25,6 +25,7 @@ ATR_PERIOD             = 14      # ATR periyodu (1H bar)
 ATR_MULT               = 0.6     # trail_stop = peak - ATR_MULT * ATR(14, 1H)
 ATR_REFRESH_S          = 1800    # ATR en fazla bu kadar saniyede bir yeniden çekilir
 STREAM_STALE_S         = 300     # Bu kadar saniye tick gelmezse stream zombi kabul edilip yeniden başlatılır
+CLOSING_STUCK_S        = 300     # closing=True bu kadar saniyeden uzun takılıysa (sebep ne olursa olsun) otomatik temizlenir
 FALLBACK_TRAIL_PCT     = 0.9816  # ATR çekilemezse: peak * bu değer (%1.84 sabit trailing)
 TRAILING_DELTA_MIN_BIPS = 180    # Binance native trailing: %1.80 alt sınır
 TRAILING_DELTA_MAX_BIPS = 184    # Binance native trailing: %1.84 üst sınır
@@ -1168,12 +1169,56 @@ def _check_price_conditions_no_tick():
             continue
 
 
+def _unstick_closing_flags():
+    """Genel güvenlik ağı — belirli bir hata kaynağını avlamak yerine (bu
+    sonsuz bir liste; bugün AYNI "closing takıldı" semptomunu 2 farklı kök
+    nedenden yaşadık) SEMPTOMUN kendisini periyodik olarak tedavi ediyoruz.
+    closing=True, CLOSING_STUCK_S'den (5dk) uzun süredir takılıysa — sebep
+    ne olursa olsun, bilinen ya da bilinmeyen — otomatik temizlenir ve
+    pozisyon bir sonraki turda normal şekilde tekrar denenir. Elle Shell
+    müdahalesi gerekliliğini ortadan kaldırır."""
+    state = _load_state()
+    positions = dict(state.get("positions", {}))
+    now = datetime.now(timezone.utc)
+    for sym, pos in positions.items():
+        try:
+            if not pos.get("closing"):
+                continue
+            ref_str = pos.get("last_tick_at") or pos.get("open_time")
+            if not ref_str:
+                continue
+            try:
+                ref = datetime.fromisoformat(ref_str)
+                if ref.tzinfo is None:
+                    ref = ref.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+            if (now - ref).total_seconds() < CLOSING_STUCK_S:
+                continue
+            with _lock:
+                s = _load_state()
+                p = s["positions"].get(sym)
+                if p and p.get("closing"):
+                    p.pop("closing", None)
+                    s["positions"][sym] = p
+                    _save_state(s)
+            print(f"[MONITOR] closing bayrağı {CLOSING_STUCK_S}s'den uzun süredir takılıydı, otomatik temizlendi: {sym}", flush=True)
+            _send_telegram(
+                f"⚠️ <b>Otomatik kurtarma — {sym}</b>\n"
+                f"closing kilidi takılı kalmıştı, temizlendi, bir sonraki turda tekrar denenecek."
+            )
+        except Exception as e:
+            print(f"[MONITOR] closing kurtarma hatası {sym}: {e}", flush=True)
+            continue
+
+
 def _periodic_check():
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
             _check_monitoring_entries()
             _check_pending_orders()
+            _unstick_closing_flags()
             _check_price_conditions_no_tick()
             _check_expired_positions_no_tick()
 
