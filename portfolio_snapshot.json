@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 08:49:39",
+  "updated_at": "2026-07-16 09:19:42",
   "performance": {
     "total": 25,
     "open": 4,
@@ -127,8 +127,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T08:45:26.315293+03:00",
-      "checks": 54,
+      "last_check": "2026-07-16T09:15:40.210354+03:00",
+      "checks": 60,
       "extra": {
         "tp3": null
       },
@@ -149,15 +149,15 @@
       "open_time": "2026-07-15T09:28:01.103739+00:00",
       "peak_price": 0.278,
       "low_price": 0.276,
-      "current_price": 0.277,
+      "current_price": 0.278,
       "peak_pct": 0.72,
       "low_pct": 0.0,
-      "current_pct": 0.36,
+      "current_pct": 0.72,
       "fill_qty": 644.87,
       "fill_time": "2026-07-16T07:09:47.215298+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T08:45:26.315293+03:00",
-      "checks": 19
+      "last_check": "2026-07-16T09:15:40.210354+03:00",
+      "checks": 25
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -180,8 +180,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T08:45:26.315293+03:00",
-      "checks": 61
+      "last_check": "2026-07-16T09:15:40.210354+03:00",
+      "checks": 67
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -197,15 +197,15 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1899,
       "low_price": 0.1858,
-      "current_price": 0.1883,
+      "current_price": 0.1884,
       "peak_pct": 1.71,
       "low_pct": -0.48,
-      "current_pct": 0.86,
+      "current_pct": 0.91,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T08:45:26.315293+03:00",
-      "checks": 130
+      "last_check": "2026-07-16T09:15:40.210354+03:00",
+      "checks": 136
     }
   ],
   "closed": [
@@ -581,7 +581,7 @@
       "symbol": "SXT/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.00822,
       "entry": 0.00822,
       "limit_price": 0.00822,
@@ -593,7 +593,9 @@
       "current_price": 0.00822,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T09:00:33.003621+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_TOWNSUSDT_2026-07-15",
