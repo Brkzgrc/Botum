@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 15:33:40",
+  "updated_at": "2026-07-16 16:03:43",
   "performance": {
     "total": 29,
     "open": 4,
@@ -121,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.221,
       "low_pct": -1.52,
-      "current_price": 0.2247,
-      "current_pct": 0.13,
+      "current_price": 0.2234,
+      "current_pct": -0.45,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T15:33:22.373130+03:00",
-      "checks": 135,
+      "last_check": "2026-07-16T16:03:35.710757+03:00",
+      "checks": 141,
       "extra": {
         "tp3": null
       },
@@ -148,16 +148,16 @@
       "tp1": 0.00374,
       "open_time": "2026-07-15T16:48:55.584692+00:00",
       "peak_price": 0.00365,
-      "low_price": 0.00362,
-      "current_price": 0.00362,
+      "low_price": 0.0036,
+      "current_price": 0.0036,
       "peak_pct": 0.83,
-      "low_pct": 0.0,
-      "current_pct": 0.0,
+      "low_pct": -0.55,
+      "current_pct": -0.55,
       "fill_qty": 49245.4,
       "fill_time": "2026-07-16T13:27:49.401260+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T15:33:22.373130+03:00",
-      "checks": 25
+      "last_check": "2026-07-16T16:03:35.710757+03:00",
+      "checks": 31
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -172,16 +172,16 @@
       "tp1": 0.0247,
       "open_time": "2026-07-15T16:49:11.672615+00:00",
       "peak_price": 0.0241,
-      "low_price": 0.0236,
+      "low_price": 0.0235,
       "current_price": 0.0236,
       "peak_pct": 0.0,
-      "low_pct": -2.07,
+      "low_pct": -2.49,
       "current_pct": -2.07,
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T15:33:22.373130+03:00",
-      "checks": 142
+      "last_check": "2026-07-16T16:03:35.710757+03:00",
+      "checks": 148
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -204,8 +204,8 @@
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T15:33:22.373130+03:00",
-      "checks": 52
+      "last_check": "2026-07-16T16:03:35.710757+03:00",
+      "checks": 58
     }
   ],
   "closed": [
@@ -472,7 +472,7 @@
       "symbol": "DOGE/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.07245,
       "entry": 0.07245,
       "limit_price": 0.07245,
@@ -484,14 +484,16 @@
       "current_price": 0.07245,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T16:03:35.709125+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_DOLOUSDT_2026-07-15",
       "symbol": "DOLO/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.02182,
       "entry": 0.02182,
       "limit_price": 0.02182,
@@ -503,7 +505,9 @@
       "current_price": 0.02182,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T16:03:35.709125+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_ETHFIUSDT_2026-07-15",
@@ -588,7 +592,7 @@
       "symbol": "LINK/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 7.995,
       "entry": 7.995,
       "limit_price": 7.995,
@@ -600,7 +604,9 @@
       "current_price": 7.995,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-16T16:03:35.709125+03:00",
+      "close_reason": "no_retest"
     },
     {
       "id": "sync_LISTAUSDT_2026-07-15",
