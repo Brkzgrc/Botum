@@ -781,8 +781,14 @@ def _sync_open_from_bot():
     # TP1/trailing onayı SADECE /api/tp1-hit webhook'una bağımlı kalmasın —
     # webhook kaybolursa (bugün defalarca oldu) dashboard sonsuza kadar
     # "onay bekleniyor" yazabilir, oysa bot'un kendi /status'u zaten gerçeği
-    # söylüyor. Burada da (webhook'tan bağımsız) trailing=true görülen
-    # pozisyonlar onaylanır.
+    # söylüyor. Burada da (webhook'tan bağımsız) onaylanır — AMA sadece
+    # trailing=true YETMEZ: bot'ta bu alan TP1 fiyat şartı sağlanır
+    # sağlanmaz set ediliyor, gerçek Binance emri o an henüz konmamış
+    # olabilir (nadir ama mümkün). trailing_sl_id'nin de dolu olması
+    # şart — o alan SADECE emir Binance'e başarıyla gönderilip bir
+    # order ID döndüğünde yazılıyor. Yani "gerçekten trailing" = ikisi
+    # birden, tek başına trailing=true "kafasına göre onaylı" demek
+    # değil.
     confirmed = 0
     with _lock:
         for sig in signals_db:
@@ -792,7 +798,7 @@ def _sync_open_from_bot():
                 continue
             sym_norm = sig.get("symbol", "").replace("/", "").upper()
             pos = bot_open.get(sym_norm)
-            if not pos or not pos.get("trailing"):
+            if not pos or not pos.get("trailing") or not pos.get("trailing_sl_id"):
                 continue
             sig["tp1_hit"] = True
             sig["tp1_confirmed"] = True
