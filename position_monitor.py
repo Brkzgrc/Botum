@@ -1112,12 +1112,54 @@ def _check_expired_positions_no_tick():
             continue
 
 
+def _check_price_conditions_no_tick():
+    """Stop-hit ve TP1-hit tespiti normalde SADECE _process_tick (websocket tick)
+    içinde çalışır. Websocket'in güvenilmez olduğu bugün defalarca kanıtlandı
+    (AWE, ZKC, DGB — hepsinde saatlerce/günlerce tek tick gelmedi). Bu fonksiyon,
+    websocket'in son CHECK_INTERVAL*2 saniyede tick vermediği pozisyonlar için
+    REST üzerinden (1m kline) high/low/close çekip _process_tick'i besliyor —
+    aynı stop/TP1/trailing/expire mantığı, tick kaynağı fark etmiyor. Websocket
+    artık sadece HIZ kazandırıyor, olmasa da sistem çalışmaya devam ediyor."""
+    state = _load_state()
+    positions = dict(state.get("positions", {}))
+    now = datetime.now(timezone.utc)
+    stale_after = CHECK_INTERVAL * 2
+
+    for sym, pos in positions.items():
+        if pos.get("status") != "open" or pos.get("closing"):
+            continue
+        last_tick_str = pos.get("last_tick_at")
+        if last_tick_str:
+            try:
+                lt = datetime.fromisoformat(last_tick_str)
+                if lt.tzinfo is None:
+                    lt = lt.replace(tzinfo=timezone.utc)
+                if (now - lt).total_seconds() < stale_after:
+                    continue  # websocket zaten çalışıyor, tekrar sorgulamaya gerek yok
+            except Exception:
+                pass
+        try:
+            klines = _get_client().get_klines(symbol=sym, interval="1m", limit=2)
+        except Exception as e:
+            print(f"[MONITOR] Tick'siz fiyat kontrolü hatası {sym}: {e}", flush=True)
+            continue
+        if not klines:
+            continue
+        k = klines[-1]
+        try:
+            high, low, close = float(k[2]), float(k[3]), float(k[4])
+        except Exception:
+            continue
+        _process_tick(sym, close, high, low)
+
+
 def _periodic_check():
     while True:
         time.sleep(CHECK_INTERVAL)
         try:
             _check_monitoring_entries()
             _check_pending_orders()
+            _check_price_conditions_no_tick()
             _check_expired_positions_no_tick()
 
             state     = _load_state()
