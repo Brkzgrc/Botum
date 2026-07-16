@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 09:19:42",
+  "updated_at": "2026-07-16 09:49:45",
   "performance": {
     "total": 25,
     "open": 4,
@@ -121,14 +121,14 @@
       "peak_pct": 1.2,
       "low_price": 0.223,
       "low_pct": -0.62,
-      "current_price": 0.2256,
-      "current_pct": 0.53,
+      "current_price": 0.2265,
+      "current_pct": 0.94,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T04:00:17.476557+03:00",
-      "last_check": "2026-07-16T09:15:40.210354+03:00",
-      "checks": 60,
+      "last_check": "2026-07-16T09:45:52.878466+03:00",
+      "checks": 66,
       "extra": {
         "tp3": null
       },
@@ -147,17 +147,17 @@
       "stop": 0.263,
       "tp1": 0.284,
       "open_time": "2026-07-15T09:28:01.103739+00:00",
-      "peak_price": 0.278,
+      "peak_price": 0.28,
       "low_price": 0.276,
-      "current_price": 0.278,
-      "peak_pct": 0.72,
+      "current_price": 0.28,
+      "peak_pct": 1.45,
       "low_pct": 0.0,
-      "current_pct": 0.72,
+      "current_pct": 1.45,
       "fill_qty": 644.87,
       "fill_time": "2026-07-16T07:09:47.215298+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T09:15:40.210354+03:00",
-      "checks": 25
+      "last_check": "2026-07-16T09:45:52.878466+03:00",
+      "checks": 31
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -173,15 +173,15 @@
       "open_time": "2026-07-15T16:49:11.672615+00:00",
       "peak_price": 0.0241,
       "low_price": 0.0239,
-      "current_price": 0.0241,
+      "current_price": 0.024,
       "peak_pct": 0.0,
       "low_pct": -0.83,
-      "current_pct": 0.0,
+      "current_pct": -0.41,
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T09:15:40.210354+03:00",
-      "checks": 67
+      "last_check": "2026-07-16T09:45:52.878466+03:00",
+      "checks": 73
     },
     {
       "id": "sync_XLMUSDT_2026-07-15",
@@ -197,15 +197,15 @@
       "open_time": "2026-07-15T16:54:02.209461+00:00",
       "peak_price": 0.1899,
       "low_price": 0.1858,
-      "current_price": 0.1884,
+      "current_price": 0.1883,
       "peak_pct": 1.71,
       "low_pct": -0.48,
-      "current_pct": 0.91,
+      "current_pct": 0.86,
       "fill_qty": 1006.0,
       "fill_time": "2026-07-15T21:59:48.457067+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T09:15:40.210354+03:00",
-      "checks": 136
+      "last_check": "2026-07-16T09:45:52.878466+03:00",
+      "checks": 142
     }
   ],
   "closed": [
