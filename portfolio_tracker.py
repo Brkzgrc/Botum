@@ -1214,7 +1214,9 @@ def api_retest_filled():
     now = tr_now()
     with _lock:
         for s in signals_db:
-            if s.get("symbol", "").replace("/", "").upper() == sym_norm and s.get("status") == "pending_retest":
+            if s.get("symbol", "").replace("/", "").upper() != sym_norm:
+                continue
+            if s.get("status") == "pending_retest":
                 s["status"]        = "open"
                 s["entry"]         = fill_price
                 s["fill_qty"]      = qty
@@ -1225,6 +1227,13 @@ def api_retest_filled():
                 save_signals()
                 print(f"[RETEST] DOLDU: {sym_norm} @ {fill_price}", flush=True)
                 return jsonify({"ok": True})
+            if s.get("status") == "open":
+                # Periyodik sync (_sync_open_from_bot) webhook'tan önce/yerine
+                # zaten open'a terfi ettirmiş olabilir — bot bunu hata sanıp
+                # sonsuza kadar (60sn'de bir) tekrar dener, gereksiz alarm
+                # veren log satırları üretir. Sonuç zaten doğru, başarı dön.
+                print(f"[RETEST] {sym_norm} zaten open (muhtemelen periyodik sync yapmış) — idempotent OK", flush=True)
+                return jsonify({"ok": True, "note": "already open"})
     return jsonify({"error": "pending_retest not found"}), 404
 
 
