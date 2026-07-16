@@ -201,7 +201,7 @@ def _market_sell(symbol: str, qty: float, reason: str):
         _get_client().order_market_sell(symbol=symbol, quantity=sell_qty)
         print(f"{tag} — OK", flush=True)
         return True
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"{tag} — HATA: {e}", flush=True)
         return False
 
@@ -216,6 +216,11 @@ def _get_usdt_balance() -> float:
 
 
 def _cancel_sl(symbol: str, sl_order_id):
+    """Her türlü hatayı (sadece BinanceAPIException değil) yutar — bu fonksiyon
+    _process_tick'in "closing=True" try/finally koruması BAŞLAMADAN ÖNCE
+    çağrılıyor (cancel_sl bloğu sell_reason bloğundan önce). Buradan sızan
+    beklenmedik bir exception (network timeout vb.) closing bayrağının
+    ASLA temizlenememesine yol açar — tam da DGB'de tekrar yaşandı."""
     if not sl_order_id:
         return
     if not ENABLED:
@@ -224,7 +229,7 @@ def _cancel_sl(symbol: str, sl_order_id):
     try:
         _get_client().cancel_order(symbol=symbol, orderId=sl_order_id)
         print(f"[MONITOR] SL iptal — {symbol} orderId={sl_order_id}", flush=True)
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] SL iptal HATA {symbol}: {e}", flush=True)
 
 
@@ -232,7 +237,7 @@ def _compute_atr(symbol: str, period: int = ATR_PERIOD):
     """Binance'ten son 1H mumları çekip Wilder ATR(period) hesaplar. Hata/yetersiz veri → None."""
     try:
         klines = _get_client().get_klines(symbol=symbol, interval=Client.KLINE_INTERVAL_1HOUR, limit=period * 5)
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] ATR kline hatası {symbol}: {e}", flush=True)
         return None
     except Exception as e:
@@ -289,7 +294,7 @@ def _place_trail_sl_order(symbol: str, peak: float, qty: float, atr=None):
         oid = order["orderId"]
         print(f"[MONITOR] Trail SL emri: {symbol} stop={trail_stop} limit={trail_limit} qty={qty_r} id={oid}", flush=True)
         return oid
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] Trail SL emir HATA {symbol}: {e}", flush=True)
         return None
 
@@ -320,7 +325,7 @@ def _place_trailing_delta_order(symbol: str, peak: float, qty: float, atr=None):
         oid = order["orderId"]
         print(f"[MONITOR] Native trailing emri: {symbol} delta={bips}bips (%{pct:.2f}) qty={qty_r} id={oid}", flush=True)
         return oid
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] Native trailing emir HATA {symbol}: {e} — ATR cancel-replace'e düşülüyor", flush=True)
         return None
 
@@ -331,7 +336,7 @@ def _is_sl_filled(symbol: str, sl_order_id) -> bool:
     try:
         order = _get_client().get_order(symbol=symbol, orderId=sl_order_id)
         return order.get("status") == "FILLED"
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] Order kontrol hatası {symbol}: {e}", flush=True)
         return False
 
@@ -347,7 +352,7 @@ def _is_limit_filled(symbol: str, order_id) -> tuple[bool, float, float]:
             quote_qty    = float(order.get("cummulativeQuoteQty", 0))
             fill_price   = quote_qty / executed_qty if executed_qty else 0.0
             return True, fill_price, executed_qty
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] Limit order kontrol hatası {symbol}: {e}", flush=True)
     return False, 0.0, 0.0
 
@@ -391,7 +396,7 @@ def _place_retroactive_sl(symbol: str, pos: dict):
             f"🛡 <b>Retroaktif SL — {symbol}</b>\n"
             f"Stop: {sl_stop} | Miktar: {qty}"
         )
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] Retroaktif SL hata {symbol}: {e}", flush=True)
         with _lock:
             s = _load_state()
@@ -464,7 +469,7 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
                     s["positions"][symbol]["sl_order_id"] = sl_order_id
                     s["positions"][symbol]["qty"] = sl_qty  # gerçek miktar
                     _save_state(s)
-        except BinanceAPIException as e:
+        except Exception as e:
             print(f"[MONITOR] SL emir hatası {symbol}: {e}", flush=True)
             _send_telegram(
                 f"⚠️ <b>SL EMRİ BAŞARISIZ — {symbol}</b>\n"
@@ -501,7 +506,7 @@ def _cancel_pending(symbol: str, pos: dict):
             _get_client().cancel_order(symbol=symbol, orderId=order_id)
             print(f"[MONITOR] Limit emir iptal: {symbol} orderId={order_id}", flush=True)
             cancelled = True
-        except BinanceAPIException as e:
+        except Exception as e:
             print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e}", flush=True)
 
         if not cancelled:
@@ -615,7 +620,7 @@ def _place_monitoring_order(symbol: str, pos: dict, active_count: int):
             if symbol in s["positions"]:
                 s["positions"][symbol]["limit_order_id"] = limit_order_id
                 _save_state(s)
-    except BinanceAPIException as e:
+    except Exception as e:
         print(f"[MONITOR] LİMİT BUY HATASI {symbol}: {e}", flush=True)
         with _lock:
             s = _load_state()
@@ -666,7 +671,7 @@ def _check_monitoring_entries():
                 if sym in s.get("positions", {}):
                     s["positions"][sym]["current_price"] = current_price
                     _save_state(s)
-        except BinanceAPIException as e:
+        except Exception as e:
             print(f"[MONITOR] Monitoring fiyat hatası {sym}: {e}", flush=True)
             continue
 
@@ -721,7 +726,7 @@ def _reconcile_sl_orders():
                     updated = True
                     print(f"[MONITOR] SL reconcile eşleşti: {sym} orderId={oid}", flush=True)
                     break
-        except BinanceAPIException as e:
+        except Exception as e:
             print(f"[MONITOR] SL reconcile hatası {sym}: {e}", flush=True)
     if updated:
         with _lock:
@@ -755,7 +760,7 @@ def _reconcile_pending_orders():
                         break
             if not matched:
                 print(f"[MONITOR] Reconcile: {sym} open order yok, periyodik kontrol yönetir", flush=True)
-        except BinanceAPIException as e:
+        except Exception as e:
             print(f"[MONITOR] Reconcile hatası {sym}: {e}", flush=True)
     if updated:
         with _lock:
