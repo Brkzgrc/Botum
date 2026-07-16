@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-16 22:04:19",
+  "updated_at": "2026-07-16 22:34:22",
   "performance": {
     "total": 33,
     "open": 5,
@@ -121,14 +121,14 @@
       "peak_pct": 0.46,
       "low_price": 0.00423,
       "low_pct": -1.86,
-      "current_price": 0.00428,
-      "current_pct": -0.7,
+      "current_price": 0.00427,
+      "current_pct": -0.93,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-15T21:00:14.302755+03:00",
-      "last_check": "2026-07-16T22:01:55.487237+03:00",
-      "checks": 67,
+      "last_check": "2026-07-16T22:32:11.948226+03:00",
+      "checks": 73,
       "extra": {
         "tp3": null
       },
@@ -149,16 +149,16 @@
       "tp1": 0.00374,
       "open_time": "2026-07-15T16:48:55.584692+00:00",
       "peak_price": 0.00365,
-      "low_price": 0.00356,
+      "low_price": 0.00355,
       "current_price": 0.00356,
       "peak_pct": 0.83,
-      "low_pct": -1.66,
+      "low_pct": -1.93,
       "current_pct": -1.66,
       "fill_qty": 49245.4,
       "fill_time": "2026-07-16T13:27:49.401260+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T22:01:55.487237+03:00",
-      "checks": 102
+      "last_check": "2026-07-16T22:32:11.948226+03:00",
+      "checks": 108
     },
     {
       "id": "sync_ICXUSDT_2026-07-15",
@@ -181,8 +181,8 @@
       "fill_qty": 8936.6,
       "fill_time": "2026-07-16T03:43:24.720868+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T22:01:55.487237+03:00",
-      "checks": 219
+      "last_check": "2026-07-16T22:32:11.948226+03:00",
+      "checks": 225
     },
     {
       "id": "sync_NOMUSDT_2026-07-15",
@@ -198,15 +198,15 @@
       "open_time": "2026-07-15T16:45:46.777445+00:00",
       "peak_price": 0.00156,
       "low_price": 0.00152,
-      "current_price": 0.00154,
+      "current_price": 0.00153,
       "peak_pct": 1.3,
       "low_pct": -1.3,
-      "current_pct": 0.0,
+      "current_pct": -0.65,
       "fill_qty": 54156.0,
       "fill_time": "2026-07-16T11:11:36.202974+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T22:01:55.487237+03:00",
-      "checks": 129
+      "last_check": "2026-07-16T22:32:11.948226+03:00",
+      "checks": 135
     },
     {
       "id": "sync_ROSEUSDT_2026-07-15",
@@ -229,8 +229,8 @@
       "fill_qty": 31327.2,
       "fill_time": "2026-07-16T17:59:33.669215+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-16T22:01:55.487237+03:00",
-      "checks": 48
+      "last_check": "2026-07-16T22:32:11.948226+03:00",
+      "checks": 54
     }
   ],
   "closed": [
