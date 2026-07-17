@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-17 18:06:18",
+  "updated_at": "2026-07-17 18:36:21",
   "performance": {
     "total": 39,
-    "open": 3,
+    "open": 4,
     "closed": 19,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 22,
-        "open": 3,
+        "total": 23,
+        "open": 4,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-17": {
-        "trades": 3,
+        "trades": 4,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -85,7 +85,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 22,
+        "trades": 23,
         "pnl": 13.110000000000001,
         "wins": 0,
         "losses": 0
@@ -93,7 +93,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 22,
+        "trades": 23,
         "pnl": 13.110000000000001,
         "wins": 0,
         "losses": 0
@@ -101,6 +101,47 @@
     }
   },
   "open": [
+    {
+      "id": "VANRY_USDT_1784296801",
+      "symbol": "VANRY/USDT",
+      "entry": 0.005789989498335102,
+      "stop": 0.005107335,
+      "tp1": 0.006494665,
+      "tp2": 0.00718833,
+      "tp3": null,
+      "limit_price": 0.005801,
+      "signal_price": 0.005881,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-17T17:00:01.513833+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.005789989498335102,
+      "peak_pct": 0.0,
+      "low_price": 0.0057,
+      "low_pct": -1.55,
+      "current_price": 0.005708,
+      "current_pct": -1.42,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-17T17:00:11.126930+03:00",
+      "last_check": "2026-07-17T18:33:21.295567+03:00",
+      "checks": 4,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 27302.0,
+      "fill_time": "2026-07-17T18:13:15.729434+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "AUDIO_USDT_1784293205",
       "symbol": "AUDIO/USDT",
@@ -125,16 +166,16 @@
       "close_pct": null,
       "peak_price": 0.01369,
       "peak_pct": 0.22,
-      "low_price": 0.01341,
-      "low_pct": -1.83,
+      "low_price": 0.01335,
+      "low_pct": -2.27,
       "current_price": 0.01344,
       "current_pct": -1.61,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-17T16:00:11.739347+03:00",
-      "last_check": "2026-07-17T18:03:11.011052+03:00",
-      "checks": 13,
+      "last_check": "2026-07-17T18:33:21.295567+03:00",
+      "checks": 19,
       "extra": {
         "tp3": null
       },
@@ -166,16 +207,16 @@
       "close_pct": null,
       "peak_price": 0.01247,
       "peak_pct": 0.34,
-      "low_price": 0.01218,
-      "low_pct": -2.0,
-      "current_price": 0.01227,
-      "current_pct": -1.27,
+      "low_price": 0.01212,
+      "low_pct": -2.48,
+      "current_price": 0.01216,
+      "current_pct": -2.16,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T19:00:12.750472+03:00",
-      "last_check": "2026-07-17T18:03:11.011052+03:00",
-      "checks": 22,
+      "last_check": "2026-07-17T18:33:21.295567+03:00",
+      "checks": 28,
       "extra": {
         "tp3": null
       },
@@ -197,15 +238,15 @@
       "open_time": "2026-07-15T09:12:52.267931+00:00",
       "peak_price": 0.01243,
       "low_price": 0.01212,
-      "current_price": 0.01229,
+      "current_price": 0.01228,
       "peak_pct": 1.3,
       "low_pct": -1.22,
-      "current_pct": 0.16,
+      "current_pct": 0.08,
       "fill_qty": 11466.3,
       "fill_time": "2026-07-17T11:55:10.770873+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-17T18:03:11.011052+03:00",
-      "checks": 73
+      "last_check": "2026-07-17T18:33:21.295567+03:00",
+      "checks": 79
     }
   ],
   "closed": [
@@ -242,44 +283,6 @@
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-17T18:00:11.272205+03:00",
       "last_check": "2026-07-17T18:00:03.995668+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
-    {
-      "id": "VANRY_USDT_1784296801",
-      "symbol": "VANRY/USDT",
-      "entry": 0.005801,
-      "stop": 0.005107335,
-      "tp1": 0.006494665,
-      "tp2": 0.00718833,
-      "tp3": null,
-      "limit_price": 0.005801,
-      "signal_price": 0.005881,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-17T17:00:01.513833+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.005801,
-      "peak_pct": 0.0,
-      "low_price": 0.005801,
-      "low_pct": 0.0,
-      "current_price": 0.005801,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-17T17:00:11.126930+03:00",
-      "last_check": "2026-07-17T17:00:01.513833+03:00",
       "checks": 0,
       "extra": {
         "tp3": null
