@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-17 15:06:00",
+  "updated_at": "2026-07-17 15:36:03",
   "performance": {
     "total": 35,
     "open": 5,
-    "closed": 12,
+    "closed": 13,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 6,
-    "total_pnl": 19.84,
-    "win_loss_pnl": 19.84,
+    "tp1_hits": 7,
+    "total_pnl": 21.05,
+    "win_loss_pnl": 21.05,
     "expired_pnl": 0.0,
-    "avg_peak": 3.68,
+    "avg_peak": 4.41,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 2,
+        "total": 3,
         "wins": 0,
         "losses": 0,
-        "pnl": 0.53,
+        "pnl": 1.74,
         "wr": 0
       },
       "riskli": {
@@ -40,27 +40,27 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 17,
+        "total": 18,
         "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 6,
-        "total_pnl": 19.84,
+        "tp1_hits": 7,
+        "total_pnl": 21.05,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 3.68,
+        "avg_peak": 4.41,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 19.84
+        "win_loss_pnl": 21.05
       }
     },
     "daily": {
       "2026-07-16": {
-        "trades": 5,
-        "pnl": 9.52,
+        "trades": 6,
+        "pnl": 10.73,
         "wins": 0,
         "losses": 0
       },
@@ -79,16 +79,16 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 17,
-        "pnl": 19.839999999999996,
+        "trades": 18,
+        "pnl": 21.049999999999997,
         "wins": 0,
         "losses": 0
       }
     },
     "monthly": {
       "2026-07": {
-        "trades": 17,
-        "pnl": 19.839999999999996,
+        "trades": 18,
+        "pnl": 21.049999999999997,
         "wins": 0,
         "losses": 0
       }
@@ -96,15 +96,15 @@
   },
   "open": [
     {
-      "id": "STRAX_USDT_1784214007",
-      "symbol": "STRAX/USDT",
-      "entry": 0.00962333023811103,
-      "stop": 0.0093729,
-      "tp1": 0.0100471,
-      "tp2": 0.0103842,
+      "id": "ASR_USDT_1784192404",
+      "symbol": "ASR/USDT",
+      "entry": 0.8643676691729323,
+      "stop": 0.85968,
+      "tp1": 0.88832,
+      "tp2": 0.90264,
       "tp3": null,
-      "limit_price": 0.00971,
-      "signal_price": 0.00971,
+      "limit_price": 0.874,
+      "signal_price": 0.884,
       "sig_type": "smc",
       "sub_type": "CHoCH",
       "source": "smc-v2",
@@ -112,28 +112,28 @@
       "candle": "",
       "funding_neg": false,
       "status": "open",
-      "open_time": "2026-07-16T18:00:07.767021+03:00",
+      "open_time": "2026-07-16T12:00:04.969204+03:00",
       "close_time": null,
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.00968,
-      "peak_pct": 0.59,
-      "low_price": 0.0094,
-      "low_pct": -2.32,
-      "current_price": 0.00951,
-      "current_pct": -1.18,
+      "peak_price": 0.8643676691729323,
+      "peak_pct": 0.0,
+      "low_price": 0.8643676691729323,
+      "low_pct": 0.0,
+      "current_price": 0.8643676691729323,
+      "current_pct": 0.0,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-16T18:00:15.066752+03:00",
-      "last_check": "2026-07-17T15:01:49.398357+03:00",
-      "checks": 129,
+      "analyzer_time": "2026-07-16T12:00:16.246299+03:00",
+      "last_check": "2026-07-16T12:00:04.969204+03:00",
+      "checks": 0,
       "extra": {
         "tp3": null
       },
-      "fill_qty": 15061.0,
-      "fill_time": "2026-07-17T04:10:46.054906+03:00",
+      "fill_qty": 398.6,
+      "fill_time": "2026-07-17T15:32:07.732426+03:00",
       "bot_miss_count": 0
     },
     {
@@ -168,14 +168,14 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-15T21:00:14.302755+03:00",
-      "last_check": "2026-07-17T15:01:49.398357+03:00",
-      "checks": 269,
+      "last_check": "2026-07-17T15:32:05.397813+03:00",
+      "checks": 275,
       "extra": {
         "tp3": null
       },
       "fill_qty": 44502.0,
       "fill_time": "2026-07-16T16:23:46.368675+03:00",
-      "bot_miss_count": 0
+      "bot_miss_count": 1
     },
     {
       "id": "sync_METABUSDT_2026-07-15",
@@ -190,16 +190,16 @@
       "tp1": 665.97,
       "open_time": "2026-07-15T14:00:44.423470+00:00",
       "peak_price": 655.45,
-      "low_price": 652.23,
-      "current_price": 654.43,
+      "low_price": 650.29,
+      "current_price": 650.29,
       "peak_pct": 0.16,
-      "low_pct": -0.33,
-      "current_pct": 0.0,
+      "low_pct": -0.63,
+      "current_pct": -0.63,
       "fill_qty": 0.294,
       "fill_time": "2026-07-17T13:51:16.659677+03:00",
-      "bot_miss_count": 0,
-      "last_check": "2026-07-17T15:01:49.398357+03:00",
-      "checks": 14
+      "bot_miss_count": 1,
+      "last_check": "2026-07-17T15:32:05.397813+03:00",
+      "checks": 20
     },
     {
       "id": "sync_ROSEUSDT_2026-07-15",
@@ -222,8 +222,8 @@
       "fill_qty": 31327.2,
       "fill_time": "2026-07-16T17:59:33.669215+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-17T15:01:49.398357+03:00",
-      "checks": 250
+      "last_check": "2026-07-17T15:32:05.397813+03:00",
+      "checks": 256
     },
     {
       "id": "sync_SAGAUSDT_2026-07-15",
@@ -246,8 +246,8 @@
       "fill_qty": 11466.3,
       "fill_time": "2026-07-17T11:55:10.770873+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-17T15:01:49.398357+03:00",
-      "checks": 37
+      "last_check": "2026-07-17T15:32:05.397813+03:00",
+      "checks": 43
     }
   ],
   "closed": [
@@ -411,6 +411,51 @@
       }
     },
     {
+      "id": "STRAX_USDT_1784214007",
+      "symbol": "STRAX/USDT",
+      "entry": 0.00962333023811103,
+      "stop": 0.0093729,
+      "tp1": 0.0100471,
+      "tp2": 0.0103842,
+      "tp3": null,
+      "limit_price": 0.00971,
+      "signal_price": 0.00971,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-16T18:00:07.767021+03:00",
+      "close_time": "2026-07-17T15:32:07.835370+03:00",
+      "close_price": null,
+      "close_reason": "sync_closed",
+      "close_pct": 1.21,
+      "peak_price": 0.0109,
+      "peak_pct": 13.27,
+      "low_price": 0.0094,
+      "low_pct": -2.32,
+      "current_price": 0.00974,
+      "current_pct": 1.21,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-17T15:27:02.445034+03:00",
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-16T18:00:15.066752+03:00",
+      "last_check": "2026-07-17T15:32:05.397813+03:00",
+      "checks": 135,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 15061.0,
+      "fill_time": "2026-07-17T04:10:46.054906+03:00",
+      "bot_miss_count": 2,
+      "tp1_pct": 4.4,
+      "atr": 0.0001985546833813581,
+      "atr_updated_at": "2026-07-17T12:27:02.953081+00:00",
+      "tp1_confirmed": false
+    },
+    {
       "id": "MANTRA_USDT_1784199604",
       "symbol": "MANTRA/USDT",
       "entry": 0.00648,
@@ -488,44 +533,6 @@
       "fill_qty": 367.47,
       "fill_time": "2026-07-17T04:10:46.054906+03:00",
       "bot_miss_count": 2
-    },
-    {
-      "id": "ASR_USDT_1784192404",
-      "symbol": "ASR/USDT",
-      "entry": 0.874,
-      "stop": 0.85968,
-      "tp1": 0.88832,
-      "tp2": 0.90264,
-      "tp3": null,
-      "limit_price": 0.874,
-      "signal_price": 0.884,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-16T12:00:04.969204+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.874,
-      "peak_pct": 0.0,
-      "low_price": 0.874,
-      "low_pct": 0.0,
-      "current_price": 0.874,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-16T12:00:16.246299+03:00",
-      "last_check": "2026-07-16T12:00:04.969204+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
     },
     {
       "id": "PYR_USDT_1784188802",
