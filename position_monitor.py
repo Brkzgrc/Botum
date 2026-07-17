@@ -154,14 +154,22 @@ def _notify_portfolio_with_retry(endpoint: str, data: dict):
     threading.Thread(target=_attempt, daemon=True).start()
 
 
-def _market_sell(symbol: str, qty: float, reason: str):
+def _market_sell(symbol: str, qty: float, reason: str) -> tuple[bool, float, float]:
     """State'teki qty gerçek bakiyeden fazla olabilir (komisyon kesintisi, manuel
     müdahale, eski kayıt drift'i vb.) — satıştan önce gerçek free balance'a kırpılır.
     Aksi halde -2010 (insufficient balance) hatası her tick'te aynı yanlış miktarla
-    sonsuza kadar tekrar eder ve pozisyon asla kapanmaz."""
+    sonsuza kadar tekrar eder ve pozisyon asla kapanmaz.
+
+    Döner: (closed, executed_qty, executed_quote_qty). Son ikisi bu ÇAĞRIDA
+    gerçekten dolan miktar/tutar — çağıran taraf art arda gelen kısmi
+    dolumları toplayıp gerçek ortalama satış fiyatını hesaplayabilsin diye.
+    Market emri düşük likiditeli bir coinde (ANKR'de yaşandığı gibi) kısmen
+    dolup exception fırlatmadan dönebilir — bu durumda executedQty istenenden
+    az olur, "closed" False döner ve kalan miktar bir sonraki denemede
+    (fonksiyon başındaki gerçek bakiye kontrolü sayesinde) otomatik satılır."""
     if not ENABLED:
         print(f"[MONITOR] SELL {symbol} {qty} ({reason}) — SİMÜLASYON", flush=True)
-        return True
+        return True, 0.0, 0.0
 
     base = symbol.replace("USDT", "").replace("BTC", "").replace("ETH", "")
     balance_checked = False
@@ -187,24 +195,29 @@ def _market_sell(symbol: str, qty: float, reason: str):
                 open_orders = _get_client().get_open_orders(symbol=symbol)
             except Exception as e:
                 print(f"[MONITOR] SELL {symbol} ({reason}) — açık emir kontrolü başarısız ({e}), güvenli tarafta kal, tekrar denenecek", flush=True)
-                return False
+                return False, 0.0, 0.0
             if open_orders:
                 oids = [o.get("orderId") for o in open_orders]
                 print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır AMA hâlâ açık emir var {oids}, satılmış SAYILMIYOR, tekrar denenecek", flush=True)
-                return False
+                return False, 0.0, 0.0
             print(f"[MONITOR] SELL {symbol} ({reason}) — bakiye sıfır, açık emir de yok, zaten satılmış kabul ediliyor", flush=True)
-            return True
+            return True, 0.0, 0.0
         print(f"[MONITOR] SELL {symbol} ({reason}) — miktar hesaplanamadı, tekrar denenecek", flush=True)
-        return False
+        return False, 0.0, 0.0
 
     tag = f"[MONITOR] SELL {symbol} {sell_qty} ({reason})" + (f" [state qty={qty} idi]" if sell_qty != qty else "")
     try:
-        _get_client().order_market_sell(symbol=symbol, quantity=sell_qty)
+        order    = _get_client().order_market_sell(symbol=symbol, quantity=sell_qty)
+        executed = float(order.get("executedQty", 0) or 0)
+        quote    = float(order.get("cummulativeQuoteQty", 0) or 0)
+        if executed < sell_qty * 0.999:
+            print(f"{tag} — KISMİ DOLDU ({executed}/{sell_qty}), tekrar denenecek", flush=True)
+            return False, executed, quote
         print(f"{tag} — OK", flush=True)
-        return True
+        return True, executed, quote
     except Exception as e:
         print(f"{tag} — HATA: {e}", flush=True)
-        return False
+        return False, 0.0, 0.0
 
 
 def _get_usdt_balance() -> float:
@@ -951,34 +964,49 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         # try/finally: closing=True'dan sonra beklenmeyen bir hata olursa bile
         # bayrak temizlenir — aksi halde pozisyon sessizce sonsuza kadar atlanır.
         closed = False
+        filled_qty_total   = float(pos_snap.get("sell_filled_qty", 0) or 0)
+        filled_quote_total = float(pos_snap.get("sell_filled_quote", 0) or 0)
         try:
             entry = float(pos_snap.get("entry", 0) or 0)
             qty   = _round_qty(float(pos_snap.get("qty", 0) or 0), symbol)
-            closed = _market_sell(symbol, qty, sell_reason)
+            closed, exec_qty, exec_quote = _market_sell(symbol, qty, sell_reason)
+            filled_qty_total   += exec_qty
+            filled_quote_total += exec_quote
             if closed:
+                # Gerçek ortalama satış fiyatı (birden fazla kısmi dolumun ağırlıklı
+                # ortalaması) — hiç gerçek dolum yakalanamadıysa (simülasyon, ya da
+                # zaten sıfır bakiye/açık emir yok yolu) tetikleyici hedef fiyata düş.
+                if filled_qty_total > 0 and filled_quote_total > 0:
+                    real_price = filled_quote_total / filled_qty_total
+                else:
+                    real_price = close_price
                 with _lock:
                     s = _load_state()
                     s["positions"].pop(symbol, None)
                     _save_state(s)
                 _stop_stream(symbol)
-                pct = round((close_price - entry) / entry * 100, 2) if entry and close_price else 0
+                pct = round((real_price - entry) / entry * 100, 2) if entry and real_price else 0
                 emoji = "⏰" if sell_reason == "expire" else ("💰" if pct > 0 else "🔴")
                 _send_telegram(
                     f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
-                    f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+                    f"Sebep: {sell_reason}\nGiriş: {entry:.6g} | Çıkış: ~{real_price:.6g}\nP&L: {pct:+.2f}%"
                 )
                 _notify_portfolio_with_retry("/api/position-closed", {
                     "symbol": symbol, "reason": sell_reason,
-                    "close_price": close_price, "pnl_pct": pct,
+                    "close_price": real_price, "pnl_pct": pct,
                 })
                 print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
         finally:
             if not closed:
-                # Satış başarısız: closing bayrağını kaldır, sonraki tick'te tekrar dene
+                # Satış başarısız/kısmi: closing bayrağını kaldır, sonraki tick'te
+                # kalan miktar tekrar denenir. Bu ana kadar gerçekten dolan kısmı
+                # (varsa) state'e yaz ki kapanışta gerçek ortalama fiyata dahil olsun.
                 with _lock:
                     s = _load_state()
                     if symbol in s["positions"]:
                         s["positions"][symbol].pop("closing", None)
+                        s["positions"][symbol]["sell_filled_qty"] = filled_qty_total
+                        s["positions"][symbol]["sell_filled_quote"] = filled_quote_total
                         _save_state(s)
                 print(f"[MONITOR] SATIŞ BAŞARISIZ: {symbol} ({sell_reason}), sonraki tick tekrar dener", flush=True)
 
@@ -1089,6 +1117,8 @@ def _check_expired_positions_no_tick():
             # takılı bırakır ve pozisyon sessizce (hiçbir log satırı olmadan)
             # her turda atlanır (AWE'de tam bu yaşandı).
             closed = False
+            filled_qty_total   = float(pos.get("sell_filled_qty", 0) or 0)
+            filled_quote_total = float(pos.get("sell_filled_quote", 0) or 0)
             try:
                 # trailing=True olan pozisyonlar üstteki kontrolle zaten atlanıyor —
                 # buraya gelen her şey her zaman sabit sl_order_id ile korunuyordur.
@@ -1097,21 +1127,27 @@ def _check_expired_positions_no_tick():
                 entry       = float(pos.get("entry", 0) or 0)
                 qty         = _round_qty(float(pos.get("qty", 0) or 0), sym)
                 close_price = float(pos.get("current_price") or entry or 0)
-                closed = _market_sell(sym, qty, "expire_no_tick")
+                closed, exec_qty, exec_quote = _market_sell(sym, qty, "expire_no_tick")
+                filled_qty_total   += exec_qty
+                filled_quote_total += exec_quote
                 if closed:
+                    if filled_qty_total > 0 and filled_quote_total > 0:
+                        real_price = filled_quote_total / filled_qty_total
+                    else:
+                        real_price = close_price
                     with _lock:
                         s = _load_state()
                         s["positions"].pop(sym, None)
                         _save_state(s)
                     _stop_stream(sym)
-                    pct = round((close_price - entry) / entry * 100, 2) if entry else 0
+                    pct = round((real_price - entry) / entry * 100, 2) if entry else 0
                     _send_telegram(
                         f"⏰ <b>POZİSYON KAPANDI (tick akışı yoktu) — {sym}</b>\n"
-                        f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{close_price:.6g}\nP&L: {pct:+.2f}%"
+                        f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{real_price:.6g}\nP&L: {pct:+.2f}%"
                     )
                     _notify_portfolio_with_retry("/api/position-closed", {
                         "symbol": sym, "reason": "expire_no_tick",
-                        "close_price": close_price, "pnl_pct": pct,
+                        "close_price": real_price, "pnl_pct": pct,
                     })
                     print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
             finally:
@@ -1120,6 +1156,8 @@ def _check_expired_positions_no_tick():
                         s = _load_state()
                         if sym in s["positions"]:
                             s["positions"][sym].pop("closing", None)
+                            s["positions"][sym]["sell_filled_qty"] = filled_qty_total
+                            s["positions"][sym]["sell_filled_quote"] = filled_quote_total
                             _save_state(s)
                     print(f"[MONITOR] SATIŞ BAŞARISIZ (tick'siz expire): {sym}, sonraki periyodik turda tekrar dener", flush=True)
         except Exception as e:
