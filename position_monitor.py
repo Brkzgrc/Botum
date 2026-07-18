@@ -115,7 +115,7 @@ def _send_telegram(text: str):
             json={
                 "chat_id": TELEGRAM_CHAT_ID,
                 "text": text,
-                "message_thread_id": 2,
+                "message_thread_id": 4,
                 "parse_mode": "HTML",
             },
             timeout=10,
@@ -709,10 +709,6 @@ def _check_monitoring_entries():
                 s["positions"].pop(sym, None)
                 _save_state(s)
             _notify_portfolio("/api/retest-cancelled", {"symbol": sym})
-            _send_telegram(
-                f"⚠️ <b>SLOT DOLU — {sym}</b>\n"
-                f"Fiyat trigger ({pos.get('trigger_price', 0):.6g}) geldi ama {MAX_POSITIONS}/{MAX_POSITIONS} dolu."
-            )
             continue
 
         # Slot var — limit emir aç
