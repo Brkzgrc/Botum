@@ -2656,8 +2656,12 @@ def dashboard():
     for _sym, _pos in _trade_positions.items():
         _st  = _pos.get("status", "")
         _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
-        _lp  = fmt_price(_pos.get("limit_price", 0))
-        _tp  = fmt_price(_pos.get("trigger_price", 0))
+        if _st == "open":
+            _lp = fmt_price(_pos.get("entry", 0))
+            _tp = "—"
+        else:
+            _lp = fmt_price(_pos.get("limit_price", 0))
+            _tp = fmt_price(_pos.get("trigger_price", 0))
         _sl  = fmt_price(_pos.get("stop", 0))
         _t1  = fmt_price(_pos.get("tp1", 0))
         try:
@@ -3022,15 +3026,18 @@ def alsat_page():
         st = pos.get("status", "")
         badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
         cp  = fmt_price(pos.get("current_price", 0))
-        lp  = fmt_price(pos.get("limit_price", 0))
-        tp  = fmt_price(pos.get("trigger_price", 0))
+        if st == "open":
+            lp = fmt_price(pos.get("entry", 0))
+            tp = "—"
+        else:
+            lp = fmt_price(pos.get("limit_price", 0))
+            tp = fmt_price(pos.get("trigger_price", 0))
         is_trailing_pos = bool(pos.get("trailing"))
         if is_trailing_pos:
             sl = "🟡 " + fmt_price(trail_stop_price(pos.get("peak", 0), pos.get("atr")))
         else:
             sl = fmt_price(pos.get("stop", 0))
         t1  = fmt_price(pos.get("tp1", 0))
-        t2  = fmt_price(pos.get("tp2") or 0) if pos.get("tp2") else "—"
         try:
             ot = datetime.fromisoformat(pos["open_time"]).replace(tzinfo=timezone.utc)
             elapsed = now_dt - ot
@@ -3055,7 +3062,6 @@ def alsat_page():
             <td style="color:#f39c12">{tp}</td>
             <td style="color:#e74c3c">{sl}</td>
             <td style="color:#2ecc71">{t1}</td>
-            <td style="color:#9b59b6">{t2}</td>
             <td style="font-size:.7rem;color:#7f8c8d">{elapsed_str}</td>
             <td>{rem_str}</td>
             <td><button onclick="deleteTrade('{sym}',this)"
@@ -3138,7 +3144,7 @@ tr:hover td{{background:#0f151d;}}
 
 <div class="table-wrap"><table><thead><tr>
   <th>Sembol</th><th>Durum</th><th>Anlık Fiyat</th><th>Limit Buy</th><th>Tetikleyici</th>
-  <th>Stop</th><th>TP1</th><th>TP2</th><th>Geçen</th><th>Kalan</th><th></th>
+  <th>Stop</th><th>TP1</th><th>Geçen</th><th>Kalan</th><th></th>
 </tr></thead><tbody>
   {rows}
 </tbody></table></div>
