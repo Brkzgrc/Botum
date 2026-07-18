@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-18 06:07:30",
+  "updated_at": "2026-07-18 06:37:33",
   "performance": {
     "total": 44,
     "open": 4,
@@ -125,16 +125,16 @@
       "close_pct": null,
       "peak_price": 0.005789989498335102,
       "peak_pct": 0.0,
-      "low_price": 0.005222,
-      "low_pct": -9.81,
-      "current_price": 0.005222,
-      "current_pct": -9.81,
+      "low_price": 0.005218,
+      "low_pct": -9.88,
+      "current_price": 0.005226,
+      "current_pct": -9.74,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-17T17:00:11.126930+03:00",
-      "last_check": "2026-07-18T06:03:50.379703+03:00",
-      "checks": 141,
+      "last_check": "2026-07-18T06:34:06.010574+03:00",
+      "checks": 147,
       "extra": {
         "tp3": null
       },
@@ -168,14 +168,14 @@
       "peak_pct": 0.22,
       "low_price": 0.01329,
       "low_pct": -2.71,
-      "current_price": 0.01331,
-      "current_pct": -2.56,
+      "current_price": 0.01329,
+      "current_pct": -2.71,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-17T16:00:11.739347+03:00",
-      "last_check": "2026-07-18T06:03:50.379703+03:00",
-      "checks": 156,
+      "last_check": "2026-07-18T06:34:06.010574+03:00",
+      "checks": 162,
       "extra": {
         "tp3": null
       },
@@ -209,14 +209,14 @@
       "peak_pct": 0.34,
       "low_price": 0.01186,
       "low_pct": -4.57,
-      "current_price": 0.01189,
-      "current_pct": -4.33,
+      "current_price": 0.01191,
+      "current_pct": -4.17,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-16T19:00:12.750472+03:00",
-      "last_check": "2026-07-18T06:03:50.379703+03:00",
-      "checks": 165,
+      "last_check": "2026-07-18T06:34:06.010574+03:00",
+      "checks": 171,
       "extra": {
         "tp3": null
       },
@@ -245,8 +245,8 @@
       "fill_qty": 11466.3,
       "fill_time": "2026-07-17T11:55:10.770873+03:00",
       "bot_miss_count": 0,
-      "last_check": "2026-07-18T06:03:50.379703+03:00",
-      "checks": 216
+      "last_check": "2026-07-18T06:34:06.010574+03:00",
+      "checks": 222
     }
   ],
   "closed": [
