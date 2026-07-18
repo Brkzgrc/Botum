@@ -2339,6 +2339,7 @@ def dashboard():
     open_sigs    = [s for s in all_sigs if s.get("status") == "open"]
     pending_sigs = [s for s in all_sigs if s.get("status") == "pending_retest"]
     closed_sigs  = [s for s in all_sigs if s.get("status") not in ("open", "pending_retest")]
+    closed_sigs.sort(key=lambda s: s.get("close_time") or "", reverse=True)
 
     open_rows = ""
     for sig in open_sigs[:50]:
