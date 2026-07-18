@@ -2205,6 +2205,44 @@ def fmt_price(p):
     decimals = min(8, -math.floor(math.log10(p)) + 3)
     return f"{p:.{decimals}f}".rstrip('0').rstrip('.')
 
+_price_precision_cache = {}
+_price_precision_lock  = threading.Lock()
+
+def _get_price_precision(symbol: str):
+    """Binance'in gerçek PRICE_FILTER tickSize'ından ondalık basamak sayısı.
+    exchangeInfo public endpoint — API key gerekmez. Bulunamazsa None döner."""
+    with _price_precision_lock:
+        if symbol in _price_precision_cache:
+            return _price_precision_cache[symbol]
+    try:
+        r = requests.get("https://api.binance.com/api/v3/exchangeInfo",
+                          params={"symbol": symbol}, timeout=5)
+        if r.ok:
+            data = r.json()
+            for f in data["symbols"][0]["filters"]:
+                if f["filterType"] == "PRICE_FILTER":
+                    import math
+                    tick = float(f["tickSize"])
+                    precision = max(0, int(round(-math.log10(tick))))
+                    with _price_precision_lock:
+                        _price_precision_cache[symbol] = precision
+                    return precision
+    except Exception:
+        pass
+    return None
+
+def fmt_price_symbol(symbol: str, p):
+    """fmt_price'ın sembole duyarlı hâli — Binance'in gerçek tickSize hassasiyetini
+    kullanır, aynı sembolün tüm fiyat sütunları (anlık/giriş/stop/TP1) aynı basamak
+    sayısıyla görünür. Precision bulunamazsa genel sezgisel fmt_price'a düşer."""
+    if p is None: return "—"
+    p = float(p)
+    if p <= 0: return "0"
+    precision = _get_price_precision(symbol)
+    if precision is not None:
+        return f"{p:.{precision}f}"
+    return fmt_price(p)
+
 def pct_color(pct):
     if pct is None: return "#8a9bb0", "—"
     pct = float(pct)
@@ -2657,13 +2695,13 @@ def dashboard():
         _st  = _pos.get("status", "")
         _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
         if _st == "open":
-            _lp = fmt_price(_pos.get("entry", 0))
+            _lp = fmt_price_symbol(_sym, _pos.get("entry", 0))
             _tp = "—"
         else:
-            _lp = fmt_price(_pos.get("limit_price", 0))
-            _tp = fmt_price(_pos.get("trigger_price", 0))
-        _sl  = fmt_price(_pos.get("stop", 0))
-        _t1  = fmt_price(_pos.get("tp1", 0))
+            _lp = fmt_price_symbol(_sym, _pos.get("limit_price", 0))
+            _tp = fmt_price_symbol(_sym, _pos.get("trigger_price", 0))
+        _sl  = fmt_price_symbol(_sym, _pos.get("stop", 0))
+        _t1  = fmt_price_symbol(_sym, _pos.get("tp1", 0))
         try:
             _ot = datetime.fromisoformat(_pos["open_time"]).replace(tzinfo=timezone.utc)
             _elapsed = now_dt - _ot
@@ -2671,7 +2709,7 @@ def dashboard():
             _elapsed_str = f"{_h}s {_r//60}d"
         except Exception:
             _elapsed_str = "—"
-        _cp  = fmt_price(_pos.get("current_price", 0))
+        _cp  = fmt_price_symbol(_sym, _pos.get("current_price", 0))
         _trade_rows += f"""<tr>
             <td style="font-weight:bold">{_sym.replace("USDT","")}/USDT</td>
             <td>{_st_badge}</td>
@@ -3025,19 +3063,19 @@ def alsat_page():
     for sym, pos in trade_positions.items():
         st = pos.get("status", "")
         badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
-        cp  = fmt_price(pos.get("current_price", 0))
+        cp  = fmt_price_symbol(sym, pos.get("current_price", 0))
         if st == "open":
-            lp = fmt_price(pos.get("entry", 0))
+            lp = fmt_price_symbol(sym, pos.get("entry", 0))
             tp = "—"
         else:
-            lp = fmt_price(pos.get("limit_price", 0))
-            tp = fmt_price(pos.get("trigger_price", 0))
+            lp = fmt_price_symbol(sym, pos.get("limit_price", 0))
+            tp = fmt_price_symbol(sym, pos.get("trigger_price", 0))
         is_trailing_pos = bool(pos.get("trailing"))
         if is_trailing_pos:
-            sl = "🟡 " + fmt_price(trail_stop_price(pos.get("peak", 0), pos.get("atr")))
+            sl = "🟡 " + fmt_price_symbol(sym, trail_stop_price(pos.get("peak", 0), pos.get("atr")))
         else:
-            sl = fmt_price(pos.get("stop", 0))
-        t1  = fmt_price(pos.get("tp1", 0))
+            sl = fmt_price_symbol(sym, pos.get("stop", 0))
+        t1  = fmt_price_symbol(sym, pos.get("tp1", 0))
         try:
             ot = datetime.fromisoformat(pos["open_time"]).replace(tzinfo=timezone.utc)
             elapsed = now_dt - ot
