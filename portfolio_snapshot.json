@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-19 02:21:24",
+  "updated_at": "2026-07-19 02:51:27",
   "performance": {
     "total": 64,
     "open": 4,
@@ -129,24 +129,28 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.00698,
-      "peak_pct": 2.2,
+      "peak_price": 0.007,
+      "peak_pct": 2.49,
       "low_price": 0.00681,
       "low_pct": -0.29,
-      "current_price": 0.00697,
-      "current_pct": 2.05,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 0.00699,
+      "current_pct": 2.34,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-19T02:25:12.521441+03:00",
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T19:00:13.402533+03:00",
-      "last_check": "2026-07-19T02:20:06.427779+03:00",
-      "checks": 53,
+      "last_check": "2026-07-19T02:50:19.231671+03:00",
+      "checks": 59,
       "extra": {
         "tp3": null
       },
       "fill_qty": 28787.8,
       "fill_time": "2026-07-18T21:54:08.311222+03:00",
-      "bot_miss_count": 0
+      "bot_miss_count": 0,
+      "tp1_confirmed": true,
+      "tp1_pct": 2.34,
+      "atr": 9.489721498719418e-05,
+      "atr_updated_at": "2026-07-18T23:25:12.521464+00:00"
     },
     {
       "id": "ONT_USDT_1784383207",
@@ -174,14 +178,14 @@
       "peak_pct": 1.23,
       "low_price": 0.04376,
       "low_pct": -0.48,
-      "current_price": 0.04412,
-      "current_pct": 0.34,
+      "current_price": 0.04414,
+      "current_pct": 0.39,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-19T02:20:06.427779+03:00",
-      "checks": 112,
+      "last_check": "2026-07-19T02:50:19.231671+03:00",
+      "checks": 118,
       "extra": {
         "tp3": null
       },
@@ -221,8 +225,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T14:00:14.958078+03:00",
-      "last_check": "2026-07-19T02:20:06.427779+03:00",
-      "checks": 145,
+      "last_check": "2026-07-19T02:50:19.231671+03:00",
+      "checks": 151,
       "extra": {
         "tp3": null
       },
@@ -262,8 +266,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-19T02:20:06.427779+03:00",
-      "checks": 171,
+      "last_check": "2026-07-19T02:50:19.231671+03:00",
+      "checks": 177,
       "extra": {
         "tp3": null
       },
