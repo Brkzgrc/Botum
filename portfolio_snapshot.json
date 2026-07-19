@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-19 21:23:16",
+  "updated_at": "2026-07-19 21:53:19",
   "performance": {
     "total": 78,
-    "open": 4,
-    "closed": 33,
+    "open": 3,
+    "closed": 34,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 13,
-    "total_pnl": 0.16,
-    "win_loss_pnl": 0.16,
+    "total_pnl": -2.22,
+    "win_loss_pnl": -2.22,
     "expired_pnl": 0.0,
-    "avg_peak": 2.7,
+    "avg_peak": 2.62,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -41,26 +41,26 @@
     "by_type": {
       "Legacy SMC": {
         "total": 37,
-        "open": 4,
+        "open": 3,
         "wins": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 13,
-        "total_pnl": 0.16,
+        "total_pnl": -2.22,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 2.7,
+        "avg_peak": 2.62,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 0.16
+        "win_loss_pnl": -2.22
       }
     },
     "daily": {
       "2026-07-19": {
         "trades": 6,
-        "pnl": -1.9100000000000001,
+        "pnl": -4.290000000000001,
         "wins": 0,
         "losses": 0
       },
@@ -98,7 +98,7 @@
     "weekly": {
       "2026-W28": {
         "trades": 37,
-        "pnl": 0.1600000000000007,
+        "pnl": -2.220000000000002,
         "wins": 0,
         "losses": 0
       }
@@ -106,54 +106,13 @@
     "monthly": {
       "2026-07": {
         "trades": 37,
-        "pnl": 0.1600000000000007,
+        "pnl": -2.220000000000002,
         "wins": 0,
         "losses": 0
       }
     }
   },
   "open": [
-    {
-      "id": "STO_USDT_1784476802",
-      "symbol": "STO/USDT",
-      "entry": 0.042,
-      "stop": 0.0410622234,
-      "tp1": 0.0431377766,
-      "tp2": 0.0441755532,
-      "tp3": null,
-      "limit_price": 0.0421,
-      "signal_price": 0.0421,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-19T19:00:02.821929+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.0421,
-      "peak_pct": 0.24,
-      "low_price": 0.0411,
-      "low_pct": -2.14,
-      "current_price": 0.0411,
-      "current_pct": -2.14,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-19T21:22:28.703806+03:00",
-      "checks": 29,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 4519.9,
-      "fill_time": "2026-07-19T19:01:16.045605+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "ANIME_USDT_1784458807",
       "symbol": "ANIME/USDT",
@@ -186,8 +145,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.716157+03:00",
-      "last_check": "2026-07-19T21:22:28.703806+03:00",
-      "checks": 87,
+      "last_check": "2026-07-19T21:52:37.739076+03:00",
+      "checks": 93,
       "extra": {
         "tp3": null
       },
@@ -221,14 +180,14 @@
       "peak_pct": 3.82,
       "low_price": 0.00338,
       "low_pct": -13.99,
-      "current_price": 0.00339,
-      "current_pct": -13.74,
+      "current_price": 0.0034,
+      "current_pct": -13.49,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:11.517517+03:00",
-      "last_check": "2026-07-19T21:22:28.703806+03:00",
-      "checks": 88,
+      "last_check": "2026-07-19T21:52:37.739076+03:00",
+      "checks": 94,
       "extra": {
         "tp3": null
       },
@@ -262,14 +221,14 @@
       "peak_pct": 1.68,
       "low_price": 0.0636,
       "low_pct": -3.05,
-      "current_price": 0.0641,
-      "current_pct": -2.29,
+      "current_price": 0.0639,
+      "current_pct": -2.59,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-19T05:00:15.699279+03:00",
-      "last_check": "2026-07-19T21:22:28.703806+03:00",
-      "checks": 192,
+      "last_check": "2026-07-19T21:52:37.739076+03:00",
+      "checks": 198,
       "extra": {
         "tp3": null
       },
