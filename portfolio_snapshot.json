@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-19 11:52:21",
+  "updated_at": "2026-07-19 12:22:24",
   "performance": {
     "total": 67,
-    "open": 3,
-    "closed": 30,
+    "open": 2,
+    "closed": 31,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 13,
-    "total_pnl": 8.29,
-    "win_loss_pnl": 8.29,
+    "total_pnl": 6.47,
+    "win_loss_pnl": 6.47,
     "expired_pnl": 0.0,
-    "avg_peak": 2.86,
+    "avg_peak": 2.77,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -41,20 +41,20 @@
     "by_type": {
       "Legacy SMC": {
         "total": 33,
-        "open": 3,
+        "open": 2,
         "wins": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 13,
-        "total_pnl": 8.29,
+        "total_pnl": 6.47,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 2.86,
+        "avg_peak": 2.77,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 8.29
+        "win_loss_pnl": 6.47
       }
     },
     "daily": {
@@ -66,7 +66,7 @@
       },
       "2026-07-18": {
         "trades": 7,
-        "pnl": 9.66,
+        "pnl": 7.840000000000001,
         "wins": 0,
         "losses": 0
       },
@@ -98,7 +98,7 @@
     "weekly": {
       "2026-W28": {
         "trades": 33,
-        "pnl": 8.289999999999996,
+        "pnl": 6.469999999999999,
         "wins": 0,
         "losses": 0
       }
@@ -106,7 +106,7 @@
     "monthly": {
       "2026-07": {
         "trades": 33,
-        "pnl": 8.289999999999996,
+        "pnl": 6.469999999999999,
         "wins": 0,
         "losses": 0
       }
@@ -139,14 +139,14 @@
       "peak_pct": 1.68,
       "low_price": 0.0636,
       "low_pct": -3.05,
-      "current_price": 0.0637,
-      "current_pct": -2.9,
+      "current_price": 0.0636,
+      "current_pct": -3.05,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-19T05:00:15.699279+03:00",
-      "last_check": "2026-07-19T11:48:41.822111+03:00",
-      "checks": 78,
+      "last_check": "2026-07-19T12:18:50.418437+03:00",
+      "checks": 84,
       "extra": {
         "tp3": null
       },
@@ -180,60 +180,19 @@
       "peak_pct": 2.39,
       "low_price": 0.04324,
       "low_pct": -1.66,
-      "current_price": 0.04334,
-      "current_pct": -1.43,
+      "current_price": 0.04327,
+      "current_pct": -1.59,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-19T11:48:41.822111+03:00",
-      "checks": 225,
+      "last_check": "2026-07-19T12:18:50.418437+03:00",
+      "checks": 231,
       "extra": {
         "tp3": null
       },
       "fill_qty": 4442.0,
       "fill_time": "2026-07-18T17:01:33.700347+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "RVN_USDT_1784365206",
-      "symbol": "RVN/USDT",
-      "entry": 0.0038399999999999997,
-      "stop": 0.00371135,
-      "tp1": 0.00394865,
-      "tp2": 0.0040673,
-      "tp3": null,
-      "limit_price": 0.00383,
-      "signal_price": 0.00385,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-18T12:00:06.177142+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.00384,
-      "peak_pct": 0.0,
-      "low_price": 0.00375,
-      "low_pct": -2.34,
-      "current_price": 0.00378,
-      "current_pct": -1.56,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-19T11:48:41.822111+03:00",
-      "checks": 284,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 36655.3,
-      "fill_time": "2026-07-18T12:03:38.313784+03:00",
       "bot_miss_count": 0
     }
   ],
