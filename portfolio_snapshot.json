@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-19 18:22:58",
+  "updated_at": "2026-07-19 18:53:01",
   "performance": {
     "total": 74,
     "open": 4,
@@ -145,8 +145,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.716157+03:00",
-      "last_check": "2026-07-19T18:21:10.522621+03:00",
-      "checks": 51,
+      "last_check": "2026-07-19T18:51:21.520801+03:00",
+      "checks": 57,
       "extra": {
         "tp3": null
       },
@@ -180,14 +180,14 @@
       "peak_pct": 0.6,
       "low_price": 3.25,
       "low_pct": -1.81,
-      "current_price": 3.25,
-      "current_pct": -1.81,
+      "current_price": 3.27,
+      "current_pct": -1.21,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.396151+03:00",
-      "last_check": "2026-07-19T18:21:10.522621+03:00",
-      "checks": 38,
+      "last_check": "2026-07-19T18:51:21.520801+03:00",
+      "checks": 44,
       "extra": {
         "tp3": null
       },
@@ -219,16 +219,16 @@
       "close_pct": null,
       "peak_price": 0.00408,
       "peak_pct": 3.82,
-      "low_price": 0.00349,
-      "low_pct": -11.2,
-      "current_price": 0.00349,
-      "current_pct": -11.2,
+      "low_price": 0.00346,
+      "low_pct": -11.96,
+      "current_price": 0.00347,
+      "current_pct": -11.7,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:11.517517+03:00",
-      "last_check": "2026-07-19T18:21:10.522621+03:00",
-      "checks": 52,
+      "last_check": "2026-07-19T18:51:21.520801+03:00",
+      "checks": 58,
       "extra": {
         "tp3": null
       },
@@ -262,14 +262,14 @@
       "peak_pct": 1.68,
       "low_price": 0.0636,
       "low_pct": -3.05,
-      "current_price": 0.0641,
-      "current_pct": -2.29,
+      "current_price": 0.064,
+      "current_pct": -2.44,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-19T05:00:15.699279+03:00",
-      "last_check": "2026-07-19T18:21:10.522621+03:00",
-      "checks": 156,
+      "last_check": "2026-07-19T18:51:21.520801+03:00",
+      "checks": 162,
       "extra": {
         "tp3": null
       },
