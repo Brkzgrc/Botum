@@ -342,23 +342,6 @@ def get_coin_name(symbol):
         return symbol.split("/")[0]
 
 # ============================================================
-# 5) TEKNİK İNDİKATÖRLER
-# ============================================================
-def calc_atr(df, period=14):
-    hl  = df["high"] - df["low"]
-    hpc = (df["high"] - df["close"].shift(1)).abs()
-    lpc = (df["low"]  - df["close"].shift(1)).abs()
-    tr  = pd.concat([hl, hpc, lpc], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
-
-def calc_rsi(df, period=14):
-    delta = df["close"].diff()
-    gain  = delta.where(delta > 0, 0.0).ewm(alpha=1/period, adjust=False).mean()
-    loss  = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/period, adjust=False).mean()
-    rs    = gain / loss.replace(0, 1e-10)
-    return 100 - (100 / (1 + rs))
-
-# ============================================================
 # 5b) TICK SIZE YARDIMCI
 # ============================================================
 _tick_cache: dict = {}
