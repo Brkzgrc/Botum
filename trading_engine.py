@@ -183,13 +183,14 @@ def execute(signal: dict):
             return
 
         # ── Anlık fiyat kontrolleri ─────────────────────────────────────────
+        # NOT: "fiyat TP1 üzerinde -> reddet" kuralı kasıtlı olarak kaldırıldı.
+        # Backtest (smc_relax_tp1_reject.py, 2022-2026): bu kural red edilenlerin
+        # %96'sını oluşturuyordu ve o grup hipotetik olarak ortalama +%1.97
+        # kazandırıyordu (%61.6 WR). Kaldırılınca: getiri +%18.538→+%27.127,
+        # MaxDD -%18.09→-%11.46, en kötü kayıpta önemsiz bir fark (-%13.79→-%14.17).
         try:
             ticker = get_client().get_symbol_ticker(symbol=symbol)
             current_price = float(ticker["price"])
-            if current_price >= tp1:
-                print(f"[TRADE] Reddedildi: fiyat TP1 üzerinde | "
-                      f"mevcut={current_price:.6g} tp1={tp1:.6g}", flush=True)
-                return
             if current_price <= stop:
                 print(f"[TRADE] Reddedildi: fiyat stop seviyesinin altında | "
                       f"mevcut={current_price:.6g} stop={stop:.6g}", flush=True)
