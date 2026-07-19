@@ -4,7 +4,7 @@
 # ───────────────────────────────────────────────────────────────
 #  SİNYAL KOŞULLARI
 #    • CHoCH Bullish (yapısal kırılım)
-#    • Hacim filtresi  : son bar / 20 bar MA ≥ 5.0x
+#    • Hacim filtresi  : son bar / 20 bar MA ≥ 8.5x
 #    • 24h soğuma      : aynı coinde 24 saat tekrar yok
 #    • BTC crash filtresi aktif
 #    • BTC downtrend filtresi aktif
@@ -70,7 +70,7 @@ PORTFOLIO_TOKEN  = os.getenv("PORTFOLIO_TOKEN", "")
 TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
-VOL_RATIO_MIN    = 7.5  # Hacim filtresi: son bar / 20 bar MA
+VOL_RATIO_MIN    = 8.5  # Hacim filtresi: son bar / 20 bar MA
 
 ATR_PERIOD       = 14    # Hibrit stop için — position_monitor.py'nin trailing ATR'siyle aynı
 STOP_ATR_MULT    = 2.75  # Backtest'te doğrulanan değer (smc_hybrid_stop_final.py, 2022-2026)
