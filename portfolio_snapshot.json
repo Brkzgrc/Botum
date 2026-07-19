@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-19 18:53:01",
+  "updated_at": "2026-07-19 19:23:04",
   "performance": {
-    "total": 74,
-    "open": 4,
+    "total": 76,
+    "open": 5,
     "closed": 32,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 36,
-        "open": 4,
+        "total": 37,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-19": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 2.02,
         "wins": 0,
         "losses": 0
@@ -97,7 +97,7 @@
     },
     "weekly": {
       "2026-W28": {
-        "trades": 36,
+        "trades": 37,
         "pnl": 4.089999999999999,
         "wins": 0,
         "losses": 0
@@ -105,7 +105,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 36,
+        "trades": 37,
         "pnl": 4.089999999999999,
         "wins": 0,
         "losses": 0
@@ -113,6 +113,47 @@
     }
   },
   "open": [
+    {
+      "id": "STO_USDT_1784476802",
+      "symbol": "STO/USDT",
+      "entry": 0.042,
+      "stop": 0.0410622234,
+      "tp1": 0.0431377766,
+      "tp2": 0.0441755532,
+      "tp3": null,
+      "limit_price": 0.0421,
+      "signal_price": 0.0421,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-19T19:00:02.821929+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.0421,
+      "peak_pct": 0.24,
+      "low_price": 0.0417,
+      "low_pct": -0.71,
+      "current_price": 0.0417,
+      "current_pct": -0.71,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-19T19:21:34.121189+03:00",
+      "checks": 5,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 4519.9,
+      "fill_time": "2026-07-19T19:01:16.045605+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "ANIME_USDT_1784458807",
       "symbol": "ANIME/USDT",
@@ -145,8 +186,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.716157+03:00",
-      "last_check": "2026-07-19T18:51:21.520801+03:00",
-      "checks": 57,
+      "last_check": "2026-07-19T19:21:34.121189+03:00",
+      "checks": 63,
       "extra": {
         "tp3": null
       },
@@ -178,16 +219,16 @@
       "close_pct": null,
       "peak_price": 3.33,
       "peak_pct": 0.6,
-      "low_price": 3.25,
-      "low_pct": -1.81,
-      "current_price": 3.27,
-      "current_pct": -1.21,
+      "low_price": 3.24,
+      "low_pct": -2.11,
+      "current_price": 3.26,
+      "current_pct": -1.51,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.396151+03:00",
-      "last_check": "2026-07-19T18:51:21.520801+03:00",
-      "checks": 44,
+      "last_check": "2026-07-19T19:21:34.121189+03:00",
+      "checks": 50,
       "extra": {
         "tp3": null
       },
@@ -219,16 +260,16 @@
       "close_pct": null,
       "peak_price": 0.00408,
       "peak_pct": 3.82,
-      "low_price": 0.00346,
-      "low_pct": -11.96,
-      "current_price": 0.00347,
-      "current_pct": -11.7,
+      "low_price": 0.00344,
+      "low_pct": -12.47,
+      "current_price": 0.00346,
+      "current_pct": -11.96,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:11.517517+03:00",
-      "last_check": "2026-07-19T18:51:21.520801+03:00",
-      "checks": 58,
+      "last_check": "2026-07-19T19:21:34.121189+03:00",
+      "checks": 64,
       "extra": {
         "tp3": null
       },
@@ -268,8 +309,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-19T05:00:15.699279+03:00",
-      "last_check": "2026-07-19T18:51:21.520801+03:00",
-      "checks": 162,
+      "last_check": "2026-07-19T19:21:34.121189+03:00",
+      "checks": 168,
       "extra": {
         "tp3": null
       },
