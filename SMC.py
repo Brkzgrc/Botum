@@ -10,7 +10,8 @@
 #    • BTC downtrend filtresi aktif
 #
 #  STOP / TP
-#    • Stop   : yapısal düşük (CHoCH öncesi swing low)
+#    • Stop   : hibrit — yapısal (CHoCH öncesi swing low × 0.995) ile
+#               ATR-bazlı (entry - 2.75×ATR14) stop'un DAR olanı
 #    • TP1    : 1:1 risk/ödül
 #    • TP2    : 1:2 risk/ödül
 #
@@ -70,6 +71,9 @@ TIMEFRAME        = "1h"
 
 CHOCH_SWING      = 5    # Micro CHoCH tespiti için (LuxAlgo ile aynı)
 VOL_RATIO_MIN    = 7.5  # Hacim filtresi: son bar / 20 bar MA
+
+ATR_PERIOD       = 14    # Hibrit stop için — position_monitor.py'nin trailing ATR'siyle aynı
+STOP_ATR_MULT    = 2.75  # Backtest'te doğrulanan değer (smc_hybrid_stop_final.py, 2022-2026)
 
 BOOTSTRAP_BARS   = 2500
 KEEP_BARS        = 2500
@@ -537,6 +541,38 @@ def _swing_lows_trend(df, choch_swing=CHOCH_SWING):
     return swing_trend, swing_low_level, prev_swing_low
 
 # ============================================================
+# 7c) ATR VE HİBRİT STOP
+# ============================================================
+def _compute_atr_wilder(df, period=ATR_PERIOD):
+    """Wilder ATR (son bar). Matematiksel olarak backtest'teki compute_atr()
+    ile aynı — Wilder smoothing = EMA(alpha=1/period). Yeterli veri yoksa None."""
+    if df is None or len(df) < period + 1:
+        return None
+    h, l, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+    last = atr.iloc[-1]
+    return float(last) if pd.notna(last) else None
+
+
+def _compute_hybrid_stop(entry, swing_low, atr_val, mult=STOP_ATR_MULT):
+    """Yapısal stop (swing low × 0.995) ile ATR-bazlı stop'un (entry - mult×ATR)
+    DAR olanı seçilir — VANRY tipi aşırı-geniş yapısal stopları daraltır, ama
+    çok volatil coinlerde ATR'nin yapısaldan da geniş çıkmasını engeller."""
+    structural = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
+    if structural >= entry:
+        structural = round(entry * 0.95, 10)
+    if atr_val and atr_val > 0:
+        atr_stop = round(entry - mult * atr_val, 10)
+        stop = max(structural, atr_stop)
+    else:
+        stop = structural
+    if stop >= entry:
+        stop = round(entry * 0.95, 10)
+    return stop
+
+
+# ============================================================
 # 8) ANALİZ — Bar kapanışında çalışır
 # ============================================================
 def _analyze_symbol(symbol):
@@ -587,9 +623,8 @@ def _analyze_symbol(symbol):
         limit_price, _ = _choch_plus_one_tick(choch_level, symbol)
         entry = limit_price if limit_price else choch_level  # risk/tp hesabı fill fiyatından
 
-        stop = round(swing_low * 0.995, 10) if swing_low is not None else round(entry * 0.95, 10)
-        if stop >= entry:
-            stop = round(entry * 0.95, 10)
+        atr_val = _compute_atr_wilder(df)
+        stop = _compute_hybrid_stop(entry, swing_low, atr_val)
         risk = max(entry - stop, entry * 0.01)
         tp1  = round(entry + risk * 1.0, 10)
         tp2  = round(entry + risk * 2.0, 10)
@@ -771,7 +806,7 @@ async def main():
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
     print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash/downtrend yok")
-    print(f"  Stop            : Swing low × 0.995 (fallback: entry × 0.95)")
+    print(f"  Stop            : Hibrit — max(Swing low × 0.995, entry - {STOP_ATR_MULT}×ATR{ATR_PERIOD}) (dar olan)")
     print(f"  TP Yapısı       : TP1=risk×1.0 | TP2=risk×2.0")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
     print("=" * 60 + "\n")
