@@ -224,6 +224,8 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 
 **Bulunan hata (2026-07-20, düzeltildi):** `claude_analyzer.py` → `_portfolio_context()`, Claude'un kararına geçmiş performansı ("[BU COİN GEÇMİŞİ]") katmak için yazılmıştı, ama trading bot canlıya geçtikten sonra smc-v2 kapanışları `/api/position-closed` webhook'undan `status="closed"` + `outcome`/`close_pct` şemasıyla geliyor — fonksiyon hâlâ eski `status` değerlerine (`win_tp1` vb.) bakıyordu, hiç eşleşmiyordu. Sonuç: geçmiş kaydı tutuluyordu ama analyzer'a hiç ulaşmıyordu, "geçmiş veri yok" hep dönüyordu. `_CLOSED_ST`'ye `"closed"` eklendi, `_is_win()` `outcome`/`close_pct` alanlarına bakacak şekilde genişletildi.
 
+**Bulunan hata (2026-07-20, düzeltildi):** Kapanmış işlemlerin ~%50'sinde dashboard'da hiç analiz görünmüyordu — `claude_analyzer.py`'deki zincirin (Claude API çağrısı, portfolio'ya PATCH ile sonucu bildirme) her adımı tek seferlikti, geçici bir ağ/rate-limit hatasında sessizce vazgeçiyordu, retry yoktu. `evaluate()`'teki Claude çağrısına ve `_update_portfolio_analyzer()`'daki PATCH'e 3 denemeye kadar (2sn/4sn backoff) retry eklendi. Not: `SMC.py`'deki ilk `/api/analyze` POST'u (zincirin başlangıcı) kasıtlı olarak dokunulmadı — SMC.py'ye değişiklik ayrı onay gerektiriyor.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.

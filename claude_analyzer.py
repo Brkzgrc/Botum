@@ -1001,21 +1001,25 @@ KARAR: [✅ GİR — piyasa koşulları uygun / ⚠️ DİKKAT — belirli risk 
 GEREKÇE: (2-3 cümle — somut veri referansı ver)
 UYARI: (varsa 1 cümle, yoksa yazma)"""
 
-    try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        _t0 = time.time()
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=350,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        _log_usage("claude_analyzer", "haiku", _PROMPT_V_SIGNAL,
-                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0,
-                   prompt_chars=len(prompt))
-        return resp.content[0].text.strip(), conditions
-    except Exception as e:
-        print(f"[ANALYZER CLAUDE] {e}", flush=True)
-        return "", conditions
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            _t0 = time.time()
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=350,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            _log_usage("claude_analyzer", "haiku", _PROMPT_V_SIGNAL,
+                       resp.usage.input_tokens, resp.usage.output_tokens, time.time() - _t0,
+                       prompt_chars=len(prompt))
+            return resp.content[0].text.strip(), conditions
+        except Exception as e:
+            print(f"[ANALYZER CLAUDE] deneme {attempt}/{max_attempts}: {e}", flush=True)
+            if attempt < max_attempts:
+                time.sleep(2 * attempt)
+    return "", conditions
 
 # ============================================================
 # ANA GİRİŞ NOKTASI
@@ -1029,20 +1033,26 @@ def _extract_verdict(decision: str) -> str:
 def _update_portfolio_analyzer(portfolio_id: str, verdict: str):
     if not portfolio_id or not PORTFOLIO_URL or not verdict:
         return
-    try:
-        headers = {"Content-Type": "application/json"}
-        if PORTFOLIO_TOKEN:
-            headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
-        safe_id = portfolio_id.replace("/", "_")
-        r = requests.patch(
-            f"{PORTFOLIO_URL}/api/signal/{safe_id}/analyzer",
-            json={"analyzer_decision": verdict},
-            headers=headers, timeout=5,
-        )
-        if r.status_code != 200:
-            print(f"[ANALYZER] Portfolio güncelleme başarısız: {r.status_code} {r.text[:80]}", flush=True)
-    except Exception as e:
-        print(f"[ANALYZER] Portfolio güncelleme hatası: {e}", flush=True)
+    headers = {"Content-Type": "application/json"}
+    if PORTFOLIO_TOKEN:
+        headers["Authorization"] = f"Bearer {PORTFOLIO_TOKEN}"
+    safe_id = portfolio_id.replace("/", "_")
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            r = requests.patch(
+                f"{PORTFOLIO_URL}/api/signal/{safe_id}/analyzer",
+                json={"analyzer_decision": verdict},
+                headers=headers, timeout=5,
+            )
+            if r.status_code == 200:
+                return
+            print(f"[ANALYZER] Portfolio güncelleme başarısız (deneme {attempt}/{max_attempts}): "
+                  f"{r.status_code} {r.text[:80]}", flush=True)
+        except Exception as e:
+            print(f"[ANALYZER] Portfolio güncelleme hatası (deneme {attempt}/{max_attempts}): {e}", flush=True)
+        if attempt < max_attempts:
+            time.sleep(2 * attempt)
 
 def process_and_send(signal: dict, recent_count: int = 0, sig_num: int = 0, portfolio_id: str = ""):
     """
