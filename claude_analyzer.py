@@ -963,7 +963,10 @@ def evaluate(signal: dict, recent_count: int = 0) -> tuple[str, dict]:
                 adx_note = f"\nADX KALİTE: {adx_val:.0f} ⚠️ Zayıf trend — backtest WR %50 segmenti"
 
     prompt = f"""Bu sinyal otomatik teknik filtrelerden geçti. Görevin, filtrelerin görmediği ek piyasa risklerini tespit etmek — teknik koşullar zaten karşılandı.
-Somut bir neden olmadan RİSKLİ deme. Belirsizlik varsa DİKKAT yeterli.
+Somut bir neden olmadan RİSKLİ deme. Aynı şekilde, gerekçende referans verebileceğin SOMUT bir veri noktası
+(belirli bir gösterge değeri, haber, likidite sweep, dominans/ETF sinyali, aşırı alım/satım vb.) yoksa DİKKAT de
+verme — "piyasa her zaman belirsizdir" gibi genel bir gerekçe DİKKAT için yeterli değildir, bu durumda GİR ver.
+DİKKAT sadece somut bir risk işaretine dayanıyorsa anlamlıdır.
 
 [SİNYAL]
 Kaynak: {_SOURCE_NAMES.get(source, source)}

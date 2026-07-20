@@ -226,6 +226,8 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 
 **Bulunan hata (2026-07-20, düzeltildi):** Kapanmış işlemlerin ~%50'sinde dashboard'da hiç analiz görünmüyordu — `claude_analyzer.py`'deki zincirin (Claude API çağrısı, portfolio'ya PATCH ile sonucu bildirme) her adımı tek seferlikti, geçici bir ağ/rate-limit hatasında sessizce vazgeçiyordu, retry yoktu. `evaluate()`'teki Claude çağrısına ve `_update_portfolio_analyzer()`'daki PATCH'e 3 denemeye kadar (2sn/4sn backoff) retry eklendi. Not: `SMC.py`'deki ilk `/api/analyze` POST'u (zincirin başlangıcı) kasıtlı olarak dokunulmadı — SMC.py'ye değişiklik ayrı onay gerektiriyor.
 
+**Bulunan sorun (2026-07-20, düzeltildi):** Analiz üretilen sinyallerin ~%94'ü "DİKKAT" çıkıyordu, "GİR" pratikte hiç verilmiyordu (34 kapanmış işlemde 16 DİKKAT'e karşı 1 GİR) — verdict ayırt edici olmaktan çıkmıştı. Sebep: prompt'ta "Belirsizlik varsa DİKKAT yeterli" talimatı, piyasa her zaman bir miktar belirsizlik taşıdığı için modeli sürekli güvenli tarafa (DİKKAT) itiyordu. Talimat, RİSKLİ için zaten var olan "somut neden şart" kuralının DİKKAT'e de uygulanacağı şekilde değiştirildi — artık DİKKAT de referans verilebilir somut bir veri noktasına dayanmak zorunda, yoksa GİR veriliyor.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
