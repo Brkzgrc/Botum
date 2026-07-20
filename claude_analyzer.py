@@ -743,12 +743,18 @@ def _portfolio_context(symbol: str, sig_type: str) -> tuple[str, str]:
         if not isinstance(signals, list):
             signals = signals.get("signals", signals.get("data", []))
         _CLOSED_ST = {"win_tp1", "win_tp2", "win_trail", "win_partial",
-                      "half_stopped", "half_expired", "loss", "expired"}
+                      "half_stopped", "half_expired", "loss", "expired", "closed"}
         _WIN_ST    = {"win_tp1", "win_tp2", "win_trail", "win_partial"}
         closed = [s for s in signals if s.get("status") in _CLOSED_ST]
 
         def _is_win(s):
             st = s.get("status", "")
+            if st == "closed":
+                # trading bot aktifken /api/position-closed webhook'undan gelen
+                # güncel kapanış şeması — status hep "closed", sonuç outcome/close_pct'te
+                if s.get("outcome"):
+                    return s["outcome"] == "win"
+                return bool((s.get("close_pct") or 0) > 0)
             return st in _WIN_ST or (st == "half_stopped" and (s.get("close_pct") or 0) > 0)
 
         pt = _SIG_TYPE_MAP.get(sig_type, sig_type)
