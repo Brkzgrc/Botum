@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-20 12:52:20",
+  "updated_at": "2026-07-20 13:22:22",
   "performance": {
     "total": 87,
-    "open": 4,
+    "open": 5,
     "closed": 39,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 43,
-        "open": 4,
+        "total": 44,
+        "open": 5,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-20": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 13.95,
         "wins": 0,
         "losses": 0
@@ -103,7 +103,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 5,
+        "trades": 6,
         "pnl": 13.95,
         "wins": 0,
         "losses": 0
@@ -117,7 +117,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 43,
+        "trades": 44,
         "pnl": 5.84,
         "wins": 0,
         "losses": 0
@@ -125,6 +125,47 @@
     }
   },
   "open": [
+    {
+      "id": "BEL_USDT_1784538006",
+      "symbol": "BEL/USDT",
+      "entry": 0.10540000000000001,
+      "stop": 0.1023855,
+      "tp1": 0.1082145,
+      "tp2": 0.111129,
+      "tp3": null,
+      "limit_price": 0.1053,
+      "signal_price": 0.1068,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-20T12:00:06.143056+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.1057,
+      "peak_pct": 0.28,
+      "low_price": 0.1053,
+      "low_pct": -0.09,
+      "current_price": 0.1057,
+      "current_pct": 0.28,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-20T12:00:11.962327+03:00",
+      "last_check": "2026-07-20T13:17:53.848350+03:00",
+      "checks": 2,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 1686.1,
+      "fill_time": "2026-07-20T13:12:03.362118+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "MAGIC_USDT_1784534409",
       "symbol": "MAGIC/USDT",
@@ -157,8 +198,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
-      "last_check": "2026-07-20T12:47:42.584458+03:00",
-      "checks": 14,
+      "last_check": "2026-07-20T13:17:53.848350+03:00",
+      "checks": 20,
       "extra": {
         "tp3": null
       },
@@ -192,14 +233,14 @@
       "peak_pct": 1.54,
       "low_price": 2.003,
       "low_pct": -0.74,
-      "current_price": 2.039,
-      "current_pct": 1.04,
+      "current_price": 2.038,
+      "current_pct": 0.99,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T07:00:17.656689+03:00",
-      "last_check": "2026-07-20T12:47:42.584458+03:00",
-      "checks": 67,
+      "last_check": "2026-07-20T13:17:53.848350+03:00",
+      "checks": 73,
       "extra": {
         "tp3": null
       },
@@ -233,14 +274,14 @@
       "peak_pct": 3.82,
       "low_price": 0.00332,
       "low_pct": -15.52,
-      "current_price": 0.00337,
-      "current_pct": -14.25,
+      "current_price": 0.00335,
+      "current_pct": -14.76,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:11.517517+03:00",
-      "last_check": "2026-07-20T12:47:42.584458+03:00",
-      "checks": 273,
+      "last_check": "2026-07-20T13:17:53.848350+03:00",
+      "checks": 279,
       "extra": {
         "tp3": null
       },
@@ -280,8 +321,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T13:00:15.394679+03:00",
-      "last_check": "2026-07-20T12:47:42.584458+03:00",
-      "checks": 98,
+      "last_check": "2026-07-20T13:17:53.848350+03:00",
+      "checks": 104,
       "extra": {
         "tp3": null
       },
