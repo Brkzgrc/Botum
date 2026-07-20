@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-20 19:53:09",
+  "updated_at": "2026-07-20 20:23:14",
   "performance": {
-    "total": 90,
+    "total": 91,
     "open": 4,
     "closed": 42,
     "wins": 0,
@@ -157,8 +157,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T19:00:11.392209+03:00",
-      "last_check": "2026-07-20T19:50:16.565331+03:00",
-      "checks": 10,
+      "last_check": "2026-07-20T20:20:27.715899+03:00",
+      "checks": 16,
       "extra": {
         "tp3": null
       },
@@ -198,8 +198,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
-      "last_check": "2026-07-20T19:50:16.565331+03:00",
-      "checks": 98,
+      "last_check": "2026-07-20T20:20:27.715899+03:00",
+      "checks": 104,
       "extra": {
         "tp3": null
       },
@@ -233,14 +233,14 @@
       "peak_pct": 1.98,
       "low_price": 2.003,
       "low_pct": -0.74,
-      "current_price": 2.039,
-      "current_pct": 1.04,
+      "current_price": 2.043,
+      "current_pct": 1.24,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T07:00:17.656689+03:00",
-      "last_check": "2026-07-20T19:50:16.565331+03:00",
-      "checks": 151,
+      "last_check": "2026-07-20T20:20:27.715899+03:00",
+      "checks": 157,
       "extra": {
         "tp3": null
       },
@@ -274,14 +274,14 @@
       "peak_pct": 1.15,
       "low_price": 1.025,
       "low_pct": -1.63,
-      "current_price": 1.047,
-      "current_pct": 0.48,
+      "current_price": 1.049,
+      "current_pct": 0.67,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T13:00:15.394679+03:00",
-      "last_check": "2026-07-20T19:50:16.565331+03:00",
-      "checks": 182,
+      "last_check": "2026-07-20T20:20:27.715899+03:00",
+      "checks": 188,
       "extra": {
         "tp3": null
       },
