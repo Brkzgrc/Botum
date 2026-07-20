@@ -208,6 +208,26 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 - **PANİK PUMP JSON dosyası** — Bilgisayarda ~150-200 sinyalli eski portfolio export'u var. Bu dosyayı buraya upload et veya Render shell'inde `python panik_pump_analysis.py --file /path/to/file.json` ile çalıştır. Şu an 32 sinyal ile çalışıyoruz, 150-200 ile sonuçlar çok daha anlamlı olur.
 - **panik_pump_analysis.py'ye --file flag ekle** — JSON dosyasından okuma desteği henüz yok, eklenecek.
 - **Özgür Analiz Sistemi** — GitHub Actions kurulumu: workflow dosyası + GitHub secrets (PORTFOLIO_URL, PORTFOLIO_AUTH_TOKEN). Ben tetikleyip sonucu okuyabilirim, kullanıcı müdahalesi gerekmez.
+- **GİR/DİKKAT dağılımını tekrar kontrol et** — 2026-07-20'de analyzer prompt'u DİKKAT için somut veri şartı arayacak şekilde değiştirildi (bkz. "Uzun Vadeli Sistem Hedefi" altındaki not). Birkaç gün/hafta sonra, yeterli yeni kapanmış işlem birikince, portfolio-tracker Shell'de şu script tekrar çalıştırılıp GİR oranının gerçekten arttığı doğrulanmalı:
+  ```bash
+  python3 -c "
+  import json, os
+  from collections import defaultdict
+  f = os.path.join(os.getenv('DATA_DIR', '/tmp'), 'portfolio_signals.json')
+  with open(f) as fp: sigs = json.load(fp)
+  stats = defaultdict(lambda: [0,0])
+  for s in sigs:
+      if s.get('status') != 'closed': continue
+      pct = s.get('close_pct')
+      if pct is None: continue
+      v = (s.get('analyzer_decision') or 'YOK').split(' ',1)[-1] if s.get('analyzer_decision') else 'YOK'
+      stats[v][0] += 1
+      stats[v][1] += 1 if pct > 0 else 0
+  for v, (n, w) in sorted(stats.items()):
+      print(f'{v:<12} n={n:4d}  WR=%{round(w/n*100,1) if n else 0}')
+  "
+  ```
+  Bu ortamdan (remote session) portfolio-tracker'a ağ politikası gereği doğrudan erişilemiyor (403) — script'i kullanıcının Render Shell'inden çalıştırıp sonucu buraya yapıştırması gerekiyor.
 
 ## Uzun Vadeli Sistem Hedefi (Kullanıcının Vizyonu)
 
