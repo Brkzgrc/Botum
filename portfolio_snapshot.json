@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-20 07:14:20",
+  "updated_at": "2026-07-20 07:21:46",
   "performance": {
     "total": 81,
     "open": 4,
@@ -149,21 +149,22 @@
       "close_pct": null,
       "peak_price": 2.018,
       "peak_pct": 0.0,
-      "low_price": 2.018,
-      "low_pct": 0.0,
-      "current_price": 2.018,
-      "current_pct": 0.0,
+      "low_price": 2.008,
+      "low_pct": -0.5,
+      "current_price": 2.015,
+      "current_pct": -0.15,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T07:00:17.656689+03:00",
-      "last_check": "2026-07-20T07:00:10.415651+03:00",
-      "checks": 0,
+      "last_check": "2026-07-20T07:20:46.992597+03:00",
+      "checks": 2,
       "extra": {
         "tp3": null
       },
       "fill_qty": 94.885,
-      "fill_time": "2026-07-20T07:14:09.562361+03:00"
+      "fill_time": "2026-07-20T07:14:09.562361+03:00",
+      "bot_miss_count": 0
     },
     {
       "id": "ANIME_USDT_1784458807",
@@ -197,8 +198,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:13.716157+03:00",
-      "last_check": "2026-07-20T07:13:20.867647+03:00",
-      "checks": 205,
+      "last_check": "2026-07-20T07:20:46.992597+03:00",
+      "checks": 207,
       "extra": {
         "tp3": null
       },
@@ -230,16 +231,16 @@
       "close_pct": null,
       "peak_price": 0.00408,
       "peak_pct": 3.82,
-      "low_price": 0.00333,
-      "low_pct": -15.27,
-      "current_price": 0.00334,
-      "current_pct": -15.01,
+      "low_price": 0.00332,
+      "low_pct": -15.52,
+      "current_price": 0.00332,
+      "current_pct": -15.52,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-19T14:00:11.517517+03:00",
-      "last_check": "2026-07-20T07:13:20.867647+03:00",
-      "checks": 206,
+      "last_check": "2026-07-20T07:20:46.992597+03:00",
+      "checks": 208,
       "extra": {
         "tp3": null
       },
@@ -273,14 +274,14 @@
       "peak_pct": 0.86,
       "low_price": 1.035,
       "low_pct": -0.67,
-      "current_price": 1.036,
-      "current_pct": -0.58,
+      "current_price": 1.037,
+      "current_pct": -0.48,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T13:00:15.394679+03:00",
-      "last_check": "2026-07-20T07:13:20.867647+03:00",
-      "checks": 31,
+      "last_check": "2026-07-20T07:20:46.992597+03:00",
+      "checks": 33,
       "extra": {
         "tp3": null
       },
