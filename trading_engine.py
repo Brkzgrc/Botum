@@ -11,7 +11,7 @@ Akış: CHoCH sinyali → izleme listesi (monitoring)
 TRADING_ENABLED=false → simülasyon modu, Binance'e emir atılmaz.
 """
 
-import json, math, os, threading
+import fcntl, json, math, os
 from datetime import datetime, timezone
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
@@ -27,8 +27,34 @@ PENDING_EXPIRE_H = 48      # Retest bekleme süresi (saat)
 STATE_FILE       = os.getenv("TRADE_STATE_FILE", "/tmp/trade_state.json")
 
 _client: Client | None = None
-_lock   = threading.Lock()
 _symbol_info_cache: dict = {}
+
+
+class _StateLock:
+    """Dosya kilidi (fcntl.flock) — trading_engine.py ve position_monitor.py
+    AYNI state dosyasını, ikisi de kendi threading.Lock()'uyla koruyordu; bu
+    iki farklı kilit nesnesi birbirini hiç görmüyordu (aynı process içinde bile),
+    yani biri state'i okuyup yazarken diğeri araya girip "lost update" ile bir
+    yazmayı sessizce kaybedebiliyordu. flock() dosya bazlı olduğu için hem
+    aynı process'teki thread'leri hem FARKLI process'leri (örn. gunicorn çoklu
+    worker) aynı anda kapsar — iki modül de aynı .lock dosyasını kilitlediği
+    için ayrı nesne olmaları sorun değil."""
+    def __init__(self, path):
+        self._path = path
+        self._fd = None
+
+    def __enter__(self):
+        self._fd = open(self._path, "a")
+        fcntl.flock(self._fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        fcntl.flock(self._fd, fcntl.LOCK_UN)
+        self._fd.close()
+        self._fd = None
+
+
+_lock = _StateLock(STATE_FILE + ".lock")
 
 
 # ─── CLIENT ──────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ Pending : Limit buy doldu mu? 48H geçti mi?
 Open    : peak güncelle | SL doldu mu? | TP1 → trailing
 """
 
-import json, math, os, time, threading, requests
+import fcntl, json, math, os, time, threading, requests
 from datetime import datetime, timezone, timedelta
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
@@ -37,9 +37,33 @@ CHECK_INTERVAL   = 60      # saniye
 MAX_POSITIONS    = 5
 MAX_POS_SIZE     = 20_000.0
 
+class _StateLock:
+    """Dosya kilidi (fcntl.flock) — trading_engine.py ve position_monitor.py
+    AYNI state dosyasını, ikisi de kendi threading.Lock()'uyla koruyordu; bu
+    iki farklı kilit nesnesi birbirini hiç görmüyordu (aynı process içinde bile),
+    yani biri state'i okuyup yazarken diğeri araya girip "lost update" ile bir
+    yazmayı sessizce kaybedebiliyordu. flock() dosya bazlı olduğu için hem
+    aynı process'teki thread'leri hem FARKLI process'leri (örn. gunicorn çoklu
+    worker) aynı anda kapsar — iki modül de aynı .lock dosyasını kilitlediği
+    için ayrı nesne olmaları sorun değil."""
+    def __init__(self, path):
+        self._path = path
+        self._fd = None
+
+    def __enter__(self):
+        self._fd = open(self._path, "a")
+        fcntl.flock(self._fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        fcntl.flock(self._fd, fcntl.LOCK_UN)
+        self._fd.close()
+        self._fd = None
+
+
 _client: Client | None = None
-_lock         = threading.Lock()
-_streams_lock = threading.Lock()   # _streams dict erişimi için ayrı kilit
+_lock         = _StateLock(STATE_FILE + ".lock")
+_streams_lock = threading.Lock()   # _streams dict erişimi için ayrı kilit — state dosyasıyla ilgisiz, thread-lock yeterli
 _twm: ThreadedWebsocketManager | None = None
 _streams: dict[str, str] = {}   # symbol → stream_key
 
@@ -525,12 +549,27 @@ def _cancel_pending(symbol: str, pos: dict):
     order_id = pos.get("limit_order_id")
     if order_id and ENABLED:
         cancelled = False
+        cancel_resp = None
         try:
-            _get_client().cancel_order(symbol=symbol, orderId=order_id)
+            cancel_resp = _get_client().cancel_order(symbol=symbol, orderId=order_id)
             print(f"[MONITOR] Limit emir iptal: {symbol} orderId={order_id}", flush=True)
             cancelled = True
         except Exception as e:
             print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e}", flush=True)
+
+        if cancelled and cancel_resp:
+            # Binance'in iptal yanıtı, iptal anına kadar dolan miktarı (executedQty)
+            # içerir — bu sıfır değilse emir KISMİ dolmuş demektir: cüzdanda gerçek
+            # coin var ama state'i silip unutursak bu coin'ler asla stop'suz kalır.
+            # Kısmi dolan miktarı gerçek bir pozisyon olarak aktive ediyoruz.
+            executed_qty = float(cancel_resp.get("executedQty", 0) or 0)
+            if executed_qty > 0:
+                quote_qty   = float(cancel_resp.get("cummulativeQuoteQty", 0) or 0)
+                fill_price  = quote_qty / executed_qty if executed_qty else 0.0
+                print(f"[MONITOR] Limit emir KISMİ dolmuş iptal edildi: {symbol} "
+                      f"{executed_qty}@{fill_price:.6g} — pozisyon aktive ediliyor", flush=True)
+                _activate_position(symbol, fill_price, executed_qty, pos)
+                return
 
         if not cancelled:
             # İptal başarısız: emir expire anında fill olmuş olabilir
