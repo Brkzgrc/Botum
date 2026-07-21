@@ -2958,6 +2958,8 @@ function toggleType(key, btn) {{
     <div class="card"><span class="val" id="c-peak">{perf.get('avg_peak',0)}%</span><span class="lbl">Ort. Peak</span></div>
 </div>
 
+{_analyzer_section}
+
 <div class="section">
     <details data-id="type-breakdown" open>
     <summary>📈 SİNYAL TÜRÜ BAZLI KIRILIM</summary>
@@ -2973,8 +2975,6 @@ function toggleType(key, btn) {{
 {_smc_eski_section}
 
 {_pending_section}
-
-{_analyzer_section}
 
 <div class="section">
     <details data-id="open-pos" open>
