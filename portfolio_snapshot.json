@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-21 12:05:52",
+  "updated_at": "2026-07-21 12:35:55",
   "performance": {
     "total": 13,
     "open": 1,
@@ -127,8 +127,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T19:00:11.392209+03:00",
-      "last_check": "2026-07-21T12:05:16.191683+03:00",
-      "checks": 206,
+      "last_check": "2026-07-21T12:35:19.915022+03:00",
+      "checks": 212,
       "extra": {
         "tp3": null
       },
