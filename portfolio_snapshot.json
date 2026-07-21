@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-21 05:14:15",
+  "updated_at": "2026-07-21 05:44:19",
   "performance": {
     "total": 11,
     "open": 3,
@@ -121,14 +121,14 @@
       "peak_pct": 0.0,
       "low_price": 0.067,
       "low_pct": -4.29,
-      "current_price": 0.067,
-      "current_pct": -4.29,
+      "current_price": 0.068,
+      "current_pct": -2.86,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T19:00:11.392209+03:00",
-      "last_check": "2026-07-21T05:13:29.230301+03:00",
-      "checks": 124,
+      "last_check": "2026-07-21T05:43:37.183507+03:00",
+      "checks": 130,
       "extra": {
         "tp3": null
       },
@@ -162,14 +162,14 @@
       "peak_pct": 1.41,
       "low_price": 0.0419,
       "low_pct": -1.41,
-      "current_price": 0.0429,
-      "current_pct": 0.94,
+      "current_price": 0.0428,
+      "current_pct": 0.71,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
-      "last_check": "2026-07-21T05:13:29.230301+03:00",
-      "checks": 212,
+      "last_check": "2026-07-21T05:43:37.183507+03:00",
+      "checks": 218,
       "extra": {
         "tp3": null
       },
@@ -209,8 +209,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T07:00:17.656689+03:00",
-      "last_check": "2026-07-21T05:13:29.230301+03:00",
-      "checks": 265,
+      "last_check": "2026-07-21T05:43:37.183507+03:00",
+      "checks": 271,
       "extra": {
         "tp3": null
       },
@@ -495,7 +495,7 @@
       "symbol": "TLM/USDT",
       "source": "smc-v2",
       "sig_type": "choch",
-      "status": "pending_retest",
+      "status": "no_retest",
       "signal_price": 0.001418,
       "entry": 0.001418,
       "limit_price": 0.001418,
@@ -507,7 +507,9 @@
       "current_price": 0.001418,
       "peak_pct": 0.0,
       "low_pct": 0.0,
-      "current_pct": 0.0
+      "current_pct": 0.0,
+      "close_time": "2026-07-21T05:37:13.577055+03:00",
+      "close_reason": "no_retest"
     }
   ]
 }
