@@ -7,7 +7,7 @@
 #    • Hacim filtresi  : son bar / 20 bar MA ≥ 8.5x
 #    • 24h soğuma      : aynı coinde 24 saat tekrar yok
 #    • BTC crash filtresi aktif
-#    • BTC downtrend filtresi aktif
+#    • BTC downtrend filtresi kodda var ama KAPALI (backtest: crash filtresi yeterli)
 #
 #  STOP / TP
 #    • Stop   : hibrit — yapısal (CHoCH öncesi swing low × 0.995) ile
@@ -15,14 +15,14 @@
 #    • TP1    : 1:1 risk/ödül
 #    • TP2    : 1:2 risk/ödül
 #
-#  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥5x, BTC crash+downtrend filtreli)
+#  BACKTEST SONUÇLARI  (2022-2026, exit_full_trail, vol≥8.5x, BTC crash filtreli)
 #    ┌─────────────────────────────────────────────────────────┐
 #    │  TP1'e ulaşınca: KAPATMA YOK — trailing aktifleşir     │
-#    │  Trailing stop : peak'ten -%2.5 geri çekilince çıkış   │
+#    │  Trailing stop : peak - ATR14×0.6 (position_monitor.py) │
 #    │                                                         │
-#    │  Binance Trailing Stop Emri:                            │
-#    │    Activation Price = TP1                               │
-#    │    Callback Rate    = %2.5                              │
+#    │  Binance'de iki yöntem denenir:                         │
+#    │    1) Native trailing (trailingDelta, ATR×0.6 bips)     │
+#    │    2) Olmazsa: ATR cancel-replace (STOP_LOSS_LIMIT)      │
 #    └─────────────────────────────────────────────────────────┘
 # ═══════════════════════════════════════════════════════════════
 
@@ -52,7 +52,7 @@ def health_check():
     boot_status = "BOOTSTRAPPING" if not bootstrap_done else "RUNNING"
     cached = len(bars_cache)
     btc_cr = "BTC ÇAKILIYOR 🚨" if btc_crash_cache.get("crashing") else "BTC Normal ✅"
-    return (f"SMC v23 — CHoCH+vol≥5x+BTC filtreli | {boot_status} | {cached} coin cached | "
+    return (f"SMC v23 — CHoCH+vol≥{VOL_RATIO_MIN}x+BTC filtreli | {boot_status} | {cached} coin cached | "
             f"{btc_cr} | {ws_1h_closes} bar kapandı"), 200
 
 def run_flask():
@@ -782,13 +782,13 @@ async def main():
     threading.Thread(target=run_flask, daemon=True).start()
 
     print("=" * 60)
-    print("🚀  SMC v23 — CHoCH + vol≥5x + BTC filtreli")
+    print(f"🚀  SMC v23 — CHoCH + vol≥{VOL_RATIO_MIN}x + BTC filtreli")
     print("=" * 60)
     print(f"  Timeframe       : {TIMEFRAME}")
     print(f"  Tetikleyici     : WebSocket (1H bar kapanışında)")
     print(f"  Bootstrap       : {BOOTSTRAP_BARS} bar ({BOOTSTRAP_BARS//24} gün)")
     print(f"  Swing (CHoCH)   : {CHOCH_SWING} bar (micro, LuxAlgo uyumlu)")
-    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash/downtrend yok")
+    print(f"  Sinyal Şartları : Bullish CHoCH + vol≥{VOL_RATIO_MIN}x + BTC crash yok (downtrend filtresi kapalı)")
     print(f"  Stop            : Hibrit — max(Swing low × 0.995, entry - {STOP_ATR_MULT}×ATR{ATR_PERIOD}) (dar olan)")
     print(f"  TP Yapısı       : TP1=risk×1.0 | TP2=risk×2.0")
     print(f"  Cooldown        : {PHASE2_COOLDOWN//3600}h per coin")
