@@ -215,6 +215,22 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 
 **Karar:** Canlı sisteme yeni bir crash/regime filtresi (yeni giriş engelleme, açık pozisyon stop sıkma/erken kapatma, çok değişkenli "risk regime manager") **eklenmiyor**. Sezgisel olarak korkutucu görünen bu risk, rigorous ölçüldüğünde sistem için anlamlı bir iyileştirme alanı çıkarmadı. Codex ile bağımsız çapraz incelemeyle doğrulandı. Tekrar gündeme gelirse bu bölüme bakılsın — yeni bir kanıt (örn. gerçekten büyük bir kriz penceresi canlıda yaşanırsa) olmadıkça tekrar açılmasın.
 
+## Kademeli ATR Trailing (Winner Extension) Araştırması (2026-07-21, ÖLÇÜLDÜ VE REDDEDİLDİ)
+
+**Soru:** Bazı pozisyonlar TP1 sonrası peak +%19-20'ye kadar çıkıp, sabit ATR×0.6 trailing ile +%14-15'te kapanıyor — sonra fiyat +%50'lere gidiyor gözlemi yapıldı. Sabit ATR_MULT=0.6 yerine TP1-sonrası çarpanı peak_pct'e göre kademeli genişletmek (küçük kazananlarda sıkı 0.6, büyük koşanlarda 0.9-1.5) büyük koşanları erken boğulmaktan kurtarır mı?
+
+**1. tur — metodoloji hatası bulundu:** İlk backtest scripti (`smc_tiered_trailing_test.py`) TP1-öncesi VE TP1-sonrasını TEK sabit `EXPIRE_H=24H` penceresiyle sınırlıyordu. Ama canlıda (`position_monitor.py`) TP1 vurup trailing'e geçen pozisyon expire'dan **tamamen muaf** — sadece `trail_stop`'a düşünce kapanır, saat sınırı yok. Bu ilk test sonucu (3 varyant da kötü) bu yüzden canlıya genellenemedi — sadece "24H cap altında trailing genişletmek kötü" derdi, asıl "büyük koşanları yakalama" sorusunu hiç test etmemişti.
+
+**2. tur — canlı-parite düzeltmesiyle doğru test:** `smc_tiered_trailing_live_parity.py` (scratchpad, repoya gitmedi) — TP1-öncesi 24H sınırlı kaldı (canlı `OPEN_EXPIRE_H`), TP1-sonrası trailing SÜRESİZ yapıldı (canlı muafiyetle birebir), veri penceresi 45 güne genişletildi.
+
+**Sonuç:**
+- **Live-parity düzeltmesi doğru ve gerekliymiş** — eski canonical backtest TP1-sonrası süre muafiyetini tam modellemiyordu. Etki küçük ama gerçek: sabit ATR_MULT=0.6 ile Final $1,248,756 → $1,257,033 (+%0.66), MaxDD aynı (-%9.19) — bazı trade'ler eskiden 24H'te zorla "expire" ile kapanıyordu, artık gerçek trail seviyesine kadar bekleyip biraz daha fazlasını yakalıyor.
+- **Kademeli ATR_MULT (Variant A/B/C) doğru motorla da kesin reddedildi** — final equity farkı: Variant A ≈ **-$158.971**, Variant B ≈ **-$200.902**, Variant C ≈ **-$81.774**. `data_end_n=0` (45 günlük pencere hiç yetersiz kalmadı, veri kısıtı sonucu bozmadı). `runner_pattern_caught_n=0` — hem Aşama-1 hem 3 Aşama-2 varyantında, ~5.589 ortak trade üzerinde, aranan "+19'a çıkıp geri çekilip sonra +40/+50'ye giden" sınıf **bir kere bile** yakalanmadı. En büyük kötüleşen trade'lerde (CVX, CYBER, OG, ASR, ACE, RARE, ARDR, JUV, FTT, POND, AUCTION, OSMO) `peak_pct_diff=0.0` — varyantlar AYNI tepe noktasına ulaşıyor, sadece daha gevşek trail yüzünden oradan daha düşük fiyattan çıkıyor. Yani trail genişletmek pozisyona ek yükseliş yakalatmıyor, sadece aynı tepeden inişte daha fazla kâr kaybettiriyor.
+
+**Karar:**
+1. **Backtest canonical referansı güncellendi:** Bundan sonraki tüm backtest'lerde canlı-parity motor kullanılmalı — TP1-öncesi 24H expire, TP1-sonrası süresiz trailing (`smc_tiered_trailing_live_parity.py`'deki `run_trade_from_retest_live_parity()` referans alınabilir).
+2. **Kademeli ATR_MULT hipotezi reddedildi** — 24H cap itirazı tamamen giderildikten sonra da tüm varyantlar Baseline'dan kötü çıktı. Canlı koda **hiçbir değişiklik yapılmıyor**. Bu testin en değerli çıktısı: mevcut sabit `ATR_MULT=0.6` trailing zaten oldukça iyi ayarlanmış. Kullanıcının gözlemlediği "+50'ye giden" hareketler muhtemelen aynı pozisyonun devamı değil, ayrı bir sinyalin sonucu — trail genişliğiyle çözülecek bir problem değil. Tekrar gündeme gelirse (örn. gerçekten aynı pozisyonun devamı olan büyük bir runner canlıda yakalanırsa) bu bölüme bakılsın.
+
 ## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
 
 - **PANİK PUMP JSON dosyası** — Bilgisayarda ~150-200 sinyalli eski portfolio export'u var. Bu dosyayı buraya upload et veya Render shell'inde `python panik_pump_analysis.py --file /path/to/file.json` ile çalıştır. Şu an 32 sinyal ile çalışıyoruz, 150-200 ile sonuçlar çok daha anlamlı olur.
