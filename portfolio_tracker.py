@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
 from claude_analyzer import (process_and_send as _analyzer_process,
@@ -31,6 +31,8 @@ DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
 AUTH_TOKEN              = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+DASHBOARD_USER          = os.getenv("DASHBOARD_USER", "")
+DASHBOARD_PASS          = os.getenv("DASHBOARD_PASS", "")
 GITHUB_TOKEN            = os.getenv("GITHUB_TOKEN", "")
 CMC_API_KEY             = os.getenv("CMC_API_KEY", "")
 TRADING_BOT_URL         = os.getenv("TRADING_BOT_URL", "")
@@ -72,6 +74,36 @@ app = Flask(__name__)
 
 import logging
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+
+# ─── ERİŞİM KONTROLÜ ─────────────────────────────────────────────────────────
+# Dashboard (bakiye, açık pozisyon, stop/TP, state silme) hiçbir korumaya sahip
+# değildi — URL'yi bilen herkes görüntüleyip mutasyon endpoint'lerini
+# tetikleyebiliyordu. Bot/servis çağrıları (SMC.py, position_monitor.py,
+# claude_analyzer.py, trading-bot) zaten Authorization: Bearer PORTFOLIO_AUTH_TOKEN
+# gönderiyor — bunlar etkilenmesin diye geçerli Bearer token her zaman geçer.
+# Geri kalan HER ŞEY (tarayıcı/dashboard erişimi) HTTP Basic Auth arkasına alındı.
+@app.before_request
+def _require_auth():
+    if request.path == "/api/health":
+        return None
+    if AUTH_TOKEN:
+        bearer = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if bearer == AUTH_TOKEN:
+            return None
+    if not DASHBOARD_USER or not DASHBOARD_PASS:
+        # DASHBOARD_USER/DASHBOARD_PASS henüz Render'da tanımlanmadıysa dashboard
+        # korumasız kalır — mevcut AUTH_TOKEN kontrollerindeki "boşsa açık" deseniyle
+        # tutarlı, ama bu env var'lar deploy sonrası MUTLAKA ayarlanmalı.
+        return None
+    auth = request.authorization
+    if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
+        return Response(
+            "Yetkisiz erişim — dashboard için kullanıcı adı/şifre gerekli.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Botum Dashboard"'},
+        )
+    return None
 
 signals_db = []
 _lock = threading.Lock()
@@ -1142,14 +1174,6 @@ def clear_all_signals():
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         if token != AUTH_TOKEN:
             return jsonify({"error": "unauthorized"}), 401
-    with _lock:
-        count = len(signals_db)
-        signals_db.clear()
-        save_signals()
-    return jsonify({"ok": True, "removed": count})
-
-@app.route("/api/signals/clear-all-ui", methods=["POST"])
-def clear_all_signals_ui():
     with _lock:
         count = len(signals_db)
         signals_db.clear()
@@ -2767,9 +2791,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;
   padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
 .btn-refresh:hover{{background:#2ecc7133;}}
-.btn-clear{{background:#c0392b22;color:#e74c3c;border:1px solid #e74c3c44;border-radius:4px;
-  padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
-.btn-clear:hover{{background:#c0392b55;}}
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
 .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:24px;}}
@@ -2847,9 +2868,6 @@ tr:hover td{{background:var(--card);}}
     <span class="time">
         {now}
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
-        <button class="btn-clear"
-            onclick="if(confirm('Tüm sinyaller silinecek.\\nEmin misiniz?')){{fetch('/api/signals/clear-all-ui',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Silindi: '+d.removed+' sinyal');location.reload()}})}}"
-        >🗑 Sıfırla</button>
     </span>
 </div>
 
