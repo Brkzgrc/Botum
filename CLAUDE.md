@@ -203,6 +203,18 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 1. **PUMP** (2026-06-28) — 15m spike ≥15x + 1h hacim ≥5x + 4h trend + ROC ≥24% | Stop -5% | TP +20% | Backtest WR ~%91
    - Eski sistemler (PANİK PUMP, T24, T72, T168, ROCKET) tamamen kaldırıldı
 
+## Rejim/Çöküş Filtresi Araştırması (2026-07-21, ÖLÇÜLDÜ VE REDDEDİLDİ)
+
+**Soru:** FTX çöküşü / "Trump manipülasyonu" tarzı ani, keskin küresel düşüşlere karşı sistemin (mevcut 4H BTC crash filtresi dışında) ek bir koruması olmalı mı? Endişe: sistem hem (a) böyle bir dönemde yeni kötü sinyaller alabilir hem (b) o dönem başladığında zaten açık olan pozisyonlar ağır zarar edebilir.
+
+**Yöntem:** `smc_regime_damage_v2_velocity.py` (scratchpad, repoya gitmedi) — BTC fiyatından (haber etiketi kullanmadan) sabit W-saatlik ROC ile "ani şok" pencereleri tespit edip (haber etiketsiz, sadece fiyattan gerçek FTX Kasım 2022 ve LUNA/Celsius Haziran 2022 olaylarını doğru buldu), CHoCH sisteminin (canlı ayarlar) bu pencerelerdeki gerçek net PnL'ini iki ayrı kalemde (pencere içinde açılan yeni işlemler / pencereden önce açılıp içinde kapanan pozisyonlar) ölçtü.
+
+**Sonuç:**
+- **Önceden-açık pozisyon hasarı** (4 farklı hız-eşiği kombinasyonunda): +$1.334 ile -$662 arası — sistemin $1.58M'lik toplam brüt kaybının **%0.04'ü**. "Çöküş başladığında içeride yakalanıp ezildik" hipotezi desteklenmedi — hibrit stop (ATR×2.75) + TP1-sonrası breakeven-altına-inmeyen trailing bu riski zaten büyük ölçüde absorbe ediyor.
+- **Kriz penceresinde açılan yeni işlemler**: bazı pencerelerde net zarar yazıyor ama toplamı sistemin tüm-zaman toplam kaybının **%0.48-%1.58'i** — küçük. Ayrıca daha gevşek bir rejim tanımıyla (v1, rolling 30 günlük zirveden düşüş) yapılan ilk denemede, "kriz" sayılan dönemlerde yeni sinyalleri bloklamanın sistemden **%36 kâr keseceği** görüldü (o dönemlerde CHoCH çoğunlukla kârlıydı) — yanlış filtreleme riski, kurtarılacak tutardan kat kat büyük çıktı.
+
+**Karar:** Canlı sisteme yeni bir crash/regime filtresi (yeni giriş engelleme, açık pozisyon stop sıkma/erken kapatma, çok değişkenli "risk regime manager") **eklenmiyor**. Sezgisel olarak korkutucu görünen bu risk, rigorous ölçüldüğünde sistem için anlamlı bir iyileştirme alanı çıkarmadı. Codex ile bağımsız çapraz incelemeyle doğrulandı. Tekrar gündeme gelirse bu bölüme bakılsın — yeni bir kanıt (örn. gerçekten büyük bir kriz penceresi canlıda yaşanırsa) olmadıkça tekrar açılmasın.
+
 ## EVE GELİNCE YAPILACAKLAR (Hatırlatma)
 
 - **PANİK PUMP JSON dosyası** — Bilgisayarda ~150-200 sinyalli eski portfolio export'u var. Bu dosyayı buraya upload et veya Render shell'inde `python panik_pump_analysis.py --file /path/to/file.json` ile çalıştır. Şu an 32 sinyal ile çalışıyoruz, 150-200 ile sonuçlar çok daha anlamlı olur.
