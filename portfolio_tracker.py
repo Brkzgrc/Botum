@@ -1180,6 +1180,22 @@ def clear_all_signals():
         save_signals()
     return jsonify({"ok": True, "removed": count})
 
+@app.route("/api/signals/clear-history", methods=["POST"])
+def clear_signal_history():
+    """Sadece kapanmış/no-retest geçmişini temizler — açık ('open') ve retest
+    bekleyen ('pending_retest') kayıtlara DOKUNMAZ. Bunlar bot'ta hâlâ gerçek,
+    yönetilen pozisyonlar/emirler — dashboard'dan silinirse bot ile dashboard
+    arasında desync oluşur (bot pozisyonu yönetmeye devam eder ama dashboard
+    artık onu hiç göstermez). Site geneli Basic Auth (before_request) zaten
+    koruyor, ayrıca token kontrolüne gerek yok."""
+    with _lock:
+        before = len(signals_db)
+        signals_db[:] = [s for s in signals_db if s.get("status") in ("open", "pending_retest")]
+        removed = before - len(signals_db)
+        if removed:
+            save_signals()
+    return jsonify({"ok": True, "removed": removed, "kept": len(signals_db)})
+
 @app.route("/api/signals/delete-by-id", methods=["POST"])
 def delete_signal_by_id():
     if AUTH_TOKEN:
@@ -2791,6 +2807,9 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .btn-refresh{{background:#1a472a;color:#2ecc71;border:1px solid #2ecc7166;border-radius:4px;
   padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
 .btn-refresh:hover{{background:#2ecc7133;}}
+.btn-clear{{background:#c0392b22;color:#e74c3c;border:1px solid #e74c3c44;border-radius:4px;
+  padding:3px 10px;font-size:.65rem;cursor:pointer;font-family:inherit;transition:background .2s;}}
+.btn-clear:hover{{background:#c0392b55;}}
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
 .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:24px;}}
@@ -2868,6 +2887,9 @@ tr:hover td{{background:var(--card);}}
     <span class="time">
         {now}
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+        <button class="btn-clear"
+            onclick="if(confirm('Kapanmış/no-retest geçmişi temizlenecek.\\nAçık ve retest bekleyen işlemlere DOKUNULMAZ.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt (açık/pending korundu)');location.reload()}})}}"
+        >🧹 Geçmişi Temizle</button>
     </span>
 </div>
 
