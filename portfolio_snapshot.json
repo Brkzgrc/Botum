@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-21 11:35:49",
+  "updated_at": "2026-07-21 12:05:52",
   "performance": {
-    "total": 12,
-    "open": 2,
-    "closed": 2,
+    "total": 13,
+    "open": 1,
+    "closed": 3,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
     "tp1_hits": 1,
-    "total_pnl": 3.38,
-    "win_loss_pnl": 3.38,
+    "total_pnl": 5.26,
+    "win_loss_pnl": 5.26,
     "expired_pnl": 0.0,
-    "avg_peak": 2.23,
+    "avg_peak": 2.35,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -24,10 +24,10 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 2,
+        "total": 3,
         "wins": 0,
         "losses": 0,
-        "pnl": 3.38,
+        "pnl": 5.26,
         "wr": 0
       },
       "riskli": {
@@ -41,26 +41,26 @@
     "by_type": {
       "Legacy SMC": {
         "total": 4,
-        "open": 2,
+        "open": 1,
         "wins": 0,
         "losses": 0,
         "expired": 0,
         "tp1_hits": 1,
-        "total_pnl": 3.38,
+        "total_pnl": 5.26,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 2.23,
+        "avg_peak": 2.35,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 3.38
+        "win_loss_pnl": 5.26
       }
     },
     "daily": {
       "2026-07-20": {
         "trades": 3,
-        "pnl": 2.61,
+        "pnl": 4.49,
         "wins": 0,
         "losses": 0
       },
@@ -74,7 +74,7 @@
     "weekly": {
       "2026-W29": {
         "trades": 3,
-        "pnl": 2.61,
+        "pnl": 4.49,
         "wins": 0,
         "losses": 0
       },
@@ -88,7 +88,7 @@
     "monthly": {
       "2026-07": {
         "trades": 4,
-        "pnl": 3.38,
+        "pnl": 5.26,
         "wins": 0,
         "losses": 0
       }
@@ -127,58 +127,55 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T19:00:11.392209+03:00",
-      "last_check": "2026-07-21T11:35:11.738130+03:00",
-      "checks": 200,
+      "last_check": "2026-07-21T12:05:16.191683+03:00",
+      "checks": 206,
       "extra": {
         "tp3": null
       },
       "fill_qty": 2409.7,
       "fill_time": "2026-07-20T19:01:02.287391+03:00",
       "bot_miss_count": 0
-    },
+    }
+  ],
+  "closed": [
     {
-      "id": "MAGIC_USDT_1784534409",
-      "symbol": "MAGIC/USDT",
-      "entry": 0.042499999999999996,
-      "stop": 0.0411598925,
-      "tp1": 0.0440401075,
-      "tp2": 0.045480215,
+      "id": "GIGGLE_USDT_1784624407",
+      "symbol": "GIGGLE/USDT",
+      "entry": 26.51,
+      "stop": 25.91975,
+      "tp1": 27.10025,
+      "tp2": 27.6905,
       "tp3": null,
-      "limit_price": 0.0426,
-      "signal_price": 0.0428,
+      "limit_price": 26.51,
+      "signal_price": 26.98,
       "sig_type": "smc",
       "sub_type": "CHoCH",
       "source": "smc-v2",
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-20T11:00:09.324393+03:00",
+      "status": "pending_retest",
+      "open_time": "2026-07-21T12:00:07.229889+03:00",
       "close_time": null,
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.0436,
-      "peak_pct": 2.59,
-      "low_price": 0.0419,
-      "low_pct": -1.41,
-      "current_price": 0.0434,
-      "current_pct": 2.12,
+      "peak_price": 26.51,
+      "peak_pct": 0.0,
+      "low_price": 26.51,
+      "low_pct": 0.0,
+      "current_price": 26.51,
+      "current_pct": 0.0,
       "tp1_hit": false,
       "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
-      "last_check": "2026-07-21T11:35:11.738130+03:00",
-      "checks": 288,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-21T12:00:07.229889+03:00",
+      "checks": 0,
       "extra": {
         "tp3": null
-      },
-      "fill_qty": 4296.6,
-      "fill_time": "2026-07-20T11:38:40.027264+03:00",
-      "bot_miss_count": 0
-    }
-  ],
-  "closed": [
+      }
+    },
     {
       "id": "YGG_USDT_1784606408",
       "symbol": "YGG/USDT",
@@ -406,6 +403,48 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "MAGIC_USDT_1784534409",
+      "symbol": "MAGIC/USDT",
+      "entry": 0.042499999999999996,
+      "stop": 0.0411598925,
+      "tp1": 0.0440401075,
+      "tp2": 0.045480215,
+      "tp3": null,
+      "limit_price": 0.0426,
+      "signal_price": 0.0428,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-20T11:00:09.324393+03:00",
+      "close_time": "2026-07-21T11:39:03.043918+03:00",
+      "close_price": 0.0433,
+      "close_reason": "expire",
+      "close_pct": 1.88,
+      "peak_price": 0.0436,
+      "peak_pct": 2.59,
+      "low_price": 0.0419,
+      "low_pct": -1.41,
+      "current_price": 0.0434,
+      "current_pct": 2.12,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
+      "last_check": "2026-07-21T11:35:11.738130+03:00",
+      "checks": 288,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 4296.6,
+      "fill_time": "2026-07-20T11:38:40.027264+03:00",
+      "bot_miss_count": 0,
+      "outcome": "win"
     },
     {
       "id": "SSV_USDT_1784520010",
