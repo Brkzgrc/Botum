@@ -1192,9 +1192,11 @@ def clear_signal_history():
         before = len(signals_db)
         signals_db[:] = [s for s in signals_db if s.get("status") in ("open", "pending_retest")]
         removed = before - len(signals_db)
+        kept = len(signals_db)
         if removed:
             save_signals()
-    return jsonify({"ok": True, "removed": removed, "kept": len(signals_db)})
+    print(f"[TEMİZLE] Geçmiş temizlendi: {removed} kayıt silindi, {kept} kayıt (open/pending_retest) korundu", flush=True)
+    return jsonify({"ok": True, "removed": removed, "kept": kept})
 
 @app.route("/api/signals/delete-by-id", methods=["POST"])
 def delete_signal_by_id():
