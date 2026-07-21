@@ -38,7 +38,12 @@ MAX_POSITIONS    = 5
 MAX_POS_SIZE     = 20_000.0
 
 class _StateLock:
-    """Dosya kilidi (fcntl.flock) — trading_engine.py ve position_monitor.py
+    """Dosya kilidi (fcntl.flock) — SADECE Render/Linux hedefli, fcntl POSIX-only
+    (Windows'ta import hatası verir). Bu dosya zaten yalnızca Render'daki
+    trading-bot servisinde çalışıyor, lokalde (Windows) hiç çalıştırılmıyor —
+    kasıtlı olarak cross-platform fallback eklenmedi.
+
+    trading_engine.py ve position_monitor.py
     AYNI state dosyasını, ikisi de kendi threading.Lock()'uyla koruyordu; bu
     iki farklı kilit nesnesi birbirini hiç görmüyordu (aynı process içinde bile),
     yani biri state'i okuyup yazarken diğeri araya girip "lost update" ile bir
@@ -545,39 +550,52 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
 
 
 def _cancel_pending(symbol: str, pos: dict):
-    """48H doldu: limit emri iptal et, state'den sil, bildir."""
+    """48H doldu: limit emri iptal et, state'den sil, bildir.
+
+    cancel_order()'ın kendi yanıtına güvenmek yerine (kısmi dolum + geçici
+    hata bir araya geldiğinde yanlış "iptal edildi" sonucuna varmak riskli),
+    iptal denemesinden SONRA her zaman get_order() ile emrin GERÇEK, o anki
+    durumunu sorup ona göre karar veriyoruz — dört olası durum:
+      1) executedQty>0 VE emir artık kapalı (FILLED/CANCELED/EXPIRED)
+         → kısmen/tamamen dolmuş, gerçek pozisyon olarak aktive et.
+      2) executedQty=0 VE emir kapalı → normal iptal, pozisyon yok.
+      3) emir HÂLÂ AÇIK (NEW/PARTIALLY_FILLED) → iptal gerçekte gitmemiş
+         (geçici hata) — state'e DOKUNMA, bir sonraki turda tekrar denenir.
+      4) get_order() sorgusu da başarısız → aynı şekilde state'e dokunma."""
     order_id = pos.get("limit_order_id")
     if order_id and ENABLED:
-        cancelled = False
-        cancel_resp = None
         try:
-            cancel_resp = _get_client().cancel_order(symbol=symbol, orderId=order_id)
+            _get_client().cancel_order(symbol=symbol, orderId=order_id)
             print(f"[MONITOR] Limit emir iptal: {symbol} orderId={order_id}", flush=True)
-            cancelled = True
         except Exception as e:
-            print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e}", flush=True)
+            print(f"[MONITOR] Limit emir iptal HATA {symbol}: {e} — gerçek durum sorgulanacak", flush=True)
 
-        if cancelled and cancel_resp:
-            # Binance'in iptal yanıtı, iptal anına kadar dolan miktarı (executedQty)
-            # içerir — bu sıfır değilse emir KISMİ dolmuş demektir: cüzdanda gerçek
-            # coin var ama state'i silip unutursak bu coin'ler asla stop'suz kalır.
-            # Kısmi dolan miktarı gerçek bir pozisyon olarak aktive ediyoruz.
-            executed_qty = float(cancel_resp.get("executedQty", 0) or 0)
-            if executed_qty > 0:
-                quote_qty   = float(cancel_resp.get("cummulativeQuoteQty", 0) or 0)
-                fill_price  = quote_qty / executed_qty if executed_qty else 0.0
-                print(f"[MONITOR] Limit emir KISMİ dolmuş iptal edildi: {symbol} "
-                      f"{executed_qty}@{fill_price:.6g} — pozisyon aktive ediliyor", flush=True)
-                _activate_position(symbol, fill_price, executed_qty, pos)
-                return
+        try:
+            order = _get_client().get_order(symbol=symbol, orderId=order_id)
+        except Exception as e:
+            print(f"[MONITOR] {symbol} iptal-sonrası durum sorgusu başarısız: {e} — "
+                  f"state'e dokunulmadı, bir sonraki turda tekrar denenecek", flush=True)
+            return
 
-        if not cancelled:
-            # İptal başarısız: emir expire anında fill olmuş olabilir
-            filled, fill_price, qty = _is_limit_filled(symbol, order_id)
-            if filled:
-                print(f"[MONITOR] Expire anında fill tespit: {symbol} @ {fill_price:.6g}", flush=True)
-                _activate_position(symbol, fill_price, qty, pos)
-                return
+        status       = order.get("status")
+        executed_qty = float(order.get("executedQty", 0) or 0)
+
+        if executed_qty > 0 and status in ("FILLED", "CANCELED", "EXPIRED"):
+            quote_qty  = float(order.get("cummulativeQuoteQty", 0) or 0)
+            fill_price = quote_qty / executed_qty if executed_qty else 0.0
+            print(f"[MONITOR] {symbol} iptal-sonrası dolum tespit: {executed_qty}@{fill_price:.6g} "
+                  f"(status={status}) — pozisyon aktive ediliyor", flush=True)
+            _activate_position(symbol, fill_price, executed_qty, pos)
+            return
+
+        if status in ("NEW", "PARTIALLY_FILLED"):
+            # Emir hâlâ Binance'te AÇIK — iptal denemesi gerçekte işlememiş
+            # (geçici hata). State'i SİLERSEK bu emri bir daha asla izlemeyiz,
+            # coin'ler ileride sessizce dolabilir. Dokunmadan bırak, periyodik
+            # döngü bir sonraki turda tekrar iptal dener.
+            print(f"[MONITOR] {symbol} emri hâlâ açık (status={status}) — iptal başarısız, "
+                  f"tekrar denenecek", flush=True)
+            return
 
     with _lock:
         state = _load_state()

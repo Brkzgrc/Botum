@@ -31,7 +31,12 @@ _symbol_info_cache: dict = {}
 
 
 class _StateLock:
-    """Dosya kilidi (fcntl.flock) — trading_engine.py ve position_monitor.py
+    """Dosya kilidi (fcntl.flock) — SADECE Render/Linux hedefli, fcntl POSIX-only
+    (Windows'ta import hatası verir). Bu dosya zaten yalnızca Render'daki
+    trading-bot servisinde çalışıyor, lokalde (Windows) hiç çalıştırılmıyor —
+    kasıtlı olarak cross-platform fallback eklenmedi.
+
+    trading_engine.py ve position_monitor.py
     AYNI state dosyasını, ikisi de kendi threading.Lock()'uyla koruyordu; bu
     iki farklı kilit nesnesi birbirini hiç görmüyordu (aynı process içinde bile),
     yani biri state'i okuyup yazarken diğeri araya girip "lost update" ile bir
