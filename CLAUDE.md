@@ -203,6 +203,17 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 1. **PUMP** (2026-06-28) — 15m spike ≥15x + 1h hacim ≥5x + 4h trend + ROC ≥24% | Stop -5% | TP +20% | Backtest WR ~%91
    - Eski sistemler (PANİK PUMP, T24, T72, T168, ROCKET) tamamen kaldırıldı
 
+## VOL_RATIO_MIN Karar Geçmişi (2026-07-19)
+
+19 Temmuz karar zinciri — ileride aynı karışıklık tekrar yaşanmasın diye:
+
+1. **05:04 — TP1-üstü red kaldırıldı** (`e10908b`). O anda `VOL_RATIO_MIN=7.5` iken sonuç (eski 24H-cap backtest motoruyla, `smc_relax_tp1_reject.py`): Final ~$1.361M, Getiri +27.127%, MaxDD -%11.46.
+2. **06:08 — VOL_RATIO_MIN 7.5'ten 8.5'e yükseltildi** (`92c87ee`, `smc_rr_vol_sweep.py --mode vol` backtest'ine dayanarak). Aynı (eski 24H-cap) motorla sonuç: Final ~$1.249M, Getiri +24.875%, MaxDD -%9.19.
+
+**Gerekçe:** 8.5 seçimi daha düşük getiri karşılığında daha iyi MaxDD verdi (-%11.46 → -%9.19, aralığın içinde gerçek bir minimum). Gerçek canlı sonuçların backtest'ten hep düşük çıkma eğilimi (WR farkı) göz önüne alınınca, riski azaltmak tercih edildi. **Bilinçli bir risk-getiri takasıdır** — 7.5 daha kârlıydı ama daha riskliydi. `VOL_RATIO_MIN=8.5` SMC.py'de hâlâ aktif, güncel canlı değer.
+
+**Nüans (2026-07-21'de bulundu):** Yukarıdaki her iki rakam da (~$1.361M ve ~$1.249M) eski, metodoloji hatalı 24H-cap backtest motoruna ait (bkz. aşağıdaki "Kademeli ATR Trailing" bölümü). Live-parity motoruyla (TP1-sonrası süresiz trailing) `VOL_RATIO_MIN=8.5` için güncel referans: Final ~$1.257M, Getiri +25.041%, MaxDD -%9.19. `VOL_RATIO_MIN=7.5` live-parity motoruyla yeniden koşulmadı — eğer tekrar karşılaştırma gerekirse önce o da live-parity motoruyla koşulmalı, doğrudan $1.257M ile $1.361M kıyaslanmamalı (farklı motorlar).
+
 ## Rejim/Çöküş Filtresi Araştırması (2026-07-21, ÖLÇÜLDÜ VE REDDEDİLDİ)
 
 **Soru:** FTX çöküşü / "Trump manipülasyonu" tarzı ani, keskin küresel düşüşlere karşı sistemin (mevcut 4H BTC crash filtresi dışında) ek bir koruması olmalı mı? Endişe: sistem hem (a) böyle bir dönemde yeni kötü sinyaller alabilir hem (b) o dönem başladığında zaten açık olan pozisyonlar ağır zarar edebilir.
