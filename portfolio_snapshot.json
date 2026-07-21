@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-07-21 21:36:51",
+  "updated_at": "2026-07-21 22:06:54",
   "performance": {
     "total": 15,
-    "open": 3,
-    "closed": 5,
+    "open": 2,
+    "closed": 6,
     "wins": 0,
     "win_tp2": 0,
     "losses": 0,
     "expired": 0,
-    "tp1_hits": 2,
-    "total_pnl": 3.55,
-    "win_loss_pnl": 3.55,
+    "tp1_hits": 3,
+    "total_pnl": 6.19,
+    "win_loss_pnl": 6.19,
     "expired_pnl": 0.0,
-    "avg_peak": 2.08,
+    "avg_peak": 2.25,
     "win_rate": 0.0,
     "real_win_rate": 0,
     "analyzer": {
@@ -41,26 +41,26 @@
     "by_type": {
       "Legacy SMC": {
         "total": 8,
-        "open": 3,
+        "open": 2,
         "wins": 0,
         "losses": 0,
         "expired": 0,
-        "tp1_hits": 2,
-        "total_pnl": 3.55,
+        "tp1_hits": 3,
+        "total_pnl": 6.19,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 0,
-        "avg_peak": 2.08,
+        "avg_peak": 2.25,
         "tp2_rate": 0,
         "expired_pnl": 0.0,
-        "win_loss_pnl": 3.55
+        "win_loss_pnl": 6.19
       }
     },
     "daily": {
       "2026-07-21": {
         "trades": 3,
-        "pnl": 0.0,
+        "pnl": 2.64,
         "wins": 0,
         "losses": 0
       },
@@ -80,7 +80,7 @@
     "weekly": {
       "2026-W29": {
         "trades": 7,
-        "pnl": 2.78,
+        "pnl": 5.42,
         "wins": 0,
         "losses": 0
       },
@@ -94,7 +94,7 @@
     "monthly": {
       "2026-07": {
         "trades": 8,
-        "pnl": 3.55,
+        "pnl": 6.1899999999999995,
         "wins": 0,
         "losses": 0
       }
@@ -133,54 +133,13 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-21T21:32:37.704083+03:00",
-      "checks": 98,
+      "last_check": "2026-07-21T22:02:45.105032+03:00",
+      "checks": 104,
       "extra": {
         "tp3": null
       },
       "fill_qty": 364.17,
       "fill_time": "2026-07-21T13:24:30.333667+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "GENIUS_USDT_1784628002",
-      "symbol": "GENIUS/USDT",
-      "entry": 0.3275973906911142,
-      "stop": 0.32039,
-      "tp1": 0.33701,
-      "tp2": 0.34532,
-      "tp3": null,
-      "limit_price": 0.3287,
-      "signal_price": 0.3538,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-21T13:00:02.622532+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.3361,
-      "peak_pct": 2.6,
-      "low_price": 0.3258,
-      "low_pct": -0.55,
-      "current_price": 0.3361,
-      "current_pct": 2.6,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-21T21:32:37.704083+03:00",
-      "checks": 96,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 567.2,
-      "fill_time": "2026-07-21T13:30:53.646776+03:00",
       "bot_miss_count": 0
     },
     {
@@ -205,18 +164,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.01903,
-      "peak_pct": 0.74,
-      "low_price": 0.01886,
-      "low_pct": -0.16,
-      "current_price": 0.01894,
-      "current_pct": 0.26,
+      "peak_price": 0.01906,
+      "peak_pct": 0.9,
+      "low_price": 0.01885,
+      "low_pct": -0.21,
+      "current_price": 0.01888,
+      "current_pct": -0.05,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-21T21:32:37.704083+03:00",
-      "checks": 10,
+      "last_check": "2026-07-21T22:02:45.105032+03:00",
+      "checks": 16,
       "extra": {
         "tp3": null
       },
@@ -226,6 +185,52 @@
     }
   ],
   "closed": [
+    {
+      "id": "GENIUS_USDT_1784628002",
+      "symbol": "GENIUS/USDT",
+      "entry": 0.3275973906911142,
+      "stop": 0.32039,
+      "tp1": 0.33701,
+      "tp2": 0.34532,
+      "tp3": null,
+      "limit_price": 0.3287,
+      "signal_price": 0.3538,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-21T13:00:02.622532+03:00",
+      "close_time": "2026-07-21T21:46:45.355297+03:00",
+      "close_price": 0.33624794,
+      "close_reason": "trail_binance",
+      "close_pct": 2.64,
+      "peak_price": 0.3379,
+      "peak_pct": 3.14,
+      "low_price": 0.3258,
+      "low_pct": -0.55,
+      "current_price": 0.3379,
+      "current_pct": 3.14,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-21T21:40:28.423771+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-21T21:42:40.544409+03:00",
+      "checks": 98,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 567.2,
+      "fill_time": "2026-07-21T13:30:53.646776+03:00",
+      "bot_miss_count": 0,
+      "tp1_confirmed": true,
+      "tp1_pct": 2.9,
+      "atr": 0.005753441260756034,
+      "atr_updated_at": "2026-07-21T18:40:28.423794+00:00",
+      "outcome": "win"
+    },
     {
       "id": "GIGGLE_USDT_1784624407",
       "symbol": "GIGGLE/USDT",
