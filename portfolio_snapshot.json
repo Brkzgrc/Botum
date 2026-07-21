@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-21 03:36:05",
+  "updated_at": "2026-07-21 03:41:50",
   "performance": {
     "total": 93,
     "open": 4,
@@ -157,8 +157,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T19:00:11.392209+03:00",
-      "last_check": "2026-07-21T03:35:05.354947+03:00",
-      "checks": 103,
+      "last_check": "2026-07-21T03:40:51.081420+03:00",
+      "checks": 105,
       "extra": {
         "tp3": null
       },
@@ -198,8 +198,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T11:00:16.272550+03:00",
-      "last_check": "2026-07-21T03:35:05.354947+03:00",
-      "checks": 191,
+      "last_check": "2026-07-21T03:40:51.081420+03:00",
+      "checks": 193,
       "extra": {
         "tp3": null
       },
@@ -239,8 +239,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T07:00:17.656689+03:00",
-      "last_check": "2026-07-21T03:35:05.354947+03:00",
-      "checks": 244,
+      "last_check": "2026-07-21T03:40:51.081420+03:00",
+      "checks": 246,
       "extra": {
         "tp3": null
       },
@@ -280,8 +280,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-18T13:00:15.394679+03:00",
-      "last_check": "2026-07-21T03:35:05.354947+03:00",
-      "checks": 275,
+      "last_check": "2026-07-21T03:40:51.081420+03:00",
+      "checks": 277,
       "extra": {
         "tp3": null
       },
