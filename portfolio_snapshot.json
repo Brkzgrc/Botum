@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-21 20:36:45",
+  "updated_at": "2026-07-21 21:06:48",
   "performance": {
     "total": 15,
-    "open": 2,
+    "open": 3,
     "closed": 5,
     "wins": 0,
     "win_tp2": 0,
@@ -40,8 +40,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 7,
-        "open": 2,
+        "total": 8,
+        "open": 3,
         "wins": 0,
         "losses": 0,
         "expired": 0,
@@ -59,7 +59,7 @@
     },
     "daily": {
       "2026-07-21": {
-        "trades": 2,
+        "trades": 3,
         "pnl": 0.0,
         "wins": 0,
         "losses": 0
@@ -79,7 +79,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 6,
+        "trades": 7,
         "pnl": 2.78,
         "wins": 0,
         "losses": 0
@@ -93,7 +93,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 7,
+        "trades": 8,
         "pnl": 3.55,
         "wins": 0,
         "losses": 0
@@ -133,8 +133,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-21T20:32:21.391481+03:00",
-      "checks": 86,
+      "last_check": "2026-07-21T21:02:29.086565+03:00",
+      "checks": 92,
       "extra": {
         "tp3": null
       },
@@ -168,19 +168,60 @@
       "peak_pct": 2.26,
       "low_price": 0.3258,
       "low_pct": -0.55,
-      "current_price": 0.3337,
-      "current_pct": 1.86,
+      "current_price": 0.3316,
+      "current_pct": 1.22,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-21T20:32:21.391481+03:00",
-      "checks": 84,
+      "last_check": "2026-07-21T21:02:29.086565+03:00",
+      "checks": 90,
       "extra": {
         "tp3": null
       },
       "fill_qty": 567.2,
       "fill_time": "2026-07-21T13:30:53.646776+03:00",
+      "bot_miss_count": 0
+    },
+    {
+      "id": "YGG_USDT_1784606408",
+      "symbol": "YGG/USDT",
+      "entry": 0.01889,
+      "stop": 0.017851205,
+      "tp1": 0.019908795,
+      "tp2": 0.02093759,
+      "tp3": null,
+      "limit_price": 0.01888,
+      "signal_price": 0.01951,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-21T07:00:08.718090+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.01902,
+      "peak_pct": 0.69,
+      "low_price": 0.01886,
+      "low_pct": -0.16,
+      "current_price": 0.01893,
+      "current_pct": 0.21,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-21T21:02:29.086565+03:00",
+      "checks": 4,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 9511.1,
+      "fill_time": "2026-07-21T20:47:23.425187+03:00",
       "bot_miss_count": 0
     }
   ],
@@ -218,44 +259,6 @@
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-07-21T12:00:07.229889+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
-    {
-      "id": "YGG_USDT_1784606408",
-      "symbol": "YGG/USDT",
-      "entry": 0.01888,
-      "stop": 0.017851205,
-      "tp1": 0.019908795,
-      "tp2": 0.02093759,
-      "tp3": null,
-      "limit_price": 0.01888,
-      "signal_price": 0.01951,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "pending_retest",
-      "open_time": "2026-07-21T07:00:08.718090+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.01888,
-      "peak_pct": 0.0,
-      "low_price": 0.01888,
-      "low_pct": 0.0,
-      "current_price": 0.01888,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-21T07:00:08.718090+03:00",
       "checks": 0,
       "extra": {
         "tp3": null
