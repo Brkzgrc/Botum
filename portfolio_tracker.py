@@ -3021,9 +3021,9 @@ function toggleType(key, btn) {{
         <span style="font-size:.6rem;color:#8a9bb0;display:block">{perf.get('loss_pnl',0):+.2f}%</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span>
         <span style="font-size:.6rem;color:#8a9bb0;display:block">{perf.get('expired_win',0)} win / {perf.get('expired_loss',0)} loss | {perf.get('expired_pnl',0):+.2f}%</span></div>
-    <div class="card"><span class="val" id="c-wr" style="color:{'var(--green)' if perf.get('win_rate',0)>=50 else 'var(--red)'}"
-        >%{perf.get('win_rate',0)}</span><span class="lbl">Win Rate</span>
-        <span style="font-size:.6rem;color:#8a9bb0;display:block">W/L: %{perf.get('real_win_rate',0)}</span></div>
+    <div class="card"><span class="val" id="c-wr" style="color:{'var(--green)' if perf.get('real_win_rate',0)>=50 else 'var(--red)'}"
+        >%{perf.get('real_win_rate',0)}</span><span class="lbl">Win Rate</span>
+        <span style="font-size:.6rem;color:#8a9bb0;display:block">Toplam kapanan: %{perf.get('win_rate',0)}</span></div>
     <div class="card"><span class="val" id="c-pnl" style="color:{pnl_color_val}">{total_pnl:+.2f}%</span><span class="lbl">Net P&L</span>
         <span style="font-size:.6rem;color:#8a9bb0;display:block">W/L: {perf.get('win_loss_pnl',0):+.2f}% | Exp: {perf.get('expired_pnl',0):+.2f}%</span></div>
     <div class="card"><span class="val" id="c-peak">{perf.get('avg_peak',0)}%</span><span class="lbl">Ort. Peak</span></div>
