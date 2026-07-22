@@ -944,11 +944,34 @@ def calc_performance():
             if sig.get("tp1_hit"): result["tp1_hits"] += 1; ts["tp1_hits"] += 1
             peak = sig.get("peak_pct", 0)
             closed_peaks.append(peak); ts["peaks"].append(peak)
+            # kind: "win" / "loss" / "expired" / "manual" / None (bilinmiyor)
+            # eski status vocabulary (win_tp1/win_trail/loss/expired) VE trading bot'un
+            # güncel /api/position-closed şeması (status="closed" + outcome/close_reason/
+            # close_pct — bkz. claude_analyzer.py _is_win(), aynı desen) birlikte destekleniyor.
             if status in ("win_tp1", "win_tp2", "win_trail"):
-                result["wins"] += 1; ts["wins"] += 1
+                kind = "win"
                 if status == "win_tp2": result["win_tp2"] += 1
-            elif status == "loss": result["losses"] += 1; ts["losses"] += 1
-            elif status == "expired":
+            elif status == "loss": kind = "loss"
+            elif status == "expired": kind = "expired"
+            elif status == "closed":
+                close_reason = sig.get("close_reason", "")
+                outcome = sig.get("outcome")
+                if close_reason in ("expire", "expire_no_tick"):
+                    kind = "expired"
+                elif outcome == "manual":
+                    kind = "manual"  # admin kapatması, gerçek trade sonucu değil
+                elif (outcome == "win") if outcome else (pct > 0):
+                    kind = "win"
+                else:
+                    kind = "loss"
+            else:
+                kind = None
+
+            if kind == "win":
+                result["wins"] += 1; ts["wins"] += 1
+            elif kind == "loss":
+                result["losses"] += 1; ts["losses"] += 1
+            elif kind == "expired":
                 result["expired"] += 1; result["expired_pnl"] += pct
                 ts["expired"] += 1; ts["expired_pnl_sum"] += pct
 
@@ -962,8 +985,8 @@ def calc_performance():
                 if bucket_key:
                     ab = result["analyzer"][bucket_key]
                     ab["total"] += 1; ab["pnl"] += pct
-                    if status in ("win_tp1", "win_tp2", "win_trail"): ab["wins"] += 1
-                    elif status == "loss":                             ab["losses"] += 1
+                    if kind == "win": ab["wins"] += 1
+                    elif kind == "loss": ab["losses"] += 1
 
         # Günlük / haftalık / aylık istatistikleri
         _pct_for_time = (sig.get("close_pct", 0) or 0) if status != "open" else 0
