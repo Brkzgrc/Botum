@@ -885,6 +885,7 @@ def calc_performance():
         "total": len(all_sigs),
         "open": 0, "closed": 0,
         "wins": 0, "win_tp2": 0, "losses": 0, "expired": 0, "tp1_hits": 0,
+        "win_pnl": 0.0, "loss_pnl": 0.0, "expired_win": 0, "expired_loss": 0,
         "total_pnl": 0.0, "win_loss_pnl": 0.0, "expired_pnl": 0.0,
         "avg_peak": 0.0, "win_rate": 0.0, "real_win_rate": 0.0,
         "analyzer": {
@@ -944,21 +945,26 @@ def calc_performance():
             if sig.get("tp1_hit"): result["tp1_hits"] += 1; ts["tp1_hits"] += 1
             peak = sig.get("peak_pct", 0)
             closed_peaks.append(peak); ts["peaks"].append(peak)
-            # kind: "win" / "loss" / "expired" / "manual" / None (bilinmiyor)
+            # kind: "win" / "loss" / "manual" / None (bilinmiyor) — gerçek kâr/zarara göre.
+            # is_expired: süre dolarak (TP1'e ulaşmadan) kapandı mı — kind'dan BAĞIMSIZ,
+            # ayrı bir bilgi etiketi (bir işlem hem "win" hem "expired sebebiyle" olabilir:
+            # kazançla da kapansa süre dolarak kapanmışsa öyle işaretlenir).
             # eski status vocabulary (win_tp1/win_trail/loss/expired) VE trading bot'un
             # güncel /api/position-closed şeması (status="closed" + outcome/close_reason/
             # close_pct — bkz. claude_analyzer.py _is_win(), aynı desen) birlikte destekleniyor.
+            is_expired = False
             if status in ("win_tp1", "win_tp2", "win_trail"):
                 kind = "win"
                 if status == "win_tp2": result["win_tp2"] += 1
             elif status == "loss": kind = "loss"
-            elif status == "expired": kind = "expired"
+            elif status == "expired":
+                is_expired = True
+                kind = "win" if pct > 0 else "loss"
             elif status == "closed":
                 close_reason = sig.get("close_reason", "")
                 outcome = sig.get("outcome")
-                if close_reason in ("expire", "expire_no_tick"):
-                    kind = "expired"
-                elif outcome == "manual":
+                is_expired = close_reason in ("expire", "expire_no_tick")
+                if outcome == "manual":
                     kind = "manual"  # admin kapatması, gerçek trade sonucu değil
                 elif (outcome == "win") if outcome else (pct > 0):
                     kind = "win"
@@ -968,12 +974,14 @@ def calc_performance():
                 kind = None
 
             if kind == "win":
-                result["wins"] += 1; ts["wins"] += 1
+                result["wins"] += 1; ts["wins"] += 1; result["win_pnl"] += pct
             elif kind == "loss":
-                result["losses"] += 1; ts["losses"] += 1
-            elif kind == "expired":
+                result["losses"] += 1; ts["losses"] += 1; result["loss_pnl"] += pct
+            if is_expired:
                 result["expired"] += 1; result["expired_pnl"] += pct
                 ts["expired"] += 1; ts["expired_pnl_sum"] += pct
+                if kind == "win": result["expired_win"] += 1
+                elif kind == "loss": result["expired_loss"] += 1
 
             # analyzer istatistikleri (sadece kapanmış sinyaller)
             ad = sig.get("analyzer_decision", "")
@@ -1032,13 +1040,17 @@ def calc_performance():
     result["expired_pnl"]   = round(result["expired_pnl"], 2)
     result["win_loss_pnl"]  = round(result["total_pnl"] - result["expired_pnl"], 2)
     result["total_pnl"]     = round(result["total_pnl"], 2)
+    result["win_pnl"]       = round(result["win_pnl"], 2)
+    result["loss_pnl"]      = round(result["loss_pnl"], 2)
     for bk, bv in result["analyzer"].items():
         dec = bv["wins"] + bv["losses"]
         bv["wr"]  = round(bv["wins"] / dec * 100, 1) if dec > 0 else 0
         bv["pnl"] = round(bv["pnl"], 2)
     for tk, ts in type_stats.items():
-        closed = ts["wins"] + ts["losses"] + ts["expired"]
-        ts["win_rate"] = round(ts["wins"] / closed * 100, 1) if closed > 0 else 0
+        # NOT: "expired" artık win/loss'tan bağımsız bir bilgi etiketi (bkz. yukarıdaki
+        # is_expired) — paydaya eklenmez, aksi halde expired+win olan trade'ler çift sayılır.
+        decided = ts["wins"] + ts["losses"]
+        ts["win_rate"] = round(ts["wins"] / decided * 100, 1) if decided > 0 else 0
         ts["avg_peak"] = round(sum(ts["peaks"]) / len(ts["peaks"]), 2) if ts["peaks"] else 0
         ts["total_pnl"] = round(ts["total_pnl"], 2)
         ts["tp2_extra_pnl"] = round(ts["tp2_extra_pnl"], 2)
@@ -2970,9 +2982,12 @@ function toggleType(key, btn) {{
     <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-pending">{len(pending_sigs)}</span><span class="lbl">Beklemede</span></div>
     <div class="card"><span class="val" style="color:#3498db" id="c-open">{perf.get('open',0)}</span><span class="lbl">Açık</span></div>
-    <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span></div>
-    <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span></div>
-    <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span></div>
+    <div class="card"><span class="val" style="color:var(--green)" id="c-wins">{perf.get('wins',0)}</span><span class="lbl">Win</span>
+        <span style="font-size:.6rem;color:#8a9bb0;display:block">{perf.get('win_pnl',0):+.2f}%</span></div>
+    <div class="card"><span class="val" style="color:var(--red)" id="c-loss">{perf.get('losses',0)}</span><span class="lbl">Loss</span>
+        <span style="font-size:.6rem;color:#8a9bb0;display:block">{perf.get('loss_pnl',0):+.2f}%</span></div>
+    <div class="card"><span class="val" style="color:var(--orange)" id="c-exp">{perf.get('expired',0)}</span><span class="lbl">Expired</span>
+        <span style="font-size:.6rem;color:#8a9bb0;display:block">{perf.get('expired_win',0)} win / {perf.get('expired_loss',0)} loss | {perf.get('expired_pnl',0):+.2f}%</span></div>
     <div class="card"><span class="val" id="c-wr" style="color:{'var(--green)' if perf.get('win_rate',0)>=50 else 'var(--red)'}"
         >%{perf.get('win_rate',0)}</span><span class="lbl">Win Rate</span>
         <span style="font-size:.6rem;color:#8a9bb0;display:block">W/L: %{perf.get('real_win_rate',0)}</span></div>
