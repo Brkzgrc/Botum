@@ -875,6 +875,44 @@ def position_checker_loop():
 # ============================================================
 # PERFORMANS HESAPLAMA
 # ============================================================
+def classify_signal_outcome(sig):
+    """Bir kapanmış sinyalin gerçek sonucunu (kind: 'win'/'loss'/'manual'/None) ve
+    süre dolarak (TP1'e ulaşmadan) kapanıp kapanmadığını (is_expired) belirler.
+    calc_performance() VE status_badge() burayı kullanır — iki fonksiyonun farklı
+    mantıklarla birbirinden sapmasını önlemek için tek yerden yönetiliyor.
+
+    Eski status vocabulary (win_tp1/win_trail/loss/expired — artık hiçbir kod
+    yolu üretmiyor, sadece geriye dönük uyumluluk) VE trading bot'un güncel
+    /api/position-closed şeması (status="closed" + outcome/close_reason/
+    close_pct — bkz. claude_analyzer.py _is_win(), aynı desen) birlikte
+    destekleniyor. is_expired kind'dan BAĞIMSIZ — bir işlem hem "win" hem
+    "expired sebebiyle kapandı" olabilir (kazançla da kapansa süre dolarak
+    kapanmışsa öyle işaretlenir)."""
+    status = sig.get("status", "")
+    pct = sig.get("close_pct", 0) or 0
+    is_expired = False
+    if status in ("win_tp1", "win_tp2", "win_trail"):
+        kind = "win"
+    elif status == "loss":
+        kind = "loss"
+    elif status == "expired":
+        is_expired = True
+        kind = "win" if pct > 0 else "loss"
+    elif status == "closed":
+        close_reason = sig.get("close_reason", "")
+        outcome = sig.get("outcome")
+        is_expired = close_reason in ("expire", "expire_no_tick")
+        if outcome == "manual":
+            kind = "manual"  # admin kapatması, gerçek trade sonucu değil
+        elif (outcome == "win") if outcome else (pct > 0):
+            kind = "win"
+        else:
+            kind = "loss"
+    else:
+        kind = None
+    return kind, is_expired
+
+
 def calc_performance():
     with _lock:
         all_sigs = list(signals_db)
@@ -945,33 +983,8 @@ def calc_performance():
             if sig.get("tp1_hit"): result["tp1_hits"] += 1; ts["tp1_hits"] += 1
             peak = sig.get("peak_pct", 0)
             closed_peaks.append(peak); ts["peaks"].append(peak)
-            # kind: "win" / "loss" / "manual" / None (bilinmiyor) — gerçek kâr/zarara göre.
-            # is_expired: süre dolarak (TP1'e ulaşmadan) kapandı mı — kind'dan BAĞIMSIZ,
-            # ayrı bir bilgi etiketi (bir işlem hem "win" hem "expired sebebiyle" olabilir:
-            # kazançla da kapansa süre dolarak kapanmışsa öyle işaretlenir).
-            # eski status vocabulary (win_tp1/win_trail/loss/expired) VE trading bot'un
-            # güncel /api/position-closed şeması (status="closed" + outcome/close_reason/
-            # close_pct — bkz. claude_analyzer.py _is_win(), aynı desen) birlikte destekleniyor.
-            is_expired = False
-            if status in ("win_tp1", "win_tp2", "win_trail"):
-                kind = "win"
-                if status == "win_tp2": result["win_tp2"] += 1
-            elif status == "loss": kind = "loss"
-            elif status == "expired":
-                is_expired = True
-                kind = "win" if pct > 0 else "loss"
-            elif status == "closed":
-                close_reason = sig.get("close_reason", "")
-                outcome = sig.get("outcome")
-                is_expired = close_reason in ("expire", "expire_no_tick")
-                if outcome == "manual":
-                    kind = "manual"  # admin kapatması, gerçek trade sonucu değil
-                elif (outcome == "win") if outcome else (pct > 0):
-                    kind = "win"
-                else:
-                    kind = "loss"
-            else:
-                kind = None
+            kind, is_expired = classify_signal_outcome(sig)
+            if status == "win_tp2": result["win_tp2"] += 1
 
             if kind == "win":
                 result["wins"] += 1; ts["wins"] += 1; result["win_pnl"] += pct
@@ -2326,7 +2339,7 @@ def pct_color(pct):
     color = "#2ecc71" if pct > 0 else ("#e74c3c" if pct < 0 else "#8a9bb0")
     return color, f"{pct:+.2f}%"
 
-def status_badge(status):
+def status_badge(status, sig=None):
     colors = {
         "open":           ("#3498db", "AÇIK"),
         "pending_retest": ("#f39c12", "RETEST BEKLİYOR"),
@@ -2337,7 +2350,25 @@ def status_badge(status):
         "loss":           ("#e74c3c", "LOSS"),
         "expired":        ("#f39c12", "EXPIRED"),
     }
-    c, label = colors.get(status, ("#8a9bb0", status.upper()))
+    if status == "closed" and sig is not None:
+        # Trading bot'un güncel şeması: status hep "closed", gerçek sonuç
+        # outcome/close_reason/close_pct'te — classify_signal_outcome() ile aynı
+        # sınıflandırma (calc_performance() ile tutarlı). Süre dolarak kapanan
+        # (is_expired) her zaman sarı EXPIRED gösterilir (eski sistemdeki gibi,
+        # kazanç/zarar rengi zaten yan sütundaki Getiri hücresinde görünüyor).
+        kind, is_expired = classify_signal_outcome(sig)
+        if is_expired:
+            c, label = ("#f39c12", "EXPIRED")
+        elif kind == "win":
+            c, label = ("#2ecc71", "WIN")
+        elif kind == "loss":
+            c, label = ("#e74c3c", "LOSS")
+        elif kind == "manual":
+            c, label = ("#8a9bb0", "MANUEL")
+        else:
+            c, label = colors.get(status, ("#8a9bb0", status.upper()))
+    else:
+        c, label = colors.get(status, ("#8a9bb0", status.upper()))
     return f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold;white-space:nowrap">{label}</span>'
 
 def type_badge(sig):
@@ -2543,7 +2574,7 @@ def dashboard():
 
         return f"""<tr>
             <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
-            <td>{status_badge(sig.get('status','unknown'))}</td>
+            <td>{status_badge(sig.get('status','unknown'), sig)}</td>
             <td>{fmt_price(sig['entry'])}</td>
             <td>{fmt_price(sig.get('close_price'))}</td>
             <td style="color:{close_c};font-weight:bold">{close_s}</td>
@@ -2946,8 +2977,8 @@ function recalc() {{
     pnl     += v.total_pnl || 0;
     if (v.avg_peak && v.total > 0) peaks.push([v.avg_peak, v.total]);
   }}
-  const closed = wins + losses + expired;
-  const wr = closed > 0 ? (wins / closed * 100).toFixed(1) : 0;
+  const decided = wins + losses;
+  const wr = decided > 0 ? (wins / decided * 100).toFixed(1) : 0;
   const avgPeak = peaks.length
     ? (peaks.reduce((s,[p,n])=>s+p*n,0) / peaks.reduce((s,[,n])=>s+n,0)).toFixed(2)
     : 0;
