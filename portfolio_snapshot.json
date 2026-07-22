@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-22 13:11:42",
+  "updated_at": "2026-07-22 13:41:45",
   "performance": {
     "total": 15,
-    "open": 3,
-    "closed": 6,
+    "open": 2,
+    "closed": 7,
     "wins": 5,
     "win_tp2": 0,
-    "losses": 1,
-    "expired": 3,
+    "losses": 2,
+    "expired": 4,
     "tp1_hits": 3,
     "win_pnl": 9.05,
-    "loss_pnl": -2.86,
+    "loss_pnl": -3.7,
     "expired_win": 2,
-    "expired_loss": 1,
-    "total_pnl": 6.19,
+    "expired_loss": 2,
+    "total_pnl": 5.35,
     "win_loss_pnl": 6.4,
-    "expired_pnl": -0.21,
-    "avg_peak": 2.25,
-    "win_rate": 83.3,
-    "real_win_rate": 83.3,
+    "expired_pnl": -1.05,
+    "avg_peak": 2.04,
+    "win_rate": 71.4,
+    "real_win_rate": 71.4,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,28 +45,28 @@
     "by_type": {
       "Legacy SMC": {
         "total": 9,
-        "open": 3,
+        "open": 2,
         "wins": 5,
-        "losses": 1,
-        "expired": 3,
+        "losses": 2,
+        "expired": 4,
         "tp1_hits": 3,
-        "total_pnl": 6.19,
+        "total_pnl": 5.35,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 83.3,
-        "avg_peak": 2.25,
+        "win_rate": 71.4,
+        "avg_peak": 2.04,
         "tp2_rate": 0,
-        "expired_pnl": -0.21,
+        "expired_pnl": -1.05,
         "win_loss_pnl": 6.4
       }
     },
     "daily": {
       "2026-07-21": {
         "trades": 3,
-        "pnl": 2.64,
+        "pnl": 1.8000000000000003,
         "wins": 1,
-        "losses": 0
+        "losses": 1
       },
       "2026-07-20": {
         "trades": 5,
@@ -84,9 +84,9 @@
     "weekly": {
       "2026-W29": {
         "trades": 8,
-        "pnl": 5.42,
+        "pnl": 4.58,
         "wins": 4,
-        "losses": 1
+        "losses": 2
       },
       "2026-W28": {
         "trades": 1,
@@ -98,54 +98,13 @@
     "monthly": {
       "2026-07": {
         "trades": 9,
-        "pnl": 6.1899999999999995,
+        "pnl": 5.35,
         "wins": 5,
-        "losses": 1
+        "losses": 2
       }
     }
   },
   "open": [
-    {
-      "id": "SANTOS_USDT_1784628004",
-      "symbol": "SANTOS/USDT",
-      "entry": 0.512,
-      "stop": 0.4975,
-      "tp1": 0.5245,
-      "tp2": 0.538,
-      "tp3": null,
-      "limit_price": 0.511,
-      "signal_price": 0.513,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-21T13:00:04.120327+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.516,
-      "peak_pct": 0.78,
-      "low_price": 0.506,
-      "low_pct": -1.17,
-      "current_price": 0.508,
-      "current_pct": -0.78,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-22T13:10:49.048382+03:00",
-      "checks": 287,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 364.17,
-      "fill_time": "2026-07-21T13:24:30.333667+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "YGG_USDT_1784606408",
       "symbol": "YGG/USDT",
@@ -172,14 +131,14 @@
       "peak_pct": 1.59,
       "low_price": 0.01835,
       "low_pct": -2.86,
-      "current_price": 0.01862,
-      "current_pct": -1.43,
+      "current_price": 0.01867,
+      "current_pct": -1.16,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-22T13:10:49.048382+03:00",
-      "checks": 199,
+      "last_check": "2026-07-22T13:40:56.166090+03:00",
+      "checks": 205,
       "extra": {
         "tp3": null
       },
@@ -209,18 +168,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.2255,
-      "peak_pct": 0.04,
+      "peak_price": 0.2263,
+      "peak_pct": 0.4,
       "low_price": 0.2245,
       "low_pct": -0.4,
-      "current_price": 0.2252,
-      "current_pct": -0.09,
+      "current_price": 0.2261,
+      "current_pct": 0.31,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T20:00:12.067048+03:00",
-      "last_check": "2026-07-22T13:10:49.048382+03:00",
-      "checks": 51,
+      "last_check": "2026-07-22T13:40:56.166090+03:00",
+      "checks": 57,
       "extra": {
         "tp3": null
       },
@@ -230,6 +189,48 @@
     }
   ],
   "closed": [
+    {
+      "id": "SANTOS_USDT_1784628004",
+      "symbol": "SANTOS/USDT",
+      "entry": 0.512,
+      "stop": 0.4975,
+      "tp1": 0.5245,
+      "tp2": 0.538,
+      "tp3": null,
+      "limit_price": 0.511,
+      "signal_price": 0.513,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-21T13:00:04.120327+03:00",
+      "close_time": "2026-07-22T13:24:32.557959+03:00",
+      "close_price": 0.5076798790544255,
+      "close_reason": "expire_no_tick",
+      "close_pct": -0.84,
+      "peak_price": 0.516,
+      "peak_pct": 0.78,
+      "low_price": 0.506,
+      "low_pct": -1.17,
+      "current_price": 0.507,
+      "current_pct": -0.98,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-22T13:20:51.809647+03:00",
+      "checks": 289,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 364.17,
+      "fill_time": "2026-07-21T13:24:30.333667+03:00",
+      "bot_miss_count": 0,
+      "outcome": "loss"
+    },
     {
       "id": "GENIUS_USDT_1784628002",
       "symbol": "GENIUS/USDT",
