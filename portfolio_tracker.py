@@ -948,6 +948,8 @@ def calc_performance():
         # no_retest: fill olmadan iptal, istatistiğe dahil etme
         if status in ("pending_retest", "no_retest"):
             continue
+        kind, is_expired = None, False  # açık pozisyonlarda hep None/False kalır;
+                                         # bir önceki sinyalden kalma değer sızmasın diye burada resetleniyor
         sig_type = sig.get("sig_type", "unknown")
         sub = sig.get("sub_type", "")
         source = sig.get("source", "bot")
@@ -1024,9 +1026,9 @@ def calc_performance():
                     if _tk not in _tb:
                         _tb[_tk] = {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}
                     _tb[_tk]["trades"] += 1; _tb[_tk]["pnl"] += _pct_for_time
-                    if status in ("win_tp1", "win_tp2", "win_trail"):
+                    if kind == "win":
                         _tb[_tk]["wins"] += 1
-                    elif status == "loss":
+                    elif kind == "loss":
                         _tb[_tk]["losses"] += 1
             except Exception: pass
 
@@ -1199,7 +1201,7 @@ def close_signal(signal_id):
                 sig["status"]       = "closed"
                 sig["outcome"]      = "manual"
                 sig["close_reason"] = "manual"
-                sig["close_date"]   = now_str
+                sig["close_time"]   = now_str
                 save_signals()
                 return jsonify({"ok": True, "closed": signal_id})
     return jsonify({"error": "not found or not open"}), 404
