@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-22 09:08:02",
+  "updated_at": "2026-07-22 09:38:05",
   "performance": {
     "total": 15,
     "open": 3,
@@ -133,8 +133,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-22T09:04:53.719511+03:00",
-      "checks": 236,
+      "last_check": "2026-07-22T09:35:01.918833+03:00",
+      "checks": 242,
       "extra": {
         "tp3": null
       },
@@ -166,16 +166,16 @@
       "close_pct": null,
       "peak_price": 0.01919,
       "peak_pct": 1.59,
-      "low_price": 0.01851,
-      "low_pct": -2.01,
-      "current_price": 0.01857,
-      "current_pct": -1.69,
+      "low_price": 0.01846,
+      "low_pct": -2.28,
+      "current_price": 0.0185,
+      "current_pct": -2.06,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-22T09:04:53.719511+03:00",
-      "checks": 148,
+      "last_check": "2026-07-22T09:35:01.918833+03:00",
+      "checks": 154,
       "extra": {
         "tp3": null
       },
@@ -205,23 +205,24 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.22540000000000002,
-      "peak_pct": 0.0,
-      "low_price": 0.22540000000000002,
-      "low_pct": 0.0,
-      "current_price": 0.22540000000000002,
-      "current_pct": 0.0,
+      "peak_price": 0.2255,
+      "peak_pct": 0.04,
+      "low_price": 0.2245,
+      "low_pct": -0.4,
+      "current_price": 0.2251,
+      "current_pct": -0.13,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-20T20:00:12.067048+03:00",
-      "last_check": "2026-07-20T20:00:05.052229+03:00",
-      "checks": 0,
+      "last_check": "2026-07-22T09:35:01.918833+03:00",
+      "checks": 6,
       "extra": {
         "tp3": null
       },
       "fill_qty": 813.0,
-      "fill_time": "2026-07-22T09:07:23.028663+03:00"
+      "fill_time": "2026-07-22T09:07:23.028663+03:00",
+      "bot_miss_count": 0
     }
   ],
   "closed": [
