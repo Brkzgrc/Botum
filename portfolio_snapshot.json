@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-23 20:55:09",
+  "updated_at": "2026-07-23 21:25:12",
   "performance": {
     "total": 31,
-    "open": 1,
-    "closed": 14,
-    "wins": 9,
+    "open": 0,
+    "closed": 15,
+    "wins": 10,
     "win_tp2": 0,
     "losses": 5,
     "expired": 8,
-    "tp1_hits": 4,
-    "win_pnl": 11.55,
+    "tp1_hits": 5,
+    "win_pnl": 13.8,
     "loss_pnl": -12.83,
     "expired_win": 5,
     "expired_loss": 3,
-    "total_pnl": -1.28,
-    "win_loss_pnl": 0.54,
+    "total_pnl": 0.97,
+    "win_loss_pnl": 2.79,
     "expired_pnl": -1.82,
-    "avg_peak": 1.94,
-    "win_rate": 64.3,
-    "real_win_rate": 64.3,
+    "avg_peak": 2.01,
+    "win_rate": 66.7,
+    "real_win_rate": 66.7,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,20 +45,20 @@
     "by_type": {
       "Legacy SMC": {
         "total": 15,
-        "open": 1,
-        "wins": 9,
+        "open": 0,
+        "wins": 10,
         "losses": 5,
         "expired": 8,
-        "tp1_hits": 4,
-        "total_pnl": -1.28,
+        "tp1_hits": 5,
+        "total_pnl": 0.97,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 64.3,
-        "avg_peak": 1.94,
+        "win_rate": 66.7,
+        "avg_peak": 2.01,
         "tp2_rate": 0,
         "expired_pnl": -1.82,
-        "win_loss_pnl": 0.54
+        "win_loss_pnl": 2.79
       }
     },
     "daily": {
@@ -70,8 +70,8 @@
       },
       "2026-07-22": {
         "trades": 5,
-        "pnl": -2.8,
-        "wins": 2,
+        "pnl": -0.5499999999999998,
+        "wins": 3,
         "losses": 2
       },
       "2026-07-21": {
@@ -96,8 +96,8 @@
     "weekly": {
       "2026-W29": {
         "trades": 14,
-        "pnl": -2.0499999999999994,
-        "wins": 8,
+        "pnl": 0.2000000000000024,
+        "wins": 9,
         "losses": 5
       },
       "2026-W28": {
@@ -110,55 +110,13 @@
     "monthly": {
       "2026-07": {
         "trades": 15,
-        "pnl": -1.2799999999999994,
-        "wins": 9,
+        "pnl": 0.9700000000000024,
+        "wins": 10,
         "losses": 5
       }
     }
   },
-  "open": [
-    {
-      "id": "API3_USDT_1784728805",
-      "symbol": "API3/USDT",
-      "entry": 0.2237,
-      "stop": 0.2173833999,
-      "tp1": 0.2298166001,
-      "tp2": 0.2360332002,
-      "tp3": null,
-      "limit_price": 0.2236,
-      "signal_price": 0.2272,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-22T17:00:05.018642+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.2287,
-      "peak_pct": 2.24,
-      "low_price": 0.2218,
-      "low_pct": -0.85,
-      "current_price": 0.2281,
-      "current_pct": 1.97,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-23T20:50:43.471202+03:00",
-      "checks": 231,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 805.64,
-      "fill_time": "2026-07-23T01:35:43.595240+03:00",
-      "bot_miss_count": 0
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "id": "HOT_USDT_1784815210",
@@ -665,6 +623,52 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "API3_USDT_1784728805",
+      "symbol": "API3/USDT",
+      "entry": 0.2237,
+      "stop": 0.2173833999,
+      "tp1": 0.2298166001,
+      "tp2": 0.2360332002,
+      "tp3": null,
+      "limit_price": 0.2236,
+      "signal_price": 0.2272,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-22T17:00:05.018642+03:00",
+      "close_time": "2026-07-23T21:18:55.899935+03:00",
+      "close_price": 0.22872557,
+      "close_reason": "trail_binance",
+      "close_pct": 2.25,
+      "peak_price": 0.2304,
+      "peak_pct": 3.0,
+      "low_price": 0.2218,
+      "low_pct": -0.85,
+      "current_price": 0.2299,
+      "current_pct": 2.77,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-23T21:15:53.518752+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-23T21:15:46.609112+03:00",
+      "checks": 236,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 805.64,
+      "fill_time": "2026-07-23T01:35:43.595240+03:00",
+      "bot_miss_count": 0,
+      "tp1_pct": 3.0,
+      "atr": 0.003124047092841481,
+      "atr_updated_at": "2026-07-23T18:15:53.518791+00:00",
+      "tp1_confirmed": true,
+      "outcome": "win"
     },
     {
       "id": "VANA_USDT_1784718010",
