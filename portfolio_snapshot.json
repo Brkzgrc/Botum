@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-23 23:55:28",
+  "updated_at": "2026-07-24 00:25:31",
   "performance": {
-    "total": 32,
-    "open": 1,
+    "total": 34,
+    "open": 2,
     "closed": 15,
     "wins": 10,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 16,
-        "open": 1,
+        "total": 17,
+        "open": 2,
         "wins": 10,
         "losses": 5,
         "expired": 8,
@@ -62,6 +62,12 @@
       }
     },
     "daily": {
+      "2026-07-24": {
+        "trades": 1,
+        "pnl": 0.0,
+        "wins": 0,
+        "losses": 0
+      },
       "2026-07-23": {
         "trades": 2,
         "pnl": -4.87,
@@ -95,7 +101,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 15,
+        "trades": 16,
         "pnl": 0.2000000000000024,
         "wins": 9,
         "losses": 5
@@ -109,7 +115,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 16,
+        "trades": 17,
         "pnl": 0.9700000000000024,
         "wins": 10,
         "losses": 5
@@ -117,6 +123,47 @@
     }
   },
   "open": [
+    {
+      "id": "INTCB_USDT_1784840402",
+      "symbol": "INTCB/USDT",
+      "entry": 104.66,
+      "stop": 101.9875,
+      "tp1": 109.2325,
+      "tp2": 112.855,
+      "tp3": null,
+      "limit_price": 105.61,
+      "signal_price": 109.96,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-24T00:00:02.707696+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 104.76,
+      "peak_pct": 0.1,
+      "low_price": 104.09,
+      "low_pct": -0.54,
+      "current_price": 104.76,
+      "current_pct": 0.1,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-24T00:21:02.225411+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 1.712,
+      "fill_time": "2026-07-24T00:19:01.009908+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "OG_USDT_1784833204",
       "symbol": "OG/USDT",
@@ -141,16 +188,16 @@
       "close_pct": null,
       "peak_price": 2.638,
       "peak_pct": 0.84,
-      "low_price": 2.609,
-      "low_pct": -0.27,
-      "current_price": 2.612,
-      "current_pct": -0.15,
+      "low_price": 2.603,
+      "low_pct": -0.5,
+      "current_price": 2.603,
+      "current_pct": -0.5,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T23:50:58.651114+03:00",
-      "checks": 14,
+      "last_check": "2026-07-24T00:21:02.225411+03:00",
+      "checks": 20,
       "extra": {
         "tp3": null
       },
@@ -160,6 +207,44 @@
     }
   ],
   "closed": [
+    {
+      "id": "XTZ_USDT_1784840403",
+      "symbol": "XTZ/USDT",
+      "entry": 0.2292,
+      "stop": 0.223875,
+      "tp1": 0.234525,
+      "tp2": 0.23985,
+      "tp3": null,
+      "limit_price": 0.2292,
+      "signal_price": 0.2353,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-24T00:00:03.823602+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.2292,
+      "peak_pct": 0.0,
+      "low_price": 0.2292,
+      "low_pct": 0.0,
+      "current_price": 0.2292,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-24T00:00:03.823602+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "HOT_USDT_1784815210",
       "symbol": "HOT/USDT",
