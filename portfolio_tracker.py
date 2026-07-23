@@ -2356,11 +2356,17 @@ def status_badge(status, sig=None):
         # Trading bot'un güncel şeması: status hep "closed", gerçek sonuç
         # outcome/close_reason/close_pct'te — classify_signal_outcome() ile aynı
         # sınıflandırma (calc_performance() ile tutarlı). Süre dolarak kapanan
-        # (is_expired) her zaman sarı EXPIRED gösterilir (eski sistemdeki gibi,
-        # kazanç/zarar rengi zaten yan sütundaki Getiri hücresinde görünüyor).
+        # (is_expired) her zaman sarı EXPIRED olarak gösterilir, ama Codex
+        # önerisiyle yanına gerçek sonuç da eklendi (EXPIRED +WIN / EXPIRED -LOSS)
+        # — "neden win değil?" sorusunu rozetin kendisinde cevaplasın diye.
         kind, is_expired = classify_signal_outcome(sig)
         if is_expired:
-            c, label = ("#f39c12", "EXPIRED")
+            if kind == "win":
+                c, label = ("#f39c12", "EXPIRED +WIN")
+            elif kind == "loss":
+                c, label = ("#f39c12", "EXPIRED -LOSS")
+            else:
+                c, label = ("#f39c12", "EXPIRED")
         elif kind == "win":
             c, label = ("#2ecc71", "WIN")
         elif kind == "loss":
