@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-23 13:18:24",
+  "updated_at": "2026-07-23 13:24:20",
   "performance": {
     "total": 28,
     "open": 4,
@@ -143,8 +143,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T13:17:24.499353+03:00",
-      "checks": 213,
+      "last_check": "2026-07-23T13:23:20.386786+03:00",
+      "checks": 215,
       "extra": {
         "tp3": null
       },
@@ -184,8 +184,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T13:17:24.499353+03:00",
-      "checks": 229,
+      "last_check": "2026-07-23T13:23:20.386786+03:00",
+      "checks": 231,
       "extra": {
         "tp3": null
       },
@@ -219,14 +219,14 @@
       "peak_pct": 2.24,
       "low_price": 0.2218,
       "low_pct": -0.85,
-      "current_price": 0.2248,
-      "current_pct": 0.49,
+      "current_price": 0.2242,
+      "current_pct": 0.22,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T13:17:24.499353+03:00",
-      "checks": 140,
+      "last_check": "2026-07-23T13:23:20.386786+03:00",
+      "checks": 142,
       "extra": {
         "tp3": null
       },
@@ -266,8 +266,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T13:17:24.499353+03:00",
-      "checks": 278,
+      "last_check": "2026-07-23T13:23:20.386786+03:00",
+      "checks": 280,
       "extra": {
         "tp3": null
       },
