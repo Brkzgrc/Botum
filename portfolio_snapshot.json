@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-23 19:24:59",
+  "updated_at": "2026-07-23 19:55:03",
   "performance": {
     "total": 31,
-    "open": 3,
-    "closed": 12,
+    "open": 1,
+    "closed": 14,
     "wins": 9,
     "win_tp2": 0,
-    "losses": 3,
-    "expired": 7,
+    "losses": 5,
+    "expired": 8,
     "tp1_hits": 4,
     "win_pnl": 11.55,
-    "loss_pnl": -5.82,
+    "loss_pnl": -12.83,
     "expired_win": 5,
-    "expired_loss": 2,
-    "total_pnl": 5.73,
-    "win_loss_pnl": 5.41,
-    "expired_pnl": 0.32,
-    "avg_peak": 1.81,
-    "win_rate": 75.0,
-    "real_win_rate": 75.0,
+    "expired_loss": 3,
+    "total_pnl": -1.28,
+    "win_loss_pnl": 0.54,
+    "expired_pnl": -1.82,
+    "avg_peak": 1.94,
+    "win_rate": 64.3,
+    "real_win_rate": 64.3,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,34 +45,34 @@
     "by_type": {
       "Legacy SMC": {
         "total": 15,
-        "open": 3,
+        "open": 1,
         "wins": 9,
-        "losses": 3,
-        "expired": 7,
+        "losses": 5,
+        "expired": 8,
         "tp1_hits": 4,
-        "total_pnl": 5.73,
+        "total_pnl": -1.28,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 75.0,
-        "avg_peak": 1.81,
+        "win_rate": 64.3,
+        "avg_peak": 1.94,
         "tp2_rate": 0,
-        "expired_pnl": 0.32,
-        "win_loss_pnl": 5.41
+        "expired_pnl": -1.82,
+        "win_loss_pnl": 0.54
       }
     },
     "daily": {
       "2026-07-23": {
         "trades": 1,
-        "pnl": 0.0,
+        "pnl": -4.87,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       },
       "2026-07-22": {
         "trades": 5,
-        "pnl": -0.6600000000000001,
+        "pnl": -2.8,
         "wins": 2,
-        "losses": 1
+        "losses": 2
       },
       "2026-07-21": {
         "trades": 3,
@@ -96,9 +96,9 @@
     "weekly": {
       "2026-W29": {
         "trades": 14,
-        "pnl": 4.96,
+        "pnl": -2.0499999999999994,
         "wins": 8,
-        "losses": 3
+        "losses": 5
       },
       "2026-W28": {
         "trades": 1,
@@ -110,95 +110,13 @@
     "monthly": {
       "2026-07": {
         "trades": 15,
-        "pnl": 5.73,
+        "pnl": -1.2799999999999994,
         "wins": 9,
-        "losses": 3
+        "losses": 5
       }
     }
   },
   "open": [
-    {
-      "id": "GLMR_USDT_1784804402",
-      "symbol": "GLMR/USDT",
-      "entry": 0.009170344172777097,
-      "stop": 0.0087249785,
-      "tp1": 0.0096750215,
-      "tp2": 0.010150043,
-      "tp3": null,
-      "limit_price": 0.0092,
-      "signal_price": 0.009401,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-23T14:00:02.342047+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.009456,
-      "peak_pct": 3.11,
-      "low_price": 0.008738,
-      "low_pct": -4.71,
-      "current_price": 0.008748,
-      "current_pct": -4.61,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-23T19:20:29.636928+03:00",
-      "checks": 64,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 19979.5,
-      "fill_time": "2026-07-23T14:03:27.604587+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "STO_USDT_1784736003",
-      "symbol": "STO/USDT",
-      "entry": 0.042,
-      "stop": 0.0408175711,
-      "tp1": 0.0433824289,
-      "tp2": 0.0446648578,
-      "tp3": null,
-      "limit_price": 0.0421,
-      "signal_price": 0.0432,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-22T19:00:03.307709+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.043,
-      "peak_pct": 2.38,
-      "low_price": 0.041,
-      "low_pct": -2.38,
-      "current_price": 0.0411,
-      "current_pct": -2.14,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-23T19:20:29.636928+03:00",
-      "checks": 286,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 4421.9,
-      "fill_time": "2026-07-22T19:30:15.838644+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "API3_USDT_1784728805",
       "symbol": "API3/USDT",
@@ -225,14 +143,14 @@
       "peak_pct": 2.24,
       "low_price": 0.2218,
       "low_pct": -0.85,
-      "current_price": 0.2262,
-      "current_pct": 1.12,
+      "current_price": 0.2268,
+      "current_pct": 1.39,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T19:20:29.636928+03:00",
-      "checks": 213,
+      "last_check": "2026-07-23T19:50:36.165306+03:00",
+      "checks": 219,
       "extra": {
         "tp3": null
       },
@@ -317,6 +235,48 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "GLMR_USDT_1784804402",
+      "symbol": "GLMR/USDT",
+      "entry": 0.009170344172777097,
+      "stop": 0.0087249785,
+      "tp1": 0.0096750215,
+      "tp2": 0.010150043,
+      "tp3": null,
+      "limit_price": 0.0092,
+      "signal_price": 0.009401,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-23T14:00:02.342047+03:00",
+      "close_time": "2026-07-23T19:36:15.857003+03:00",
+      "close_price": 0.008724,
+      "close_reason": "sl_binance",
+      "close_pct": -4.87,
+      "peak_price": 0.009456,
+      "peak_pct": 3.11,
+      "low_price": 0.00871,
+      "low_pct": -5.02,
+      "current_price": 0.008712,
+      "current_pct": -5.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-23T19:35:33.966028+03:00",
+      "checks": 67,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 19979.5,
+      "fill_time": "2026-07-23T14:03:27.604587+03:00",
+      "bot_miss_count": 0,
+      "outcome": "loss"
     },
     {
       "id": "NEWT_USDT_1784793610",
@@ -545,6 +505,48 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "STO_USDT_1784736003",
+      "symbol": "STO/USDT",
+      "entry": 0.042,
+      "stop": 0.0408175711,
+      "tp1": 0.0433824289,
+      "tp2": 0.0446648578,
+      "tp3": null,
+      "limit_price": 0.0421,
+      "signal_price": 0.0432,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-22T19:00:03.307709+03:00",
+      "close_time": "2026-07-23T19:31:11.569471+03:00",
+      "close_price": 0.0411,
+      "close_reason": "expire_no_tick",
+      "close_pct": -2.14,
+      "peak_price": 0.043,
+      "peak_pct": 2.38,
+      "low_price": 0.041,
+      "low_pct": -2.38,
+      "current_price": 0.0412,
+      "current_pct": -1.9,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-23T19:30:32.489096+03:00",
+      "checks": 288,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 4421.9,
+      "fill_time": "2026-07-22T19:30:15.838644+03:00",
+      "bot_miss_count": 0,
+      "outcome": "loss"
     },
     {
       "id": "CITY_USDT_1784732407",
