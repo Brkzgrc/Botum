@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-23 22:25:19",
+  "updated_at": "2026-07-23 22:55:22",
   "performance": {
     "total": 32,
-    "open": 0,
+    "open": 1,
     "closed": 15,
     "wins": 10,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 15,
-        "open": 0,
+        "total": 16,
+        "open": 1,
         "wins": 10,
         "losses": 5,
         "expired": 8,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-07-23": {
-        "trades": 1,
+        "trades": 2,
         "pnl": -4.87,
         "wins": 0,
         "losses": 1
@@ -95,7 +95,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 14,
+        "trades": 15,
         "pnl": 0.2000000000000024,
         "wins": 9,
         "losses": 5
@@ -109,19 +109,18 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 15,
+        "trades": 16,
         "pnl": 0.9700000000000024,
         "wins": 10,
         "losses": 5
       }
     }
   },
-  "open": [],
-  "closed": [
+  "open": [
     {
       "id": "OG_USDT_1784833204",
       "symbol": "OG/USDT",
-      "entry": 2.615,
+      "entry": 2.616,
       "stop": 2.56312,
       "tp1": 2.66688,
       "tp2": 2.71876,
@@ -134,28 +133,33 @@
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "pending_retest",
+      "status": "open",
       "open_time": "2026-07-23T22:00:04.241265+03:00",
       "close_time": null,
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 2.615,
-      "peak_pct": 0.0,
-      "low_price": 2.615,
-      "low_pct": 0.0,
-      "current_price": 2.615,
-      "current_pct": 0.0,
+      "peak_price": 2.618,
+      "peak_pct": 0.08,
+      "low_price": 2.613,
+      "low_pct": -0.11,
+      "current_price": 2.618,
+      "current_pct": 0.08,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T22:00:04.241265+03:00",
-      "checks": 0,
+      "last_check": "2026-07-23T22:50:51.416867+03:00",
+      "checks": 2,
       "extra": {
         "tp3": null
-      }
-    },
+      },
+      "fill_qty": 69.1,
+      "fill_time": "2026-07-23T22:42:13.079468+03:00",
+      "bot_miss_count": 0
+    }
+  ],
+  "closed": [
     {
       "id": "HOT_USDT_1784815210",
       "symbol": "HOT/USDT",
