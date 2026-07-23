@@ -9,6 +9,7 @@ PUMP çıkış: hard SL | hard TP | 6h expire | trailing yok.
 Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
 """
 
+import html
 import json
 import os
 import time
@@ -88,6 +89,7 @@ else:
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = True  # Render hep HTTPS — cookie sadece HTTPS'te gönderilsin
 
 import logging
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -148,7 +150,11 @@ def login_page():
             session.permanent = bool(request.form.get("remember"))
             return redirect(next_url)
         error_html = '<div class="error">Kullanıcı adı veya şifre hatalı.</div>'
-    return LOGIN_PAGE_HTML.format(next_url=next_url, error_html=error_html)
+    # next_url _safe_next() ile sadece "/" ile başlayan bir yol olduğu doğrulanmış
+    # olsa da tırnak/HTML karakteri taşıyabilir (örn. /login?next=/"><script>...) —
+    # hidden input'un value="..." attribute'ından kaçıp XSS'e yol açmasın diye
+    # HTML'e basılmadan önce escape ediliyor (Codex incelemesiyle bulundu).
+    return LOGIN_PAGE_HTML.format(next_url=html.escape(next_url, quote=True), error_html=error_html)
 
 
 @app.route("/logout")
