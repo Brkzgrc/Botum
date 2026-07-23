@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-23 16:24:40",
+  "updated_at": "2026-07-23 16:54:43",
   "performance": {
     "total": 29,
     "open": 4,
@@ -143,14 +143,14 @@
       "peak_pct": 3.11,
       "low_price": 0.008738,
       "low_pct": -4.71,
-      "current_price": 0.008825,
-      "current_pct": -3.77,
+      "current_price": 0.00906,
+      "current_pct": -1.2,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T16:24:27.115560+03:00",
-      "checks": 29,
+      "last_check": "2026-07-23T16:54:38.222091+03:00",
+      "checks": 35,
       "extra": {
         "tp3": null
       },
@@ -184,14 +184,14 @@
       "peak_pct": 2.38,
       "low_price": 0.0411,
       "low_pct": -2.14,
-      "current_price": 0.0412,
-      "current_pct": -1.9,
+      "current_price": 0.0415,
+      "current_pct": -1.19,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T16:24:27.115560+03:00",
-      "checks": 251,
+      "last_check": "2026-07-23T16:54:38.222091+03:00",
+      "checks": 257,
       "extra": {
         "tp3": null
       },
@@ -231,8 +231,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T16:24:27.115560+03:00",
-      "checks": 267,
+      "last_check": "2026-07-23T16:54:38.222091+03:00",
+      "checks": 273,
       "extra": {
         "tp3": null
       },
@@ -266,14 +266,14 @@
       "peak_pct": 2.24,
       "low_price": 0.2218,
       "low_pct": -0.85,
-      "current_price": 0.2241,
-      "current_pct": 0.18,
+      "current_price": 0.2259,
+      "current_pct": 0.98,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-23T16:24:27.115560+03:00",
-      "checks": 178,
+      "last_check": "2026-07-23T16:54:38.222091+03:00",
+      "checks": 184,
       "extra": {
         "tp3": null
       },
