@@ -1190,10 +1190,13 @@ def delete_signal(signal_id):
 
 @app.route("/api/signal/<signal_id>/close", methods=["POST"])
 def close_signal(signal_id):
-    if AUTH_TOKEN:
-        token = request.headers.get("Authorization", "").replace("Bearer ", "")
-        if token != AUTH_TOKEN:
-            return jsonify({"error": "unauthorized"}), 401
+    """Dashboard'daki 'manuel kapat' butonu buraya fetch atıyor. Site geneli
+    Basic Auth (before_request) zaten koruyor, ayrıca token kontrolüne gerek
+    yok — bkz. clear_signal_history(). Önceden route-özel bir Bearer kontrolü
+    vardı, bu da JS'in gerçek PORTFOLIO_AUTH_TOKEN'ı HTML kaynağına gömmesini
+    zorunlu kılıyordu (Codex incelemesiyle bulundu, güvenlik açığı — Basic
+    Auth arkasındaki herkes token'ı sayfa kaynağından okuyup bot/webhook
+    endpoint'lerini de bypass edebilirdi)."""
     now_str = datetime.now(TR_TZ).isoformat()
     with _lock:
         for sig in signals_db:
@@ -3119,7 +3122,7 @@ function deleteTrade(sym,btn){{
 function closeSignal(id,btn){{
   if(!confirm('Bu pozisyonu manuel kapattı olarak işaretle?'))return;
   btn.disabled=true;btn.textContent='...';
-  fetch('/api/signal/'+id+'/close',{{method:'POST',headers:{{'Authorization':'Bearer {AUTH_TOKEN}'}}}})
+  fetch('/api/signal/'+id+'/close',{{method:'POST'}})
     .then(r=>r.json()).then(d=>{{
       if(d.ok){{btn.closest('tr').style.opacity='0.4';btn.textContent='Kapandı';setTimeout(()=>location.reload(),800);}}
       else{{btn.textContent='Hata';btn.disabled=false;}}
