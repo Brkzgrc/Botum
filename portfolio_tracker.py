@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 import requests
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, session, redirect
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
 from claude_analyzer import (process_and_send as _analyzer_process,
@@ -33,6 +33,7 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
 AUTH_TOKEN              = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 DASHBOARD_USER          = os.getenv("DASHBOARD_USER", "")
 DASHBOARD_PASS          = os.getenv("DASHBOARD_PASS", "")
+FLASK_SECRET_KEY        = os.getenv("FLASK_SECRET_KEY", "")
 GITHUB_TOKEN            = os.getenv("GITHUB_TOKEN", "")
 CMC_API_KEY             = os.getenv("CMC_API_KEY", "")
 TRADING_BOT_URL         = os.getenv("TRADING_BOT_URL", "")
@@ -72,8 +73,88 @@ HIDDEN_SOURCES = ("smc-eski-discount", "smc-eski-choch", "smc-eski-choch-v2")
 
 app = Flask(__name__)
 
+if FLASK_SECRET_KEY:
+    app.secret_key = FLASK_SECRET_KEY
+else:
+    # FLASK_SECRET_KEY Render'da tanımlanmadıysa oturumlar imzalanamaz — süreç
+    # başına rastgele bir key üretilir, bu da her deploy/restart'ta TÜM
+    # oturumların düşmesi demektir ("beni hatırla" işe yaramaz). Site yine de
+    # çöküp kapanmasın diye açık bırakılıyor ama FLASK_SECRET_KEY MUTLAKA
+    # Render'a env var olarak eklenmeli (örn. `openssl rand -hex 32`).
+    import secrets as _secrets
+    app.secret_key = _secrets.token_hex(32)
+    print("[UYARI] FLASK_SECRET_KEY tanımlı değil — oturumlar her restart'ta düşecek. "
+          "Render'a FLASK_SECRET_KEY env var'ı ekleyin.", flush=True)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
 import logging
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+
+def _safe_next(path):
+    """Open-redirect koruması: sadece site-içi, tek-slash'lı yollara izin ver."""
+    if path and path.startswith("/") and not path.startswith("//"):
+        return path
+    return "/"
+
+
+LOGIN_PAGE_HTML = """<!DOCTYPE html><html lang="tr"><head>
+<meta charset="UTF-8"><title>Giriş — Botum</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{{--bg:#0a0e14;--card:#0f1319;--border:#1e2a3a;--text:#c9d1d9;--text-dim:#7f8c8d;--accent:#00b4d8;--red:#e74c3c;}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh}}
+.box{{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;width:100%;max-width:340px}}
+h1{{color:var(--accent);font-size:1.2rem;margin-bottom:20px;text-align:center}}
+label{{display:block;font-size:.75rem;color:var(--text-dim);margin-bottom:6px;margin-top:14px}}
+input[type=text],input[type=password]{{width:100%;background:#0a0e14;border:1px solid var(--border);
+  border-radius:6px;padding:9px 10px;color:var(--text);font-size:.9rem}}
+input[type=text]:focus,input[type=password]:focus{{outline:none;border-color:var(--accent)}}
+.remember{{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:.8rem;color:var(--text-dim)}}
+button{{width:100%;margin-top:20px;background:var(--accent);color:#0a0e14;border:none;border-radius:6px;
+  padding:10px;font-size:.9rem;font-weight:bold;cursor:pointer}}
+.error{{color:var(--red);font-size:.8rem;margin-top:12px;text-align:center}}
+</style></head><body>
+<div class="box">
+  <h1>🔒 Botum Dashboard</h1>
+  <form method="POST">
+    <input type="hidden" name="next" value="{next_url}">
+    <label>Kullanıcı adı</label>
+    <input type="text" name="username" autofocus required>
+    <label>Şifre</label>
+    <input type="password" name="password" required>
+    <label class="remember"><input type="checkbox" name="remember" checked style="width:auto"> 30 gün beni hatırla</label>
+    <button type="submit">Giriş Yap</button>
+    {error_html}
+  </form>
+</div>
+</body></html>"""
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    next_url = _safe_next(request.values.get("next", "/"))
+    error_html = ""
+    if request.method == "POST":
+        u = request.form.get("username", "")
+        p = request.form.get("password", "")
+        if u == DASHBOARD_USER and p == DASHBOARD_PASS:
+            session.clear()
+            session["authenticated"] = True
+            session.permanent = bool(request.form.get("remember"))
+            return redirect(next_url)
+        error_html = '<div class="error">Kullanıcı adı veya şifre hatalı.</div>'
+    return LOGIN_PAGE_HTML.format(next_url=next_url, error_html=error_html)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 
 # ─── ERİŞİM KONTROLÜ ─────────────────────────────────────────────────────────
@@ -82,10 +163,12 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 # tetikleyebiliyordu. Bot/servis çağrıları (SMC.py, position_monitor.py,
 # claude_analyzer.py, trading-bot) zaten Authorization: Bearer PORTFOLIO_AUTH_TOKEN
 # gönderiyor — bunlar etkilenmesin diye geçerli Bearer token her zaman geçer.
-# Geri kalan HER ŞEY (tarayıcı/dashboard erişimi) HTTP Basic Auth arkasına alındı.
+# Geri kalan HER ŞEY (tarayıcı/dashboard erişimi) imzalı oturum cookie'si
+# gerektiriyor (/login — "30 gün beni hatırla" seçeneğiyle). Basic Auth'un
+# yerini aldı: tarayıcı artık sekme/pencere kapanınca şifre sormuyor.
 @app.before_request
 def _require_auth():
-    if request.path == "/api/health":
+    if request.path in ("/api/health", "/login", "/logout"):
         return None
     if AUTH_TOKEN:
         bearer = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -96,14 +179,9 @@ def _require_auth():
         # korumasız kalır — mevcut AUTH_TOKEN kontrollerindeki "boşsa açık" deseniyle
         # tutarlı, ama bu env var'lar deploy sonrası MUTLAKA ayarlanmalı.
         return None
-    auth = request.authorization
-    if not auth or auth.username != DASHBOARD_USER or auth.password != DASHBOARD_PASS:
-        return Response(
-            "Yetkisiz erişim — dashboard için kullanıcı adı/şifre gerekli.",
-            401,
-            {"WWW-Authenticate": 'Basic realm="Botum Dashboard"'},
-        )
-    return None
+    if session.get("authenticated"):
+        return None
+    return redirect(f"/login?next={_safe_next(request.path)}")
 
 signals_db = []
 _lock = threading.Lock()
@@ -2359,17 +2437,20 @@ def status_badge(status, sig=None):
         # Trading bot'un güncel şeması: status hep "closed", gerçek sonuç
         # outcome/close_reason/close_pct'te — classify_signal_outcome() ile aynı
         # sınıflandırma (calc_performance() ile tutarlı). Süre dolarak kapanan
-        # (is_expired) her zaman sarı EXPIRED olarak gösterilir, ama Codex
-        # önerisiyle yanına gerçek sonuç da eklendi (EXPIRED +WIN / EXPIRED -LOSS)
-        # — "neden win değil?" sorusunu rozetin kendisinde cevaplasın diye.
+        # (is_expired) her zaman sarı zeminde gösterilir, ama gerçek sonuç
+        # hem yazıda (EXPIRED +WIN / EXPIRED -LOSS) hem kenarlık renginde
+        # (yeşil/kırmızı) — "neden win değil?" sorusunu rozetin kendisi
+        # tek bakışta cevaplasın diye.
         kind, is_expired = classify_signal_outcome(sig)
+        border = None
         if is_expired:
+            c = "#f39c12"
             if kind == "win":
-                c, label = ("#f39c12", "EXPIRED +WIN")
+                border, label = "#2ecc71", "EXPIRED +WIN"
             elif kind == "loss":
-                c, label = ("#f39c12", "EXPIRED -LOSS")
+                border, label = "#e74c3c", "EXPIRED -LOSS"
             else:
-                c, label = ("#f39c12", "EXPIRED")
+                label = "EXPIRED"
         elif kind == "win":
             c, label = ("#2ecc71", "WIN")
         elif kind == "loss":
@@ -2380,7 +2461,10 @@ def status_badge(status, sig=None):
             c, label = colors.get(status, ("#8a9bb0", status.upper()))
     else:
         c, label = colors.get(status, ("#8a9bb0", status.upper()))
-    return f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:bold;white-space:nowrap">{label}</span>'
+        border = None
+    border_style = f"2px solid {border}" if border else "none"
+    return (f'<span style="background:{c};color:#0a0e14;padding:2px 8px;border-radius:3px;'
+            f'font-size:.7rem;font-weight:bold;white-space:nowrap;border:{border_style}">{label}</span>')
 
 def type_badge(sig):
     sig_type = sig.get("sig_type", "unknown")
