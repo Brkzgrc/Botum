@@ -3168,6 +3168,15 @@ def alsat_page():
 
     balance_val = f"${usdt_balance:,.2f}" if usdt_balance is not None else "—"
 
+    # Açık (fill olmuş) pozisyonların o anki piyasa değeri — trading-bot'un
+    # /status'undan gelen qty/current_price zaten mevcut, ek istek gerekmiyor.
+    positions_value = sum(
+        float(p.get("qty", 0) or 0) * float(p.get("current_price", 0) or 0)
+        for p in trade_positions.values() if p.get("status") == "open"
+    )
+    positions_value_val = f"${positions_value:,.2f}"
+    total_value_val = f"${usdt_balance + positions_value:,.2f}" if usdt_balance is not None else "—"
+
     STATUS_LABEL = {
         "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
                        'border-radius:3px;padding:2px 8px;font-size:.65rem">İZLEME</span>'),
@@ -3259,7 +3268,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -3295,6 +3304,8 @@ tr:hover td{{background:#0f151d;}}
   <div class="card"><span class="val" style="color:#3498db">{pending_n}</span><span class="lbl">Emir</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{open_n}</span><span class="lbl">Açık</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{balance_val}</span><span class="lbl">Kullanılabilir USDT</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{positions_value_val}</span><span class="lbl">İşlemdeki Tutar</span></div>
+  <div class="card"><span class="val" style="color:#ecf0f1">{total_value_val}</span><span class="lbl">Toplam (Tahmini)</span></div>
 </div>
 
 <p class="note">İzleme: fiyat CHoCH+3tick'e gelince limit emir açılır (CHoCH+1tick). Emir: Binance'te limit buy bekliyor. Sil butonu sadece state'den siler — Binance emrini kendin iptal et. 30s otomatik yenileme.</p>
