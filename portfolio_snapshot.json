@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-24 08:56:22",
+  "updated_at": "2026-07-24 09:26:25",
   "performance": {
     "total": 34,
     "open": 1,
@@ -149,14 +149,14 @@
       "peak_pct": 0.84,
       "low_price": 2.583,
       "low_pct": -1.26,
-      "current_price": 2.595,
-      "current_pct": -0.8,
+      "current_price": 2.602,
+      "current_pct": -0.54,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T08:52:05.245859+03:00",
-      "checks": 122,
+      "last_check": "2026-07-24T09:22:08.697416+03:00",
+      "checks": 128,
       "extra": {
         "tp3": null
       },
