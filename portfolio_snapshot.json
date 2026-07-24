@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-24 22:57:52",
+  "updated_at": "2026-07-24 23:27:56",
   "performance": {
-    "total": 44,
-    "open": 5,
-    "closed": 19,
-    "wins": 11,
+    "total": 45,
+    "open": 4,
+    "closed": 20,
+    "wins": 12,
     "win_tp2": 0,
     "losses": 8,
     "expired": 8,
-    "tp1_hits": 6,
-    "win_pnl": 17.97,
+    "tp1_hits": 7,
+    "win_pnl": 20.43,
     "loss_pnl": -20.29,
     "expired_win": 5,
     "expired_loss": 3,
-    "total_pnl": -2.32,
-    "win_loss_pnl": -0.5,
+    "total_pnl": 0.14,
+    "win_loss_pnl": 1.96,
     "expired_pnl": -1.82,
-    "avg_peak": 2.08,
-    "win_rate": 57.9,
-    "real_win_rate": 57.9,
+    "avg_peak": 2.12,
+    "win_rate": 60.0,
+    "real_win_rate": 60.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "Legacy SMC": {
         "total": 24,
-        "open": 5,
-        "wins": 11,
+        "open": 4,
+        "wins": 12,
         "losses": 8,
         "expired": 8,
-        "tp1_hits": 6,
-        "total_pnl": -2.32,
+        "tp1_hits": 7,
+        "total_pnl": 0.14,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 57.9,
-        "avg_peak": 2.08,
+        "win_rate": 60.0,
+        "avg_peak": 2.12,
         "tp2_rate": 0,
         "expired_pnl": -1.82,
-        "win_loss_pnl": -0.5
+        "win_loss_pnl": 1.96
       }
     },
     "daily": {
       "2026-07-24": {
         "trades": 8,
-        "pnl": -1.2600000000000002,
-        "wins": 1,
+        "pnl": 1.1999999999999997,
+        "wins": 2,
         "losses": 2
       },
       "2026-07-23": {
@@ -102,8 +102,8 @@
     "weekly": {
       "2026-W29": {
         "trades": 23,
-        "pnl": -3.090000000000002,
-        "wins": 10,
+        "pnl": -0.6300000000000012,
+        "wins": 11,
         "losses": 8
       },
       "2026-W28": {
@@ -116,8 +116,8 @@
     "monthly": {
       "2026-07": {
         "trades": 24,
-        "pnl": -2.320000000000002,
-        "wins": 11,
+        "pnl": 0.1399999999999988,
+        "wins": 12,
         "losses": 8
       }
     }
@@ -149,60 +149,19 @@
       "peak_pct": 2.26,
       "low_price": 0.01314,
       "low_pct": -0.83,
-      "current_price": 0.01325,
-      "current_pct": 0.0,
+      "current_price": 0.01327,
+      "current_pct": 0.15,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T22:56:41.402235+03:00",
-      "checks": 23,
+      "last_check": "2026-07-24T23:26:54.955645+03:00",
+      "checks": 29,
       "extra": {
         "tp3": null
       },
       "fill_qty": 13984.2,
       "fill_time": "2026-07-24T21:03:54.279423+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "ALGO_USDT_1784908806",
-      "symbol": "ALGO/USDT",
-      "entry": 0.08360000000000001,
-      "stop": 0.0820875,
-      "tp1": 0.0853125,
-      "tp2": 0.086925,
-      "tp3": null,
-      "limit_price": 0.0837,
-      "signal_price": 0.0838,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-24T19:00:06.009634+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.0846,
-      "peak_pct": 1.2,
-      "low_price": 0.0831,
-      "low_pct": -0.6,
-      "current_price": 0.0845,
-      "current_pct": 1.08,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-24T22:56:41.402235+03:00",
-      "checks": 45,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 2083.0,
-      "fill_time": "2026-07-24T19:13:50.412816+03:00",
       "bot_miss_count": 0
     },
     {
@@ -231,14 +190,14 @@
       "peak_pct": 0.57,
       "low_price": 318.0,
       "low_pct": -0.83,
-      "current_price": 320.32,
-      "current_pct": -0.11,
+      "current_price": 319.72,
+      "current_pct": -0.29,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T22:56:41.402235+03:00",
-      "checks": 70,
+      "last_check": "2026-07-24T23:26:54.955645+03:00",
+      "checks": 76,
       "extra": {
         "tp3": null
       },
@@ -272,14 +231,14 @@
       "peak_pct": 1.66,
       "low_price": 0.004486,
       "low_pct": -4.82,
-      "current_price": 0.004657,
-      "current_pct": -1.19,
+      "current_price": 0.004693,
+      "current_pct": -0.42,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T22:56:41.402235+03:00",
-      "checks": 114,
+      "last_check": "2026-07-24T23:26:54.955645+03:00",
+      "checks": 120,
       "extra": {
         "tp3": null
       },
@@ -319,8 +278,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T22:56:41.402235+03:00",
-      "checks": 82,
+      "last_check": "2026-07-24T23:26:54.955645+03:00",
+      "checks": 88,
       "extra": {
         "tp3": null
       },
@@ -330,6 +289,44 @@
     }
   ],
   "closed": [
+    {
+      "id": "VIC_USDT_1784923210",
+      "symbol": "VIC/USDT",
+      "entry": 0.038,
+      "stop": 0.0368793752,
+      "tp1": 0.0391206248,
+      "tp2": 0.0402412496,
+      "tp3": null,
+      "limit_price": 0.038,
+      "signal_price": 0.038,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "no_retest",
+      "open_time": "2026-07-24T23:00:10.530629+03:00",
+      "close_time": "2026-07-24T23:00:19.525616+03:00",
+      "close_price": null,
+      "close_reason": "no_retest",
+      "close_pct": null,
+      "peak_price": 0.038,
+      "peak_pct": 0.0,
+      "low_price": 0.038,
+      "low_pct": 0.0,
+      "current_price": 0.038,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-24T23:00:10.530629+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "MAGIC_USDT_1784916008",
       "symbol": "MAGIC/USDT",
@@ -443,6 +440,52 @@
       "extra": {
         "tp3": null
       }
+    },
+    {
+      "id": "ALGO_USDT_1784908806",
+      "symbol": "ALGO/USDT",
+      "entry": 0.08360000000000001,
+      "stop": 0.0820875,
+      "tp1": 0.0853125,
+      "tp2": 0.086925,
+      "tp3": null,
+      "limit_price": 0.0837,
+      "signal_price": 0.0838,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-24T19:00:06.009634+03:00",
+      "close_time": "2026-07-24T23:27:23.256046+03:00",
+      "close_price": 0.0856596,
+      "close_reason": "trail_binance",
+      "close_pct": 2.46,
+      "peak_price": 0.0861,
+      "peak_pct": 2.99,
+      "low_price": 0.0831,
+      "low_pct": -0.6,
+      "current_price": 0.0859,
+      "current_pct": 2.75,
+      "tp1_hit": true,
+      "tp1_time": "2026-07-24T23:16:57.120512+03:00",
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-24T23:26:54.955645+03:00",
+      "checks": 51,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 2083.0,
+      "fill_time": "2026-07-24T19:13:50.412816+03:00",
+      "bot_miss_count": 0,
+      "tp1_pct": 2.39,
+      "atr": 0.0007340053980033088,
+      "atr_updated_at": "2026-07-24T20:16:57.120540+00:00",
+      "tp1_confirmed": true,
+      "outcome": "win"
     },
     {
       "id": "ACE_USDT_1784908804",
