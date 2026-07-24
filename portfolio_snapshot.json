@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-24 10:56:34",
+  "updated_at": "2026-07-24 11:26:37",
   "performance": {
-    "total": 34,
+    "total": 35,
     "open": 1,
     "closed": 16,
     "wins": 10,
@@ -149,14 +149,14 @@
       "peak_pct": 0.84,
       "low_price": 2.583,
       "low_pct": -1.26,
-      "current_price": 2.601,
-      "current_pct": -0.57,
+      "current_price": 2.595,
+      "current_pct": -0.8,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T10:52:19.194258+03:00",
-      "checks": 146,
+      "last_check": "2026-07-24T11:22:22.795658+03:00",
+      "checks": 152,
       "extra": {
         "tp3": null
       },
@@ -166,6 +166,44 @@
     }
   ],
   "closed": [
+    {
+      "id": "TNSR_USDT_1784880004",
+      "symbol": "TNSR/USDT",
+      "entry": 0.0328,
+      "stop": 0.0313634521,
+      "tp1": 0.0342365479,
+      "tp2": 0.0356730958,
+      "tp3": null,
+      "limit_price": 0.0328,
+      "signal_price": 0.0337,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "pending_retest",
+      "open_time": "2026-07-24T11:00:04.001872+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.0328,
+      "peak_pct": 0.0,
+      "low_price": 0.0328,
+      "low_pct": 0.0,
+      "current_price": 0.0328,
+      "current_pct": 0.0,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-24T11:00:04.001872+03:00",
+      "checks": 0,
+      "extra": {
+        "tp3": null
+      }
+    },
     {
       "id": "XTZ_USDT_1784840403",
       "symbol": "XTZ/USDT",
