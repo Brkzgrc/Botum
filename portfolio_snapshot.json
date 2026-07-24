@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-24 13:56:53",
+  "updated_at": "2026-07-24 14:26:56",
   "performance": {
     "total": 37,
     "open": 4,
@@ -145,18 +145,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.1619,
-      "peak_pct": 1.0,
+      "peak_price": 0.1628,
+      "peak_pct": 1.56,
       "low_price": 0.1589,
       "low_pct": -0.87,
-      "current_price": 0.1606,
-      "current_pct": 0.19,
+      "current_price": 0.1611,
+      "current_pct": 0.5,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T13:52:56.596686+03:00",
-      "checks": 10,
+      "last_check": "2026-07-24T14:23:07.440100+03:00",
+      "checks": 16,
       "extra": {
         "tp3": null
       },
@@ -188,16 +188,16 @@
       "close_pct": null,
       "peak_price": 0.004791,
       "peak_pct": 1.66,
-      "low_price": 0.004643,
-      "low_pct": -1.48,
-      "current_price": 0.004652,
-      "current_pct": -1.29,
+      "low_price": 0.004556,
+      "low_pct": -3.33,
+      "current_price": 0.004576,
+      "current_pct": -2.91,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T13:52:56.596686+03:00",
-      "checks": 6,
+      "last_check": "2026-07-24T14:23:07.440100+03:00",
+      "checks": 12,
       "extra": {
         "tp3": null
       },
@@ -237,8 +237,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T13:52:56.596686+03:00",
-      "checks": 25,
+      "last_check": "2026-07-24T14:23:07.440100+03:00",
+      "checks": 31,
       "extra": {
         "tp3": null
       },
@@ -278,8 +278,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-24T13:52:56.596686+03:00",
-      "checks": 182,
+      "last_check": "2026-07-24T14:23:07.440100+03:00",
+      "checks": 188,
       "extra": {
         "tp3": null
       },
