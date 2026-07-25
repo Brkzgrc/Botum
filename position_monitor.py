@@ -37,6 +37,13 @@ CHECK_INTERVAL   = 60      # saniye
 MAX_POSITIONS    = 5
 MAX_POS_SIZE     = 20_000.0
 
+# ── SHADOW / DRY-RUN: "+1.0% TP1 tavan" adayı (backtest doğrulaması: bkz.
+# CLAUDE.md "Emir Akışı" bölümü) — SADECE gözlem, hiçbir gerçek emri etkilemez.
+# Kullanıcı onayı: 2026-07-25. Amaç: 1-2 hafta canlı log biriktirip
+# backtest'in 1H/15m tahminini gerçek 1m-kapalı-mum davranışıyla doğrulamak.
+SHADOW_TP1_CAP_PCT  = float(os.getenv("SHADOW_TP1_CAP_PCT", "1.0"))
+SHADOW_TP1_LOG_FILE = os.getenv("SHADOW_TP1_LOG_FILE", "/tmp/shadow_tp1_cap.jsonl")
+
 class _StateLock:
     """Dosya kilidi (fcntl.flock) — SADECE Render/Linux hedefli, fcntl POSIX-only
     (Windows'ta import hatası verir). Bu dosya zaten yalnızca Render'daki
@@ -485,6 +492,11 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
             "trailing":    False,
             "open_time":   now,
             "source":      pos.get("source", "smc-v2"),
+            # Shadow/dry-run: gerçek sistemden bağımsız, sadece gözlem amaçlı.
+            "shadow_tp1_cap_pct": SHADOW_TP1_CAP_PCT,
+            "shadow_tp1":         min(float(pos["tp1"]), fill_price * (1 + SHADOW_TP1_CAP_PCT / 100.0)),
+            "shadow_trailing":    False,
+            "shadow_exit":        None,
         }
         _save_state(state)
 
@@ -843,6 +855,99 @@ def _reconcile_pending_orders():
             _save_state(state)
 
 
+# ─── SHADOW / DRY-RUN (TP1 tavan adayı — sadece gözlem) ──────────────────────
+# Bu bölüm gerçek emir akışına DOKUNMAZ: sadece _trail_stop_price() (salt
+# okunur hesaplama) çağırır ve dosyaya JSONL log yazar. _cancel_sl,
+# _place_trail_sl_order, _place_trailing_delta_order, _market_sell —
+# bunların HİÇBİRİ shadow kod yolundan çağrılmaz.
+
+_shadow_log_lock = threading.Lock()
+
+def _shadow_log(event: str, symbol: str, **fields):
+    """Shadow gözlem logu — hata olursa sessizce yutulur, ana akışı bozmaz."""
+    try:
+        entry = {"ts": datetime.now(timezone.utc).isoformat(), "event": event, "symbol": symbol, **fields}
+        line = json.dumps(entry, ensure_ascii=False, default=str)
+        with _shadow_log_lock:
+            with open(SHADOW_TP1_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+    except Exception as e:
+        print(f"[SHADOW] log hatası {symbol}: {e}", flush=True)
+
+
+def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float) -> bool:
+    """pos'u yerinde (in-place) günceller. Dönüş: pos değiştiyse True (çağıran
+    _save_state + pos_snap yenilemeli). Gerçek sistemin trailing/stop/TP1
+    durumundan tamamen bağımsız çalışır — kendi shadow_tp1'ine göre karar verir."""
+    if pos.get("shadow_exit") is not None:
+        return False
+    shadow_tp1 = float(pos.get("shadow_tp1", 0) or 0)
+    if not shadow_tp1:
+        return False   # bu deploy'dan önce açılmış eski pozisyon — shadow alanı yok
+
+    entry_px = float(pos.get("entry", 0) or 0)
+    shadow_peak_now = max(float(pos.get("peak", 0) or 0), high)
+    dirty = False
+
+    if not pos.get("shadow_trailing"):
+        if high >= shadow_tp1:
+            pos["shadow_trailing"] = True
+            dirty = True
+            _shadow_log("SHADOW_WOULD_ACTIVATE_TRAIL", symbol,
+                        price=high, shadow_tp1=shadow_tp1, entry=entry_px, peak=shadow_peak_now)
+            shadow_trail_now = _trail_stop_price(shadow_peak_now, pos.get("atr"), entry_px)
+            if low <= shadow_trail_now:
+                pos["shadow_exit"] = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "price": shadow_trail_now, "reason": "trail", "same_candle": True,
+                }
+                # Aynı kapanmış mumda hem TP1 dokundu hem shadow trail kırıldı —
+                # bot mum kapanana kadar bunu göremeyeceği için gerçek canlı
+                # riski ölçen en önemli event bu.
+                _shadow_log("SHADOW_SAME_CANDLE_TOUCH_AND_BREACH", symbol,
+                            price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px)
+                _shadow_log("SHADOW_WOULD_EXIT_TRAIL", symbol,
+                            price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px, same_candle=True)
+    else:
+        shadow_trail_now = _trail_stop_price(shadow_peak_now, pos.get("atr"), entry_px)
+        if low <= shadow_trail_now:
+            pos["shadow_exit"] = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "price": shadow_trail_now, "reason": "trail", "same_candle": False,
+            }
+            dirty = True
+            _shadow_log("SHADOW_WOULD_EXIT_TRAIL", symbol,
+                        price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px, same_candle=False)
+
+    return dirty
+
+
+def _shadow_log_close(symbol: str, pos_snap: dict, live_reason: str, live_price: float, live_pct: float):
+    """Gerçek pozisyon kapanınca shadow karşılaştırmasını logla — sadece gözlem."""
+    try:
+        entry_px = float(pos_snap.get("entry", 0) or 0)
+        shadow_exit = pos_snap.get("shadow_exit")
+        if shadow_exit:
+            shadow_price = float(shadow_exit.get("price", 0) or 0)
+            shadow_pct = round((shadow_price - entry_px) / entry_px * 100, 2) if entry_px else 0
+            shadow_result = "resolved"
+        else:
+            # Gerçek pozisyon shadow hiç sonuçlanmadan kapandı (shadow trailing'e
+            # hiç geçmedi VEYA geçti ama kendi trail'i tetiklenmeden gerçek
+            # pozisyon kapandı) — bu durumu ayrı bir sonuç olarak işaretle,
+            # "aynı" ya da "sıfır fark" gibi varsayılan bir değere düşürme.
+            shadow_price = None
+            shadow_pct = None
+            shadow_result = "undetermined"
+        _shadow_log("SHADOW_LIVE_CLOSED", symbol,
+                    live_reason=live_reason, live_price=live_price, live_pct=live_pct,
+                    shadow_result=shadow_result, shadow_price=shadow_price, shadow_pct=shadow_pct,
+                    shadow_trailing=bool(pos_snap.get("shadow_trailing")),
+                    fark_pct=(round(shadow_pct - live_pct, 2) if shadow_pct is not None else None))
+    except Exception as e:
+        print(f"[SHADOW] kapanış log hatası {symbol}: {e}", flush=True)
+
+
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
 
 def _process_tick(symbol: str, close: float, high: float, low: float):
@@ -872,6 +977,14 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         state["positions"][symbol] = pos
         _save_state(state)
         pos_snap = dict(pos)
+
+        # Shadow/dry-run: gerçek sistemin trailing/stop/TP1 kararından TAMAMEN
+        # bağımsız, kendi (daha düşük) TP1 tavanına göre değerlendirir. Sadece
+        # gözlem — pos_snap'i tazelemek dışında dışarıya hiçbir etkisi yok.
+        if _shadow_evaluate(symbol, pos, high, low):
+            state["positions"][symbol] = pos
+            _save_state(state)
+            pos_snap = dict(pos)
 
         # ÖNEMLİ SIRALAMA: TP1/stop kontrolü HER ZAMAN önce çalışır, expire kontrolü
         # SADECE trailing'e hiç geçmemiş ("gelişmeyen") pozisyonlar için, en son
@@ -1049,6 +1162,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     "close_price": real_price, "pnl_pct": pct,
                 })
                 print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
+                _shadow_log_close(symbol, pos_snap, sell_reason, real_price, pct)
         finally:
             if not closed:
                 # Satış başarısız/kısmi: closing bayrağını kaldır, sonraki tick'te
