@@ -415,10 +415,37 @@ def shadow_page():
     summaries = _merge_with_real_positions(summaries, real_positions)
     stats = _summarize_symbols(summaries)
 
-    summary_rows = "".join(_summary_row_html(s) for s in summaries) or (
-        '<tr><td colspan="7" style="text-align:center;color:#7f8c8d;padding:20px">'
-        'Henüz izlenen işlem yok — position_monitor.py deploy sonrası açılan pozisyonlarda birikmeye başlayacak.</td></tr>'
-    )
+    # Ana tabloda SADECE geçerli (shadow_valid=True) pozisyonlar gösterilir —
+    # geçersiz/eski pozisyonlar test verisi değil, sadece "eski pozisyon var"
+    # bilgisi, o yüzden ayrı ve varsayılan kapalı bir bölüme taşınıyor.
+    valid_summaries = [s for s in summaries if s["karar"] != "gecersiz"]
+    invalid_summaries = [s for s in summaries if s["karar"] == "gecersiz"]
+
+    if valid_summaries:
+        summary_table_html = f"""<div class="table-wrap"><table><thead><tr>
+  <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
+  <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
+</tr></thead><tbody>
+{''.join(_summary_row_html(s) for s in valid_summaries)}
+</tbody></table></div>"""
+    else:
+        summary_table_html = """<div class="empty-panel">
+  <p>Henüz geçerli shadow işlemi yok.</p>
+  <p>Shadow sistemi devreye girdikten sonra fill olan yeni pozisyonlar burada görünecek.</p>
+  <p>Eski açık pozisyonlar kıyasa dahil edilmiyor.</p>
+</div>"""
+
+    invalid_section_html = ""
+    if invalid_summaries:
+        invalid_section_html = f"""<details class="detail-log">
+  <summary>Eski / Kapsam Dışı Gerçek Pozisyonlar ({len(invalid_summaries)})</summary>
+  <div class="table-wrap"><table><thead><tr>
+    <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
+    <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
+  </tr></thead><tbody>
+  {''.join(_summary_row_html(s) for s in invalid_summaries)}
+  </tbody></table></div>
+</details>"""
 
     recent = list(reversed(events[-300:]))
     rows = "".join(_row_html(e) for e in recent) or (
@@ -459,6 +486,9 @@ tr:hover td{{background:#0f151d;}}
 .note{{color:var(--text-dim);font-size:.65rem;margin-bottom:12px;font-style:italic;}}
 .section-title{{font-size:.7rem;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase;
   font-weight:700;margin:22px 0 10px;}}
+.empty-panel{{background:var(--card);border:1px solid var(--border);border-radius:6px;
+  padding:24px;text-align:center;color:var(--text-dim);font-size:.75rem;line-height:1.8;}}
+.empty-panel p{{margin:0;}}
 details.detail-log summary{{cursor:pointer;font-size:.7rem;letter-spacing:1.5px;color:var(--accent);
   text-transform:uppercase;font-weight:700;margin:22px 0 10px;list-style:none;}}
 details.detail-log summary::-webkit-details-marker{{display:none;}}
@@ -485,12 +515,14 @@ details.detail-log[open] summary::before{{content:"▾ ";}}
 
 <p class="note">"TP1 +%1.0 tavan olsaydı ne olurdu?" sanal takibi — gerçek emirlere hiç karışmaz, sadece gözlem.
 Kaynak: position_monitor.py (canlı, kapanmış 1m mum bazlı) → /api/shadow-event. Gerçek işlem hesapları (Portföy/Al-Sat Bot
-sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
+sekmeleri) bu sayfadan tamamen bağımsızdır. Shadow testi yalnızca sistem devreye girdikten sonra fill olan yeni
+pozisyonları değerlendirir — "Gerçek Açık" sayısı trading-bot'taki TÜM açık pozisyonları gösterir, bunların "Eski / Kapsam
+Dışı" olanları shadow kıyasına dahil edilmez.</p>
 
 <div class="cards">
-  <div class="card"><span class="val" style="color:var(--accent)">{stats['acik_pozisyon']}</span><span class="lbl">Açık Pozisyon</span></div>
-  <div class="card"><span class="val" style="color:#3498db">{stats['gecerli_izlenen']}</span><span class="lbl">Geçerli İzlenen</span></div>
-  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Geçersiz / Eski</span></div>
+  <div class="card"><span class="val" style="color:var(--accent)">{stats['acik_pozisyon']}</span><span class="lbl">Gerçek Açık</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{stats['gecerli_izlenen']}</span><span class="lbl">Geçerli Shadow</span></div>
+  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Eski / Kapsam Dışı</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
@@ -498,12 +530,9 @@ sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
 </div>
 
 <div class="section-title">📊 Aktif Shadow Karşılaştırması</div>
-<div class="table-wrap"><table><thead><tr>
-  <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
-  <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
-</tr></thead><tbody>
-{summary_rows}
-</tbody></table></div>
+{summary_table_html}
+
+{invalid_section_html}
 
 <details class="detail-log">
   <summary>Detaylı Olay Günlüğü</summary>
