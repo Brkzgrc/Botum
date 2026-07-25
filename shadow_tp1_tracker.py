@@ -258,16 +258,19 @@ def _merge_with_real_positions(summaries, real_positions):
     return summaries
 
 
-def _summarize_symbols(summaries):
+def _summarize_symbols(summaries, real_positions=None):
     """Kartlar bilerek "kaç pozisyon var" ile "kaçı gerçekten geçerli test
     örneği" sorularını AYIRIYOR — aksi halde "İzlenen: 10" ile "Geçersiz: 10"
     aynı anda görününce sanki 10 geçerli test varmış gibi yanlış anlaşılıyor.
-    Açık Pozisyon = hepsi (geçerli + geçersiz). Geçerli İzlenen = shadow_valid
-    olanlar (İzleniyor/Sanal Önde/Gerçek Önde/Belirsiz/Aynı Mum Riski'nin
-    TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup."""
+    Gerçek Açık = trading-bot'un CANLI /status'undaki gerçek açık pozisyon
+    sayısı (len(summaries) DEĞİL — summaries event log + real_positions
+    birleşimi olduğu için, event log'da kalmış ama gerçekte artık KAPANMIŞ
+    bir sembol varsa len(summaries) şişebilirdi). Geçerli İzlenen =
+    shadow_valid olanlar (İzleniyor/Sanal Önde/Gerçek Önde/Belirsiz/Aynı Mum
+    Riski'nin TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup."""
     valid = [s for s in summaries if s["karar"] != "gecersiz"]
     return {
-        "acik_pozisyon":   len(summaries),
+        "gercek_acik":     len(real_positions) if real_positions is not None else len(summaries),
         "gecerli_izlenen": len(valid),
         "gecersiz":        sum(1 for s in summaries if s["karar"] == "gecersiz"),
         "sanal_cikis":     sum(1 for s in valid if s["shadow_status"] == "exited"),
@@ -413,7 +416,7 @@ def shadow_page():
     summaries = _group_symbol_summaries(events)
     real_positions = _fetch_real_positions()
     summaries = _merge_with_real_positions(summaries, real_positions)
-    stats = _summarize_symbols(summaries)
+    stats = _summarize_symbols(summaries, real_positions)
 
     # Ana tabloda SADECE geçerli (shadow_valid=True) pozisyonlar gösterilir —
     # geçersiz/eski pozisyonlar test verisi değil, sadece "eski pozisyon var"
@@ -520,7 +523,7 @@ pozisyonları değerlendirir — "Gerçek Açık" sayısı trading-bot'taki TÜM
 Dışı" olanları shadow kıyasına dahil edilmez.</p>
 
 <div class="cards">
-  <div class="card"><span class="val" style="color:var(--accent)">{stats['acik_pozisyon']}</span><span class="lbl">Gerçek Açık</span></div>
+  <div class="card"><span class="val" style="color:var(--accent)">{stats['gercek_acik']}</span><span class="lbl">Gerçek Açık</span></div>
   <div class="card"><span class="val" style="color:#3498db">{stats['gecerli_izlenen']}</span><span class="lbl">Geçerli Shadow</span></div>
   <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Eski / Kapsam Dışı</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
