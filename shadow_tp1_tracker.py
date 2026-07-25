@@ -102,13 +102,30 @@ _EVENT_COLORS = {
     "SHADOW_LIVE_CLOSED":                  "#2ecc71",
 }
 _STATUS_LABELS = {
-    "pre_tp1":           "TP1 öncesi",
-    "trailing":          "Trailing",
-    "not_trailing":      "Henüz değil",
-    "exited":            "Çıktı",
-    "closed:stop_hit":   "Kapandı (Stop)",
-    "closed:trail_stop": "Kapandı (Trail)",
-    "closed:expire":     "Kapandı (Süre)",
+    "pre_tp1":               "TP1 öncesi",
+    "trailing":              "Trailing",
+    "not_trailing":          "Henüz değil",
+    "exited":                "Çıktı",
+    "closed:stop_hit":       "Kapandı (Stop)",
+    "closed:trail_stop":     "Kapandı (Trail)",
+    "closed:trail_binance":  "Kapandı (Trail/Binance)",
+    "closed:expire":         "Kapandı (Süre)",
+    "closed:expire_no_tick": "Kapandı (Süre/tick'siz)",
+    "closed:sl_binance":     "Kapandı (Stop/Binance)",
+}
+# Portföy sayfasındaki pct_color/status_badge ile aynı renk dili: yeşil=iyi,
+# kırmızı=kötü, turuncu=süre/expire, gri=nötr/henüz belirsiz, mavi=aktif ilerleme.
+_STATUS_COLORS = {
+    "pre_tp1":               "#8a9bb0",
+    "trailing":              "#3498db",
+    "not_trailing":          "#8a9bb0",
+    "exited":                "#9b59b6",
+    "closed:stop_hit":       "#e74c3c",
+    "closed:trail_stop":     "#2ecc71",
+    "closed:trail_binance":  "#2ecc71",
+    "closed:expire":         "#f39c12",
+    "closed:expire_no_tick": "#f39c12",
+    "closed:sl_binance":     "#e74c3c",
 }
 
 
@@ -130,10 +147,27 @@ def _fmt_pct(v):
         return str(v)
 
 
+def _pct_color(v):
+    # Portföy sayfasındaki pct_color() ile aynı kural: pozitif yeşil, negatif
+    # kırmızı, sıfır/bilinmiyor gri.
+    if v is None:
+        return "#8a9bb0"
+    try:
+        v = float(v)
+    except Exception:
+        return "#8a9bb0"
+    return "#2ecc71" if v > 0 else ("#e74c3c" if v < 0 else "#8a9bb0")
+
+
 def _status_label(v):
     # Bilinen bir kod değilse ham değeri gösteriyoruz (event kaynağı
     # position_monitor.py olsa da, HTML'e basılan her string escape edilir).
     return html.escape(str(_STATUS_LABELS.get(v, v or "—")))
+
+
+def _status_badge(v):
+    color = _STATUS_COLORS.get(v, "#7f8c8d")
+    return f'<span style="color:{color};font-size:.68rem;white-space:nowrap">{_status_label(v)}</span>'
 
 
 def _row_html(e):
@@ -143,17 +177,18 @@ def _row_html(e):
     event_label = html.escape(str(_EVENT_LABELS.get(event_key, event_key)))
     event_color = _EVENT_COLORS.get(event_key, "#7f8c8d")
     note = html.escape(str(e.get("note", "") or ""))
+    shadow_pct = e.get("shadow_pct")
 
     return f"""<tr>
       <td style="color:#7f8c8d;font-size:.65rem">{ts}</td>
       <td><b>{sym}</b></td>
-      <td>{_status_label(e.get("real_status"))}</td>
-      <td>{_status_label(e.get("shadow_status"))}</td>
+      <td>{_status_badge(e.get("real_status"))}</td>
+      <td>{_status_badge(e.get("shadow_status"))}</td>
       <td>{_fmt(e.get("real_tp1"))}</td>
       <td>{_fmt(e.get("shadow_tp1"))}</td>
       <td>{_fmt(e.get("shadow_peak"))}</td>
       <td>{_fmt(e.get("shadow_trail"))}</td>
-      <td>{_fmt_pct(e.get("shadow_pct"))}</td>
+      <td style="color:{_pct_color(shadow_pct)};font-weight:bold">{_fmt_pct(shadow_pct)}</td>
       <td><span style="color:{event_color};font-size:.6rem;white-space:nowrap">{event_label}</span></td>
       <td style="font-size:.65rem;color:#7f8c8d;white-space:normal;max-width:320px">{note}</td>
     </tr>"""
