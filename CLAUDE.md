@@ -397,12 +397,24 @@ pozisyon_büyüklüğü = min(müsait_nakit / kalan_slot_sayısı, 20_000)
 - Kalan slot = 5 − açık_pozisyon_sayısı
 - Örnek: 30.000$ var, 3 işlem açık → `min(12.000 / 2, 20.000)` = **$6.000**
 
-### Emir Akışı — Sinyal Geldiğinde
+### Emir Akışı — Sinyal Geldiğinde (ESKİ TASARIM — 2026-07-11'de değişti, aşağıya bak)
 1. `trading_engine.py` sinyali alır, pozisyon büyüklüğünü hesaplar
 2. **İki emir aynı anda** Binance'e gönderilir:
    - Market/limit buy → coin alınır
    - Stop-loss sell emri → Binance'te bekletilir (hard SL)
 3. `trade_state.json`'a yazılır: symbol, miktar, giriş, stop, TP1, peak
+
+### Emir Akışı — Güncel Durum (2026-07-11, commit `d67dfd7`)
+
+**Neden değişti:** Yukarıdaki eski tasarımda sinyal gelir gelmez bir slot (5 eş zamanlı pozisyon limitinden biri) hemen tüketiliyordu — fiyat henüz CHoCH seviyesine hiç yaklaşmamış olsa bile. Bu, retest'i asla gerçekleşmeyecek zayıf bir sinyalin slotu haftalarca bloke edip daha iyi bir sinyalin reddedilmesine yol açabiliyordu. Çözüm: emir açma işlemini fiyat gerçekten yaklaşana kadar ertelemek.
+
+**Güncel 3 aşamalı akış:**
+1. **`monitoring`** — SMC sinyali `portfolio_tracker`'ın `/api/signal`'ına gelir, kaynağı (`source`) `SMC_MAIN_SOURCES` içindeyse `_forward_to_trading_bot()` arka planda trading-bot'un `/signal`'ına iletir → `trading_engine.execute(signal)` çalışır ama **Binance'e HENÜZ hiçbir emir göndermez** — sadece state'e `status: "monitoring"` yazar (symbol, limit_price=CHoCH+1tick, trigger_price=CHoCH+3tick, stop, tp1, tp2). 48H içinde fiyat trigger'a gelmezse iptal olur (`PENDING_EXPIRE_H`).
+2. **`pending`** — `position_monitor.py`'nin `_check_monitoring_entries()` fonksiyonu fiyatı izler; fiyat `trigger_price`'a (CHoCH+3tick) gelince `_place_monitoring_order()` çağrılır: o an slot müsaitse gerçek LIMIT BUY emri Binance'e gönderilir (CHoCH+1tick'ten), müsait değilse sinyal miss olur. Bu emrin de kendi 1 saatlik süresi var (`PENDING_ORDER_EXPIRE_H`).
+3. **`active`** — limit emir retest ile dolunca (fiyat gerçekten o seviyeye dönüp emri doldurur) pozisyon aktive olur: stop-loss emri Binance'e konur, `position_monitor.py` websocket/1m-kline takibini (`_process_tick`) başlatır.
+4. **Çıkış** — stop, TP1→trailing geçişi, trailing takibi ve nihai satış, hepsi tamamen `position_monitor.py` içinde yönetilir (bkz. aşağıdaki "Fiyat Takibi" bölümleri, hâlâ geçerli).
+
+**Not:** "Entegrasyon noktası ... Henüz bağlı değil" notu (bu bölümün altında, "Yazılan Dosyalar" kısmında) artık **geçersiz** — sistem canlı ve bağlı, `portfolio_tracker.py`'nin `_forward_to_trading_bot()` fonksiyonu üzerinden SMC sinyalleri otomatik trading-bot'a iletiliyor.
 
 ### Fiyat Takibi — TP1 Öncesi
 `position_monitor.py` WebSocket ile her tick'i izler:
@@ -423,11 +435,11 @@ pozisyon_büyüklüğü = min(müsait_nakit / kalan_slot_sayısı, 20_000)
 ### Yazılan Dosyalar
 | Dosya | Görev |
 |---|---|
-| `trading_engine.py` | Sinyal alır, Binance'e LIMIT BUY emri gönderir (CHoCH+1tick) |
-| `position_monitor.py` | WebSocket fiyat takibi, trailing yönetimi, kapanış |
+| `trading_engine.py` | Sinyali `monitoring` statüsüyle state'e yazar — Binance emri BURADA açılmıyor (bkz. yukarıdaki "Emir Akışı — Güncel Durum") |
+| `position_monitor.py` | Fiyat trigger'a gelince LIMIT BUY açar, retest/stop/trailing/kapanışın TAMAMINI yönetir |
 | `trade_state.json` | Açık pozisyonların kalıcı state dosyası |
 
-Entegrasyon noktası: `claude_analyzer.py` → `process_and_send()` çağrısından sonra `trading_engine.execute(signal)` çağrılacak. (Henüz bağlı değil — SMC.py onayı bekleniyor.)
+**Entegrasyon durumu (güncel):** SMC.py'nin sinyalleri, `portfolio_tracker.py`'nin `/api/signal` endpoint'i üzerinden (`source in SMC_MAIN_SOURCES` ise) `_forward_to_trading_bot()` ile otomatik trading-bot'a iletiliyor → `trading_engine.execute(signal)` çağrılıyor. Sistem **bağlı ve canlı** — aşağıdaki eski not artık geçerli değil: ~~"Henüz bağlı değil — SMC.py onayı bekleniyor."~~ (`claude_analyzer.py`'nin `process_and_send()` → `trading_engine.execute()` zinciri farklı bir konudur, bu zaten aktif olan portfolio_tracker relay yolunu değiştirmez.)
 
 ### Henüz Netleşmeyenler
 - Başlangıç sermayesi (ne olursa olsun 5'e bölünerek başlanacak, sabit değer gerekmez)
