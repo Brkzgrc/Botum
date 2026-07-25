@@ -22,6 +22,7 @@ import html
 import json
 import os
 import threading
+from collections import defaultdict
 
 from flask import Blueprint, jsonify, request
 
@@ -71,20 +72,103 @@ def api_shadow_event():
     return jsonify({"ok": True}), 201
 
 
-# ─── ÖZET / KIRILIM ──────────────────────────────────────────────────────
-def _summarize(events):
-    closed = [e for e in events if e.get("event") == "SHADOW_LIVE_CLOSED"]
-    good = sum(1 for e in closed if e.get("shadow_result") == "resolved" and (e.get("fark_pct") or 0) > 0)
-    bad  = sum(1 for e in closed if e.get("shadow_result") == "resolved" and (e.get("fark_pct") or 0) < 0)
-    undetermined = len(closed) - good - bad
+# ─── SEMBOL BAZLI ÖZET (üstteki "Aktif Shadow Karşılaştırması" paneli) ─────
+# Ham event log'u ("Detaylı Olay Günlüğü") olduğu gibi kalıyor, ama ana
+# panelde kullanıcı her sembol için TEK bir "şu an ne durumda" satırı görmek
+# istiyor — event bazlı değil, sembol bazlı. Aynı sembolde işlem kapanıp
+# yeniden açılabileceği için (sıralı, asla eş zamanlı — position_monitor
+# aynı sembolde ikinci pozisyon açmaz), sadece sembole göre gruplamak eski
+# bir işlemin olaylarını yeni işlemle karıştırabilirdi; bu yüzden her
+# sembolün SADECE en son (devam eden ya da en son kapanan) işlem döngüsü
+# alınıyor.
+def _latest_cycle_events(evs):
+    close_positions = [i for i, e in enumerate(evs) if e.get("event") == "SHADOW_LIVE_CLOSED"]
+    if not close_positions:
+        return evs   # hiç kapanış yok -- tek (devam eden) döngü, hepsi bu
+    last_close_idx = close_positions[-1]
+    if last_close_idx == len(evs) - 1:
+        # En son olan şey bir kapanış: bu döngü bir ÖNCEKİ kapanıştan (varsa)
+        # sonra başlamış, o kapanışa kadar (dahil) alınıyor.
+        start = close_positions[-2] + 1 if len(close_positions) >= 2 else 0
+        return evs[start:last_close_idx + 1]
+    # Son kapanıştan SONRA yeni event'ler var: yeni bir döngü (yeniden açılmış
+    # pozisyon) başlamış, sadece ondan sonrasını al.
+    return evs[last_close_idx + 1:]
+
+
+_KARAR_LABELS = {
+    "sanal_onde":     "Sanal Önde",
+    "gercek_onde":    "Gerçek Önde",
+    "belirsiz":       "Belirsiz",
+    "ayni_mum_riski": "Aynı Mum Riski",
+}
+_KARAR_COLORS = {
+    "sanal_onde":     "#2ecc71",
+    "gercek_onde":    "#f39c12",
+    "belirsiz":       "#8a9bb0",
+    "ayni_mum_riski": "#e74c3c",
+}
+
+
+def _symbol_summary(symbol, cycle_events):
+    """cycle_events: bir sembolün EN SON işlem döngüsüne ait event'leri,
+    kronolojik sırada (en az 1 tane). Dönüş: panelde tek satır olacak özet."""
+    last = cycle_events[-1]
+    is_real_closed = last.get("event") == "SHADOW_LIVE_CLOSED"
+
+    # Sanal getiri: son event'te yoksa (örn. sadece ACTIVATE olduysa), bu
+    # döngüde geriye doğru en son bilinen değeri ara.
+    shadow_pct = last.get("shadow_pct")
+    if shadow_pct is None:
+        for e in reversed(cycle_events):
+            if e.get("shadow_pct") is not None:
+                shadow_pct = e.get("shadow_pct")
+                break
+
+    real_pct = last.get("live_pct") if is_real_closed else None
+    fark_pct = last.get("fark_pct") if is_real_closed else None
+    shadow_result = last.get("shadow_result") if is_real_closed else None
+
+    if last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
+        karar = "ayni_mum_riski"
+    elif is_real_closed and shadow_result == "resolved" and fark_pct is not None and fark_pct != 0:
+        karar = "sanal_onde" if fark_pct > 0 else "gercek_onde"
+    else:
+        # Gerçek hâlâ açıksa (sanal çoktan sonuçlanmış olsa bile) ya da
+        # gerçek kapandı ama sanal hiç sonuçlanamadıysa: kim önde bilinmiyor.
+        karar = "belirsiz"
+
     return {
-        "toplam_izlenen":    len(closed),
-        "sanal_trail_aktif": sum(1 for e in events if e.get("event") == "SHADOW_WOULD_ACTIVATE_TRAIL"),
-        "sanal_cikis":       sum(1 for e in events if e.get("event") == "SHADOW_WOULD_EXIT_TRAIL"),
-        "ayni_mum_riski":    sum(1 for e in events if e.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH"),
-        "gercekten_iyi":     good,
-        "gercekten_kotu":    bad,
-        "belirsiz":          undetermined,
+        "symbol": symbol, "ts": last.get("ts"),
+        "real_status": last.get("real_status"), "shadow_status": last.get("shadow_status"),
+        "shadow_pct": shadow_pct, "real_pct": real_pct, "fark_pct": fark_pct,
+        "karar": karar,
+    }
+
+
+def _group_symbol_summaries(events):
+    by_symbol = defaultdict(list)
+    for e in events:
+        sym = e.get("symbol")
+        if sym:
+            by_symbol[sym].append(e)
+    summaries = []
+    for sym, evs in by_symbol.items():
+        cycle = _latest_cycle_events(evs)
+        if cycle:
+            summaries.append(_symbol_summary(sym, cycle))
+    summaries.sort(key=lambda s: s.get("ts") or "", reverse=True)
+    return summaries
+
+
+def _summarize_symbols(summaries):
+    return {
+        "izlenen":        len(summaries),
+        "sanal_cikis":    sum(1 for s in summaries if s["shadow_status"] == "exited"),
+        "sanal_onde":     sum(1 for s in summaries if s["karar"] == "sanal_onde"),
+        "gercek_onde":    sum(1 for s in summaries if s["karar"] == "gercek_onde"),
+        "belirsiz":       sum(1 for s in summaries if s["karar"] == "belirsiz"),
+        "ayni_mum_riski": sum(1 for s in summaries if s["karar"] == "ayni_mum_riski"),
     }
 
 
@@ -170,6 +254,26 @@ def _status_badge(v):
     return f'<span style="color:{color};font-size:.68rem;white-space:nowrap">{_status_label(v)}</span>'
 
 
+def _karar_badge(karar):
+    label = html.escape(str(_KARAR_LABELS.get(karar, karar or "—")))
+    color = _KARAR_COLORS.get(karar, "#7f8c8d")
+    return f'<span style="color:{color};font-weight:bold;font-size:.72rem;white-space:nowrap">{label}</span>'
+
+
+def _summary_row_html(s):
+    sym = html.escape(str(s["symbol"]).replace("/USDT", ""))
+    shadow_pct, real_pct, fark_pct = s["shadow_pct"], s["real_pct"], s["fark_pct"]
+    return f"""<tr>
+      <td><b>{sym}</b></td>
+      <td>{_status_badge(s["real_status"])}</td>
+      <td>{_status_badge(s["shadow_status"])}</td>
+      <td style="color:{_pct_color(shadow_pct)};font-weight:bold">{_fmt_pct(shadow_pct)}</td>
+      <td style="color:{_pct_color(real_pct)};font-weight:bold">{_fmt_pct(real_pct)}</td>
+      <td style="color:{_pct_color(fark_pct)};font-weight:bold">{_fmt_pct(fark_pct)}</td>
+      <td>{_karar_badge(s["karar"])}</td>
+    </tr>"""
+
+
 def _row_html(e):
     sym = html.escape(str(e.get("symbol", "")).replace("/USDT", ""))
     ts = str(e.get("ts", ""))[:19].replace("T", " ")   # ISO timestamp — serbest metin değil
@@ -198,11 +302,18 @@ def _row_html(e):
 @shadow_bp.route("/shadow")
 def shadow_page():
     events = _load_events()
-    stats = _summarize(events)
+    summaries = _group_symbol_summaries(events)
+    stats = _summarize_symbols(summaries)
+
+    summary_rows = "".join(_summary_row_html(s) for s in summaries) or (
+        '<tr><td colspan="7" style="text-align:center;color:#7f8c8d;padding:20px">'
+        'Henüz izlenen işlem yok — position_monitor.py deploy sonrası açılan pozisyonlarda birikmeye başlayacak.</td></tr>'
+    )
+
     recent = list(reversed(events[-300:]))
     rows = "".join(_row_html(e) for e in recent) or (
         '<tr><td colspan="11" style="text-align:center;color:#7f8c8d;padding:20px">'
-        'Henüz olay yok — position_monitor.py deploy sonrası açılan pozisyonlarda birikmeye başlayacak.</td></tr>'
+        'Henüz olay yok.</td></tr>'
     )
 
     return f"""<!DOCTYPE html>
@@ -225,7 +336,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -236,6 +347,13 @@ td{{padding:7px 8px;border-bottom:1px solid #111820;white-space:nowrap;}}
 tr:hover td{{background:#0f151d;}}
 .table-wrap{{overflow-x:auto;border:1px solid var(--border);border-radius:6px;}}
 .note{{color:var(--text-dim);font-size:.65rem;margin-bottom:12px;font-style:italic;}}
+.section-title{{font-size:.7rem;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase;
+  font-weight:700;margin:22px 0 10px;}}
+details.detail-log summary{{cursor:pointer;font-size:.7rem;letter-spacing:1.5px;color:var(--accent);
+  text-transform:uppercase;font-weight:700;margin:22px 0 10px;list-style:none;}}
+details.detail-log summary::-webkit-details-marker{{display:none;}}
+details.detail-log summary::before{{content:"▸ ";}}
+details.detail-log[open] summary::before{{content:"▾ ";}}
 @media(max-width:700px){{.cards{{grid-template-columns:repeat(3,1fr);}}body{{padding:12px;}}}}
 </style></head>
 <body>
@@ -260,21 +378,31 @@ Kaynak: position_monitor.py (canlı, kapanmış 1m mum bazlı) → /api/shadow-e
 sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
 
 <div class="cards">
-  <div class="card"><span class="val" style="color:var(--accent)">{stats['toplam_izlenen']}</span><span class="lbl">Toplam İzlenen</span></div>
-  <div class="card"><span class="val" style="color:#3498db">{stats['sanal_trail_aktif']}</span><span class="lbl">Sanal Trail Aktif</span></div>
+  <div class="card"><span class="val" style="color:var(--accent)">{stats['izlenen']}</span><span class="lbl">İzlenen</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
-  <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
-  <div class="card"><span class="val" style="color:var(--green)">{stats['gercekten_iyi']}</span><span class="lbl">Gerçekten İyi</span></div>
-  <div class="card"><span class="val" style="color:var(--red)">{stats['gercekten_kotu']}</span><span class="lbl">Gerçekten Kötü</span></div>
+  <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
+  <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
   <div class="card"><span class="val" style="color:var(--text-dim)">{stats['belirsiz']}</span><span class="lbl">Belirsiz</span></div>
+  <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
 </div>
 
+<div class="section-title">📊 Aktif Shadow Karşılaştırması</div>
 <div class="table-wrap"><table><thead><tr>
-  <th>Zaman</th><th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
-  <th>Gerçek TP1</th><th>Sanal TP1</th><th>Sanal Peak</th><th>Sanal Trail/Stop</th>
-  <th>Sanal Getiri</th><th>Olay</th><th>Not</th>
+  <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
+  <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
 </tr></thead><tbody>
-{rows}
+{summary_rows}
 </tbody></table></div>
+
+<details class="detail-log">
+  <summary>Detaylı Olay Günlüğü</summary>
+  <div class="table-wrap"><table><thead><tr>
+    <th>Zaman</th><th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
+    <th>Gerçek TP1</th><th>Sanal TP1</th><th>Sanal Peak</th><th>Sanal Trail/Stop</th>
+    <th>Sanal Getiri</th><th>Olay</th><th>Not</th>
+  </tr></thead><tbody>
+  {rows}
+  </tbody></table></div>
+</details>
 
 </body></html>"""
