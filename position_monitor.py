@@ -493,9 +493,13 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
             "open_time":   now,
             "source":      pos.get("source", "smc-v2"),
             # Shadow/dry-run: gerçek sistemden bağımsız, sadece gözlem amaçlı.
+            # shadow_peak KENDİ alanı olarak tutuluyor (pos["peak"]'ten TÜRETİLMİYOR)
+            # — ölçüm temizliği için: gerçek sistemin peak güncelleme mantığı
+            # ileride değişse bile shadow'un doğruluğu buna bağımlı olmasın.
             "shadow_tp1_cap_pct": SHADOW_TP1_CAP_PCT,
             "shadow_tp1":         min(float(pos["tp1"]), fill_price * (1 + SHADOW_TP1_CAP_PCT / 100.0)),
             "shadow_trailing":    False,
+            "shadow_peak":        fill_price,
             "shadow_exit":        None,
         }
         _save_state(state)
@@ -896,9 +900,11 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
     """pos'u yerinde (in-place) günceller. HİÇBİR I/O YAPMAZ — sadece hesaplar
     ve event dict'leri üretir; gerçek I/O çağıran taraf tarafından LOCK
     DIŞINDA (_shadow_dispatch ile) yapılmalı. Gerçek sistemin trailing/stop/
-    TP1 durumundan tamamen bağımsız çalışır — kendi shadow_tp1'ine göre karar
-    verir, sadece stop/ATR-trail formülünü ve pos["peak"]'i (salt okunur)
-    paylaşır. Dönüş: (pos değişti mi, event listesi)."""
+    TP1 durumundan tamamen bağımsız çalışır — kendi shadow_tp1'ine ve KENDİ
+    shadow_peak'ine göre karar verir (pos["peak"]'ten TÜRETİLMİYOR — gerçek
+    sistemin peak güncelleme mantığı ileride değişse bile shadow'un doğruluğu
+    buna bağımlı olmasın diye), sadece stop/ATR-trail formülünü paylaşır.
+    Dönüş: (pos değişti mi, event listesi)."""
     events = []
     if pos.get("shadow_exit") is not None:
         return False, events
@@ -909,8 +915,13 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
     entry_px = float(pos.get("entry", 0) or 0)
     real_tp1 = float(pos.get("tp1", 0) or 0)
     real_status = _STATUS_REAL_TRAILING if pos.get("trailing") else _STATUS_REAL_PRE_TP1
-    shadow_peak_now = max(float(pos.get("peak", 0) or 0), high)
     dirty = False
+
+    old_shadow_peak = float(pos.get("shadow_peak", entry_px) or entry_px)
+    shadow_peak_now = max(old_shadow_peak, high)
+    if shadow_peak_now > old_shadow_peak:
+        pos["shadow_peak"] = shadow_peak_now
+        dirty = True
 
     def _mk(event, shadow_status, shadow_trail=None, shadow_pct=None, note="", **extra):
         return {
@@ -999,7 +1010,7 @@ def _shadow_build_close_event(symbol: str, pos_snap: dict, live_reason: str, liv
         "event": "SHADOW_LIVE_CLOSED", "symbol": symbol,
         "real_status": f"closed:{live_reason}", "shadow_status": shadow_status,
         "real_tp1": real_tp1, "shadow_tp1": shadow_tp1,
-        "shadow_peak": pos_snap.get("peak"), "shadow_trail": shadow_price,
+        "shadow_peak": pos_snap.get("shadow_peak"), "shadow_trail": shadow_price,
         "shadow_pct": shadow_pct, "note": note,
         "live_reason": live_reason, "live_price": live_price, "live_pct": live_pct,
         "shadow_result": shadow_result, "shadow_exit_reason": shadow_exit_reason,
