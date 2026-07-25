@@ -18,6 +18,7 @@ açık/kapanmış mantığı) hiç etkilenmez.
 Shadow sistemi gerçek pozisyon kapatmaz, emir açmaz, stop/trailing değiştirmez
 — bu dosya sadece "TP1 +1.0% tavan olsaydı ne olurdu?" gözlemini saklar/gösterir.
 """
+import html
 import json
 import os
 import threading
@@ -130,16 +131,18 @@ def _fmt_pct(v):
 
 
 def _status_label(v):
-    return _STATUS_LABELS.get(v, v or "—")
+    # Bilinen bir kod değilse ham değeri gösteriyoruz (event kaynağı
+    # position_monitor.py olsa da, HTML'e basılan her string escape edilir).
+    return html.escape(str(_STATUS_LABELS.get(v, v or "—")))
 
 
 def _row_html(e):
-    sym = str(e.get("symbol", "")).replace("/USDT", "")
-    ts = str(e.get("ts", ""))[:19].replace("T", " ")
+    sym = html.escape(str(e.get("symbol", "")).replace("/USDT", ""))
+    ts = str(e.get("ts", ""))[:19].replace("T", " ")   # ISO timestamp — serbest metin değil
     event_key = e.get("event", "")
-    event_label = _EVENT_LABELS.get(event_key, event_key)
+    event_label = html.escape(str(_EVENT_LABELS.get(event_key, event_key)))
     event_color = _EVENT_COLORS.get(event_key, "#7f8c8d")
-    note = e.get("note", "") or ""
+    note = html.escape(str(e.get("note", "") or ""))
 
     return f"""<tr>
       <td style="color:#7f8c8d;font-size:.65rem">{ts}</td>
@@ -204,7 +207,7 @@ tr:hover td{{background:#0f151d;}}
 
 <div class="header">
   <div>
-    <h1>👻 TP1 SHADOW</h1>
+    <h1>🧪 TP1 +1.0 SANAL TEST</h1>
     <div style="display:flex;gap:6px;margin-top:6px">
       <a href="/" class="nav-tab">Portföy</a>
       <a href="/market" class="nav-tab">Piyasa</a>
@@ -218,7 +221,7 @@ tr:hover td{{background:#0f151d;}}
 </div>
 
 <p class="note">"TP1 +%1.0 tavan olsaydı ne olurdu?" sanal takibi — gerçek emirlere hiç karışmaz, sadece gözlem.
-Kaynak: position_monitor.py (canlı, tick bazlı) → /api/shadow-event. Gerçek işlem hesapları (Portföy/Al-Sat Bot
+Kaynak: position_monitor.py (canlı, kapanmış 1m mum bazlı) → /api/shadow-event. Gerçek işlem hesapları (Portföy/Al-Sat Bot
 sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
 
 <div class="cards">

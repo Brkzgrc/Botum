@@ -931,23 +931,22 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
                 "SHADOW_WOULD_ACTIVATE_TRAIL", "trailing", shadow_trail=shadow_trail_now,
                 note="Sanal TP1'e ulaşıldı, sanal trailing başladı."))
             if low <= shadow_trail_now:
-                shadow_pct = round((shadow_trail_now - entry_px) / entry_px * 100, 2) if entry_px else 0
-                pos["shadow_exit"] = {
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "price": shadow_trail_now, "reason": "trail", "same_candle": True,
-                }
-                # Aynı kapanmış mumda hem TP1 dokundu hem shadow trail kırıldı —
-                # bot mum kapanana kadar bunu göremeyeceği için gerçek canlı
-                # riski ölçen en önemli event bu.
+                # Aynı kapanmış mumda hem TP1 dokundu hem hesaplanan trail seviyesi
+                # kırıldı. BİLEREK shadow_exit SET EDİLMİYOR: bu trail seviyesi bu
+                # mumun kendi high'ından türetildiği için, gerçek mum-içi sıra
+                # (önce mi dokundu sonra mı düştü, yoksa tam tersi mi) bilinmiyor —
+                # trail seviyesi belki fiyat düşerken henüz hiç var olmamıştı. Bunu
+                # KESİN bir çıkış saymak yanıltıcı olur; sadece ayrı bir risk sinyali
+                # olarak loglanıyor. shadow_trailing=True kalır, gerçek sonuç
+                # sonraki mumlarda (trail seviyesi o mum başlamadan ÖNCE zaten sabit
+                # olduğu için orada güvenilir) normal yoldan belirlenecek.
+                shadow_pct_risk = round((shadow_trail_now - entry_px) / entry_px * 100, 2) if entry_px else 0
                 events.append(_mk(
-                    "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH", "exited", shadow_trail=shadow_trail_now,
-                    shadow_pct=shadow_pct,
-                    note="Aynı kapanmış mumda hem sanal TP1'e dokundu hem sanal trail kırıldı — "
-                         "bot mum kapanana kadar bunu göremez."))
-                events.append(_mk(
-                    "SHADOW_WOULD_EXIT_TRAIL", "exited", shadow_trail=shadow_trail_now,
-                    shadow_pct=shadow_pct, same_candle=True,
-                    note="Sanal trailing seviyesi aynı mumda kırıldı, sanal pozisyon kapanmış olurdu."))
+                    "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH", "trailing", shadow_trail=shadow_trail_now,
+                    shadow_pct=shadow_pct_risk,
+                    note="Aynı kapanmış mumda hem sanal TP1'e dokundu hem hesaplanan trail seviyesi "
+                         "kırıldı — mum-içi gerçek sıra bilinmediği için KESİN çıkış sayılmadı, sadece "
+                         "risk sinyali. Gerçek sonuç sonraki mumlarda belirlenecek."))
     else:
         shadow_trail_now = _trail_stop_price(shadow_peak_now, pos.get("atr"), entry_px)
         if low <= shadow_trail_now:
@@ -1384,6 +1383,8 @@ def _check_expired_positions_no_tick():
                         "close_price": real_price, "pnl_pct": pct,
                     })
                     print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
+                    if pos.get("shadow_tp1"):
+                        _shadow_dispatch(_shadow_build_close_event(sym, pos, "expire_no_tick", real_price, pct))
             finally:
                 if not closed:
                     with _lock:
@@ -1649,6 +1650,8 @@ def _periodic_check():
                             "close_price": sl, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                        if pos.get("shadow_tp1"):
+                            _shadow_dispatch(_shadow_build_close_event(sym, pos, "sl_binance", sl, pct))
 
                     # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
                     elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
@@ -1670,6 +1673,8 @@ def _periodic_check():
                             "close_price": cl_price, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                        if pos.get("shadow_tp1"):
+                            _shadow_dispatch(_shadow_build_close_event(sym, pos, "trail_binance", cl_price, pct))
 
                 except Exception as e:
                     print(f"[MONITOR] Periyodik SL/reconcile hatası {sym}: {e}", flush=True)
