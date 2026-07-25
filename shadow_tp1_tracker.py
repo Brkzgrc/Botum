@@ -24,11 +24,21 @@ import os
 import threading
 from collections import defaultdict
 
+import requests
 from flask import Blueprint, jsonify, request
 
 DATA_DIR    = os.getenv("DATA_DIR", "/tmp")
 EVENTS_FILE = os.path.join(DATA_DIR, "shadow_tp1_events.jsonl")
 AUTH_TOKEN  = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
+
+# Şu an gerçekten açık olan pozisyonları çekmek için (event üretmemiş ama
+# açık olanları da göstermek, ve shadow_valid'i canlı state'ten teyit etmek
+# için) trading-bot'un kendi /status'una BAĞIMSIZ bir istek atıyoruz — aynı
+# env var'lar portfolio_tracker.py'de de kullanılıyor. Ayrı/sökülebilir
+# tasarım gereği kendi HTTP çağrısını yapıyor, portfolio_tracker.py'nin
+# içine hiç dokunmuyor/import etmiyor.
+TRADING_BOT_URL   = os.getenv("TRADING_BOT_URL", "")
+TRADING_BOT_TOKEN = os.getenv("TRADING_BOT_TOKEN", "")
 
 _lock = threading.Lock()
 
@@ -57,6 +67,26 @@ def _load_events():
             except Exception:
                 continue
     return events
+
+
+def _fetch_real_positions():
+    """trading-bot'un CANLI /status'unu çeker -- şu an gerçekten açık olan
+    pozisyonları (ve onların ham shadow_valid/shadow_tp1/shadow_trailing
+    alanlarını) döndürür. Best-effort: herhangi bir hata/timeout'ta boş dict
+    döner, sayfa asla bu yüzden çökmez."""
+    if not TRADING_BOT_URL:
+        return {}
+    try:
+        hdrs = {}
+        if TRADING_BOT_TOKEN:
+            hdrs["X-Bot-Token"] = TRADING_BOT_TOKEN
+        r = requests.get(f"{TRADING_BOT_URL}/status", headers=hdrs, timeout=5)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 # ─── API ENDPOINT (position_monitor.py buraya POST eder) ───────────────────
@@ -102,6 +132,7 @@ _KARAR_LABELS = {
     "belirsiz":       "Belirsiz",
     "ayni_mum_riski": "Aynı Mum Riski",
     "izleniyor":      "İzleniyor",
+    "gecersiz":       "Geç Başladı / Geçersiz",
 }
 _KARAR_COLORS = {
     "sanal_onde":     "#2ecc71",
@@ -109,6 +140,7 @@ _KARAR_COLORS = {
     "belirsiz":       "#8a9bb0",
     "ayni_mum_riski": "#e74c3c",
     "izleniyor":      "#3498db",
+    "gecersiz":       "#5a6472",
 }
 
 
@@ -161,6 +193,17 @@ def _symbol_summary(symbol, cycle_events):
     else:
         karar = "belirsiz"
 
+    # Adil kıyas şartı: shadow SADECE gerçek fill anından itibaren, kesintisiz
+    # takip edildiyse geçerli sayılır (position_monitor.py _activate_position
+    # tarafından shadow_valid=True damgalanır). Bu event'te shadow_valid
+    # AÇIKÇA True değilse (yok ya da False) — bu deploy'dan önce açılmış eski
+    # bir pozisyon ya da doğrulanamayan bir kayıt demektir — Sanal Önde/Gerçek
+    # Önde/Belirsiz gibi "kıyaslanabilir" bir karara ASLA dönüştürülmez,
+    # istatistiklere de katılmaz.
+    if last.get("shadow_valid") is not True:
+        karar = "gecersiz"
+        karar_note = "Bu pozisyon shadow sistemi devreye girmeden önce açılmış olabilir — kıyas güvenilir değil."
+
     return {
         "symbol": symbol, "ts": last.get("ts"),
         "real_status": last.get("real_status"), "shadow_status": shadow_status,
@@ -184,15 +227,47 @@ def _group_symbol_summaries(events):
     return summaries
 
 
+def _merge_with_real_positions(summaries, real_positions):
+    """Event log'undan gelen özetlere, event ÜRETMEMİŞ ama şu an GERÇEKTEN
+    açık olan pozisyonları da ekler. Örn. yeni fill olmuş, shadow_tp1'e daha
+    hiç ulaşmamış bir pozisyon event log'unda hiç görünmez ama panelde
+    "İzleniyor" olarak listelenmeli. Ayrıca canlı state'teki shadow_valid,
+    event log'undaki (bazen eski/eksik) veriden daha güncel/güvenilir olduğu
+    için varsa öncelik ona verilir."""
+    known = {s["symbol"] for s in summaries}
+    for sym, pos in (real_positions or {}).items():
+        if not isinstance(pos, dict) or sym in known:
+            continue
+        shadow_valid = pos.get("shadow_valid") is True
+        if not pos.get("shadow_tp1") or not shadow_valid:
+            karar = "gecersiz"
+            karar_note = "Bu pozisyon shadow sistemi devreye girmeden önce açılmış olabilir — kıyas güvenilir değil."
+            shadow_status = "not_trailing"
+        else:
+            karar = "izleniyor"
+            karar_note = ""
+            shadow_status = "trailing" if pos.get("shadow_trailing") else "not_trailing"
+        summaries.append({
+            "symbol": sym, "ts": pos.get("open_time") or "",
+            "real_status": "trailing" if pos.get("trailing") else "pre_tp1",
+            "shadow_status": shadow_status,
+            "shadow_pct": None, "real_pct": None, "fark_pct": None,
+            "karar": karar, "karar_note": karar_note,
+        })
+    summaries.sort(key=lambda s: s.get("ts") or "", reverse=True)
+    return summaries
+
+
 def _summarize_symbols(summaries):
     return {
         "izlenen":        len(summaries),
-        "sanal_cikis":    sum(1 for s in summaries if s["shadow_status"] == "exited"),
+        "sanal_cikis":    sum(1 for s in summaries if s["shadow_status"] == "exited" and s["karar"] != "gecersiz"),
         "izleniyor":      sum(1 for s in summaries if s["karar"] == "izleniyor"),
         "sanal_onde":     sum(1 for s in summaries if s["karar"] == "sanal_onde"),
         "gercek_onde":    sum(1 for s in summaries if s["karar"] == "gercek_onde"),
         "belirsiz":       sum(1 for s in summaries if s["karar"] == "belirsiz"),
         "ayni_mum_riski": sum(1 for s in summaries if s["karar"] == "ayni_mum_riski"),
+        "gecersiz":       sum(1 for s in summaries if s["karar"] == "gecersiz"),
     }
 
 
@@ -330,6 +405,8 @@ def _row_html(e):
 def shadow_page():
     events = _load_events()
     summaries = _group_symbol_summaries(events)
+    real_positions = _fetch_real_positions()
+    summaries = _merge_with_real_positions(summaries, real_positions)
     stats = _summarize_symbols(summaries)
 
     summary_rows = "".join(_summary_row_html(s) for s in summaries) or (
@@ -363,7 +440,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -412,6 +489,7 @@ sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
   <div class="card"><span class="val" style="color:var(--text-dim)">{stats['belirsiz']}</span><span class="lbl">Belirsiz</span></div>
   <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
+  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Geçersiz</span></div>
 </div>
 
 <div class="section-title">📊 Aktif Shadow Karşılaştırması</div>

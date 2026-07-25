@@ -496,11 +496,22 @@ def _activate_position(symbol: str, fill_price: float, qty: float, pos: dict):
             # shadow_peak KENDİ alanı olarak tutuluyor (pos["peak"]'ten TÜRETİLMİYOR)
             # — ölçüm temizliği için: gerçek sistemin peak güncelleme mantığı
             # ileride değişse bile shadow'un doğruluğu buna bağımlı olmasın.
+            #
+            # shadow_valid=True SADECE bu fonksiyon (gerçek fill anı) çalıştığında
+            # set edilir. Eğer bir pozisyon bu shadow kodu devreye girmeden ÖNCE
+            # zaten açılmışsa, onun state kaydında shadow_valid hiç olmaz (eski
+            # kod bu alanları yazmıyordu) — _shadow_evaluate bunu görüp o pozisyonu
+            # asla değerlendirmeye almaz. Adil karşılaştırma için şart: shadow
+            # SADECE gerçek fill anından itibaren, kendi başına başlamış
+            # pozisyonlarda geçerli sayılmalı, sonradan "yapıştırılmış" olamaz.
             "shadow_tp1_cap_pct": SHADOW_TP1_CAP_PCT,
             "shadow_tp1":         min(float(pos["tp1"]), fill_price * (1 + SHADOW_TP1_CAP_PCT / 100.0)),
             "shadow_trailing":    False,
             "shadow_peak":        fill_price,
             "shadow_exit":        None,
+            "shadow_started_at":  now,
+            "shadow_valid":       True,
+            "shadow_origin":      "fill_time",
         }
         _save_state(state)
 
@@ -911,6 +922,12 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
     shadow_tp1 = float(pos.get("shadow_tp1", 0) or 0)
     if not shadow_tp1:
         return False, events   # bu deploy'dan önce açılmış eski pozisyon — shadow alanı yok
+    if pos.get("shadow_valid") is not True:
+        # shadow_valid SADECE _activate_position (gerçek fill anı) tarafından
+        # set edilir. Burada True değilse (yok/False) bu pozisyon shadow kodu
+        # devreye girmeden önce açılmış demektir — adil kıyas için bu
+        # pozisyonu HİÇ değerlendirmeye almıyoruz, yeni event üretmiyoruz.
+        return False, events
 
     entry_px = float(pos.get("entry", 0) or 0)
     real_tp1 = float(pos.get("tp1", 0) or 0)
@@ -930,6 +947,7 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
             "real_tp1": real_tp1, "shadow_tp1": shadow_tp1,
             "shadow_peak": shadow_peak_now, "shadow_trail": shadow_trail,
             "shadow_pct": shadow_pct, "note": note,
+            "shadow_valid": True, "shadow_origin": pos.get("shadow_origin", "fill_time"),
             **extra,
         }
 
@@ -1015,6 +1033,8 @@ def _shadow_build_close_event(symbol: str, pos_snap: dict, live_reason: str, liv
         "live_reason": live_reason, "live_price": live_price, "live_pct": live_pct,
         "shadow_result": shadow_result, "shadow_exit_reason": shadow_exit_reason,
         "shadow_trailing": shadow_trailing, "fark_pct": fark_pct,
+        "shadow_valid": pos_snap.get("shadow_valid") is True,
+        "shadow_origin": pos_snap.get("shadow_origin", "fill_time"),
     }
 
 
@@ -1238,7 +1258,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     "close_price": real_price, "pnl_pct": pct,
                 })
                 print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
-                if pos_snap.get("shadow_tp1"):
+                if pos_snap.get("shadow_tp1") and pos_snap.get("shadow_valid") is True:
                     _shadow_dispatch(_shadow_build_close_event(symbol, pos_snap, sell_reason, real_price, pct))
         finally:
             if not closed:
@@ -1394,7 +1414,7 @@ def _check_expired_positions_no_tick():
                         "close_price": real_price, "pnl_pct": pct,
                     })
                     print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
-                    if pos.get("shadow_tp1"):
+                    if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
                         _shadow_dispatch(_shadow_build_close_event(sym, pos, "expire_no_tick", real_price, pct))
             finally:
                 if not closed:
@@ -1661,7 +1681,7 @@ def _periodic_check():
                             "close_price": sl, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
-                        if pos.get("shadow_tp1"):
+                        if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
                             _shadow_dispatch(_shadow_build_close_event(sym, pos, "sl_binance", sl, pct))
 
                     # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
@@ -1684,7 +1704,7 @@ def _periodic_check():
                             "close_price": cl_price, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
-                        if pos.get("shadow_tp1"):
+                        if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
                             _shadow_dispatch(_shadow_build_close_event(sym, pos, "trail_binance", cl_price, pct))
 
                 except Exception as e:
