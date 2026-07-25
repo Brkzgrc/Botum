@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-25 17:59:49",
+  "updated_at": "2026-07-25 18:16:34",
   "performance": {
-    "total": 53,
-    "open": 3,
+    "total": 54,
+    "open": 4,
     "closed": 25,
     "wins": 15,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 28,
-        "open": 3,
+        "total": 29,
+        "open": 4,
         "wins": 15,
         "losses": 10,
         "expired": 11,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-07-25": {
-        "trades": 3,
+        "trades": 4,
         "pnl": 2.7,
         "wins": 1,
         "losses": 0
@@ -107,7 +107,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 27,
+        "trades": 28,
         "pnl": 6.82,
         "wins": 14,
         "losses": 10
@@ -121,7 +121,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 28,
+        "trades": 29,
         "pnl": 7.59,
         "wins": 15,
         "losses": 10
@@ -129,6 +129,47 @@
     }
   },
   "open": [
+    {
+      "id": "WBETH_USDT_1784991608",
+      "symbol": "WBETH/USDT",
+      "entry": 2058.6001271676305,
+      "stop": 2034.4258561133,
+      "tp1": 2084.1341438867,
+      "tp2": 2108.9882877734,
+      "tp3": null,
+      "limit_price": 2059.28,
+      "signal_price": 2059.74,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-25T18:00:08.038011+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 2060.57,
+      "peak_pct": 0.1,
+      "low_price": 2056.66,
+      "low_pct": -0.09,
+      "current_price": 2060.57,
+      "current_pct": 0.1,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-25T18:15:34.712199+03:00",
+      "checks": 4,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 0.0865,
+      "fill_time": "2026-07-25T18:01:06.904522+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "1000CAT_USDT_1784988009",
       "symbol": "1000CAT/USDT",
@@ -151,8 +192,8 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.00134,
-      "peak_pct": 0.75,
+      "peak_price": 0.00135,
+      "peak_pct": 1.5,
       "low_price": 0.00131,
       "low_pct": -1.5,
       "current_price": 0.00133,
@@ -161,8 +202,8 @@
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-25T17:59:07.477508+03:00",
-      "checks": 12,
+      "last_check": "2026-07-25T18:15:34.712199+03:00",
+      "checks": 16,
       "extra": {
         "tp3": null
       },
@@ -196,14 +237,14 @@
       "peak_pct": 1.24,
       "low_price": 0.1922,
       "low_pct": -0.93,
-      "current_price": 0.1926,
-      "current_pct": -0.72,
+      "current_price": 0.1927,
+      "current_pct": -0.67,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-25T17:59:07.477508+03:00",
-      "checks": 163,
+      "last_check": "2026-07-25T18:15:34.712199+03:00",
+      "checks": 167,
       "extra": {
         "tp3": null
       },
@@ -237,14 +278,14 @@
       "peak_pct": 2.57,
       "low_price": 0.007023,
       "low_pct": -0.6,
-      "current_price": 0.007066,
-      "current_pct": 0.01,
+      "current_price": 0.007088,
+      "current_pct": 0.32,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-25T17:59:07.477508+03:00",
-      "checks": 155,
+      "last_check": "2026-07-25T18:15:34.712199+03:00",
+      "checks": 159,
       "extra": {
         "tp3": null
       },
@@ -270,11 +311,11 @@
       "phase": "choch_v2",
       "candle": "",
       "funding_neg": false,
-      "status": "pending_retest",
+      "status": "no_retest",
       "open_time": "2026-07-25T17:00:07.234504+03:00",
-      "close_time": null,
+      "close_time": "2026-07-25T18:13:05.449022+03:00",
       "close_price": null,
-      "close_reason": null,
+      "close_reason": "no_retest",
       "close_pct": null,
       "peak_price": 1.251,
       "peak_pct": 0.0,
