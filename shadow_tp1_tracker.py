@@ -259,15 +259,21 @@ def _merge_with_real_positions(summaries, real_positions):
 
 
 def _summarize_symbols(summaries):
+    """Kartlar bilerek "kaç pozisyon var" ile "kaçı gerçekten geçerli test
+    örneği" sorularını AYIRIYOR — aksi halde "İzlenen: 10" ile "Geçersiz: 10"
+    aynı anda görününce sanki 10 geçerli test varmış gibi yanlış anlaşılıyor.
+    Açık Pozisyon = hepsi (geçerli + geçersiz). Geçerli İzlenen = shadow_valid
+    olanlar (İzleniyor/Sanal Önde/Gerçek Önde/Belirsiz/Aynı Mum Riski'nin
+    TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup."""
+    valid = [s for s in summaries if s["karar"] != "gecersiz"]
     return {
-        "izlenen":        len(summaries),
-        "sanal_cikis":    sum(1 for s in summaries if s["shadow_status"] == "exited" and s["karar"] != "gecersiz"),
-        "izleniyor":      sum(1 for s in summaries if s["karar"] == "izleniyor"),
-        "sanal_onde":     sum(1 for s in summaries if s["karar"] == "sanal_onde"),
-        "gercek_onde":    sum(1 for s in summaries if s["karar"] == "gercek_onde"),
-        "belirsiz":       sum(1 for s in summaries if s["karar"] == "belirsiz"),
-        "ayni_mum_riski": sum(1 for s in summaries if s["karar"] == "ayni_mum_riski"),
-        "gecersiz":       sum(1 for s in summaries if s["karar"] == "gecersiz"),
+        "acik_pozisyon":   len(summaries),
+        "gecerli_izlenen": len(valid),
+        "gecersiz":        sum(1 for s in summaries if s["karar"] == "gecersiz"),
+        "sanal_cikis":     sum(1 for s in valid if s["shadow_status"] == "exited"),
+        "sanal_onde":      sum(1 for s in valid if s["karar"] == "sanal_onde"),
+        "gercek_onde":     sum(1 for s in valid if s["karar"] == "gercek_onde"),
+        "ayni_mum_riski":  sum(1 for s in valid if s["karar"] == "ayni_mum_riski"),
     }
 
 
@@ -440,7 +446,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -482,14 +488,13 @@ Kaynak: position_monitor.py (canlı, kapanmış 1m mum bazlı) → /api/shadow-e
 sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
 
 <div class="cards">
-  <div class="card"><span class="val" style="color:var(--accent)">{stats['izlenen']}</span><span class="lbl">İzlenen</span></div>
+  <div class="card"><span class="val" style="color:var(--accent)">{stats['acik_pozisyon']}</span><span class="lbl">Açık Pozisyon</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{stats['gecerli_izlenen']}</span><span class="lbl">Geçerli İzlenen</span></div>
+  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Geçersiz / Eski</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
-  <div class="card"><span class="val" style="color:#3498db">{stats['izleniyor']}</span><span class="lbl">İzleniyor</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
-  <div class="card"><span class="val" style="color:var(--text-dim)">{stats['belirsiz']}</span><span class="lbl">Belirsiz</span></div>
   <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
-  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Geçersiz</span></div>
 </div>
 
 <div class="section-title">📊 Aktif Shadow Karşılaştırması</div>
