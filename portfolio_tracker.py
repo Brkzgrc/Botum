@@ -3150,8 +3150,6 @@ function toggleType(key, btn) {{
 
 {_smc_eski_section}
 
-{_pending_section}
-
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
@@ -3164,6 +3162,8 @@ function toggleType(key, btn) {{
     </tbody></table></div>
     </details>
 </div>
+
+{_pending_section}
 
 <div class="section">
     <details data-id="closed-list">
