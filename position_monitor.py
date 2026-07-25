@@ -863,40 +863,75 @@ def _reconcile_pending_orders():
 
 _shadow_log_lock = threading.Lock()
 
-def _shadow_log(event: str, symbol: str, **fields):
-    """Shadow gözlem logu — hata olursa sessizce yutulur, ana akışı bozmaz."""
+def _shadow_dispatch(event: dict):
+    """TEK giriş noktası: local JSONL'e yazar + portfolio_tracker'a best-effort
+    POST eder (arka plan thread, TEK deneme — shadow olayları kritik değil,
+    local dosya zaten kalıcı kayıt; portfolio_tracker'a POST sadece dashboard
+    için "iyi olsun" niteliğinde, kaybolursa dashboard'da o satır eksik kalır,
+    başka hiçbir şeyi etkilemez). Bu fonksiyon LOCK DIŞINDA çağrılmalı —
+    ne dosya I/O'su ne network çağrısı _lock tutulurken yapılmamalı, aksi
+    halde TÜM sembollerin gerçek stop/TP1 tespiti gecikebilir."""
+    event = {"ts": datetime.now(timezone.utc).isoformat(), **event}
     try:
-        entry = {"ts": datetime.now(timezone.utc).isoformat(), "event": event, "symbol": symbol, **fields}
-        line = json.dumps(entry, ensure_ascii=False, default=str)
+        line = json.dumps(event, ensure_ascii=False, default=str)
         with _shadow_log_lock:
             with open(SHADOW_TP1_LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
     except Exception as e:
-        print(f"[SHADOW] log hatası {symbol}: {e}", flush=True)
+        print(f"[SHADOW] local log hatası {event.get('symbol')}: {e}", flush=True)
+
+    def _send():
+        try:
+            _notify_portfolio("/api/shadow-event", event)
+        except Exception as e:
+            print(f"[SHADOW] portfolio POST hatası {event.get('symbol')}: {e}", flush=True)
+    threading.Thread(target=_send, daemon=True).start()
 
 
-def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float) -> bool:
-    """pos'u yerinde (in-place) günceller. Dönüş: pos değiştiyse True (çağıran
-    _save_state + pos_snap yenilemeli). Gerçek sistemin trailing/stop/TP1
-    durumundan tamamen bağımsız çalışır — kendi shadow_tp1'ine göre karar verir."""
+_STATUS_REAL_PRE_TP1  = "pre_tp1"
+_STATUS_REAL_TRAILING = "trailing"
+
+
+def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float):
+    """pos'u yerinde (in-place) günceller. HİÇBİR I/O YAPMAZ — sadece hesaplar
+    ve event dict'leri üretir; gerçek I/O çağıran taraf tarafından LOCK
+    DIŞINDA (_shadow_dispatch ile) yapılmalı. Gerçek sistemin trailing/stop/
+    TP1 durumundan tamamen bağımsız çalışır — kendi shadow_tp1'ine göre karar
+    verir, sadece stop/ATR-trail formülünü ve pos["peak"]'i (salt okunur)
+    paylaşır. Dönüş: (pos değişti mi, event listesi)."""
+    events = []
     if pos.get("shadow_exit") is not None:
-        return False
+        return False, events
     shadow_tp1 = float(pos.get("shadow_tp1", 0) or 0)
     if not shadow_tp1:
-        return False   # bu deploy'dan önce açılmış eski pozisyon — shadow alanı yok
+        return False, events   # bu deploy'dan önce açılmış eski pozisyon — shadow alanı yok
 
     entry_px = float(pos.get("entry", 0) or 0)
+    real_tp1 = float(pos.get("tp1", 0) or 0)
+    real_status = _STATUS_REAL_TRAILING if pos.get("trailing") else _STATUS_REAL_PRE_TP1
     shadow_peak_now = max(float(pos.get("peak", 0) or 0), high)
     dirty = False
+
+    def _mk(event, shadow_status, shadow_trail=None, shadow_pct=None, note="", **extra):
+        return {
+            "event": event, "symbol": symbol,
+            "real_status": real_status, "shadow_status": shadow_status,
+            "real_tp1": real_tp1, "shadow_tp1": shadow_tp1,
+            "shadow_peak": shadow_peak_now, "shadow_trail": shadow_trail,
+            "shadow_pct": shadow_pct, "note": note,
+            **extra,
+        }
 
     if not pos.get("shadow_trailing"):
         if high >= shadow_tp1:
             pos["shadow_trailing"] = True
             dirty = True
-            _shadow_log("SHADOW_WOULD_ACTIVATE_TRAIL", symbol,
-                        price=high, shadow_tp1=shadow_tp1, entry=entry_px, peak=shadow_peak_now)
             shadow_trail_now = _trail_stop_price(shadow_peak_now, pos.get("atr"), entry_px)
+            events.append(_mk(
+                "SHADOW_WOULD_ACTIVATE_TRAIL", "trailing", shadow_trail=shadow_trail_now,
+                note="Sanal TP1'e ulaşıldı, sanal trailing başladı."))
             if low <= shadow_trail_now:
+                shadow_pct = round((shadow_trail_now - entry_px) / entry_px * 100, 2) if entry_px else 0
                 pos["shadow_exit"] = {
                     "ts": datetime.now(timezone.utc).isoformat(),
                     "price": shadow_trail_now, "reason": "trail", "same_candle": True,
@@ -904,48 +939,73 @@ def _shadow_evaluate(symbol: str, pos: dict, high: float, low: float) -> bool:
                 # Aynı kapanmış mumda hem TP1 dokundu hem shadow trail kırıldı —
                 # bot mum kapanana kadar bunu göremeyeceği için gerçek canlı
                 # riski ölçen en önemli event bu.
-                _shadow_log("SHADOW_SAME_CANDLE_TOUCH_AND_BREACH", symbol,
-                            price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px)
-                _shadow_log("SHADOW_WOULD_EXIT_TRAIL", symbol,
-                            price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px, same_candle=True)
+                events.append(_mk(
+                    "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH", "exited", shadow_trail=shadow_trail_now,
+                    shadow_pct=shadow_pct,
+                    note="Aynı kapanmış mumda hem sanal TP1'e dokundu hem sanal trail kırıldı — "
+                         "bot mum kapanana kadar bunu göremez."))
+                events.append(_mk(
+                    "SHADOW_WOULD_EXIT_TRAIL", "exited", shadow_trail=shadow_trail_now,
+                    shadow_pct=shadow_pct, same_candle=True,
+                    note="Sanal trailing seviyesi aynı mumda kırıldı, sanal pozisyon kapanmış olurdu."))
     else:
         shadow_trail_now = _trail_stop_price(shadow_peak_now, pos.get("atr"), entry_px)
         if low <= shadow_trail_now:
+            shadow_pct = round((shadow_trail_now - entry_px) / entry_px * 100, 2) if entry_px else 0
             pos["shadow_exit"] = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "price": shadow_trail_now, "reason": "trail", "same_candle": False,
             }
             dirty = True
-            _shadow_log("SHADOW_WOULD_EXIT_TRAIL", symbol,
-                        price=shadow_trail_now, peak=shadow_peak_now, entry=entry_px, same_candle=False)
+            events.append(_mk(
+                "SHADOW_WOULD_EXIT_TRAIL", "exited", shadow_trail=shadow_trail_now,
+                shadow_pct=shadow_pct, same_candle=False,
+                note="Sanal trailing seviyesi kırıldı, sanal pozisyon kapanmış olurdu."))
 
-    return dirty
+    return dirty, events
 
 
-def _shadow_log_close(symbol: str, pos_snap: dict, live_reason: str, live_price: float, live_pct: float):
-    """Gerçek pozisyon kapanınca shadow karşılaştırmasını logla — sadece gözlem."""
-    try:
-        entry_px = float(pos_snap.get("entry", 0) or 0)
-        shadow_exit = pos_snap.get("shadow_exit")
-        if shadow_exit:
-            shadow_price = float(shadow_exit.get("price", 0) or 0)
-            shadow_pct = round((shadow_price - entry_px) / entry_px * 100, 2) if entry_px else 0
-            shadow_result = "resolved"
-        else:
-            # Gerçek pozisyon shadow hiç sonuçlanmadan kapandı (shadow trailing'e
-            # hiç geçmedi VEYA geçti ama kendi trail'i tetiklenmeden gerçek
-            # pozisyon kapandı) — bu durumu ayrı bir sonuç olarak işaretle,
-            # "aynı" ya da "sıfır fark" gibi varsayılan bir değere düşürme.
-            shadow_price = None
-            shadow_pct = None
-            shadow_result = "undetermined"
-        _shadow_log("SHADOW_LIVE_CLOSED", symbol,
-                    live_reason=live_reason, live_price=live_price, live_pct=live_pct,
-                    shadow_result=shadow_result, shadow_price=shadow_price, shadow_pct=shadow_pct,
-                    shadow_trailing=bool(pos_snap.get("shadow_trailing")),
-                    fark_pct=(round(shadow_pct - live_pct, 2) if shadow_pct is not None else None))
-    except Exception as e:
-        print(f"[SHADOW] kapanış log hatası {symbol}: {e}", flush=True)
+def _shadow_build_close_event(symbol: str, pos_snap: dict, live_reason: str, live_price: float, live_pct: float) -> dict:
+    """Gerçek pozisyon kapanınca shadow karşılaştırma event'ini ÜRETİR (I/O
+    yapmaz — çağıran _shadow_dispatch ile göndermeli)."""
+    entry_px = float(pos_snap.get("entry", 0) or 0)
+    real_tp1 = float(pos_snap.get("tp1", 0) or 0)
+    shadow_tp1 = float(pos_snap.get("shadow_tp1", 0) or 0) or None
+    shadow_exit = pos_snap.get("shadow_exit")
+    shadow_trailing = bool(pos_snap.get("shadow_trailing"))
+
+    if shadow_exit:
+        shadow_price = float(shadow_exit.get("price", 0) or 0)
+        shadow_pct = round((shadow_price - entry_px) / entry_px * 100, 2) if entry_px else 0
+        shadow_result = "resolved"
+        fark_pct = round(shadow_pct - live_pct, 2)
+        shadow_exit_reason = shadow_exit.get("reason")
+        note = (f"Gerçek {live_reason} ile kapandı ({live_pct:+.2f}%), sanal {shadow_exit_reason} ile "
+                f"kapanmış olurdu ({shadow_pct:+.2f}%) — fark {fark_pct:+.2f} puan.")
+        shadow_status = "exited"
+    else:
+        # Gerçek pozisyon shadow hiç sonuçlanmadan kapandı (shadow trailing'e
+        # hiç geçmedi VEYA geçti ama kendi trail'i tetiklenmeden gerçek
+        # pozisyon kapandı) — bu durumu ayrı bir sonuç olarak işaretle,
+        # "aynı" ya da "sıfır fark" gibi varsayılan bir değere düşürme.
+        shadow_price = None
+        shadow_pct = None
+        shadow_result = "undetermined"
+        fark_pct = None
+        shadow_exit_reason = None
+        note = "Gerçek pozisyon kapandı ama sanal sonuçlanmadan — karşılaştırma belirsiz."
+        shadow_status = _STATUS_REAL_TRAILING if shadow_trailing else "not_trailing"
+
+    return {
+        "event": "SHADOW_LIVE_CLOSED", "symbol": symbol,
+        "real_status": f"closed:{live_reason}", "shadow_status": shadow_status,
+        "real_tp1": real_tp1, "shadow_tp1": shadow_tp1,
+        "shadow_peak": pos_snap.get("peak"), "shadow_trail": shadow_price,
+        "shadow_pct": shadow_pct, "note": note,
+        "live_reason": live_reason, "live_price": live_price, "live_pct": live_pct,
+        "shadow_result": shadow_result, "shadow_exit_reason": shadow_exit_reason,
+        "shadow_trailing": shadow_trailing, "fark_pct": fark_pct,
+    }
 
 
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
@@ -961,6 +1021,7 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
     trail_sl_peak      = None
     trail_sl_qty       = 0.0
     pos_snap           = None
+    shadow_events      = []   # lock dışında dispatch edilecek (bkz. aşağıdaki "Lock dışı işlemler")
 
     with _lock:
         state = _load_state()
@@ -980,8 +1041,10 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
 
         # Shadow/dry-run: gerçek sistemin trailing/stop/TP1 kararından TAMAMEN
         # bağımsız, kendi (daha düşük) TP1 tavanına göre değerlendirir. Sadece
-        # gözlem — pos_snap'i tazelemek dışında dışarıya hiçbir etkisi yok.
-        if _shadow_evaluate(symbol, pos, high, low):
+        # gözlem — burada HİÇBİR I/O yapılmaz (dosya/network), sadece pos
+        # mutasyonu + event üretimi. Gerçek dispatch lock dışında olur.
+        shadow_dirty, shadow_events = _shadow_evaluate(symbol, pos, high, low)
+        if shadow_dirty:
             state["positions"][symbol] = pos
             _save_state(state)
             pos_snap = dict(pos)
@@ -1077,6 +1140,9 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 _save_state(state)
 
     # ── Lock dışı işlemler (Binance API çağrıları) ───────────────────────────
+    for _ev in shadow_events:
+        _shadow_dispatch(_ev)
+
     if cancel_sl:
         _cancel_sl(symbol, pos_snap.get("sl_order_id"))
 
@@ -1162,7 +1228,8 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     "close_price": real_price, "pnl_pct": pct,
                 })
                 print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
-                _shadow_log_close(symbol, pos_snap, sell_reason, real_price, pct)
+                if pos_snap.get("shadow_tp1"):
+                    _shadow_dispatch(_shadow_build_close_event(symbol, pos_snap, sell_reason, real_price, pct))
         finally:
             if not closed:
                 # Satış başarısız/kısmi: closing bayrağını kaldır, sonraki tick'te
