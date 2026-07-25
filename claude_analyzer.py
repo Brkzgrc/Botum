@@ -33,7 +33,15 @@ _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
 PORTFOLIO_URL           = os.getenv("PORTFOLIO_URL") or os.getenv("RENDER_EXTERNAL_URL", "")
-PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN",         "")
+# PORTFOLIO_TOKEN: diğer servisler (SMC.py, bot.py, trading-bot) bu isimle
+# tanımlıyor. Ama bu modül portfolio-tracker'ın KENDİ sürecinde çalışıp kendi
+# API'sine (Bearer ile korunan /api/signals) istek attığı için, o serviste
+# muhtemelen sadece PORTFOLIO_AUTH_TOKEN tanımlı (login sistemi için zorunlu) —
+# PORTFOLIO_TOKEN'ı ayrıca tanımlamayı kimse düşünmez, çünkü normalde bir
+# servisin kendine bearer token göndermesi gerekmez. Boşsa PORTFOLIO_AUTH_TOKEN'a
+# düş — aksi halde bu self-call sessizce 401/login sayfasına düşüp
+# "[ANALYZER PORTFOLIO] Expecting value" hatasıyla geçmiş bağlamını kaybediyordu.
+PORTFOLIO_TOKEN         = os.getenv("PORTFOLIO_TOKEN") or os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 
 TR_TZ = timezone(timedelta(hours=3))
 ARCHIVE_FILE = os.path.join(os.getenv("DATA_DIR", "/tmp"), "learning_archive.json")

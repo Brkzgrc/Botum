@@ -1209,13 +1209,15 @@ def api_analyze():
         args=(signal, recent_count, sig_num, portfolio_id),
         daemon=True,
     ).start()
-    # Sadece SMC sinyalleri trading bot'a iletilir
-    if signal.get("source") == "smc":
-        threading.Thread(
-            target=_forward_to_trading_bot,
-            args=(signal,),
-            daemon=True,
-        ).start()
+    # NOT (2026-07-25): Buradan trading-bot'a AYRICA _forward_to_trading_bot
+    # çağrılıyordu — ama SMC.py aynı sinyal için hem /api/signal (source
+    # "smc-v2") hem /api/analyze (source "smc") POST ediyor, ve /api/signal
+    # handler'ı zaten SMC_MAIN_SOURCES için forward'ı yapıyor. Sonuç: her
+    # sinyal trading-bot'a iki kez iletiliyordu (log'da aynı sembol için
+    # "Sinyal iletildi" iki kez görülüyordu). trading_engine.execute()
+    # zaten-aktif kontrolü sayesinde gerçek çift pozisyon oluşmuyordu ama
+    # gereksiz çift istek/log kirliliği vardı — kaldırıldı. /api/analyze'ın
+    # TEK görevi artık Claude analyzer'ı tetiklemek.
     return jsonify({"status": "queued"}), 202
 
 
