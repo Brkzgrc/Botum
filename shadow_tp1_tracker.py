@@ -101,18 +101,32 @@ _KARAR_LABELS = {
     "gercek_onde":    "Gerçek Önde",
     "belirsiz":       "Belirsiz",
     "ayni_mum_riski": "Aynı Mum Riski",
+    "izleniyor":      "İzleniyor",
 }
 _KARAR_COLORS = {
     "sanal_onde":     "#2ecc71",
     "gercek_onde":    "#f39c12",
     "belirsiz":       "#8a9bb0",
     "ayni_mum_riski": "#e74c3c",
+    "izleniyor":      "#3498db",
 }
 
 
 def _symbol_summary(symbol, cycle_events):
     """cycle_events: bir sembolün EN SON işlem döngüsüne ait event'leri,
-    kronolojik sırada (en az 1 tane). Dönüş: panelde tek satır olacak özet."""
+    kronolojik sırada (en az 1 tane). Dönüş: panelde tek satır olacak özet.
+
+    Karar öncelik sırası:
+      1) Gerçek kapandıysa (SHADOW_LIVE_CLOSED) -> fark_pct'e göre KESİN karar
+         (bu her zaman en güncel/en bilgilendirici durum, önceki bir aynı-mum
+         uyarısını bile ezer).
+      2) Gerçek hâlâ açıksa ve EN SON event aynı-mum riskiyse -> Aynı Mum Riski.
+      3) Gerçek hâlâ açık, sanal çoktan sonuçlandıysa (exited) -> Sanal Önde
+         ("önde" = zaman olarak sonuca ulaşmış, sayısal üstünlük iddiası değil),
+         alt not: gerçek kapanış bekleniyor.
+      4) Gerçek hâlâ açık, sanal hâlâ trailing'deyse -> İzleniyor.
+      5) Diğer tüm durumlar (henüz hiçbir şey olmadı) -> Belirsiz.
+    """
     last = cycle_events[-1]
     is_real_closed = last.get("event") == "SHADOW_LIVE_CLOSED"
 
@@ -127,22 +141,31 @@ def _symbol_summary(symbol, cycle_events):
 
     real_pct = last.get("live_pct") if is_real_closed else None
     fark_pct = last.get("fark_pct") if is_real_closed else None
-    shadow_result = last.get("shadow_result") if is_real_closed else None
+    shadow_status = last.get("shadow_status")
+    karar_note = ""
 
-    if last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
+    if is_real_closed:
+        if fark_pct is not None and fark_pct > 0:
+            karar = "sanal_onde"
+        elif fark_pct is not None and fark_pct < 0:
+            karar = "gercek_onde"
+        else:
+            karar = "belirsiz"
+    elif last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
         karar = "ayni_mum_riski"
-    elif is_real_closed and shadow_result == "resolved" and fark_pct is not None and fark_pct != 0:
-        karar = "sanal_onde" if fark_pct > 0 else "gercek_onde"
+    elif shadow_status == "exited":
+        karar = "sanal_onde"
+        karar_note = "Gerçek kapanış bekleniyor"
+    elif shadow_status == "trailing":
+        karar = "izleniyor"
     else:
-        # Gerçek hâlâ açıksa (sanal çoktan sonuçlanmış olsa bile) ya da
-        # gerçek kapandı ama sanal hiç sonuçlanamadıysa: kim önde bilinmiyor.
         karar = "belirsiz"
 
     return {
         "symbol": symbol, "ts": last.get("ts"),
-        "real_status": last.get("real_status"), "shadow_status": last.get("shadow_status"),
+        "real_status": last.get("real_status"), "shadow_status": shadow_status,
         "shadow_pct": shadow_pct, "real_pct": real_pct, "fark_pct": fark_pct,
-        "karar": karar,
+        "karar": karar, "karar_note": karar_note,
     }
 
 
@@ -165,6 +188,7 @@ def _summarize_symbols(summaries):
     return {
         "izlenen":        len(summaries),
         "sanal_cikis":    sum(1 for s in summaries if s["shadow_status"] == "exited"),
+        "izleniyor":      sum(1 for s in summaries if s["karar"] == "izleniyor"),
         "sanal_onde":     sum(1 for s in summaries if s["karar"] == "sanal_onde"),
         "gercek_onde":    sum(1 for s in summaries if s["karar"] == "gercek_onde"),
         "belirsiz":       sum(1 for s in summaries if s["karar"] == "belirsiz"),
@@ -263,6 +287,9 @@ def _karar_badge(karar):
 def _summary_row_html(s):
     sym = html.escape(str(s["symbol"]).replace("/USDT", ""))
     shadow_pct, real_pct, fark_pct = s["shadow_pct"], s["real_pct"], s["fark_pct"]
+    karar_note = s.get("karar_note") or ""
+    note_html = (f'<br><span style="font-size:.6rem;color:#7f8c8d">{html.escape(karar_note)}</span>'
+                 if karar_note else "")
     return f"""<tr>
       <td><b>{sym}</b></td>
       <td>{_status_badge(s["real_status"])}</td>
@@ -270,7 +297,7 @@ def _summary_row_html(s):
       <td style="color:{_pct_color(shadow_pct)};font-weight:bold">{_fmt_pct(shadow_pct)}</td>
       <td style="color:{_pct_color(real_pct)};font-weight:bold">{_fmt_pct(real_pct)}</td>
       <td style="color:{_pct_color(fark_pct)};font-weight:bold">{_fmt_pct(fark_pct)}</td>
-      <td>{_karar_badge(s["karar"])}</td>
+      <td>{_karar_badge(s["karar"])}{note_html}</td>
     </tr>"""
 
 
@@ -336,7 +363,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -380,6 +407,7 @@ sekmeleri) bu sayfadan tamamen bağımsızdır.</p>
 <div class="cards">
   <div class="card"><span class="val" style="color:var(--accent)">{stats['izlenen']}</span><span class="lbl">İzlenen</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{stats['izleniyor']}</span><span class="lbl">İzleniyor</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
   <div class="card"><span class="val" style="color:var(--text-dim)">{stats['belirsiz']}</span><span class="lbl">Belirsiz</span></div>
