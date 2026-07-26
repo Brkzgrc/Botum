@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-26 10:28:50",
+  "updated_at": "2026-07-26 10:58:53",
   "performance": {
     "total": 65,
     "open": 3,
@@ -157,23 +157,24 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.000344,
-      "peak_pct": 0.0,
-      "low_price": 0.000344,
-      "low_pct": 0.0,
-      "current_price": 0.000344,
-      "current_pct": 0.0,
+      "peak_price": 0.000345,
+      "peak_pct": 0.29,
+      "low_price": 0.00034,
+      "low_pct": -1.16,
+      "current_price": 0.000345,
+      "current_pct": 0.29,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T10:00:14.652450+03:00",
-      "last_check": "2026-07-26T10:00:09.425081+03:00",
-      "checks": 0,
+      "last_check": "2026-07-26T10:54:23.333360+03:00",
+      "checks": 6,
       "extra": {
         "tp3": null
       },
       "fill_qty": 538414.0,
-      "fill_time": "2026-07-26T10:25:58.886795+03:00"
+      "fill_time": "2026-07-26T10:25:58.886795+03:00",
+      "bot_miss_count": 0
     },
     {
       "id": "WBETH_USDT_1784991608",
@@ -201,14 +202,14 @@
       "peak_pct": 1.12,
       "low_price": 2055.69,
       "low_pct": -0.14,
-      "current_price": 2077.18,
-      "current_pct": 0.9,
+      "current_price": 2075.15,
+      "current_pct": 0.8,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T10:24:15.387995+03:00",
-      "checks": 199,
+      "last_check": "2026-07-26T10:54:23.333360+03:00",
+      "checks": 205,
       "extra": {
         "tp3": null
       },
@@ -242,14 +243,14 @@
       "peak_pct": 3.86,
       "low_price": 0.0834,
       "low_pct": -2.46,
-      "current_price": 0.0848,
-      "current_pct": -0.82,
+      "current_price": 0.0856,
+      "current_pct": 0.12,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T10:24:15.387995+03:00",
-      "checks": 177,
+      "last_check": "2026-07-26T10:54:23.333360+03:00",
+      "checks": 183,
       "extra": {
         "tp3": null
       },
