@@ -3269,9 +3269,15 @@ def alsat_page():
 
     # Açık (fill olmuş) pozisyonların o anki piyasa değeri — trading-bot'un
     # /status'undan gelen qty/current_price zaten mevcut, ek istek gerekmiyor.
+    # Pending (henüz fill olmamış limit emri) pozisyonların ayırdığı tutar da
+    # (pos_size_usdt) eklenir — bu para usdt_balance'ta da görünmüyor çünkü
+    # emir olarak Binance'te bekliyor, aksi halde toplamdan hiç sayılmıyordu.
     positions_value = sum(
         float(p.get("qty", 0) or 0) * float(p.get("current_price", 0) or 0)
         for p in trade_positions.values() if p.get("status") == "open"
+    ) + sum(
+        float(p.get("pos_size_usdt", 0) or 0)
+        for p in trade_positions.values() if p.get("status") == "pending"
     )
     positions_value_val = f"${positions_value:,.2f}"
     total_value_val = f"${usdt_balance + positions_value:,.2f}" if usdt_balance is not None else "—"
