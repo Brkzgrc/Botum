@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-26 04:58:17",
+  "updated_at": "2026-07-26 05:28:20",
   "performance": {
     "total": 62,
-    "open": 3,
-    "closed": 27,
+    "open": 2,
+    "closed": 28,
     "wins": 16,
     "win_tp2": 0,
-    "losses": 11,
-    "expired": 12,
+    "losses": 12,
+    "expired": 13,
     "tp1_hits": 10,
     "win_pnl": 32.64,
-    "loss_pnl": -23.73,
+    "loss_pnl": -24.34,
     "expired_win": 6,
-    "expired_loss": 6,
-    "total_pnl": 8.91,
+    "expired_loss": 7,
+    "total_pnl": 8.3,
     "win_loss_pnl": 13.31,
-    "expired_pnl": -4.4,
-    "avg_peak": 2.29,
-    "win_rate": 59.3,
-    "real_win_rate": 59.3,
+    "expired_pnl": -5.01,
+    "avg_peak": 2.3,
+    "win_rate": 57.1,
+    "real_win_rate": 57.1,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,19 +45,19 @@
     "by_type": {
       "Legacy SMC": {
         "total": 30,
-        "open": 3,
+        "open": 2,
         "wins": 16,
-        "losses": 11,
-        "expired": 12,
+        "losses": 12,
+        "expired": 13,
         "tp1_hits": 10,
-        "total_pnl": 8.91,
+        "total_pnl": 8.3,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 59.3,
-        "avg_peak": 2.29,
+        "win_rate": 57.1,
+        "avg_peak": 2.3,
         "tp2_rate": 0,
-        "expired_pnl": -4.4,
+        "expired_pnl": -5.01,
         "win_loss_pnl": 13.31
       }
     },
@@ -70,9 +70,9 @@
       },
       "2026-07-24": {
         "trades": 10,
-        "pnl": 5.950000000000001,
+        "pnl": 5.34,
         "wins": 4,
-        "losses": 4
+        "losses": 5
       },
       "2026-07-23": {
         "trades": 2,
@@ -108,9 +108,9 @@
     "weekly": {
       "2026-W29": {
         "trades": 29,
-        "pnl": 8.139999999999999,
+        "pnl": 7.529999999999999,
         "wins": 15,
-        "losses": 11
+        "losses": 12
       },
       "2026-W28": {
         "trades": 1,
@@ -122,9 +122,9 @@
     "monthly": {
       "2026-07": {
         "trades": 30,
-        "pnl": 8.909999999999998,
+        "pnl": 8.299999999999999,
         "wins": 16,
-        "losses": 11
+        "losses": 12
       }
     }
   },
@@ -155,60 +155,19 @@
       "peak_pct": 0.77,
       "low_price": 2055.69,
       "low_pct": -0.14,
-      "current_price": 2073.24,
-      "current_pct": 0.71,
+      "current_price": 2072.48,
+      "current_pct": 0.67,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T04:58:00.382874+03:00",
-      "checks": 134,
+      "last_check": "2026-07-26T05:28:07.003840+03:00",
+      "checks": 140,
       "extra": {
         "tp3": null
       },
       "fill_qty": 0.0865,
       "fill_time": "2026-07-25T18:01:06.904522+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "BANANAS31_USDT_1784912408",
-      "symbol": "BANANAS31/USDT",
-      "entry": 0.00706516809073724,
-      "stop": 0.0068091534,
-      "tp1": 0.0073208466,
-      "tp2": 0.0075766932,
-      "tp3": null,
-      "limit_price": 0.007065,
-      "signal_price": 0.00724,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-24T20:00:08.011258+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.007247,
-      "peak_pct": 2.57,
-      "low_price": 0.007016,
-      "low_pct": -0.7,
-      "current_price": 0.007023,
-      "current_pct": -0.6,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-26T04:58:00.382874+03:00",
-      "checks": 289,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 26450.0,
-      "fill_time": "2026-07-25T05:01:24.592984+03:00",
       "bot_miss_count": 0
     },
     {
@@ -237,14 +196,14 @@
       "peak_pct": 3.86,
       "low_price": 0.085,
       "low_pct": -0.58,
-      "current_price": 0.0863,
-      "current_pct": 0.94,
+      "current_price": 0.0858,
+      "current_pct": 0.35,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T04:58:00.382874+03:00",
-      "checks": 112,
+      "last_check": "2026-07-26T05:28:07.003840+03:00",
+      "checks": 118,
       "extra": {
         "tp3": null
       },
@@ -254,44 +213,6 @@
     }
   ],
   "closed": [
-    {
-      "id": "MOVR_USDT_1784988007",
-      "symbol": "MOVR/USDT",
-      "entry": 1.251,
-      "stop": 1.224845,
-      "tp1": 1.277155,
-      "tp2": 1.30331,
-      "tp3": null,
-      "limit_price": 1.251,
-      "signal_price": 1.282,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "no_retest",
-      "open_time": "2026-07-25T17:00:07.234504+03:00",
-      "close_time": "2026-07-25T18:13:05.449022+03:00",
-      "close_price": null,
-      "close_reason": "no_retest",
-      "close_pct": null,
-      "peak_price": 1.251,
-      "peak_pct": 0.0,
-      "low_price": 1.251,
-      "low_pct": 0.0,
-      "current_price": 1.251,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-25T17:00:07.234504+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "PORTO_USDT_1784984409",
       "symbol": "PORTO/USDT",
@@ -691,6 +612,48 @@
       "atr": 0.00026760052847501787,
       "atr_updated_at": "2026-07-24T22:04:38.508236+00:00",
       "outcome": "win"
+    },
+    {
+      "id": "BANANAS31_USDT_1784912408",
+      "symbol": "BANANAS31/USDT",
+      "entry": 0.00706516809073724,
+      "stop": 0.0068091534,
+      "tp1": 0.0073208466,
+      "tp2": 0.0075766932,
+      "tp3": null,
+      "limit_price": 0.007065,
+      "signal_price": 0.00724,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "closed",
+      "open_time": "2026-07-24T20:00:08.011258+03:00",
+      "close_time": "2026-07-26T05:01:35.886268+03:00",
+      "close_price": 0.007022,
+      "close_reason": "expire_no_tick",
+      "close_pct": -0.61,
+      "peak_price": 0.007247,
+      "peak_pct": 2.57,
+      "low_price": 0.007016,
+      "low_pct": -0.7,
+      "current_price": 0.007023,
+      "current_pct": -0.6,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-07-26T04:58:00.382874+03:00",
+      "checks": 289,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 26450.0,
+      "fill_time": "2026-07-25T05:01:24.592984+03:00",
+      "bot_miss_count": 0,
+      "outcome": "loss"
     },
     {
       "id": "ALGO_USDT_1784908806",
