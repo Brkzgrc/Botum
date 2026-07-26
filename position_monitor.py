@@ -44,6 +44,14 @@ MAX_POS_SIZE     = 20_000.0
 SHADOW_TP1_CAP_PCT  = float(os.getenv("SHADOW_TP1_CAP_PCT", "1.0"))
 SHADOW_TP1_LOG_FILE = os.getenv("SHADOW_TP1_LOG_FILE", "/tmp/shadow_tp1_cap.jsonl")
 
+# ── SHADOW ORPHAN TAKİBİ: gerçek pozisyon kapandığında sanal (shadow) hâlâ
+# kendi sonucuna ulaşmamışsa, o coin'i AYRI ve salt-okunur bir listede
+# (state["shadow_orphans"], gerçek pozisyon state'inden tamamen izole)
+# izlemeye devam eder — hiçbir gerçek emre dokunmaz, SADECE kapanmış 1m
+# mumlarla (REST) çalışır. Kullanıcı onayı: 2026-07-26.
+SHADOW_ORPHAN_TIMEOUT_H = float(os.getenv("SHADOW_ORPHAN_TIMEOUT_H", "72"))
+SHADOW_ORPHAN_MAX       = int(os.getenv("SHADOW_ORPHAN_MAX", "20"))
+
 class _StateLock:
     """Dosya kilidi (fcntl.flock) — SADECE Render/Linux hedefli, fcntl POSIX-only
     (Windows'ta import hatası verir). Bu dosya zaten yalnızca Render'daki
@@ -1038,6 +1046,194 @@ def _shadow_build_close_event(symbol: str, pos_snap: dict, live_reason: str, liv
     }
 
 
+# ─── SHADOW ORPHAN TAKİBİ ─────────────────────────────────────────────────────
+# Gerçek pozisyon kapandığında sanal (shadow) hâlâ kendi sonucuna ulaşmamışsa
+# (yukarıdaki _shadow_build_close_event'in "undetermined" dalı), fiyat takibi
+# TAMAMEN durur ve sanal bir daha asla sonuçlanamaz — bu bölüm bunu çözer.
+# Tamamen ayrı bir liste (state["shadow_orphans"]), gerçek pozisyon state'ine
+# ("positions") hiç dokunmaz, hiçbir gerçek emir fonksiyonunu çağırmaz, SADECE
+# kapanmış 1m mumlarla (REST) çalışır. Kullanıcı onayı: 2026-07-26.
+
+def _register_shadow_orphan(state: dict, symbol: str, pos_snap: dict, live_reason: str,
+                             live_price: float, live_pct: float):
+    """Gerçek pozisyon kapanırken sanal hâlâ sonuçlanmamışsa, onu
+    state['positions']'tan TAMAMEN AYRI bir listeye (state['shadow_orphans'])
+    kaydeder ki _check_shadow_orphans() fiyatını izlemeye devam edebilsin.
+    HİÇBİR I/O yapmaz — state parametresini YERİNDE değiştirir, kaydetmek
+    (_save_state) çağıranın sorumluluğunda, aynı kilit içinde olmalı. Aynı
+    sembol daha önce de orphan olmuş olsa bile HER ZAMAN yeni, benzersiz bir
+    orphan_id alır (zaman damgalı) — sembol yeniden açılıp kapanırsa eski
+    orphan ile yenisi asla karışmaz. Kapasite (SHADOW_ORPHAN_MAX) doluysa
+    hiçbir şey eklemeden None döner — sanal o durumda hiç izlenemez."""
+    orphans = state.setdefault("shadow_orphans", {})
+    if len(orphans) >= SHADOW_ORPHAN_MAX:
+        print(f"[SHADOW-ORPHAN] limit doldu ({SHADOW_ORPHAN_MAX}), {symbol} artık izlenemeyecek", flush=True)
+        return None
+    now_iso = datetime.now(timezone.utc).isoformat()
+    orphan_id = f"{symbol}:{now_iso}"
+    orphans[orphan_id] = {
+        "orphan_id": orphan_id, "symbol": symbol,
+        "open_time": pos_snap.get("open_time"), "closed_time": now_iso,
+        "entry": pos_snap.get("entry"), "shadow_tp1": pos_snap.get("shadow_tp1"),
+        "shadow_peak": pos_snap.get("shadow_peak"), "shadow_trailing": bool(pos_snap.get("shadow_trailing")),
+        "atr": pos_snap.get("atr"), "real_tp1": pos_snap.get("tp1"),
+        "live_reason": live_reason, "live_price": live_price, "live_pct": live_pct,
+        "shadow_valid": True, "shadow_origin": pos_snap.get("shadow_origin", "fill_time"),
+    }
+    return orphan_id
+
+
+def _orphan_is_timed_out(orph: dict, now: datetime) -> bool:
+    """orph['closed_time']'tan itibaren SHADOW_ORPHAN_TIMEOUT_H saat geçti mi?
+    Saf fonksiyon, I/O yapmaz."""
+    try:
+        created = datetime.fromisoformat(orph["closed_time"])
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+    except Exception:
+        return False
+    return (now - created).total_seconds() / 3600 >= SHADOW_ORPHAN_TIMEOUT_H
+
+
+def _shadow_build_orphan_event(orph: dict, event_name: str, shadow_status: str,
+                                shadow_pct=None, shadow_trail=None, fark_pct=None) -> dict:
+    """Orphan takibi sonuçlanınca (SHADOW_ORPHAN_RESOLVED) ya da zaman aşımına
+    uğrayınca (SHADOW_ORPHAN_TIMEOUT) gönderilecek event'i üretir (I/O yapmaz).
+    orphan_id/open_time/closed_time HER ZAMAN taşınır — aynı sembolde bu arada
+    yeni bir gerçek pozisyon açılmış olsa bile shadow_tp1_tracker.py bu
+    event'i doğru (eski) döngüyle eşleştirebilsin diye."""
+    live_pct = orph.get("live_pct")
+    if event_name == "SHADOW_ORPHAN_TIMEOUT":
+        note = (f"Gerçek pozisyon kapandıktan {SHADOW_ORPHAN_TIMEOUT_H:.0f} saat sonra sanal hâlâ "
+                f"kendi çıkışına ulaşmadı, izleme bırakıldı.")
+    else:
+        note = (f"Gerçek kapandıktan sonra sanal ayrıca izlendi ve sonuçlandı: "
+                f"sanal {shadow_pct:+.2f}%, gerçek {live_pct:+.2f}% — fark {fark_pct:+.2f} puan.")
+    return {
+        "event": event_name, "symbol": orph.get("symbol"),
+        "orphan_id": orph.get("orphan_id"), "open_time": orph.get("open_time"),
+        "closed_time": orph.get("closed_time"),
+        "real_status": f"closed:{orph.get('live_reason')}", "shadow_status": shadow_status,
+        "real_tp1": orph.get("real_tp1"), "shadow_tp1": orph.get("shadow_tp1"),
+        "shadow_peak": orph.get("shadow_peak"), "shadow_trail": shadow_trail,
+        "shadow_pct": shadow_pct, "note": note,
+        "live_reason": orph.get("live_reason"), "live_price": orph.get("live_price"), "live_pct": live_pct,
+        "fark_pct": fark_pct,
+        "shadow_valid": True, "shadow_origin": orph.get("shadow_origin", "fill_time"),
+    }
+
+
+def _orphan_evaluate(orph: dict, high: float, low: float):
+    """orph'u YERİNDE günceller (shadow_peak/shadow_trailing) — _shadow_evaluate
+    ile birebir aynı peak/trail formülünü kullanır; tek fark, gerçek pozisyon
+    zaten kapandığı için stop/TP1/expire tarafı hiç yok, sadece sanalın kendi
+    kaderi takip ediliyor. HİÇBİR I/O yapmaz. Dönüş: (dirty, event_or_None) —
+    event SADECE sanal kendi trail seviyesini KIRDIĞINDA dolu döner."""
+    entry_px = float(orph.get("entry", 0) or 0)
+    shadow_tp1 = float(orph.get("shadow_tp1", 0) or 0)
+    old_peak = float(orph.get("shadow_peak", entry_px) or entry_px)
+    peak = max(old_peak, high)
+    dirty = peak > old_peak
+    if dirty:
+        orph["shadow_peak"] = peak
+
+    if not orph.get("shadow_trailing"):
+        if high >= shadow_tp1:
+            orph["shadow_trailing"] = True
+            dirty = True
+        return dirty, None
+
+    trail = _trail_stop_price(peak, orph.get("atr"), entry_px)
+    if low <= trail:
+        shadow_pct = round((trail - entry_px) / entry_px * 100, 2) if entry_px else 0
+        live_pct = float(orph.get("live_pct", 0) or 0)
+        fark_pct = round(shadow_pct - live_pct, 2)
+        event = _shadow_build_orphan_event(
+            orph, "SHADOW_ORPHAN_RESOLVED", "orphan_resolved",
+            shadow_pct=shadow_pct, shadow_trail=trail, fark_pct=fark_pct)
+        return dirty, event
+    return dirty, None
+
+
+def _close_position_in_state(symbol: str, pos_snap: dict, live_reason: str,
+                              live_price: float, live_pct: float):
+    """4 kapanış noktasının (tick, tick'siz expire, Binance'te SL/trail fill)
+    HEPSİNDE ortak kullanılır: pozisyonu state['positions']'tan siler, shadow
+    hâlâ sonuçlanmadıysa (undetermined) AYNI kilit içinde state['shadow_orphans']'a
+    kaydeder — tek dosya kaydı, tek kilit. Dönüş: dispatch edilecek close_event
+    (I/O YOK burada — _shadow_dispatch çağıranın sorumluluğunda, kilit dışında
+    çağrılmalı, mevcut kural aynen korunuyor)."""
+    close_event = None
+    with _lock:
+        s = _load_state()
+        s["positions"].pop(symbol, None)
+        if pos_snap.get("shadow_tp1") and pos_snap.get("shadow_valid") is True:
+            close_event = _shadow_build_close_event(symbol, pos_snap, live_reason, live_price, live_pct)
+            if close_event.get("shadow_result") == "undetermined":
+                orphan_id = _register_shadow_orphan(s, symbol, pos_snap, live_reason, live_price, live_pct)
+                close_event["orphan_id"] = orphan_id
+                if orphan_id is None:
+                    close_event["note"] = (close_event.get("note", "") +
+                        " Orphan izleme limiti dolu olduğu için sanal ayrıca takip edilemedi.")
+        _save_state(s)
+    return close_event
+
+
+def _check_shadow_orphans():
+    """Periyodik: gerçek pozisyonu kapanmış ama sanal tarafı hâlâ sonuçlanmamış
+    coin'leri (state['shadow_orphans']) SADECE kapanmış 1m mumlarla (REST,
+    tick değil) izlemeye devam eder. Hiçbir gerçek emir çağrısı yapmaz,
+    state['positions']'a hiç dokunmaz. Sanal kendi trail seviyesini kırınca ya
+    da SHADOW_ORPHAN_TIMEOUT_H saat geçince kayıt silinir ve nihai event
+    dispatch edilir."""
+    state = _load_state()
+    orphans = dict(state.get("shadow_orphans", {}))
+    if not orphans:
+        return
+    now = datetime.now(timezone.utc)
+
+    for oid, orph in orphans.items():
+        try:
+            if _orphan_is_timed_out(orph, now):
+                _shadow_dispatch(_shadow_build_orphan_event(orph, "SHADOW_ORPHAN_TIMEOUT", "orphan_timeout"))
+                with _lock:
+                    s = _load_state()
+                    s.get("shadow_orphans", {}).pop(oid, None)
+                    _save_state(s)
+                continue
+
+            try:
+                klines = _get_client().get_klines(symbol=orph["symbol"], interval="1m", limit=2)
+            except Exception as e:
+                print(f"[SHADOW-ORPHAN] fiyat çekme hatası {orph.get('symbol')}: {e}", flush=True)
+                continue
+            if not klines:
+                continue
+            k = klines[-1]
+            try:
+                high, low = float(k[2]), float(k[3])
+            except Exception:
+                continue
+
+            dirty, event = _orphan_evaluate(orph, high, low)
+            if event:
+                _shadow_dispatch(event)
+                with _lock:
+                    s = _load_state()
+                    s.get("shadow_orphans", {}).pop(oid, None)
+                    _save_state(s)
+            elif dirty:
+                with _lock:
+                    s = _load_state()
+                    if oid in s.get("shadow_orphans", {}):
+                        s["shadow_orphans"][oid]["shadow_peak"] = orph["shadow_peak"]
+                        s["shadow_orphans"][oid]["shadow_trailing"] = orph["shadow_trailing"]
+                        _save_state(s)
+        except Exception as e:
+            print(f"[SHADOW-ORPHAN] genel hata {oid}: {e}", flush=True)
+            continue
+
+
 # ─── TICK İŞLEME ─────────────────────────────────────────────────────────────
 
 def _process_tick(symbol: str, close: float, high: float, low: float):
@@ -1242,12 +1438,9 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     real_price = filled_quote_total / filled_qty_total
                 else:
                     real_price = close_price
-                with _lock:
-                    s = _load_state()
-                    s["positions"].pop(symbol, None)
-                    _save_state(s)
-                _stop_stream(symbol)
                 pct = round((real_price - entry) / entry * 100, 2) if entry and real_price else 0
+                close_event = _close_position_in_state(symbol, pos_snap, sell_reason, real_price, pct)
+                _stop_stream(symbol)
                 emoji = "⏰" if sell_reason == "expire" else ("💰" if pct > 0 else "🔴")
                 _send_telegram(
                     f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
@@ -1258,8 +1451,8 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                     "close_price": real_price, "pnl_pct": pct,
                 })
                 print(f"[MONITOR] Pozisyon kapatıldı: {symbol} | {sell_reason} | {pct:+.2f}%", flush=True)
-                if pos_snap.get("shadow_tp1") and pos_snap.get("shadow_valid") is True:
-                    _shadow_dispatch(_shadow_build_close_event(symbol, pos_snap, sell_reason, real_price, pct))
+                if close_event:
+                    _shadow_dispatch(close_event)
         finally:
             if not closed:
                 # Satış başarısız/kısmi: closing bayrağını kaldır, sonraki tick'te
@@ -1399,12 +1592,9 @@ def _check_expired_positions_no_tick():
                         real_price = filled_quote_total / filled_qty_total
                     else:
                         real_price = close_price
-                    with _lock:
-                        s = _load_state()
-                        s["positions"].pop(sym, None)
-                        _save_state(s)
-                    _stop_stream(sym)
                     pct = round((real_price - entry) / entry * 100, 2) if entry else 0
+                    close_event = _close_position_in_state(sym, pos, "expire_no_tick", real_price, pct)
+                    _stop_stream(sym)
                     _send_telegram(
                         f"⏰ <b>POZİSYON KAPANDI (tick akışı yoktu) — {sym}</b>\n"
                         f"Sebep: expire_no_tick\nGiriş: {entry:.6g} | Çıkış: ~{real_price:.6g}\nP&L: {pct:+.2f}%"
@@ -1414,8 +1604,8 @@ def _check_expired_positions_no_tick():
                         "close_price": real_price, "pnl_pct": pct,
                     })
                     print(f"[MONITOR] Pozisyon kapatıldı (tick'siz expire): {sym} | {pct:+.2f}%", flush=True)
-                    if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
-                        _shadow_dispatch(_shadow_build_close_event(sym, pos, "expire_no_tick", real_price, pct))
+                    if close_event:
+                        _shadow_dispatch(close_event)
             finally:
                 if not closed:
                     with _lock:
@@ -1534,6 +1724,7 @@ def _periodic_check():
             _unstick_closing_flags()
             _check_price_conditions_no_tick()
             _check_expired_positions_no_tick()
+            _check_shadow_orphans()
 
             state     = _load_state()
             positions = state.get("positions", {})
@@ -1664,14 +1855,11 @@ def _periodic_check():
 
                     # SL fill kontrolü
                     if sl_order_id and _is_sl_filled(sym, sl_order_id):
-                        with _lock:
-                            s = _load_state()
-                            s["positions"].pop(sym, None)
-                            _save_state(s)
-                        _stop_stream(sym)
                         entry = float(pos.get("entry", 0))
                         sl    = float(pos.get("stop", 0))
                         pct   = round((sl - entry) / entry * 100, 2) if entry else 0
+                        close_event = _close_position_in_state(sym, pos, "sl_binance", sl, pct)
+                        _stop_stream(sym)
                         _send_telegram(
                             f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
                             f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
@@ -1681,20 +1869,17 @@ def _periodic_check():
                             "close_price": sl, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
-                        if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
-                            _shadow_dispatch(_shadow_build_close_event(sym, pos, "sl_binance", sl, pct))
+                        if close_event:
+                            _shadow_dispatch(close_event)
 
                     # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
                     elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
-                        with _lock:
-                            s = _load_state()
-                            s["positions"].pop(sym, None)
-                            _save_state(s)
-                        _stop_stream(sym)
                         entry = float(pos.get("entry", 0))
                         peak  = float(pos.get("peak", 0))
                         cl_price = round(_trail_stop_price(peak, pos.get("atr"), entry), 8)
                         pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
+                        close_event = _close_position_in_state(sym, pos, "trail_binance", cl_price, pct)
+                        _stop_stream(sym)
                         _send_telegram(
                             f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
                             f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
@@ -1704,8 +1889,8 @@ def _periodic_check():
                             "close_price": cl_price, "pnl_pct": pct,
                         })
                         print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
-                        if pos.get("shadow_tp1") and pos.get("shadow_valid") is True:
-                            _shadow_dispatch(_shadow_build_close_event(sym, pos, "trail_binance", cl_price, pct))
+                        if close_event:
+                            _shadow_dispatch(close_event)
 
                 except Exception as e:
                     print(f"[MONITOR] Periyodik SL/reconcile hatası {sym}: {e}", flush=True)
