@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-26 23:20:33",
+  "updated_at": "2026-07-26 23:43:40",
   "performance": {
     "total": 70,
-    "open": 2,
+    "open": 3,
     "closed": 32,
     "wins": 19,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 34,
-        "open": 2,
+        "total": 35,
+        "open": 3,
         "wins": 19,
         "losses": 13,
         "expired": 14,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-07-26": {
-        "trades": 4,
+        "trades": 5,
         "pnl": 4.22,
         "wins": 2,
         "losses": 0
@@ -113,7 +113,7 @@
     },
     "weekly": {
       "2026-W29": {
-        "trades": 33,
+        "trades": 34,
         "pnl": 10.32,
         "wins": 18,
         "losses": 13
@@ -127,7 +127,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 34,
+        "trades": 35,
         "pnl": 11.09,
         "wins": 19,
         "losses": 13
@@ -135,6 +135,47 @@
     }
   },
   "open": [
+    {
+      "id": "TLM_USDT_1785096002",
+      "symbol": "TLM/USDT",
+      "entry": 0.001749,
+      "stop": 0.0016156121,
+      "tp1": 0.0018823879,
+      "tp2": 0.0020157758,
+      "tp3": null,
+      "limit_price": 0.001749,
+      "signal_price": 0.001838,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-26T23:00:02.639870+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.001793,
+      "peak_pct": 2.52,
+      "low_price": 0.001735,
+      "low_pct": -0.8,
+      "current_price": 0.001746,
+      "current_pct": -0.17,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-26T23:00:10.118652+03:00",
+      "last_check": "2026-07-26T23:42:40.443820+03:00",
+      "checks": 5,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 103525.0,
+      "fill_time": "2026-07-26T23:20:53.283390+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "STO_USDT_1785074403",
       "symbol": "STO/USDT",
@@ -167,8 +208,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T17:00:10.213554+03:00",
-      "last_check": "2026-07-26T23:19:33.967889+03:00",
-      "checks": 59,
+      "last_check": "2026-07-26T23:42:40.443820+03:00",
+      "checks": 64,
       "extra": {
         "tp3": null
       },
@@ -208,8 +249,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T17:00:09.764698+03:00",
-      "last_check": "2026-07-26T23:19:33.967889+03:00",
-      "checks": 70,
+      "last_check": "2026-07-26T23:42:40.443820+03:00",
+      "checks": 75,
       "extra": {
         "tp3": null
       },
