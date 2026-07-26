@@ -127,26 +127,24 @@ def _latest_cycle_events(evs):
 
 
 _KARAR_LABELS = {
-    "sanal_onde":            "Sanal Önde",
-    "gercek_onde":           "Gerçek Önde",
-    "belirsiz":              "Belirsiz",
-    "sonuclanamadi":         "Sonuçlanamadı",
-    "sanal_izleniyor_orphan": "Sanal İzleniyor (Gerçek Kapandı)",
-    "shadow_zaman_asimi":    "Shadow Zaman Aşımı",
-    "ayni_mum_riski":        "Aynı Mum Riski",
-    "izleniyor":             "İzleniyor",
-    "gecersiz":              "Geç Başladı / Geçersiz",
+    "izleniyor":                      "İzleniyor",
+    "sanal_cikti_gercek_bekleniyor":  "Sanal Çıktı, Gerçek Bekleniyor",
+    "sanal_izleniyor_gercek_kapandi": "Sanal İzleniyor, Gerçek Kapandı",
+    "sanal_onde":                     "Sanal Önde",
+    "gercek_onde":                    "Gerçek Önde",
+    "belirsiz":                       "Belirsiz",
+    "sonuclanamadi":                  "Sonuçlanamadı",
+    "gecersiz":                       "Geç Başladı / Geçersiz",
 }
 _KARAR_COLORS = {
-    "sanal_onde":            "#2ecc71",
-    "gercek_onde":           "#f39c12",
-    "belirsiz":              "#8a9bb0",
-    "sonuclanamadi":         "#6c7a89",
-    "sanal_izleniyor_orphan": "#3498db",
-    "shadow_zaman_asimi":    "#95756b",
-    "ayni_mum_riski":        "#e74c3c",
-    "izleniyor":             "#3498db",
-    "gecersiz":              "#5a6472",
+    "izleniyor":                      "#3498db",
+    "sanal_cikti_gercek_bekleniyor":  "#9b59b6",
+    "sanal_izleniyor_gercek_kapandi": "#3498db",
+    "sanal_onde":                     "#2ecc71",
+    "gercek_onde":                    "#f39c12",
+    "belirsiz":                       "#8a9bb0",
+    "sonuclanamadi":                  "#6c7a89",
+    "gecersiz":                       "#5a6472",
 }
 
 # Gerçek pozisyon kapandığında sanal (shadow) hâlâ sonuçlanmamışsa, o coin
@@ -164,28 +162,20 @@ def _symbol_summary(symbol, cycle_events, orphan_by_id=None):
     pozisyon açılmışsa eski orphan'ın geç gelen sonucu yeni pozisyonun
     satırıyla karışır). Dönüş: panelde tek satır olacak özet.
 
-    Karar öncelik sırası:
-      1) Gerçek kapandıysa (SHADOW_LIVE_CLOSED):
-         a) shadow zaten sonuçlanmış olarak kapandıysa (shadow_exit dolu) ->
-            fark_pct'e göre KESİN karar (bu her zaman en güncel/en
-            bilgilendirici durum, önceki bir aynı-mum uyarısını bile ezer).
-         b) shadow sonuçlanmadan kapandıysa (fark_pct None, "undetermined")
-            ama bir orphan_id ile ayrıca izlenmeye alındıysa:
-              - orphan_by_id'de bu id için SHADOW_ORPHAN_RESOLVED varsa ->
-                ARTIK fark_pct hesaplanabilir, KESİN karara dönüşür (Sanal
-                Sonuçlandı — shadow_status="orphan_resolved").
-              - SHADOW_ORPHAN_TIMEOUT varsa -> Shadow Zaman Aşımı, hiçbir
-                zaman kesin karara dönüşmez.
-              - ikisi de yoksa (henüz izleniyor) -> Sanal İzleniyor (Gerçek
-                Kapandı) — geçici bir bekleme durumu, "kalıcı belirsiz" değil.
-         c) orphan_id hiç yoksa (kapasite dolu, izlenemedi) -> Sonuçlanamadı
-            (kalıcı, bir daha asla netleşmeyecek).
-      2) Gerçek hâlâ açıksa ve EN SON event aynı-mum riskiyse -> Aynı Mum Riski.
-      3) Gerçek hâlâ açık, sanal çoktan sonuçlandıysa (exited) -> Sanal Önde
-         ("önde" = zaman olarak sonuca ulaşmış, sayısal üstünlük iddiası değil),
-         alt not: gerçek kapanış bekleniyor.
-      4) Gerçek hâlâ açık, sanal hâlâ trailing'deyse -> İzleniyor.
-      5) Diğer tüm durumlar (henüz hiçbir şey olmadı) -> Belirsiz.
+    KARAR SÖZLEŞMESİ (5 durum, tek matris — gerçek × sanal açık/kapalı):
+    Sanal Önde/Gerçek Önde YALNIZCA ikisi de sonuçlandığında (Durum 4)
+    hesaplanır — hiçbir ara/geçici durumda "önde" denmez.
+
+      1) Gerçek açık + Sanal açık            -> İzleniyor
+      2) Gerçek açık + Sanal çıktı           -> Sanal Çıktı, Gerçek Bekleniyor
+      3) Gerçek kapandı + Sanal açık/orphan  -> Sanal İzleniyor, Gerçek Kapandı
+      4) Gerçek kapandı + Sanal çıktı        -> fark_pct'e göre:
+                                                 >0 Sanal Önde, <0 Gerçek Önde, ==0 Belirsiz
+      5) Gerçek kapandı + Sanal izlenemiyor  -> Sonuçlanamadı (kapasite dolu YA DA
+                                                 orphan zaman aşımı — ikisi de aynı
+                                                 kovada: "kesin kıyas hiç çıkmadı/
+                                                 çıkmayacak"). Aktif tabloda gösterilmez,
+                                                 ayrı bir bölümde listelenir.
     """
     orphan_by_id = orphan_by_id or {}
     last = cycle_events[-1]
@@ -209,12 +199,13 @@ def _symbol_summary(symbol, cycle_events, orphan_by_id=None):
         orphan_event = orphan_by_id.get(last.get("orphan_id")) if last.get("orphan_id") else None
         if orphan_event is not None:
             if orphan_event.get("event") == "SHADOW_ORPHAN_TIMEOUT":
-                karar = "shadow_zaman_asimi"
+                # Durum 5 (orphan zaman aşımı) — bir daha asla sonuçlanmayacak.
+                karar = "sonuclanamadi"
                 karar_note = orphan_event.get("note", "")
                 shadow_status = "orphan_timeout"
                 shadow_pct = None
                 fark_pct = None
-            else:  # SHADOW_ORPHAN_RESOLVED — sanal artık sonuçlandı
+            else:  # SHADOW_ORPHAN_RESOLVED -> Durum 4, artık ikisi de sonuçlandı
                 shadow_pct = orphan_event.get("shadow_pct")
                 fark_pct = orphan_event.get("fark_pct")
                 shadow_status = "orphan_resolved"
@@ -226,14 +217,16 @@ def _symbol_summary(symbol, cycle_events, orphan_by_id=None):
                 else:
                     karar = "belirsiz"
         elif last.get("orphan_id"):
-            # Orphan kaydedildi ama henüz sonuçlanmadı/zaman aşımına uğramadı —
-            # GEÇİCİ bir bekleme, "sonuclanamadi"dan farklı: burada hâlâ bir
-            # ihtimal var, orada YOK.
-            karar = "sanal_izleniyor_orphan"
+            # Durum 3: orphan kaydedildi ama henüz sonuçlanmadı/zaman aşımına
+            # uğramadı — GEÇİCİ bir bekleme, Durum 5'ten (sonuclanamadi) farklı:
+            # burada hâlâ bir ihtimal var, orada YOK.
+            karar = "sanal_izleniyor_gercek_kapandi"
             karar_note = "Gerçek kapandı, sanal ayrıca izleniyor — henüz sonuçlanmadı."
             shadow_status = "orphan_tracking"
             shadow_pct = None
         elif fark_pct is None:
+            # Durum 5: orphan hiç kaydedilemedi (kapasite dolu) -> kalıcı olarak
+            # sonuçlanamadı.
             karar = "sonuclanamadi"
             karar_note = "Gerçek kapandı, sanal kendi çıkışına ulaşmadan fiyat takibi kesildi."
             shadow_pct = None   # geriye dönük bulunmuş olsa bile eski/donuk değeri gösterme
@@ -243,27 +236,29 @@ def _symbol_summary(symbol, cycle_events, orphan_by_id=None):
             karar = "gercek_onde"
         else:
             karar = "belirsiz"
-    elif last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
-        karar = "ayni_mum_riski"
     elif shadow_status == "exited":
-        # Sanal sonuçlandı ama gerçek HÂLÂ AÇIK — Sanal Önde/Gerçek Önde
-        # SADECE ikisi de sonuçlandığında hesaplanır (onaylanan mimari, 8.
-        # madde). Gerçek kapanınca is_real_closed dalı devreye girip kesin
-        # karara (sanal_onde/gercek_onde/belirsiz) dönüşecek.
-        karar = "izleniyor"
+        # Durum 2: gerçek HÂLÂ AÇIK, sanal çoktan çıktı. Sanal Önde/Gerçek
+        # Önde SADECE ikisi de sonuçlandığında hesaplanır (karar sözleşmesi,
+        # madde 8) — burada gerçek henüz kapanmadığı için KESİN bir karar YOK.
+        karar = "sanal_cikti_gercek_bekleniyor"
         karar_note = "Sanal sonuçlandı, gerçek kapanış bekleniyor."
-    elif shadow_status == "trailing":
-        karar = "izleniyor"
     else:
-        karar = "belirsiz"
+        # Durum 1: gerçek açık, sanal da açık/trailing (henüz kendi TP1'ine
+        # ulaşmamış olması dahil). Aynı mum riski artık AYRI bir karar değil —
+        # kesin bir çıkış anlamına gelmediği için (bkz. position_monitor.py
+        # _shadow_evaluate) sadece İzleniyor'un notlu bir hali.
+        karar = "izleniyor"
+        if last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
+            karar_note = ("Aynı kapanmış mumda hem sanal TP1'e dokundu hem trail seviyesi "
+                           "kırıldı — kesin sayılmadı, izlemeye devam ediliyor.")
 
     # Adil kıyas şartı: shadow SADECE gerçek fill anından itibaren, kesintisiz
     # takip edildiyse geçerli sayılır (position_monitor.py _activate_position
     # tarafından shadow_valid=True damgalanır). Bu event'te shadow_valid
     # AÇIKÇA True değilse (yok ya da False) — bu deploy'dan önce açılmış eski
-    # bir pozisyon ya da doğrulanamayan bir kayıt demektir — Sanal Önde/Gerçek
-    # Önde/Belirsiz gibi "kıyaslanabilir" bir karara ASLA dönüştürülmez,
-    # istatistiklere de katılmaz.
+    # bir pozisyon ya da doğrulanamayan bir kayıt demektir — hiçbir karara
+    # (yukarıdaki 5 durumun hiçbirine) ASLA dönüştürülmez, istatistiklere de
+    # katılmaz.
     if last.get("shadow_valid") is not True:
         karar = "gecersiz"
         karar_note = "Bu pozisyon shadow sistemi devreye girmeden önce açılmış olabilir — kıyas güvenilir değil."
@@ -339,33 +334,27 @@ def _merge_with_real_positions(summaries, real_positions):
 
 
 def _summarize_symbols(summaries, real_positions=None):
-    """Kartlar bilerek "kaç pozisyon var" ile "kaçı gerçekten geçerli test
-    örneği" sorularını AYIRIYOR — aksi halde "İzlenen: 10" ile "Geçersiz: 10"
-    aynı anda görününce sanki 10 geçerli test varmış gibi yanlış anlaşılıyor.
-    Gerçek Açık = trading-bot'un CANLI /status'undaki gerçek açık pozisyon
-    sayısı (len(summaries) DEĞİL — summaries event log + real_positions
-    birleşimi olduğu için, event log'da kalmış ama gerçekte artık KAPANMIŞ
-    bir sembol varsa len(summaries) şişebilirdi). Geçerli İzlenen =
-    shadow_valid olanlar (İzleniyor/Sanal Önde/Gerçek Önde/Belirsiz/Aynı Mum
-    Riski'nin TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup. Belirsiz,
-    Sonuçlanamadı ve Shadow Zaman Aşımı (üçü de "kıyaslanabilir kesin bir
-    karara varılamadı, bir daha da varılamayacak" anlamına geldiği için) TEK
-    bir kartta birlikte sayılıyor. Orphan İzleniyor ayrı: bu GEÇİCİ bir
-    bekleme (gerçek kapandı, sanal ayrıca hâlâ izleniyor) — mekanizmanın
-    sağlıklı çalıştığını (biriken/unutulan kayıt olmadığını) izlemek için
-    ayrı bir kartta gösteriliyor."""
+    """8 kart, karar sözleşmesindeki 5 duruma birebir eşlenir. Gerçek Açık =
+    trading-bot'un CANLI /status'undaki gerçek açık pozisyon sayısı
+    (len(summaries) DEĞİL — summaries event log + real_positions birleşimi
+    olduğu için, event log'da kalmış ama gerçekte artık KAPANMIŞ bir sembol
+    varsa len(summaries) şişebilirdi). Aktif Shadow = Durum 1+2+3 toplamı
+    (henüz kesin bir karara varılmamış, hâlâ "canlı" karşılaştırmalar).
+    Sonuçlanamadı = Durum 5 (kapasite dolu ya da orphan zaman aşımı — ikisi
+    de "bir daha asla netleşmeyecek" anlamına geldiği için TEK kartta).
+    Geçersiz/Eski = ayrı, dışlanmış grup (shadow sistemi devreye girmeden
+    önce açılmış pozisyonlar)."""
     valid = [s for s in summaries if s["karar"] != "gecersiz"]
     return {
-        "gercek_acik":     len(real_positions) if real_positions is not None else len(summaries),
-        "gecerli_izlenen": len(valid),
-        "gecersiz":        sum(1 for s in summaries if s["karar"] == "gecersiz"),
-        "sanal_cikis":     sum(1 for s in valid if s["shadow_status"] == "exited"),
-        "sanal_onde":      sum(1 for s in valid if s["karar"] == "sanal_onde"),
-        "gercek_onde":     sum(1 for s in valid if s["karar"] == "gercek_onde"),
-        "ayni_mum_riski":  sum(1 for s in valid if s["karar"] == "ayni_mum_riski"),
-        "orphan_izleniyor": sum(1 for s in valid if s["karar"] == "sanal_izleniyor_orphan"),
-        "belirsiz_sonuclanamadi": sum(
-            1 for s in valid if s["karar"] in ("belirsiz", "sonuclanamadi", "shadow_zaman_asimi")),
+        "gercek_acik":                     len(real_positions) if real_positions is not None else len(summaries),
+        "aktif_shadow":                    sum(1 for s in valid if s["karar"] in (
+            "izleniyor", "sanal_cikti_gercek_bekleniyor", "sanal_izleniyor_gercek_kapandi")),
+        "sanal_cikti_gercek_bekliyor":     sum(1 for s in valid if s["karar"] == "sanal_cikti_gercek_bekleniyor"),
+        "gercek_kapandi_shadow_izleniyor": sum(1 for s in valid if s["karar"] == "sanal_izleniyor_gercek_kapandi"),
+        "sanal_onde":                      sum(1 for s in valid if s["karar"] == "sanal_onde"),
+        "gercek_onde":                     sum(1 for s in valid if s["karar"] == "gercek_onde"),
+        "sonuclanamadi":                   sum(1 for s in valid if s["karar"] == "sonuclanamadi"),
+        "gecersiz":                        sum(1 for s in summaries if s["karar"] == "gecersiz"),
     }
 
 
@@ -513,22 +502,27 @@ def shadow_page():
     summaries = _merge_with_real_positions(summaries, real_positions)
     stats = _summarize_symbols(summaries, real_positions)
 
-    # Ana tabloda SADECE geçerli (shadow_valid=True) pozisyonlar gösterilir —
-    # geçersiz/eski pozisyonlar test verisi değil, sadece "eski pozisyon var"
-    # bilgisi, o yüzden ayrı ve varsayılan kapalı bir bölüme taşınıyor.
-    valid_summaries = [s for s in summaries if s["karar"] != "gecersiz"]
+    # Ana (aktif) tabloda SADECE hâlâ anlamlı/canlı bir karşılaştırma taşıyan
+    # satırlar gösterilir. İki grup buradan ÇIKARILIR: "gecersiz" (shadow
+    # sistemi devreye girmeden önce açılmış eski pozisyonlar — hiçbir zaman
+    # kıyaslanabilir olmadı) ve "sonuclanamadi" (Durum 5 — kapasite dolu ya da
+    # orphan zaman aşımı, bir daha da netleşmeyecek). İkisi de ayrı, varsayılan
+    # kapalı bölümlere taşınıyor — aktif tabloda sadece hâlâ "canlı" (Durum
+    # 1/2/3) ya da kesin sonuçlanmış (Durum 4) satırlar kalıyor.
+    active_summaries = [s for s in summaries if s["karar"] not in ("gecersiz", "sonuclanamadi")]
     invalid_summaries = [s for s in summaries if s["karar"] == "gecersiz"]
+    unresolved_summaries = [s for s in summaries if s["karar"] == "sonuclanamadi"]
 
-    if valid_summaries:
+    if active_summaries:
         summary_table_html = f"""<div class="table-wrap"><table><thead><tr>
   <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
   <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
 </tr></thead><tbody>
-{''.join(_summary_row_html(s) for s in valid_summaries)}
+{''.join(_summary_row_html(s) for s in active_summaries)}
 </tbody></table></div>"""
     else:
         summary_table_html = """<div class="empty-panel">
-  <p>Henüz geçerli shadow işlemi yok.</p>
+  <p>Henüz aktif shadow işlemi yok.</p>
   <p>Shadow sistemi devreye girdikten sonra fill olan yeni pozisyonlar burada görünecek.</p>
   <p>Eski açık pozisyonlar kıyasa dahil edilmiyor.</p>
 </div>"""
@@ -542,6 +536,18 @@ def shadow_page():
     <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
   </tr></thead><tbody>
   {''.join(_summary_row_html(s) for s in invalid_summaries)}
+  </tbody></table></div>
+</details>"""
+
+    unresolved_section_html = ""
+    if unresolved_summaries:
+        unresolved_section_html = f"""<details class="detail-log">
+  <summary>Sonuçlanamayan / Eksik Kıyaslar ({len(unresolved_summaries)})</summary>
+  <div class="table-wrap"><table><thead><tr>
+    <th>Sembol</th><th>Gerçek Durum</th><th>Sanal Durum</th>
+    <th>Sanal Getiri</th><th>Gerçek Getiri</th><th>Fark</th><th>Karar</th>
+  </tr></thead><tbody>
+  {''.join(_summary_row_html(s) for s in unresolved_summaries)}
   </tbody></table></div>
 </details>"""
 
@@ -571,7 +577,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(9,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -619,18 +625,19 @@ Dışı" olanları shadow kıyasına dahil edilmez.</p>
 
 <div class="cards">
   <div class="card"><span class="val" style="color:var(--accent)">{stats['gercek_acik']}</span><span class="lbl">Gerçek Açık</span></div>
-  <div class="card"><span class="val" style="color:#3498db">{stats['gecerli_izlenen']}</span><span class="lbl">Geçerli Shadow</span></div>
-  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Eski / Kapsam Dışı</span></div>
-  <div class="card"><span class="val" style="color:var(--orange)">{stats['sanal_cikis']}</span><span class="lbl">Sanal Çıkış</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{stats['aktif_shadow']}</span><span class="lbl">Aktif Shadow</span></div>
+  <div class="card"><span class="val" style="color:#9b59b6">{stats['sanal_cikti_gercek_bekliyor']}</span><span class="lbl">Sanal Çıktı / Gerçek Bekliyor</span></div>
+  <div class="card"><span class="val" style="color:#3498db">{stats['gercek_kapandi_shadow_izleniyor']}</span><span class="lbl">Gerçek Kapandı / Shadow İzleniyor</span></div>
   <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
-  <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
-  <div class="card"><span class="val" style="color:#3498db">{stats['orphan_izleniyor']}</span><span class="lbl">Orphan İzleniyor</span></div>
-  <div class="card"><span class="val" style="color:#6c7a89">{stats['belirsiz_sonuclanamadi']}</span><span class="lbl">Belirsiz / Sonuçlanamadı</span></div>
+  <div class="card"><span class="val" style="color:#6c7a89">{stats['sonuclanamadi']}</span><span class="lbl">Sonuçlanamadı</span></div>
+  <div class="card"><span class="val" style="color:#5a6472">{stats['gecersiz']}</span><span class="lbl">Eski / Kapsam Dışı</span></div>
 </div>
 
 <div class="section-title">📊 Aktif Shadow Karşılaştırması</div>
 {summary_table_html}
+
+{unresolved_section_html}
 
 {invalid_section_html}
 
