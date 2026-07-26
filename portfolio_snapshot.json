@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-26 15:14:24",
+  "updated_at": "2026-07-26 15:44:27",
   "performance": {
     "total": 67,
-    "open": 3,
-    "closed": 29,
-    "wins": 17,
+    "open": 2,
+    "closed": 30,
+    "wins": 18,
     "win_tp2": 0,
     "losses": 12,
     "expired": 13,
-    "tp1_hits": 11,
-    "win_pnl": 33.8,
+    "tp1_hits": 12,
+    "win_pnl": 35.06,
     "loss_pnl": -24.34,
     "expired_win": 6,
     "expired_loss": 7,
-    "total_pnl": 9.46,
-    "win_loss_pnl": 14.47,
+    "total_pnl": 10.72,
+    "win_loss_pnl": 15.73,
     "expired_pnl": -5.01,
-    "avg_peak": 2.27,
-    "win_rate": 58.6,
-    "real_win_rate": 58.6,
+    "avg_peak": 2.24,
+    "win_rate": 60.0,
+    "real_win_rate": 60.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,20 +45,20 @@
     "by_type": {
       "Legacy SMC": {
         "total": 32,
-        "open": 3,
-        "wins": 17,
+        "open": 2,
+        "wins": 18,
         "losses": 12,
         "expired": 13,
-        "tp1_hits": 11,
-        "total_pnl": 9.46,
+        "tp1_hits": 12,
+        "total_pnl": 10.72,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 58.6,
-        "avg_peak": 2.27,
+        "win_rate": 60.0,
+        "avg_peak": 2.24,
         "tp2_rate": 0,
         "expired_pnl": -5.01,
-        "win_loss_pnl": 14.47
+        "win_loss_pnl": 15.73
       }
     },
     "daily": {
@@ -70,8 +70,8 @@
       },
       "2026-07-25": {
         "trades": 4,
-        "pnl": 4.02,
-        "wins": 2,
+        "pnl": 5.279999999999999,
+        "wins": 3,
         "losses": 1
       },
       "2026-07-24": {
@@ -114,8 +114,8 @@
     "weekly": {
       "2026-W29": {
         "trades": 31,
-        "pnl": 8.69,
-        "wins": 16,
+        "pnl": 9.949999999999998,
+        "wins": 17,
         "losses": 12
       },
       "2026-W28": {
@@ -128,8 +128,8 @@
     "monthly": {
       "2026-07": {
         "trades": 32,
-        "pnl": 9.459999999999999,
-        "wins": 17,
+        "pnl": 10.719999999999997,
+        "wins": 18,
         "losses": 12
       }
     }
@@ -161,65 +161,20 @@
       "peak_pct": 0.29,
       "low_price": 0.000337,
       "low_pct": -2.03,
-      "current_price": 0.000337,
-      "current_pct": -2.03,
+      "current_price": 0.000339,
+      "current_pct": -1.45,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T10:00:14.652450+03:00",
-      "last_check": "2026-07-26T15:13:52.864532+03:00",
-      "checks": 58,
+      "last_check": "2026-07-26T15:43:59.525433+03:00",
+      "checks": 64,
       "extra": {
         "tp3": null
       },
       "fill_qty": 538414.0,
       "fill_time": "2026-07-26T10:25:58.886795+03:00",
       "bot_miss_count": 0
-    },
-    {
-      "id": "WBETH_USDT_1784991608",
-      "symbol": "WBETH/USDT",
-      "entry": 2058.6001271676305,
-      "stop": 2034.4258561133,
-      "tp1": 2084.1341438867,
-      "tp2": 2108.9882877734,
-      "tp3": null,
-      "limit_price": 2059.28,
-      "signal_price": 2059.74,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-25T18:00:08.038011+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 2088.65,
-      "peak_pct": 1.46,
-      "low_price": 2055.69,
-      "low_pct": -0.14,
-      "current_price": 2082.97,
-      "current_pct": 1.18,
-      "tp1_hit": true,
-      "tp1_time": "2026-07-26T15:07:01.875614+03:00",
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-26T15:13:52.864532+03:00",
-      "checks": 257,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 0.0865,
-      "fill_time": "2026-07-25T18:01:06.904522+03:00",
-      "bot_miss_count": 0,
-      "tp1_confirmed": true,
-      "tp1_pct": 1.46,
-      "atr": 6.825522168452203,
-      "atr_updated_at": "2026-07-26T12:07:01.875652+00:00"
     },
     {
       "id": "ACE_USDT_1784908804",
@@ -247,14 +202,14 @@
       "peak_pct": 4.21,
       "low_price": 0.0834,
       "low_pct": -2.46,
-      "current_price": 0.0846,
-      "current_pct": -1.05,
+      "current_price": 0.0853,
+      "current_pct": -0.23,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T15:13:52.864532+03:00",
-      "checks": 235,
+      "last_check": "2026-07-26T15:43:59.525433+03:00",
+      "checks": 241,
       "extra": {
         "tp3": null
       },
