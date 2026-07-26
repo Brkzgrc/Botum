@@ -130,6 +130,7 @@ _KARAR_LABELS = {
     "sanal_onde":     "Sanal Önde",
     "gercek_onde":    "Gerçek Önde",
     "belirsiz":       "Belirsiz",
+    "sonuclanamadi":  "Sonuçlanamadı",
     "ayni_mum_riski": "Aynı Mum Riski",
     "izleniyor":      "İzleniyor",
     "gecersiz":       "Geç Başladı / Geçersiz",
@@ -138,6 +139,7 @@ _KARAR_COLORS = {
     "sanal_onde":     "#2ecc71",
     "gercek_onde":    "#f39c12",
     "belirsiz":       "#8a9bb0",
+    "sonuclanamadi":  "#6c7a89",
     "ayni_mum_riski": "#e74c3c",
     "izleniyor":      "#3498db",
     "gecersiz":       "#5a6472",
@@ -149,9 +151,20 @@ def _symbol_summary(symbol, cycle_events):
     kronolojik sırada (en az 1 tane). Dönüş: panelde tek satır olacak özet.
 
     Karar öncelik sırası:
-      1) Gerçek kapandıysa (SHADOW_LIVE_CLOSED) -> fark_pct'e göre KESİN karar
-         (bu her zaman en güncel/en bilgilendirici durum, önceki bir aynı-mum
-         uyarısını bile ezer).
+      1) Gerçek kapandıysa (SHADOW_LIVE_CLOSED):
+         a) shadow hiç sonuçlanmadan (shadow_exit yok) gerçek kapandıysa ->
+            fark_pct hep None gelir (bkz. position_monitor.py
+            _shadow_build_close_event, "undetermined" dalı) -> Sonuçlanamadı.
+            Gerçek pozisyon kapanınca o coin'in fiyat takibi TAMAMEN durduğu
+            için sanal artık asla kendi sonucuna ulaşamaz — bu KALICI bir
+            durumdur, "az sonra netleşecek" bir bekleme değil. Bu yüzden eski/
+            donuk bir shadow_pct de göstermiyoruz (geriye dönük arama bunu
+            bulmuş olabilir ama o an sanal hâlâ "trailing" iken alınmış ara bir
+            not, nihai sonuç değil) ve Sanal Önde/Gerçek Önde istatistiklerine
+            hiç katmıyoruz.
+         b) shadow da sonuçlandıysa -> fark_pct'e göre KESİN karar (bu her
+            zaman en güncel/en bilgilendirici durum, önceki bir aynı-mum
+            uyarısını bile ezer).
       2) Gerçek hâlâ açıksa ve EN SON event aynı-mum riskiyse -> Aynı Mum Riski.
       3) Gerçek hâlâ açık, sanal çoktan sonuçlandıysa (exited) -> Sanal Önde
          ("önde" = zaman olarak sonuca ulaşmış, sayısal üstünlük iddiası değil),
@@ -177,9 +190,13 @@ def _symbol_summary(symbol, cycle_events):
     karar_note = ""
 
     if is_real_closed:
-        if fark_pct is not None and fark_pct > 0:
+        if fark_pct is None:
+            karar = "sonuclanamadi"
+            karar_note = "Gerçek kapandı, sanal kendi çıkışına ulaşmadan fiyat takibi kesildi."
+            shadow_pct = None   # geriye dönük bulunmuş olsa bile eski/donuk değeri gösterme
+        elif fark_pct > 0:
             karar = "sanal_onde"
-        elif fark_pct is not None and fark_pct < 0:
+        elif fark_pct < 0:
             karar = "gercek_onde"
         else:
             karar = "belirsiz"
@@ -267,7 +284,9 @@ def _summarize_symbols(summaries, real_positions=None):
     birleşimi olduğu için, event log'da kalmış ama gerçekte artık KAPANMIŞ
     bir sembol varsa len(summaries) şişebilirdi). Geçerli İzlenen =
     shadow_valid olanlar (İzleniyor/Sanal Önde/Gerçek Önde/Belirsiz/Aynı Mum
-    Riski'nin TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup."""
+    Riski'nin TOPLAMI). Geçersiz/Eski = ayrı, dışlanmış grup. Belirsiz ve
+    Sonuçlanamadı da (ikisi de "kıyaslanabilir kesin bir karara varılamadı"
+    anlamına geldiği için) TEK bir kartta birlikte sayılıyor."""
     valid = [s for s in summaries if s["karar"] != "gecersiz"]
     return {
         "gercek_acik":     len(real_positions) if real_positions is not None else len(summaries),
@@ -277,6 +296,7 @@ def _summarize_symbols(summaries, real_positions=None):
         "sanal_onde":      sum(1 for s in valid if s["karar"] == "sanal_onde"),
         "gercek_onde":     sum(1 for s in valid if s["karar"] == "gercek_onde"),
         "ayni_mum_riski":  sum(1 for s in valid if s["karar"] == "ayni_mum_riski"),
+        "belirsiz_sonuclanamadi": sum(1 for s in valid if s["karar"] in ("belirsiz", "sonuclanamadi")),
     }
 
 
@@ -476,7 +496,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .nav-tab{{background:#0f1319;border:1px solid var(--border);color:var(--text-dim);padding:3px 14px;
   border-radius:4px;text-decoration:none;font-size:.65rem;letter-spacing:.8px;transition:all .15s;}}
 .nav-tab:hover,.nav-tab.active{{border-color:var(--accent);color:var(--accent);background:#00b4d811;}}
-.cards{{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px;}}
+.cards{{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:24px;}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}}
 .card .val{{font-size:1.3rem;font-weight:bold;display:block;margin-bottom:4px;}}
 .card .lbl{{font-size:.55rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;}}
@@ -530,6 +550,7 @@ Dışı" olanları shadow kıyasına dahil edilmez.</p>
   <div class="card"><span class="val" style="color:var(--green)">{stats['sanal_onde']}</span><span class="lbl">Sanal Önde</span></div>
   <div class="card"><span class="val" style="color:var(--orange)">{stats['gercek_onde']}</span><span class="lbl">Gerçek Önde</span></div>
   <div class="card"><span class="val" style="color:var(--red)">{stats['ayni_mum_riski']}</span><span class="lbl">Aynı Mum Riski</span></div>
+  <div class="card"><span class="val" style="color:#6c7a89">{stats['belirsiz_sonuclanamadi']}</span><span class="lbl">Belirsiz / Sonuçlanamadı</span></div>
 </div>
 
 <div class="section-title">📊 Aktif Shadow Karşılaştırması</div>
