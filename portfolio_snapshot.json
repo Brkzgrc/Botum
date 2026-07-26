@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-26 16:14:30",
+  "updated_at": "2026-07-26 16:44:33",
   "performance": {
     "total": 67,
-    "open": 2,
-    "closed": 30,
-    "wins": 18,
+    "open": 1,
+    "closed": 31,
+    "wins": 19,
     "win_tp2": 0,
     "losses": 12,
     "expired": 13,
-    "tp1_hits": 12,
-    "win_pnl": 35.06,
+    "tp1_hits": 13,
+    "win_pnl": 38.12,
     "loss_pnl": -24.34,
     "expired_win": 6,
     "expired_loss": 7,
-    "total_pnl": 10.72,
-    "win_loss_pnl": 15.73,
+    "total_pnl": 13.78,
+    "win_loss_pnl": 18.79,
     "expired_pnl": -5.01,
-    "avg_peak": 2.24,
-    "win_rate": 60.0,
-    "real_win_rate": 60.0,
+    "avg_peak": 2.31,
+    "win_rate": 61.3,
+    "real_win_rate": 61.3,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -28,11 +28,11 @@
         "wr": 0
       },
       "dikkat": {
-        "total": 7,
-        "wins": 6,
+        "total": 8,
+        "wins": 7,
         "losses": 1,
-        "pnl": 5.49,
-        "wr": 85.7
+        "pnl": 8.55,
+        "wr": 87.5
       },
       "riskli": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "Legacy SMC": {
         "total": 32,
-        "open": 2,
-        "wins": 18,
+        "open": 1,
+        "wins": 19,
         "losses": 12,
         "expired": 13,
-        "tp1_hits": 12,
-        "total_pnl": 10.72,
+        "tp1_hits": 13,
+        "total_pnl": 13.78,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 60.0,
-        "avg_peak": 2.24,
+        "win_rate": 61.3,
+        "avg_peak": 2.31,
         "tp2_rate": 0,
         "expired_pnl": -5.01,
-        "win_loss_pnl": 15.73
+        "win_loss_pnl": 18.79
       }
     },
     "daily": {
       "2026-07-26": {
         "trades": 2,
-        "pnl": 1.16,
-        "wins": 1,
+        "pnl": 4.22,
+        "wins": 2,
         "losses": 0
       },
       "2026-07-25": {
@@ -114,8 +114,8 @@
     "weekly": {
       "2026-W29": {
         "trades": 31,
-        "pnl": 9.949999999999998,
-        "wins": 17,
+        "pnl": 13.009999999999998,
+        "wins": 18,
         "losses": 12
       },
       "2026-W28": {
@@ -128,54 +128,13 @@
     "monthly": {
       "2026-07": {
         "trades": 32,
-        "pnl": 10.719999999999997,
-        "wins": 18,
+        "pnl": 13.779999999999998,
+        "wins": 19,
         "losses": 12
       }
     }
   },
   "open": [
-    {
-      "id": "HOT_USDT_1785049209",
-      "symbol": "HOT/USDT",
-      "entry": 0.000344,
-      "stop": 0.0003308021,
-      "tp1": 0.0003551979,
-      "tp2": 0.0003673958,
-      "tp3": null,
-      "limit_price": 0.000343,
-      "signal_price": 0.000355,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-26T10:00:09.425081+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.000345,
-      "peak_pct": 0.29,
-      "low_price": 0.000337,
-      "low_pct": -2.03,
-      "current_price": 0.000341,
-      "current_pct": -0.87,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-26T10:00:14.652450+03:00",
-      "last_check": "2026-07-26T16:14:05.566945+03:00",
-      "checks": 70,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 538414.0,
-      "fill_time": "2026-07-26T10:25:58.886795+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "ACE_USDT_1784908804",
       "symbol": "ACE/USDT",
@@ -202,14 +161,14 @@
       "peak_pct": 4.21,
       "low_price": 0.0834,
       "low_pct": -2.46,
-      "current_price": 0.0876,
-      "current_pct": 2.46,
+      "current_price": 0.0861,
+      "current_pct": 0.7,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-07-26T16:14:05.566945+03:00",
-      "checks": 247,
+      "last_check": "2026-07-26T16:44:09.916094+03:00",
+      "checks": 253,
       "extra": {
         "tp3": null
       },
