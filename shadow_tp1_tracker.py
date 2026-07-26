@@ -246,8 +246,12 @@ def _symbol_summary(symbol, cycle_events, orphan_by_id=None):
     elif last.get("event") == "SHADOW_SAME_CANDLE_TOUCH_AND_BREACH":
         karar = "ayni_mum_riski"
     elif shadow_status == "exited":
-        karar = "sanal_onde"
-        karar_note = "Gerçek kapanış bekleniyor"
+        # Sanal sonuçlandı ama gerçek HÂLÂ AÇIK — Sanal Önde/Gerçek Önde
+        # SADECE ikisi de sonuçlandığında hesaplanır (onaylanan mimari, 8.
+        # madde). Gerçek kapanınca is_real_closed dalı devreye girip kesin
+        # karara (sanal_onde/gercek_onde/belirsiz) dönüşecek.
+        karar = "izleniyor"
+        karar_note = "Sanal sonuçlandı, gerçek kapanış bekleniyor."
     elif shadow_status == "trailing":
         karar = "izleniyor"
     else:
