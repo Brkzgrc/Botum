@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-26 23:15:13",
+  "updated_at": "2026-07-26 23:20:33",
   "performance": {
     "total": 70,
     "open": 2,
@@ -167,8 +167,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T17:00:10.213554+03:00",
-      "last_check": "2026-07-26T23:10:32.283928+03:00",
-      "checks": 57,
+      "last_check": "2026-07-26T23:19:33.967889+03:00",
+      "checks": 59,
       "extra": {
         "tp3": null
       },
@@ -208,8 +208,8 @@
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-26T17:00:09.764698+03:00",
-      "last_check": "2026-07-26T23:10:32.283928+03:00",
-      "checks": 68,
+      "last_check": "2026-07-26T23:19:33.967889+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null
       },
