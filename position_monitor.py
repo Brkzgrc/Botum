@@ -1078,6 +1078,14 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 # uyguluyor (çift güvence).
                 update_trail_sl = False
                 cancel_trail_sl_id = trailing_sl_id_at_start
+                # Peak güncellemesi trailing_sl_id'yi az önce None'a çekmiş
+                # olabilir (yeni emir gelene kadar diye) — ama artık yeni emir
+                # HİÇ kurulmayacak (yukarıya bak), o yüzden state'i bu tick'in
+                # BAŞINDAKİ gerçek değere geri döndürüyoruz. Satış başarısız
+                # olursa (aşağıdaki "if sell_reason" finally'si) state'in bu
+                # doğru başlangıç noktasından ileri taşınması gerekiyor —
+                # cancel_trail_ok sonucuna göre kesin değer orada belirlenecek.
+                pos["trailing_sl_id"] = trailing_sl_id_at_start
                 sell_reason = "trail_stop"
                 close_price = trail_stop
                 pos["closing"] = True
@@ -1269,8 +1277,9 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                         )
                         print(f"[MONITOR] KRİTİK: {symbol} acil satış da başarısız, manuel müdahale gerekiyor", flush=True)
 
+    cancel_trail_ok = True
     if cancel_trail_sl_id:
-        _cancel_sl(symbol, cancel_trail_sl_id)
+        cancel_trail_ok = _cancel_sl(symbol, cancel_trail_sl_id)
 
     if sell_reason:
         # try/finally: closing=True'dan sonra beklenmeyen bir hata olursa bile
@@ -1310,13 +1319,62 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 # Satış başarısız/kısmi: closing bayrağını kaldır, sonraki tick'te
                 # kalan miktar tekrar denenir. Bu ana kadar gerçekten dolan kısmı
                 # (varsa) state'e yaz ki kapanışta gerçek ortalama fiyata dahil olsun.
+                #
+                # trail_stop kapanışı ÖZEL DURUM: pozisyon "trailing" rejiminde
+                # kapanmaya çalıştı ama satış başarısız oldu — state'in eski
+                # trailing_sl_id'yi doğru yansıtması şart, aksi halde bot ne
+                # eski emrin hâlâ aktif olduğunu (cancel başarısızsa) ne de
+                # gerçekten korumasız kaldığını (cancel başarılı ama satış
+                # başarısızsa) bilemez.
+                trail_recovery_id = None
+                trail_recovery_note = None
+                if sell_reason == "trail_stop":
+                    if cancel_trail_ok is False:
+                        # Eski trail emri iptal EDİLEMEDİ — büyük ihtimalle
+                        # hâlâ Binance'te aktif, state'i buna göre geri yaz.
+                        trail_recovery_id = cancel_trail_sl_id
+                    else:
+                        # Eski emir GERÇEKTEN iptal edildi ama satış da
+                        # başarısız oldu — pozisyon ŞU AN korumasız. Aynı
+                        # (trail_stop) seviyede derhal sabit bir SL kurmayı
+                        # dene; o da başarısız olursa kritik/manuel müdahale
+                        # alarmı ver — sessizce trailing=True+trailing_sl_id=
+                        # None bırakılmaz.
+                        qty_for_restore = float(pos_snap.get("qty", 0) or 0)
+                        trail_recovery_id = _place_fixed_sl_order(symbol, close_price, qty_for_restore)
+                        if trail_recovery_id:
+                            trail_recovery_note = (
+                                f"⚠️ <b>TRAIL SATIŞI BAŞARISIZ, ESKİ SEVİYEDE SL GERİ KONDU — {symbol}</b>\n"
+                                f"Stop: {close_price:.6g} — bir sonraki turda trail kırılımı tekrar denenecek."
+                            )
+                        else:
+                            trail_recovery_note = (
+                                f"🆘 <b>KRİTİK — {symbol} KORUMASIZ (trail satışı başarısız, SL de geri kurulamadı)</b>\n"
+                                f"MANUEL MÜDAHALE ŞART."
+                            )
+
                 with _lock:
                     s = _load_state()
                     if symbol in s["positions"]:
                         s["positions"][symbol].pop("closing", None)
                         s["positions"][symbol]["sell_filled_qty"] = filled_qty_total
                         s["positions"][symbol]["sell_filled_quote"] = filled_quote_total
+                        if sell_reason == "trail_stop":
+                            if trail_recovery_id:
+                                s["positions"][symbol]["trailing_sl_id"] = trail_recovery_id
+                            else:
+                                # Ne eski emir ayakta ne yenisi kurulabildi —
+                                # state dürüstçe "korumasız/tekrar kurulmayı
+                                # bekliyor" göstersin (TP1 sonrası aynı sınıf
+                                # ara durumla aynı anlam: bir sonraki tick'te
+                                # protection akışı baştan denenir).
+                                s["positions"][symbol]["trailing"] = False
+                                s["positions"][symbol]["tp1_pending_trail"] = True
+                                s["positions"][symbol]["trailing_sl_id"] = None
+                                s["positions"][symbol]["sl_order_id"] = None
                         _save_state(s)
+                if trail_recovery_note:
+                    _send_telegram(trail_recovery_note)
                 print(f"[MONITOR] SATIŞ BAŞARISIZ: {symbol} ({sell_reason}), sonraki tick tekrar dener", flush=True)
 
 
