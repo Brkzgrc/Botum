@@ -26,7 +26,6 @@ from claude_analyzer import (process_and_send as _analyzer_process,
                              update_archive_outcome as _update_archive_outcome)
 from intraday_scanner import start_intraday_scanner
 from liquidity_radar import get_radar, radar_ui_lines
-from shadow_tp1_tracker import shadow_bp   # TP1 shadow izleme — ayrı/sökülebilir modül
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -74,7 +73,6 @@ HIDDEN_SIG_TYPES = (
 HIDDEN_SOURCES = ("smc-eski-discount", "smc-eski-choch", "smc-eski-choch-v2")
 
 app = Flask(__name__)
-app.register_blueprint(shadow_bp)   # /shadow sayfası + /api/shadow-event — bkz. shadow_tp1_tracker.py
 
 if FLASK_SECRET_KEY:
     app.secret_key = FLASK_SECRET_KEY
@@ -2221,7 +2219,6 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <a href="/" class="tab">Portföy</a>
       <a href="/market" class="tab active">Piyasa</a>
       <a href="/alsat" class="tab">Al-Sat Bot</a>
-      <a href="/shadow" class="tab">TP1 Shadow</a>
     </div>
   </div>
   <span class="time">{now} | v3.1 &nbsp;<button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button></span>
@@ -3056,7 +3053,6 @@ tr:hover td{{background:var(--card);}}
             <a href="/" class="nav-tab active">Portföy</a>
             <a href="/market" class="nav-tab">Piyasa</a>
             <a href="/alsat" class="nav-tab">Al-Sat Bot</a>
-            <a href="/shadow" class="nav-tab">TP1 Shadow</a>
         </div>
     </div>
     <span class="time">
@@ -3394,7 +3390,6 @@ tr:hover td{{background:#0f151d;}}
       <a href="/" class="nav-tab">Portföy</a>
       <a href="/market" class="nav-tab">Piyasa</a>
       <a href="/alsat" class="nav-tab active">Al-Sat Bot</a>
-      <a href="/shadow" class="nav-tab">TP1 Shadow</a>
     </div>
   </div>
   <span class="time">{now}
