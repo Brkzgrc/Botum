@@ -354,6 +354,33 @@ def _place_trail_sl_order(symbol: str, peak: float, qty: float, atr=None, entry:
         return None
 
 
+def _place_fixed_sl_order(symbol: str, stop_price: float, qty: float):
+    """Sabit (peak'e göre değil, verilen fiyata göre) STOP_LOSS_LIMIT emri açar.
+    TP1 sonrası yeni trailing (ne native ne ATR cancel-replace) kurulamadığında,
+    eski korumayı ACİLEN aynı seviyede geri kurmak için kullanılır — pozisyonu
+    korumasız bırakmamak adına son çare. Simülasyonda (ENABLED=False) gerçek
+    emir açmaz ama "başarılı" sayılır (döner: '__SIM__'), çünkü o modda zaten
+    hiçbir gerçek emir yok, tutarlılık için diğer yerlerdeki simülasyon
+    davranışıyla aynı."""
+    if not ENABLED:
+        print(f"[MONITOR] Sabit SL geri kurma SİMÜLASYON — {symbol} stop={stop_price:.6g} qty={qty}", flush=True)
+        return "__SIM__"
+    try:
+        sl_stop  = _round_price(stop_price, symbol)
+        sl_limit = _round_price(stop_price * (1 - SL_LIMIT_BUFFER), symbol)
+        qty_r = _round_qty(qty, symbol)
+        order = _get_client().create_order(
+            symbol=symbol, side="SELL", type="STOP_LOSS_LIMIT",
+            timeInForce="GTC", quantity=qty_r, stopPrice=sl_stop, price=sl_limit,
+        )
+        oid = order["orderId"]
+        print(f"[MONITOR] Sabit SL geri kuruldu: {symbol} stop={sl_stop} qty={qty_r} id={oid}", flush=True)
+        return oid
+    except Exception as e:
+        print(f"[MONITOR] Sabit SL geri kurma HATA {symbol}: {e}", flush=True)
+        return None
+
+
 def _place_trailing_delta_order(symbol: str, peak: float, qty: float, atr=None):
     """Binance NATIVE trailing stop (trailingDelta, sunucu tarafında) — TP1 sonrası
     tercih edilen yöntem. Mesafe, o anki gerçek ATR_MULT*ATR yüzdesi — backtestin
@@ -927,18 +954,24 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 _save_state(state)
             # TP1 kontrolü: mumun high'ına göre
             elif high >= float(pos["tp1"]):
-                cancel_sl          = True
-                pos["tp1_hit"]     = True
-                pos["trailing"]    = True
-                pos["peak"]        = max(high, float(pos["peak"]))
-                pos["trailing_sl_id"] = None
+                # ÖNEMLİ: "trailing" burada HENÜZ True yapılmıyor. Yeni koruma
+                # emri (native ya da ATR trail) gerçekten kurulana kadar bu
+                # pozisyon "korunuyor" sayılmaz — trailing sadece kilit DIŞINDA,
+                # yerleştirme başarıyla doğrulandıktan sonra True olur (aşağıya
+                # bak). tp1_pending_trail, bu ara durumu (TP1 vuruldu ama yeni
+                # koruma henüz kurulamadı) dashboard'da ve bir sonraki tick'te
+                # görünür/tekrar-denenebilir kılar.
+                cancel_sl               = True
+                pos["tp1_hit"]          = True
+                pos["tp1_pending_trail"] = True
+                pos["peak"]             = max(high, float(pos["peak"]))
                 state["positions"][symbol] = pos
                 _save_state(state)
                 pos_snap      = dict(pos)
                 place_trail_sl = True
                 trail_sl_peak  = float(pos["peak"])
                 trail_sl_qty   = float(pos.get("qty", 0))
-                print(f"[MONITOR] TP1 HIT — {symbol} @ {high:.6g} | trailing başladı", flush=True)
+                print(f"[MONITOR] TP1 HIT — {symbol} @ {high:.6g} | trailing kurulmaya çalışılıyor", flush=True)
             else:
                 # Ne stop ne TP1 — gelişmeyen işlem, expire burada devreye girer
                 fill_time_str = pos.get("open_time")
@@ -974,11 +1007,18 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             # Peak: mumun high'ına göre güncelle
             if high > float(pos["peak"]):
                 old_trail_sl_id = pos.get("trailing_sl_id")
+                # Yeni (daha yüksek) trail seviyesi kurulamazsa, korumasız
+                # kalmamak için ESKİ (bu tick'ten ÖNCEKİ) peak/ATR'den hesaplanan
+                # seviyeye geri dönülecek — o yüzden mutasyondan ÖNCE saklanıyor.
+                restore_peak = float(pos["peak"])
+                restore_atr  = pos.get("atr")
                 pos["peak"] = high
                 pos["trailing_sl_id"] = None   # yeni emir gelene kadar None
                 state["positions"][symbol] = pos
                 _save_state(state)
                 pos_snap       = dict(pos)
+                pos_snap["restore_peak"] = restore_peak
+                pos_snap["restore_atr"]  = restore_atr
                 update_trail_sl = True
                 trail_sl_peak   = high
                 trail_sl_qty    = float(pos.get("qty", 0))
@@ -1018,42 +1058,114 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
         if new_trail_id is None:
             new_trail_id = _place_trail_sl_order(symbol, trail_sl_peak, trail_sl_qty, atr_val, float(pos_snap.get("entry", 0)))
 
-        if new_trail_id:
+        # ENABLED=False (simülasyon) modunda gerçek emir hiç yok, o yüzden bu mod
+        # her zaman "kuruldu" sayılır (mevcut simülasyon davranışı korunuyor).
+        # ENABLED=True'da (gerçek) SADECE new_trail_id gerçekten dönerse "kuruldu"
+        # sayılır — "trailing" state alanı ARTIK BURADAN ÖNCE hiçbir yerde True
+        # yazılmıyor.
+        protection_ok = (new_trail_id is not None) or (not ENABLED)
+
+        if protection_ok:
             with _lock:
                 s = _load_state()
                 if symbol in s["positions"]:
+                    s["positions"][symbol]["trailing"] = True
+                    s["positions"][symbol]["tp1_pending_trail"] = False
                     s["positions"][symbol]["trailing_sl_id"] = new_trail_id
                     s["positions"][symbol]["atr"] = atr_val
                     s["positions"][symbol]["atr_updated_at"] = datetime.now(timezone.utc).isoformat()
                     if place_trail_sl:
                         s["positions"][symbol]["trail_native"] = is_native
                     _save_state(s)
+            if place_trail_sl:
+                # Portfolio dashboard'a TP1 vurulduğunu bildir — aksi halde bot devredeyken
+                # portfolio bunu hiç öğrenemiyor, "TRAIL AKTİF" hiç görünmüyor, Trail/Stop
+                # sütunu orijinal stop'ta donuk kalıyor.
+                entry = float(pos_snap.get("entry", 0) or 0)
+                peak  = float(pos_snap.get("peak", 0) or 0)
+                tp1_pct = round((peak - entry) / entry * 100, 2) if entry else 0
+                _notify_portfolio_with_retry("/api/tp1-hit", {
+                    "symbol": symbol, "peak": peak, "tp1_pct": tp1_pct, "atr": atr_val,
+                })
         else:
-            # Ne native ne ATR cancel-replace emri kurulabildi — eski SL/trail
-            # emri bu noktada ZATEN iptal edilmiş olabilir (cancel_sl/update_trail_sl
-            # yukarıda, bu yeni emir denemesinden ÖNCE çalışıyor), yani pozisyon
-            # bir süre korumasız kalmış olabilir. Bu mevcut mimarinin bilinen bir
-            # riski — cancel/place sıralamasını burada DEĞİŞTİRMİYORUZ (canlı emir
-            # akışını sınanmadan yeniden sıralamak daha riskli olurdu), sadece
-            # artık sessiz kalmıyor, açıkça alarm veriyoruz.
-            _send_telegram(
-                f"🚨 <b>{'TP1 VURDU AMA TRAILING KURULAMADI' if place_trail_sl else 'TRAIL SL YENİLENEMEDİ'} — {symbol}</b>\n"
-                f"Eski koruma emri iptal edilmiş olabilir, pozisyon bir süre AÇIKTA kalmış olabilir.\n"
-                f"Peak: {trail_sl_peak:.6g}\n"
-                f"MANUEL KONTROL ET — bir sonraki periyodik turda tekrar denenecek."
-            )
-            print(f"[MONITOR] TP1/trail sonrası koruma emri kurulamadı: {symbol}", flush=True)
+            # Yeni koruma (ne native ne ATR cancel-replace) kurulamadı — eski
+            # koruma emri bu noktada ZATEN iptal edilmiş (yukarıdaki cancel_sl/
+            # update_trail_sl), yani pozisyon ŞU AN gerçekten korumasız. Sadece
+            # alarm vermek YETERLİ SAYILMIYOR — eski korumayı AYNI seviyede
+            # derhal geri kurmaya çalışılıyor (place_trail_sl: orijinal sabit
+            # stop; update_trail_sl: bu tick'ten ÖNCEKİ peak/ATR'den hesaplanan
+            # trail seviyesi — pozisyon "trailing" rejiminden hiç çıkmaz).
+            if place_trail_sl:
+                restore_price = float(pos_snap.get("stop", 0) or 0)
+            else:
+                restore_price = _trail_stop_price(
+                    float(pos_snap.get("restore_peak", trail_sl_peak) or trail_sl_peak),
+                    pos_snap.get("restore_atr"), float(pos_snap.get("entry", 0) or 0))
+            restore_id = _place_fixed_sl_order(symbol, restore_price, trail_sl_qty)
 
-        if place_trail_sl:
-            # Portfolio dashboard'a TP1 vurulduğunu bildir — aksi halde bot devredeyken
-            # portfolio bunu hiç öğrenemiyor, "TRAIL AKTİF" hiç görünmüyor, Trail/Stop
-            # sütunu orijinal stop'ta donuk kalıyor.
-            entry = float(pos_snap.get("entry", 0) or 0)
-            peak  = float(pos_snap.get("peak", 0) or 0)
-            tp1_pct = round((peak - entry) / entry * 100, 2) if entry else 0
-            _notify_portfolio_with_retry("/api/tp1-hit", {
-                "symbol": symbol, "peak": peak, "tp1_pct": tp1_pct, "atr": atr_val,
-            })
+            if restore_id:
+                with _lock:
+                    s = _load_state()
+                    if symbol in s["positions"]:
+                        if place_trail_sl:
+                            s["positions"][symbol]["trailing"] = False
+                            s["positions"][symbol]["tp1_pending_trail"] = True
+                            s["positions"][symbol]["sl_order_id"] = restore_id
+                            s["positions"][symbol]["trailing_sl_id"] = None
+                        else:
+                            # Hâlâ trailing rejiminde — sadece bu turun EN YÜKSEK
+                            # peak'ine değil, bir ÖNCEKİ (bilinen iyi) seviyeye
+                            # dönüldü. Korumasız kalınmadı; bir sonraki peak
+                            # artışında ya da ATR yenilemesinde otomatik tekrar
+                            # denenecek (ayrı bir "pending" bayrağına gerek yok).
+                            s["positions"][symbol]["trailing_sl_id"] = restore_id
+                        _save_state(s)
+                _send_telegram(
+                    f"⚠️ <b>{'TRAIL KURULAMADI, ESKİ SL GERİ KONDU' if place_trail_sl else 'TRAIL YENİLENEMEDİ, ÖNCEKİ SEVİYEYE DÖNÜLDÜ'} — {symbol}</b>\n"
+                    f"Peak: {trail_sl_peak:.6g} | Geri kurulan stop: {restore_price:.6g}\n"
+                    + ("Bir sonraki turda trailing tekrar denenecek."
+                       if place_trail_sl else
+                       "Sonraki peak artışında/ATR yenilemesinde otomatik tekrar denenecek.")
+                )
+                print(f"[MONITOR] Koruma geri kuruldu (eski seviye): {symbol} stop={restore_price:.6g}", flush=True)
+            else:
+                # EN KÖTÜ SENARYO: ne yeni trail ne eski/önceki seviye kurulabildi
+                # — pozisyon TAMAMEN korumasız. Son çare: acil market satışı dene.
+                _send_telegram(
+                    f"🆘 <b>KRİTİK — {symbol} KORUMASIZ</b>\n"
+                    f"TP1 sonrası ne yeni koruma ne eski seviye kurulabildi. ACİL MARKET SATIŞI deneniyor."
+                )
+                print(f"[MONITOR] KRİTİK: {symbol} korumasız, acil market satışı deneniyor", flush=True)
+                entry = float(pos_snap.get("entry", 0) or 0)
+                qty   = _round_qty(trail_sl_qty, symbol)
+                emergency_closed, exec_qty, exec_quote = _market_sell(symbol, qty, "tp1_protection_failure")
+                if emergency_closed and exec_qty > 0 and exec_quote > 0:
+                    real_price = exec_quote / exec_qty
+                    pct = round((real_price - entry) / entry * 100, 2) if entry else 0
+                    _close_position_in_state(symbol)
+                    _stop_stream(symbol)
+                    _send_telegram(
+                        f"🆘 <b>ACİL SATILDI — {symbol}</b>\nÇıkış: ~{real_price:.6g} | P&L: {pct:+.2f}%"
+                    )
+                    _notify_portfolio_with_retry("/api/position-closed", {
+                        "symbol": symbol, "reason": "tp1_protection_failure",
+                        "close_price": real_price, "pnl_pct": pct,
+                    })
+                    print(f"[MONITOR] Acil satış OK: {symbol} | {pct:+.2f}%", flush=True)
+                else:
+                    with _lock:
+                        s = _load_state()
+                        if symbol in s["positions"]:
+                            s["positions"][symbol]["trailing"] = False
+                            s["positions"][symbol]["tp1_pending_trail"] = True
+                            s["positions"][symbol]["sl_order_id"] = None
+                            s["positions"][symbol]["trailing_sl_id"] = None
+                            _save_state(s)
+                    _send_telegram(
+                        f"🆘🆘 <b>ACİL SATIŞ DA BAŞARISIZ — {symbol}</b>\n"
+                        f"MANUEL MÜDAHALE ŞART — pozisyon şu an korumasız durumda."
+                    )
+                    print(f"[MONITOR] KRİTİK: {symbol} acil satış da başarısız, manuel müdahale gerekiyor", flush=True)
 
     if cancel_trail_sl_id:
         _cancel_sl(symbol, cancel_trail_sl_id)
