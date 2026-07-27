@@ -2863,106 +2863,6 @@ def dashboard():
     else:
         _pending_section = ""
 
-    # ── trading-bot pozisyonları (trade_state.json) ─────────────────────────
-    _trade_positions = {}
-    _usdt_balance = None
-    if TRADING_BOT_URL:
-        try:
-            _th = {}
-            if TRADING_BOT_TOKEN:
-                _th["X-Bot-Token"] = TRADING_BOT_TOKEN
-            _tr = requests.get(f"{TRADING_BOT_URL}/status", headers=_th, timeout=5)
-            if _tr.ok:
-                _trade_positions = _tr.json()
-        except Exception:
-            pass
-        try:
-            _bh = {}
-            if TRADING_BOT_TOKEN:
-                _bh["X-Bot-Token"] = TRADING_BOT_TOKEN
-            _br = requests.get(f"{TRADING_BOT_URL}/balance", headers=_bh, timeout=5)
-            if _br.ok:
-                _usdt_balance = _br.json().get("usdt_balance")
-        except Exception:
-            pass
-
-    _balance_html = (
-        f'<span style="color:var(--green)">${_usdt_balance:,.2f}</span> kullanılabilir USDT'
-        if _usdt_balance is not None else
-        '<span style="color:var(--text-dim)">bakiye alınamadı</span>'
-    )
-
-    _STATUS_LABEL = {
-        "monitoring": ('<span style="background:#f39c1222;color:#f39c12;border:1px solid #f39c1255;'
-                       'border-radius:3px;padding:1px 6px;font-size:.6rem">İZLEME</span>'),
-        "pending":    ('<span style="background:#3498db22;color:#3498db;border:1px solid #3498db55;'
-                       'border-radius:3px;padding:1px 6px;font-size:.6rem">EMİR</span>'),
-        "open":       ('<span style="background:#2ecc7122;color:#2ecc71;border:1px solid #2ecc7155;'
-                       'border-radius:3px;padding:1px 6px;font-size:.6rem">AÇIK</span>'),
-    }
-
-    _trade_rows = ""
-    for _sym, _pos in _trade_positions.items():
-        _st  = _pos.get("status", "")
-        if _pos.get("tp1_pending_trail"):
-            # TP1 vuruldu ama koruma (native/ATR trailing ya da eski sabit SL)
-            # HENÜZ kurulamadı — normal "AÇIK" rozetiyle karıştırılmamalı,
-            # operatör bunu net görüp gerekirse manuel kontrol etmeli.
-            _st_badge = ('<span style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;'
-                         'border-radius:3px;padding:1px 6px;font-size:.6rem;font-weight:bold">'
-                         '⚠ KORUMA BEKLİYOR</span>')
-        else:
-            _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
-        if _st == "open":
-            _lp = fmt_price_symbol(_sym, _pos.get("entry", 0))
-            _tp = "—"
-        else:
-            _lp = fmt_price_symbol(_sym, _pos.get("limit_price", 0))
-            _tp = fmt_price_symbol(_sym, _pos.get("trigger_price", 0))
-        _sl  = fmt_price_symbol(_sym, _pos.get("stop", 0))
-        _t1  = fmt_price_symbol(_sym, _pos.get("tp1", 0))
-        try:
-            _ot = datetime.fromisoformat(_pos["open_time"]).replace(tzinfo=timezone.utc)
-            _elapsed = now_dt - _ot
-            _h, _r = divmod(int(_elapsed.total_seconds()), 3600)
-            _elapsed_str = f"{_h}s {_r//60}d"
-        except Exception:
-            _elapsed_str = "—"
-        _cp  = fmt_price_symbol(_sym, _pos.get("current_price", 0))
-        _trade_rows += f"""<tr>
-            <td style="font-weight:bold">{_sym.replace("USDT","")}/USDT</td>
-            <td>{_st_badge}</td>
-            <td style="font-size:.75rem;color:#00b4d8">{_cp}</td>
-            <td style="font-size:.75rem">{_lp}</td>
-            <td style="font-size:.75rem;color:#f39c12">{_tp}</td>
-            <td style="font-size:.75rem;color:#e74c3c">{_sl}</td>
-            <td style="font-size:.75rem;color:#2ecc71">{_t1}</td>
-            <td style="font-size:.7rem;color:#7f8c8d">{_elapsed_str}</td>
-            <td><button onclick="deleteTrade('{_sym}',this)"
-                style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;
-                border-radius:4px;padding:2px 8px;font-size:.65rem;cursor:pointer">
-                Sil</button></td>
-        </tr>"""
-
-    if TRADING_BOT_URL:
-        _trade_table = (
-            f"""<div class="table-wrap"><table><thead><tr>
-        <th>Sembol</th><th>Durum</th><th>Anlık Fiyat</th><th>Limit Buy</th><th>Tetikleyici</th><th>Stop</th><th>TP1</th><th>Geçen</th><th></th>
-    </tr></thead><tbody>
-        {_trade_rows}
-    </tbody></table></div>"""
-            if _trade_positions else
-            '<p class="empty">Açık pozisyon yok.</p>'
-        )
-        _trade_section = f"""<div class="section">
-    <details data-id="trade-bot" open>
-    <summary>🤖 AL-SAT BOT POZİSYONLARI ({len(_trade_positions)}) — {_balance_html}</summary>
-    <p class="note">trade_state.json içeriği. İzleme: fiyat CHoCH+3tick'e ulaşınca limit emir açılır. Emir: Binance'te limit buy bekliyor. Sil: sadece state'den siler, Binance emrini kendin iptal et.</p>
-    {_trade_table}
-    </details>
-</div>"""
-    else:
-        _trade_section = ""
 
     html = f"""<!DOCTYPE html>
 <html lang="tr"><head>
@@ -3169,7 +3069,6 @@ function toggleType(key, btn) {{
 
 {_pending_section}
 
-{_trade_section}
 
 <div class="section">
     <details data-id="closed-list">
@@ -3212,15 +3111,6 @@ function toggleType(key, btn) {{
 </div>
 <script>var SYMCI={json.dumps(_CHART_SVG)};var SYMTV={json.dumps(_TV_LOGO)};</script>
 <script>
-function deleteTrade(sym,btn){{
-  if(!confirm(sym+' pozisyonu state\\'den silinsin mi?\\n(Binance emri varsa kendin iptal et)'))return;
-  btn.disabled=true;btn.textContent='...';
-  fetch('/api/trade-positions/'+sym+'/delete',{{method:'POST'}})
-    .then(r=>r.json()).then(d=>{{
-      if(d.ok){{btn.closest('tr').remove();}}
-      else{{btn.textContent='Hata';btn.style.color='#e74c3c';}}
-    }}).catch(()=>{{btn.textContent='Hata';}});
-}}
 function closeSignal(id,btn){{
   if(!confirm('Bu pozisyonu manuel kapattı olarak işaretle?'))return;
   btn.disabled=true;btn.textContent='...';
