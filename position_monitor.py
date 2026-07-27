@@ -1039,6 +1039,13 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
                 _save_state(state)
 
         else:
+            # Bu tick'in BAŞINDAKİ (henüz hiçbir mutasyon olmamış) trailing_sl_id
+            # — aşağıda hem yeni-zirve hem trail-kırılımı AYNI mumda birlikte
+            # tetiklenirse (high yeni zirveyi yaparken low da trail seviyesini
+            # kırabilir), kapanış yolu gerçekten aktif olan bu id'yi iptal
+            # edebilsin diye mutasyondan ÖNCE saklanıyor.
+            trailing_sl_id_at_start = pos.get("trailing_sl_id")
+
             # Peak: mumun high'ına göre güncelle
             if high > float(pos["peak"]):
                 old_trail_sl_id = pos.get("trailing_sl_id")
@@ -1061,7 +1068,16 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
             # Trail kontrolü: mumun low'una göre (cache'li ATR — network çağrısı lock içinde yapılmaz)
             trail_stop = _trail_stop_price(float(pos["peak"]), pos.get("atr"), float(pos.get("entry", 0)))
             if low <= trail_stop:
-                cancel_trail_sl_id = pos.get("trailing_sl_id")
+                # ÖNEMLİ: bu tick'te AYNI ZAMANDA hem yeni bir zirve (yukarıda)
+                # hem trail kırılımı (burada) oluştuysa, pozisyon zaten
+                # KAPANACAK — yeni bir trail emri kurmanın/yenilemenin hiçbir
+                # anlamı yok, tam tersine gereksiz bir emir açıp hemen ardından
+                # market-sell etmek Binance'te öksüz/atıl bir emir bırakabilir.
+                # update_trail_sl'i burada iptal ediyoruz; lock DIŞINDAKİ blok da
+                # "sell_reason varsa hiç trail kurulumuna girme" kuralını ayrıca
+                # uyguluyor (çift güvence).
+                update_trail_sl = False
+                cancel_trail_sl_id = trailing_sl_id_at_start
                 sell_reason = "trail_stop"
                 close_price = trail_stop
                 pos["closing"] = True
@@ -1073,7 +1089,16 @@ def _process_tick(symbol: str, close: float, high: float, low: float):
     if cancel_sl:
         cancel_sl_ok = _cancel_sl(symbol, pos_snap.get("sl_order_id"))
 
-    if place_trail_sl and not cancel_sl_ok:
+    if sell_reason:
+        # Bu tick'te pozisyon ZATEN kapanacak (aşağıdaki "if sell_reason:"
+        # bloğu market-sell yapacak) — yeni bir trail emri kurmanın/
+        # yenilemenin hiçbir anlamı yok. Lock içinde update_trail_sl zaten
+        # False'a çekildi (bkz. yukarıdaki "else" dalı); bu, o güvenceye ek
+        # bağımsız bir ikinci koruma — hangi kod yolundan gelirse gelsin,
+        # sell_reason varken YENİ bir SELL/trail emri asla açılmaz.
+        pass
+
+    elif place_trail_sl and not cancel_sl_ok:
         # Eski (sabit) SL iptal edilemedi — yeni trail kurulumuna HİÇ
         # geçilmiyor. Eski emir hâlâ Binance'te aktif olabilir; üzerine yeni
         # bir SELL emri denemek miktarın kilitli kısmı yüzünden reddedilebilir
