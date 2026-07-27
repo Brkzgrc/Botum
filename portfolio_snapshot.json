@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-28 00:06:04",
+  "updated_at": "2026-07-28 00:36:08",
   "performance": {
     "total": 77,
     "open": 2,
-    "closed": 37,
+    "closed": 38,
     "wins": 20,
     "win_tp2": 0,
-    "losses": 17,
+    "losses": 18,
     "expired": 16,
     "tp1_hits": 14,
     "win_pnl": 40.03,
-    "loss_pnl": -47.36,
+    "loss_pnl": -58.13,
     "expired_win": 6,
     "expired_loss": 10,
-    "total_pnl": -7.33,
-    "win_loss_pnl": 6.99,
+    "total_pnl": -18.1,
+    "win_loss_pnl": -3.78,
     "expired_pnl": -14.32,
-    "avg_peak": 2.42,
-    "win_rate": 54.1,
-    "real_win_rate": 54.1,
+    "avg_peak": 2.35,
+    "win_rate": 52.6,
+    "real_win_rate": 52.6,
     "analyzer": {
       "gir": {
         "total": 1,
@@ -28,11 +28,11 @@
         "wr": 0.0
       },
       "dikkat": {
-        "total": 12,
+        "total": 13,
         "wins": 8,
-        "losses": 4,
-        "pnl": 2.9,
-        "wr": 66.7
+        "losses": 5,
+        "pnl": -7.87,
+        "wr": 61.5
       },
       "riskli": {
         "total": 0,
@@ -44,21 +44,21 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 39,
+        "total": 40,
         "open": 2,
         "wins": 20,
-        "losses": 17,
+        "losses": 18,
         "expired": 16,
         "tp1_hits": 14,
-        "total_pnl": -7.33,
+        "total_pnl": -18.1,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 54.1,
-        "avg_peak": 2.42,
+        "win_rate": 52.6,
+        "avg_peak": 2.35,
         "tp2_rate": 0,
         "expired_pnl": -14.32,
-        "win_loss_pnl": 6.99
+        "win_loss_pnl": -3.78
       }
     },
     "daily": {
@@ -69,10 +69,10 @@
         "losses": 0
       },
       "2026-07-27": {
-        "trades": 3,
-        "pnl": -13.709999999999999,
+        "trades": 4,
+        "pnl": -24.48,
         "wins": 0,
-        "losses": 2
+        "losses": 3
       },
       "2026-07-26": {
         "trades": 5,
@@ -125,10 +125,10 @@
     },
     "weekly": {
       "2026-W30": {
-        "trades": 4,
-        "pnl": -13.709999999999999,
+        "trades": 5,
+        "pnl": -24.48,
         "wins": 0,
-        "losses": 2
+        "losses": 3
       },
       "2026-W29": {
         "trades": 34,
@@ -145,10 +145,10 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 39,
-        "pnl": -7.330000000000005,
+        "trades": 40,
+        "pnl": -18.100000000000005,
         "wins": 20,
-        "losses": 17
+        "losses": 18
       }
     }
   },
@@ -175,23 +175,24 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.00424,
-      "peak_pct": 0.0,
-      "low_price": 0.00424,
-      "low_pct": 0.0,
-      "current_price": 0.00424,
-      "current_pct": 0.0,
+      "peak_price": 0.00427,
+      "peak_pct": 0.71,
+      "low_price": 0.00418,
+      "low_pct": -1.42,
+      "current_price": 0.0042,
+      "current_pct": -0.94,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-28T00:00:13.655149+03:00",
-      "last_check": "2026-07-28T00:00:01.911671+03:00",
-      "checks": 0,
+      "last_check": "2026-07-28T00:35:15.753976+03:00",
+      "checks": 6,
       "extra": {
         "tp3": null
       },
       "fill_qty": 40677.0,
-      "fill_time": "2026-07-28T00:05:20.503972+03:00"
+      "fill_time": "2026-07-28T00:05:20.503972+03:00",
+      "bot_miss_count": 0
     },
     {
       "id": "AEUR_USDT_1785114001",
@@ -225,8 +226,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-27T04:00:09.765322+03:00",
-      "last_check": "2026-07-28T00:05:08.468139+03:00",
-      "checks": 239,
+      "last_check": "2026-07-28T00:35:15.753976+03:00",
+      "checks": 245,
       "extra": {
         "tp3": null
       },
