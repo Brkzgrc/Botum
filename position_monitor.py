@@ -750,9 +750,29 @@ def _place_monitoring_order(symbol: str, pos: dict, active_count: int):
     print(f"[MONITOR] TRİGGER: {symbol} | limit={lp:.6g} boyut=${pos_size:.2f} qty={qty}", flush=True)
 
     # State'e pending yaz (limit_order_id=None) — crash güvenliği
+    #
+    # Bu kilit ayrıca "gerçek Binance emri gönderilmeden hemen önceki son
+    # kontrol" görevini de görüyor: gunicorn tek worker'la çalışsa bile
+    # (deploy sırasında eski/yeni process birkaç saniye üst üste binebilir,
+    # ya da periyodik döngü ile bir başka çağrı araya girebilir) sembol bu
+    # noktaya gelene kadar başka bir yerden zaten işlenmiş olabilir. Durum
+    # artık "monitoring" değilse (silinmiş, zaten pending/open/trailing'e
+    # geçmiş, ya da zaten bir limit_order_id almış) gerçek emir HİÇ
+    # gönderilmeden, kilit içindeyken iptal edilir — aksi halde aynı sinyal
+    # için iki gerçek LIMIT BUY emri açılabilirdi.
     now = datetime.now(timezone.utc).isoformat()
     with _lock:
         s = _load_state()
+        cur = s["positions"].get(symbol)
+        if (
+            cur is None
+            or cur.get("status") != "monitoring"
+            or cur.get("limit_order_id") is not None
+        ):
+            print(f"[MONITOR] {symbol} artık monitoring durumunda değil "
+                  f"(status={cur.get('status') if cur else 'yok'}) — tetikleme iptal edildi, "
+                  f"gerçek emir gönderilmedi", flush=True)
+            return
         s["positions"][symbol] = {
             "status":         "pending",
             "symbol":         symbol,

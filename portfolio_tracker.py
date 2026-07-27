@@ -2904,7 +2904,15 @@ def dashboard():
     _trade_rows = ""
     for _sym, _pos in _trade_positions.items():
         _st  = _pos.get("status", "")
-        _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
+        if _pos.get("tp1_pending_trail"):
+            # TP1 vuruldu ama koruma (native/ATR trailing ya da eski sabit SL)
+            # HENÜZ kurulamadı — normal "AÇIK" rozetiyle karıştırılmamalı,
+            # operatör bunu net görüp gerekirse manuel kontrol etmeli.
+            _st_badge = ('<span style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;'
+                         'border-radius:3px;padding:1px 6px;font-size:.6rem;font-weight:bold">'
+                         '⚠ KORUMA BEKLİYOR</span>')
+        else:
+            _st_badge = _STATUS_LABEL.get(_st, f'<span style="color:#7f8c8d;font-size:.6rem">{_st}</span>')
         if _st == "open":
             _lp = fmt_price_symbol(_sym, _pos.get("entry", 0))
             _tp = "—"
@@ -3291,7 +3299,15 @@ def alsat_page():
     now_dt = tr_now()
     for sym, pos in trade_positions.items():
         st = pos.get("status", "")
-        badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
+        if pos.get("tp1_pending_trail"):
+            # TP1 vuruldu ama koruma (native/ATR trailing ya da eski sabit SL)
+            # HENÜZ kurulamadı — normal "AÇIK" rozetiyle karıştırılmamalı,
+            # operatör bunu net görüp gerekirse manuel kontrol etmeli.
+            badge = ('<span style="background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c55;'
+                     'border-radius:3px;padding:2px 8px;font-size:.65rem;font-weight:bold">'
+                     '⚠ KORUMA BEKLİYOR / MANUEL KONTROL</span>')
+        else:
+            badge = STATUS_LABEL.get(st, f'<span style="color:#7f8c8d;font-size:.65rem">{st}</span>')
         cp  = fmt_price_symbol(sym, pos.get("current_price", 0))
         if st == "open":
             lp = fmt_price_symbol(sym, pos.get("entry", 0))

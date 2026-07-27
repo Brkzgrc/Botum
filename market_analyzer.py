@@ -17,7 +17,8 @@ TR_TZ = timezone(timedelta(hours=3))
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 ANALYZER_TOKEN     = os.environ.get("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("ANALYZER_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")
-LEVELS_FILE = "levels.json"
+DATA_DIR    = os.getenv("DATA_DIR", "/tmp")
+LEVELS_FILE = os.path.join(DATA_DIR, "levels.json")
 
 
 def _tg_send(msg):
