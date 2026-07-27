@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-28 01:36:14",
+  "updated_at": "2026-07-28 02:06:17",
   "performance": {
     "total": 78,
-    "open": 1,
+    "open": 2,
     "closed": 39,
     "wins": 21,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 40,
-        "open": 1,
+        "total": 41,
+        "open": 2,
         "wins": 21,
         "losses": 18,
         "expired": 16,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-07-28": {
-        "trades": 1,
+        "trades": 2,
         "pnl": 0.31,
         "wins": 1,
         "losses": 0
@@ -125,7 +125,7 @@
     },
     "weekly": {
       "2026-W30": {
-        "trades": 5,
+        "trades": 6,
         "pnl": -24.169999999999998,
         "wins": 1,
         "losses": 3
@@ -145,7 +145,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 40,
+        "trades": 41,
         "pnl": -17.790000000000003,
         "wins": 21,
         "losses": 18
@@ -153,6 +153,47 @@
     }
   },
   "open": [
+    {
+      "id": "RUNE_USDT_1785189602",
+      "symbol": "RUNE/USDT",
+      "entry": 0.44100000000000006,
+      "stop": 0.4287989266,
+      "tp1": 0.4512010734,
+      "tp2": 0.4624021468,
+      "tp3": null,
+      "limit_price": 0.44,
+      "signal_price": 0.445,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-28T01:00:02.496285+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.44100000000000006,
+      "peak_pct": 0.0,
+      "low_price": 0.439,
+      "low_pct": -0.45,
+      "current_price": 0.44,
+      "current_pct": -0.23,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "✅ GİR",
+      "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
+      "last_check": "2026-07-28T02:05:29.081770+03:00",
+      "checks": 2,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 382.9,
+      "fill_time": "2026-07-28T01:58:09.616245+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "AEUR_USDT_1785114001",
       "symbol": "AEUR/USDT",
@@ -185,8 +226,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-27T04:00:09.765322+03:00",
-      "last_check": "2026-07-28T01:35:25.216842+03:00",
-      "checks": 257,
+      "last_check": "2026-07-28T02:05:29.081770+03:00",
+      "checks": 263,
       "extra": {
         "tp3": null
       },
