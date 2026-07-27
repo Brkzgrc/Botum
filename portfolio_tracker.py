@@ -3169,6 +3169,8 @@ function toggleType(key, btn) {{
 
 {_pending_section}
 
+{_trade_section}
+
 <div class="section">
     <details data-id="closed-list">
     <summary>📋 KAPANMIŞ İŞLEMLER (son 100)</summary>
