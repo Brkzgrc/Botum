@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-07-28 18:58:09",
+  "updated_at": "2026-07-28 19:28:12",
   "performance": {
-    "total": 84,
-    "open": 2,
+    "total": 86,
+    "open": 3,
     "closed": 43,
     "wins": 24,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 45,
-        "open": 2,
+        "total": 46,
+        "open": 3,
         "wins": 24,
         "losses": 19,
         "expired": 17,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-07-28": {
-        "trades": 6,
+        "trades": 7,
         "pnl": 3.12,
         "wins": 3,
         "losses": 1
@@ -125,7 +125,7 @@
     },
     "weekly": {
       "2026-W30": {
-        "trades": 10,
+        "trades": 11,
         "pnl": -21.28,
         "wins": 4,
         "losses": 4
@@ -145,7 +145,7 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 45,
+        "trades": 46,
         "pnl": -14.900000000000006,
         "wins": 24,
         "losses": 19
@@ -153,6 +153,47 @@
     }
   },
   "open": [
+    {
+      "id": "REQ_USDT_1785254405",
+      "symbol": "REQ/USDT",
+      "entry": 0.0559,
+      "stop": 0.0488231396,
+      "tp1": 0.0627768604,
+      "tp2": 0.0697537208,
+      "tp3": null,
+      "limit_price": 0.0558,
+      "signal_price": 0.0571,
+      "sig_type": "smc",
+      "sub_type": "CHoCH",
+      "source": "smc-v2",
+      "phase": "choch_v2",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-07-28T19:00:05.536804+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.056,
+      "peak_pct": 0.18,
+      "low_price": 0.0529,
+      "low_pct": -5.37,
+      "current_price": 0.0552,
+      "current_pct": -1.25,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "analyzer_decision": "✅ GİR",
+      "analyzer_time": "2026-07-28T19:00:13.455970+03:00",
+      "last_check": "2026-07-28T19:27:45.707848+03:00",
+      "checks": 4,
+      "extra": {
+        "tp3": null
+      },
+      "fill_qty": 3704.0,
+      "fill_time": "2026-07-28T19:10:22.257936+03:00",
+      "bot_miss_count": 0
+    },
     {
       "id": "STRAX_USDT_1785243608",
       "symbol": "STRAX/USDT",
@@ -179,14 +220,14 @@
       "peak_pct": 1.54,
       "low_price": 0.00859,
       "low_pct": -5.71,
-      "current_price": 0.00882,
-      "current_pct": -3.18,
+      "current_price": 0.00875,
+      "current_pct": -3.95,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "⚠️ DİKKAT",
       "analyzer_time": "2026-07-28T16:00:14.114127+03:00",
-      "last_check": "2026-07-28T18:57:38.398777+03:00",
-      "checks": 29,
+      "last_check": "2026-07-28T19:27:45.707848+03:00",
+      "checks": 35,
       "extra": {
         "tp3": null
       },
@@ -226,8 +267,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T18:57:38.398777+03:00",
-      "checks": 204,
+      "last_check": "2026-07-28T19:27:45.707848+03:00",
+      "checks": 210,
       "extra": {
         "tp3": null
       },
