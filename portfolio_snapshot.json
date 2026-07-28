@@ -1,31 +1,31 @@
 {
-  "updated_at": "2026-07-28 16:27:52",
+  "updated_at": "2026-07-28 16:57:56",
   "performance": {
     "total": 84,
     "open": 2,
-    "closed": 42,
-    "wins": 23,
+    "closed": 43,
+    "wins": 24,
     "win_tp2": 0,
     "losses": 19,
     "expired": 17,
-    "tp1_hits": 17,
-    "win_pnl": 40.44,
+    "tp1_hits": 18,
+    "win_pnl": 43.23,
     "loss_pnl": -58.13,
     "expired_win": 7,
     "expired_loss": 10,
-    "total_pnl": -17.69,
-    "win_loss_pnl": -3.45,
+    "total_pnl": -14.9,
+    "win_loss_pnl": -0.66,
     "expired_pnl": -14.24,
-    "avg_peak": 2.23,
-    "win_rate": 54.8,
-    "real_win_rate": 54.8,
+    "avg_peak": 2.22,
+    "win_rate": 55.8,
+    "real_win_rate": 55.8,
     "analyzer": {
       "gir": {
-        "total": 3,
-        "wins": 1,
+        "total": 4,
+        "wins": 2,
         "losses": 2,
-        "pnl": -12.69,
-        "wr": 33.3
+        "pnl": -9.9,
+        "wr": 50.0
       },
       "dikkat": {
         "total": 15,
@@ -44,28 +44,28 @@
     },
     "by_type": {
       "Legacy SMC": {
-        "total": 44,
+        "total": 45,
         "open": 2,
-        "wins": 23,
+        "wins": 24,
         "losses": 19,
         "expired": 17,
-        "tp1_hits": 17,
-        "total_pnl": -17.69,
+        "tp1_hits": 18,
+        "total_pnl": -14.9,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 54.8,
-        "avg_peak": 2.23,
+        "win_rate": 55.8,
+        "avg_peak": 2.22,
         "tp2_rate": 0,
         "expired_pnl": -14.24,
-        "win_loss_pnl": -3.45
+        "win_loss_pnl": -0.66
       }
     },
     "daily": {
       "2026-07-28": {
-        "trades": 5,
-        "pnl": 0.33,
-        "wins": 2,
+        "trades": 6,
+        "pnl": 3.12,
+        "wins": 3,
         "losses": 1
       },
       "2026-07-27": {
@@ -125,9 +125,9 @@
     },
     "weekly": {
       "2026-W30": {
-        "trades": 9,
-        "pnl": -24.070000000000004,
-        "wins": 3,
+        "trades": 10,
+        "pnl": -21.28,
+        "wins": 4,
         "losses": 4
       },
       "2026-W29": {
@@ -145,24 +145,24 @@
     },
     "monthly": {
       "2026-07": {
-        "trades": 44,
-        "pnl": -17.69000000000001,
-        "wins": 23,
+        "trades": 45,
+        "pnl": -14.900000000000006,
+        "wins": 24,
         "losses": 19
       }
     }
   },
   "open": [
     {
-      "id": "HOT_USDT_1785243609",
-      "symbol": "HOT/USDT",
-      "entry": 0.000341,
-      "stop": 0.000329345,
-      "tp1": 0.000350655,
-      "tp2": 0.00036131,
+      "id": "STRAX_USDT_1785243608",
+      "symbol": "STRAX/USDT",
+      "entry": 0.00911,
+      "stop": 0.00854705,
+      "tp1": 0.00985295,
+      "tp2": 0.0105059,
       "tp3": null,
-      "limit_price": 0.00034,
-      "signal_price": 0.000354,
+      "limit_price": 0.0092,
+      "signal_price": 0.01006,
       "sig_type": "smc",
       "sub_type": "CHoCH",
       "source": "smc-v2",
@@ -170,28 +170,28 @@
       "candle": "",
       "funding_neg": false,
       "status": "open",
-      "open_time": "2026-07-28T16:00:09.986230+03:00",
+      "open_time": "2026-07-28T16:00:08.837900+03:00",
       "close_time": null,
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.000344,
-      "peak_pct": 0.88,
-      "low_price": 0.000339,
-      "low_pct": -0.59,
-      "current_price": 0.000342,
-      "current_pct": 0.29,
+      "peak_price": 0.00925,
+      "peak_pct": 1.54,
+      "low_price": 0.00859,
+      "low_pct": -5.71,
+      "current_price": 0.00881,
+      "current_pct": -3.29,
       "tp1_hit": false,
       "tp1_time": null,
-      "analyzer_decision": "✅ GİR",
-      "analyzer_time": "2026-07-28T16:00:22.335764+03:00",
-      "last_check": "2026-07-28T16:27:07.372966+03:00",
-      "checks": 3,
+      "analyzer_decision": "⚠️ DİKKAT",
+      "analyzer_time": "2026-07-28T16:00:14.114127+03:00",
+      "last_check": "2026-07-28T16:57:13.680874+03:00",
+      "checks": 5,
       "extra": {
         "tp3": null
       },
-      "fill_qty": 601344.0,
-      "fill_time": "2026-07-28T16:12:24.179578+03:00",
+      "fill_qty": 22433.0,
+      "fill_time": "2026-07-28T16:35:58.998119+03:00",
       "bot_miss_count": 0
     },
     {
@@ -218,16 +218,16 @@
       "close_pct": null,
       "peak_price": 0.445,
       "peak_pct": 0.91,
-      "low_price": 0.437,
-      "low_pct": -0.91,
-      "current_price": 0.44,
-      "current_pct": -0.23,
+      "low_price": 0.435,
+      "low_pct": -1.36,
+      "current_price": 0.437,
+      "current_pct": -0.91,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T16:27:07.372966+03:00",
-      "checks": 174,
+      "last_check": "2026-07-28T16:57:13.680874+03:00",
+      "checks": 180,
       "extra": {
         "tp3": null
       },
