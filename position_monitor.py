@@ -462,6 +462,105 @@ def _is_sl_filled(symbol: str, sl_order_id) -> bool:
         return False
 
 
+def _get_filled_order_info(symbol: str, order_id):
+    """Binance'ten emrin GERÇEK dolum bilgisini çeker — _is_sl_filled()'in
+    aksine sadece True/False değil, ortalama dolum fiyatını hesaplamaya
+    yetecek ham alanları (status/executedQty/cummulativeQuoteQty) döner.
+    _is_sl_filled() zaten aynı get_order() çağrısını yapıyordu ama sonucu
+    atıyordu — bu fonksiyon AYRI, bağımsız bir çağrı yapar (_is_sl_filled'e
+    dokunulmadı, davranışı hiç değişmedi).
+
+    Dönüş: dict {status, orderId, executedQty, cummulativeQuoteQty,
+    avg_fill_price} — avg_fill_price SADECE status=="FILLED" VE
+    executedQty>0 VE cummulativeQuoteQty>0 olduğunda dolu (float), aksi
+    halde None (çağıran taraf bunu "gerçek fill doğrulanamadı" olarak
+    yorumlamalı, sessizce başka bir değere düşmemeli). API hatasında da
+    None döner (sistem çökmez)."""
+    if not order_id or not ENABLED:
+        return None
+    try:
+        order = _get_client().get_order(symbol=symbol, orderId=order_id)
+    except Exception as e:
+        print(f"[MONITOR] Fill bilgisi alınamadı {symbol}: {e}", flush=True)
+        return None
+    status = order.get("status")
+    try:
+        executed_qty = float(order.get("executedQty", 0) or 0)
+    except (TypeError, ValueError):
+        executed_qty = 0.0
+    try:
+        cumm_quote = float(order.get("cummulativeQuoteQty", 0) or 0)
+    except (TypeError, ValueError):
+        cumm_quote = 0.0
+    avg_fill_price = None
+    if status == "FILLED" and executed_qty > 0 and cumm_quote > 0:
+        avg_fill_price = cumm_quote / executed_qty
+    return {
+        "status": status,
+        "orderId": order.get("orderId", order_id),
+        "executedQty": executed_qty,
+        "cummulativeQuoteQty": cumm_quote,
+        "avg_fill_price": avg_fill_price,
+    }
+
+
+def _finalize_binance_fill_close(sym: str, pos: dict, order_id, reason: str,
+                                  theoretical_price: float, emoji: str, label: str):
+    """Binance'te kendi kendine (bot bir market emri göndermeden) dolmuş bir
+    SL/trail SL emrini kapatır — periyodik reconciliation'da (_is_sl_filled
+    ile tespit edilir) kullanılır. ÖNCEDEN bu kapanışlar SADECE teorik
+    (stop/trail formülünden hesaplanan, "olması gereken") fiyatı
+    raporluyordu — gerçek Binance dolum fiyatını hiç sormuyordu. QIUSDT'de
+    bulunan hata tam buydu: teorik trail seviyesi entry'ye floor'lanmışken
+    gerçek emir fiyat gapleyip çok daha kötü bir seviyeden doldu, ama panel
+    "çıkış=entry, getiri=+0.00%" gösterdi.
+
+    Artık ÖNCE _get_filled_order_info ile GERÇEK ortalama dolum fiyatı
+    alınmaya çalışılır. Sadece bu gerçekten hesaplanamazsa (API'den beklenmedik
+    yanıt, eksik alan, network hatası vb.) teorik değere DÜŞÜLÜR — ve bu
+    düşüş payload'da (fill_verified=False, fill_source="theoretical_fallback")
+    AÇIKÇA işaretlenir, sessizce gerçekmiş gibi gösterilmez.
+
+    reason: "sl_binance" | "trail_binance". Dönüş: portfolio_tracker'a
+    gönderilen payload (test edilebilirlik için)."""
+    entry = float(pos.get("entry", 0) or 0)
+    info = _get_filled_order_info(sym, order_id)
+    if info and info.get("avg_fill_price") is not None:
+        close_price       = info["avg_fill_price"]
+        fill_verified      = True
+        fill_source        = "binance_order_avg"
+        executed_qty       = info.get("executedQty")
+        cummulative_quote  = info.get("cummulativeQuoteQty")
+        binance_order_id   = info.get("orderId", order_id)
+    else:
+        close_price        = theoretical_price
+        fill_verified       = False
+        fill_source         = "theoretical_fallback"
+        executed_qty        = None
+        cummulative_quote   = None
+        binance_order_id    = order_id
+    pct = round((close_price - entry) / entry * 100, 2) if entry else 0
+
+    _close_position_in_state(sym)
+    _stop_stream(sym)
+
+    verify_note = "" if fill_verified else "\n⚠️ Gerçek dolum fiyatı doğrulanamadı, teorik fiyat kullanıldı."
+    _send_telegram(
+        f"{emoji} <b>{label} — {sym}</b>\n"
+        f"Giriş: {entry:.6g} | Çıkış: {close_price:.6g} | P&L: {pct:+.2f}%{verify_note}"
+    )
+    payload = {
+        "symbol": sym, "reason": reason,
+        "close_price": close_price, "pnl_pct": pct,
+        "fill_verified": fill_verified, "fill_source": fill_source,
+        "binance_order_id": binance_order_id,
+        "executed_qty": executed_qty, "cummulative_quote_qty": cummulative_quote,
+    }
+    _notify_portfolio_with_retry("/api/position-closed", payload)
+    print(f"[MONITOR] {label}: {sym} | {pct:+.2f}% | fill_verified={fill_verified} ({fill_source})", flush=True)
+    return payload
+
+
 def _is_limit_filled(symbol: str, order_id) -> tuple[bool, float, float]:
     """Limit buy emri doldu mu? → (filled, fill_price, qty)"""
     if not order_id or not ENABLED:
@@ -1781,38 +1880,19 @@ def _periodic_check():
 
                     # SL fill kontrolü
                     if sl_order_id and _is_sl_filled(sym, sl_order_id):
-                        entry = float(pos.get("entry", 0))
-                        sl    = float(pos.get("stop", 0))
-                        pct   = round((sl - entry) / entry * 100, 2) if entry else 0
-                        _close_position_in_state(sym)
-                        _stop_stream(sym)
-                        _send_telegram(
-                            f"🔴 <b>SL TETİKLENDİ (Binance) — {sym}</b>\n"
-                            f"Giriş: {entry:.6g} | Stop: {sl:.6g} | P&L: {pct:+.2f}%"
-                        )
-                        _notify_portfolio_with_retry("/api/position-closed", {
-                            "symbol": sym, "reason": "sl_binance",
-                            "close_price": sl, "pnl_pct": pct,
-                        })
-                        print(f"[MONITOR] SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                        theoretical_sl = float(pos.get("stop", 0))
+                        _finalize_binance_fill_close(
+                            sym, pos, sl_order_id, "sl_binance", theoretical_sl,
+                            "🔴", "SL TETİKLENDİ (Binance)")
 
                     # Trail SL fill kontrolü — bot çöküp Binance trailing SL tetiklendiyse
                     elif trailing_sl_id and _is_sl_filled(sym, trailing_sl_id):
                         entry = float(pos.get("entry", 0))
                         peak  = float(pos.get("peak", 0))
-                        cl_price = round(_trail_stop_price(peak, pos.get("atr"), entry), 8)
-                        pct   = round((cl_price - entry) / entry * 100, 2) if entry else 0
-                        _close_position_in_state(sym)
-                        _stop_stream(sym)
-                        _send_telegram(
-                            f"🟡 <b>TRAIL SL TETİKLENDİ (Binance) — {sym}</b>\n"
-                            f"Giriş: {entry:.6g} | Trail stop: {cl_price:.6g} | P&L: {pct:+.2f}%"
-                        )
-                        _notify_portfolio_with_retry("/api/position-closed", {
-                            "symbol": sym, "reason": "trail_binance",
-                            "close_price": cl_price, "pnl_pct": pct,
-                        })
-                        print(f"[MONITOR] Trail SL doldu (Binance): {sym} | {pct:+.2f}%", flush=True)
+                        theoretical_trail = round(_trail_stop_price(peak, pos.get("atr"), entry), 8)
+                        _finalize_binance_fill_close(
+                            sym, pos, trailing_sl_id, "trail_binance", theoretical_trail,
+                            "🟡", "TRAIL SL TETİKLENDİ (Binance)")
 
                 except Exception as e:
                     print(f"[MONITOR] Periyodik SL/reconcile hatası {sym}: {e}", flush=True)
