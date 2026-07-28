@@ -1,31 +1,31 @@
 {
-  "updated_at": "2026-07-28 04:06:30",
+  "updated_at": "2026-07-28 04:36:33",
   "performance": {
     "total": 78,
-    "open": 2,
-    "closed": 39,
-    "wins": 21,
+    "open": 1,
+    "closed": 40,
+    "wins": 22,
     "win_tp2": 0,
     "losses": 18,
-    "expired": 16,
+    "expired": 17,
     "tp1_hits": 15,
-    "win_pnl": 40.34,
+    "win_pnl": 40.42,
     "loss_pnl": -58.13,
-    "expired_win": 6,
+    "expired_win": 7,
     "expired_loss": 10,
-    "total_pnl": -17.79,
+    "total_pnl": -17.71,
     "win_loss_pnl": -3.47,
-    "expired_pnl": -14.32,
-    "avg_peak": 2.33,
-    "win_rate": 53.8,
-    "real_win_rate": 53.8,
+    "expired_pnl": -14.24,
+    "avg_peak": 2.28,
+    "win_rate": 55.0,
+    "real_win_rate": 55.0,
     "analyzer": {
       "gir": {
-        "total": 1,
-        "wins": 0,
+        "total": 2,
+        "wins": 1,
         "losses": 1,
-        "pnl": -12.77,
-        "wr": 0.0
+        "pnl": -12.69,
+        "wr": 50.0
       },
       "dikkat": {
         "total": 14,
@@ -45,19 +45,19 @@
     "by_type": {
       "Legacy SMC": {
         "total": 41,
-        "open": 2,
-        "wins": 21,
+        "open": 1,
+        "wins": 22,
         "losses": 18,
-        "expired": 16,
+        "expired": 17,
         "tp1_hits": 15,
-        "total_pnl": -17.79,
+        "total_pnl": -17.71,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 53.8,
-        "avg_peak": 2.33,
+        "win_rate": 55.0,
+        "avg_peak": 2.28,
         "tp2_rate": 0,
-        "expired_pnl": -14.32,
+        "expired_pnl": -14.24,
         "win_loss_pnl": -3.47
       }
     },
@@ -70,8 +70,8 @@
       },
       "2026-07-27": {
         "trades": 4,
-        "pnl": -24.48,
-        "wins": 0,
+        "pnl": -24.400000000000002,
+        "wins": 1,
         "losses": 3
       },
       "2026-07-26": {
@@ -126,8 +126,8 @@
     "weekly": {
       "2026-W30": {
         "trades": 6,
-        "pnl": -24.169999999999998,
-        "wins": 1,
+        "pnl": -24.09,
+        "wins": 2,
         "losses": 3
       },
       "2026-W29": {
@@ -146,8 +146,8 @@
     "monthly": {
       "2026-07": {
         "trades": 41,
-        "pnl": -17.790000000000003,
-        "wins": 21,
+        "pnl": -17.710000000000004,
+        "wins": 22,
         "losses": 18
       }
     }
@@ -177,62 +177,21 @@
       "close_pct": null,
       "peak_price": 0.444,
       "peak_pct": 0.68,
-      "low_price": 0.439,
-      "low_pct": -0.45,
+      "low_price": 0.438,
+      "low_pct": -0.68,
       "current_price": 0.44,
       "current_pct": -0.23,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T04:05:52.313182+03:00",
-      "checks": 26,
+      "last_check": "2026-07-28T04:35:57.428107+03:00",
+      "checks": 32,
       "extra": {
         "tp3": null
       },
       "fill_qty": 382.9,
       "fill_time": "2026-07-28T01:58:09.616245+03:00",
-      "bot_miss_count": 0
-    },
-    {
-      "id": "AEUR_USDT_1785114001",
-      "symbol": "AEUR/USDT",
-      "entry": 1.1395000000000002,
-      "stop": 1.1374215698,
-      "tp1": 1.1417784302,
-      "tp2": 1.1439568604,
-      "tp3": null,
-      "limit_price": 1.1396,
-      "signal_price": 1.1397,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-27T04:00:01.926863+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 1.1416,
-      "peak_pct": 0.18,
-      "low_price": 1.1395,
-      "low_pct": -0.0,
-      "current_price": 1.1407,
-      "current_pct": 0.11,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "✅ GİR",
-      "analyzer_time": "2026-07-27T04:00:09.765322+03:00",
-      "last_check": "2026-07-28T04:05:52.313182+03:00",
-      "checks": 287,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 161.1,
-      "fill_time": "2026-07-27T04:23:01.184709+03:00",
       "bot_miss_count": 0
     }
   ],
