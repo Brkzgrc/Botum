@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-28 13:57:37",
+  "updated_at": "2026-07-28 14:27:40",
   "performance": {
     "total": 80,
     "open": 1,
@@ -185,8 +185,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T13:56:47.253666+03:00",
-      "checks": 144,
+      "last_check": "2026-07-28T14:26:51.047276+03:00",
+      "checks": 150,
       "extra": {
         "tp3": null
       },
