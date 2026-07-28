@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-07-28 12:27:28",
+  "updated_at": "2026-07-28 12:57:31",
   "performance": {
     "total": 80,
-    "open": 2,
-    "closed": 41,
-    "wins": 22,
+    "open": 1,
+    "closed": 42,
+    "wins": 23,
     "win_tp2": 0,
     "losses": 19,
     "expired": 17,
-    "tp1_hits": 16,
-    "win_pnl": 40.42,
+    "tp1_hits": 17,
+    "win_pnl": 40.44,
     "loss_pnl": -58.13,
     "expired_win": 7,
     "expired_loss": 10,
-    "total_pnl": -17.71,
-    "win_loss_pnl": -3.47,
+    "total_pnl": -17.69,
+    "win_loss_pnl": -3.45,
     "expired_pnl": -14.24,
-    "avg_peak": 2.25,
-    "win_rate": 53.7,
-    "real_win_rate": 53.7,
+    "avg_peak": 2.23,
+    "win_rate": 54.8,
+    "real_win_rate": 54.8,
     "analyzer": {
       "gir": {
         "total": 3,
@@ -28,11 +28,11 @@
         "wr": 33.3
       },
       "dikkat": {
-        "total": 14,
-        "wins": 9,
+        "total": 15,
+        "wins": 10,
         "losses": 5,
-        "pnl": -7.56,
-        "wr": 64.3
+        "pnl": -7.54,
+        "wr": 66.7
       },
       "riskli": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "Legacy SMC": {
         "total": 43,
-        "open": 2,
-        "wins": 22,
+        "open": 1,
+        "wins": 23,
         "losses": 19,
         "expired": 17,
-        "tp1_hits": 16,
-        "total_pnl": -17.71,
+        "tp1_hits": 17,
+        "total_pnl": -17.69,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 53.7,
-        "avg_peak": 2.25,
+        "win_rate": 54.8,
+        "avg_peak": 2.23,
         "tp2_rate": 0,
         "expired_pnl": -14.24,
-        "win_loss_pnl": -3.47
+        "win_loss_pnl": -3.45
       }
     },
     "daily": {
       "2026-07-28": {
         "trades": 4,
-        "pnl": 0.31,
-        "wins": 1,
+        "pnl": 0.33,
+        "wins": 2,
         "losses": 1
       },
       "2026-07-27": {
@@ -126,8 +126,8 @@
     "weekly": {
       "2026-W30": {
         "trades": 8,
-        "pnl": -24.09,
-        "wins": 2,
+        "pnl": -24.070000000000004,
+        "wins": 3,
         "losses": 4
       },
       "2026-W29": {
@@ -146,54 +146,13 @@
     "monthly": {
       "2026-07": {
         "trades": 43,
-        "pnl": -17.710000000000004,
-        "wins": 22,
+        "pnl": -17.69000000000001,
+        "wins": 23,
         "losses": 19
       }
     }
   },
   "open": [
-    {
-      "id": "FORM_USDT_1785225603",
-      "symbol": "FORM/USDT",
-      "entry": 0.2001,
-      "stop": 0.1915824994,
-      "tp1": 0.2086175006,
-      "tp2": 0.2171350012,
-      "tp3": null,
-      "limit_price": 0.2001,
-      "signal_price": 0.2003,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-28T11:00:03.904325+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.2001,
-      "peak_pct": 0.0,
-      "low_price": 0.1964,
-      "low_pct": -1.85,
-      "current_price": 0.1989,
-      "current_pct": -0.6,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "⚠️ DİKKAT",
-      "analyzer_time": "2026-07-28T11:00:10.345656+03:00",
-      "last_check": "2026-07-28T12:26:33.896977+03:00",
-      "checks": 17,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 1024.7,
-      "fill_time": "2026-07-28T11:02:30.048479+03:00",
-      "bot_miss_count": 0
-    },
     {
       "id": "RUNE_USDT_1785189602",
       "symbol": "RUNE/USDT",
@@ -216,18 +175,18 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.444,
-      "peak_pct": 0.68,
+      "peak_price": 0.445,
+      "peak_pct": 0.91,
       "low_price": 0.437,
       "low_pct": -0.91,
-      "current_price": 0.441,
-      "current_pct": -0.0,
+      "current_price": 0.444,
+      "current_pct": 0.68,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T12:26:33.896977+03:00",
-      "checks": 126,
+      "last_check": "2026-07-28T12:56:40.011850+03:00",
+      "checks": 132,
       "extra": {
         "tp3": null
       },
