@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-28 09:37:04",
+  "updated_at": "2026-07-28 10:07:06",
   "performance": {
-    "total": 78,
+    "total": 79,
     "open": 1,
     "closed": 40,
     "wins": 22,
@@ -179,14 +179,14 @@
       "peak_pct": 0.68,
       "low_price": 0.437,
       "low_pct": -0.91,
-      "current_price": 0.437,
-      "current_pct": -0.91,
+      "current_price": 0.439,
+      "current_pct": -0.45,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T09:36:32.269949+03:00",
-      "checks": 92,
+      "last_check": "2026-07-28T10:06:35.691100+03:00",
+      "checks": 98,
       "extra": {
         "tp3": null
       },
