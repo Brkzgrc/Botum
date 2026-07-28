@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-28 23:58:41",
+  "updated_at": "2026-07-29 00:28:44",
   "performance": {
     "total": 86,
     "open": 2,
@@ -179,14 +179,14 @@
       "peak_pct": 0.18,
       "low_price": 0.0513,
       "low_pct": -8.23,
-      "current_price": 0.0528,
-      "current_pct": -5.55,
+      "current_price": 0.0531,
+      "current_pct": -5.01,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T19:00:13.455970+03:00",
-      "last_check": "2026-07-28T23:53:56.500831+03:00",
-      "checks": 57,
+      "last_check": "2026-07-29T00:24:02.516873+03:00",
+      "checks": 63,
       "extra": {
         "tp3": null
       },
@@ -226,8 +226,8 @@
       "tp1_time": null,
       "analyzer_decision": "✅ GİR",
       "analyzer_time": "2026-07-28T01:00:13.407917+03:00",
-      "last_check": "2026-07-28T23:53:56.500831+03:00",
-      "checks": 263,
+      "last_check": "2026-07-29T00:24:02.516873+03:00",
+      "checks": 269,
       "extra": {
         "tp3": null
       },
