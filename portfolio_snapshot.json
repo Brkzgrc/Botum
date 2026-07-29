@@ -1,14 +1,14 @@
 {
-  "updated_at": "2026-07-29 04:29:09",
+  "updated_at": "2026-07-29 04:59:12",
   "performance": {
     "total": 88,
-    "open": 1,
-    "closed": 46,
+    "open": 0,
+    "closed": 47,
     "wins": 26,
     "win_tp2": 0,
-    "losses": 20,
+    "losses": 21,
     "expired": 17,
-    "tp1_hits": 20,
+    "tp1_hits": 21,
     "win_pnl": 44.82,
     "loss_pnl": -64.48,
     "expired_win": 7,
@@ -16,16 +16,16 @@
     "total_pnl": -19.66,
     "win_loss_pnl": -5.42,
     "expired_pnl": -14.24,
-    "avg_peak": 2.19,
-    "win_rate": 56.5,
-    "real_win_rate": 56.5,
+    "avg_peak": 2.18,
+    "win_rate": 55.3,
+    "real_win_rate": 55.3,
     "analyzer": {
       "gir": {
-        "total": 6,
+        "total": 7,
         "wins": 4,
-        "losses": 2,
+        "losses": 3,
         "pnl": -8.31,
-        "wr": 66.7
+        "wr": 57.1
       },
       "dikkat": {
         "total": 16,
@@ -45,17 +45,17 @@
     "by_type": {
       "Legacy SMC": {
         "total": 47,
-        "open": 1,
+        "open": 0,
         "wins": 26,
-        "losses": 20,
+        "losses": 21,
         "expired": 17,
-        "tp1_hits": 20,
+        "tp1_hits": 21,
         "total_pnl": -19.66,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 56.5,
-        "avg_peak": 2.19,
+        "win_rate": 55.3,
+        "avg_peak": 2.18,
         "tp2_rate": 0,
         "expired_pnl": -14.24,
         "win_loss_pnl": -5.42
@@ -66,7 +66,7 @@
         "trades": 8,
         "pnl": -1.6399999999999997,
         "wins": 5,
-        "losses": 2
+        "losses": 3
       },
       "2026-07-27": {
         "trades": 4,
@@ -128,7 +128,7 @@
         "trades": 12,
         "pnl": -26.040000000000003,
         "wins": 6,
-        "losses": 5
+        "losses": 6
       },
       "2026-W29": {
         "trades": 34,
@@ -148,53 +148,11 @@
         "trades": 47,
         "pnl": -19.66000000000001,
         "wins": 26,
-        "losses": 20
+        "losses": 21
       }
     }
   },
-  "open": [
-    {
-      "id": "REQ_USDT_1785254405",
-      "symbol": "REQ/USDT",
-      "entry": 0.0559,
-      "stop": 0.0488231396,
-      "tp1": 0.0627768604,
-      "tp2": 0.0697537208,
-      "tp3": null,
-      "limit_price": 0.0558,
-      "signal_price": 0.0571,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-07-28T19:00:05.536804+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.056,
-      "peak_pct": 0.18,
-      "low_price": 0.0513,
-      "low_pct": -8.23,
-      "current_price": 0.0527,
-      "current_pct": -5.72,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": "✅ GİR",
-      "analyzer_time": "2026-07-28T19:00:13.455970+03:00",
-      "last_check": "2026-07-29T04:24:36.144120+03:00",
-      "checks": 111,
-      "extra": {
-        "tp3": null
-      },
-      "fill_qty": 3704.0,
-      "fill_time": "2026-07-28T19:10:22.257936+03:00",
-      "bot_miss_count": 0
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "id": "ATM_USDT_1784984405",
