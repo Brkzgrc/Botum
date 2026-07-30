@@ -293,6 +293,43 @@ Not: Bot servisi suspend iken portfolio_tracker kendi döngüsüyle
 
 **Bulunan hata (2026-07-22, düzeltildi):** `_portfolio_context()`'teki (2026-07-20) aynı sınıf hata, `portfolio_tracker.py`'nin KENDİ dashboard istatistik/gösterim fonksiyonlarında (`calc_performance()`, `status_badge()`) tekrar bulundu — trading bot'un `/api/position-closed` webhook'undan gelen `status="closed"` + `outcome`/`close_reason`/`close_pct` şeması hiç tanınmıyordu, pozisyon kapanıp "closed" toplamına giriyordu ama Win/Loss/Expired sayaçlarına hiç yansımıyordu, kapalı işlem tablosunda da düz gri "CLOSED" rozeti görünüyordu (eskiden renkli WIN/LOSS/EXPIRED yazardı). Ortak bir `classify_signal_outcome(sig)` fonksiyonuna çıkarılıp her iki yerde de kullanıldı. Tasarım: `kind` (win/loss/manual) ve `is_expired` (süre dolarak mı kapandı) birbirinden bağımsız — bir işlem hem "win" hem "expired sebebiyle kapandı" olabilir (kullanıcı talebi: kazançla kapanan expire işlemi de Win sayılmalı). **Expired, Win/Loss'tan ayrı bir sebep kırılımıdır; toplam closed hesabına ayrıca eklenmez** (Win+Loss=closed, Expired bunların bir alt-kümesini işaretleyen üst üste binen bir etiket). Codex ile bağımsız incelemeyle doğrulandı, blocking bulgu çıkmadı. Trading-bot/SMC.py/trade_state.json'a dokunulmadı, sadece dashboard'un salt-okunur istatistik/gösterim katmanı.
 
+## "Dipten Güçlü Yükseliş" Sinyal Araştırması (2026-07-30, ÖLÇÜLDÜ VE REDDEDİLDİ)
+
+**Soru:** Kullanıcının TradingView'de gözlemlediği 5 örnek (COTI, DEXE, XNO, RIF, VANRY —
+dipten sert yükselişe geçen coinler) ortak bir gösterge deseni mi taşıyor, bu bağımsız bir
+kâr amaçlı sinyal sistemine dönüştürülebilir mi? Hedef: $5.000 sermayeyle ayda $500-1.000
+(~%10-20/ay) getiri.
+
+**Yöntem:** Local session (MCP-Jackson) — Binance SPOT 1H verisiyle (2026-05-01 → 2026-07-30,
+90 gün), 6 coin evreni (L1, L1+L2, TOP10, TOP50, ALL_USDT, NON_L1L2) ve 8 sinyal tanımı
+(osilatör ailesi: RSI<20, RSI+WR, StochRSI, BB Reversal; yapısal/hacim ailesi: SwingLow+Vol,
+OBV Diverjans, Morning Star, RSI+SwingLow) üzerinde toplam 192 kombinasyon test edildi.
+Referans 5 coin istatistiklerden dışlandı (overfitting kontrolü), sinyaller önceden
+sabitlendi, entry = sinyal barından sonraki barın açılışı (look-ahead yok).
+
+**1. tur (v2) — sahte pozitif:** Osilatör sinyalleri her evrende negatif çıktı. Tek pozitif
+görünen sonuç, L1 evreni × S4_SwingLow+Vol sinyali, 3%/8% stop/target ile n=132, WR=%46.2,
++$57/ay idi. Doğrulama turunda bu sonucun bir veri indirme bug'ına dayandığı bulundu:
+Binance SPOT API tek çağrıda max 1000 bar döndürüyor, script `limit=1500` bekleyip `<1500`
+ise durduğundan gerçekte ~41 günlük veri (90 gün sanılarak) indirmiş, sonuçlar buna göre
+2.1× hatalı ölçeklenmişti.
+
+**2. tur — düzeltilmiş veriyle train/holdout:** Doğru 90 günlük veriyle 60/30 gün train/holdout
+ayrımı yapıldı. L1×S4_SwingLow+Vol, denenen 4 param kombinasyonunun TAMAMINDA hem train hem
+holdout'ta negatif expectancy verdi (holdout en iyisi: $/ay=-628, E_net=-0.004). Diğer 7
+sinyal/6 evren kombinasyonu (zaten negatif çıkmıştı) düzeltilmiş veriyle yeniden koşulmadı —
+düşük öncelik, negatiften pozitife dönme ihtimali düşük.
+
+**Karar:** İki sinyal ailesi de (osilatör bazlı aşırı-satım dönüşü, yapısal swing-low+hacim
+kırılımı) 6 evrende, düzgün train/holdout metodolojisiyle rigor'la test edilip reddedildi.
+Canlı sisteme hiçbir değişiklik yapılmadı — bu tamamen ayrı, bağımsız bir araştırmaydı, SMC.py/
+position_monitor.py/trading_engine.py'a dokunulmadı. Ham JSON çıktıları local'de kaldı, repoya
+gitmedi (proje kuralı). Tekrar gündeme gelirse: rastgele yeni gösterge denemek yerine gerçekten
+farklı bir bilgi kaynağından (orderbook/likidite, piyasa geneli korelasyon/rejim, ya da mevcut
+CHoCH sisteminin kendi sinyallerini filtreleme/geliştirme) somut, gerekçeli tek bir yeni
+hipotezle başlanmalı — 192 kombinasyonluk "şans eseri pozitif çıkan var mı" taramaları,
+tam da bu turda yakalanan sahte pozitif riskini taşıyor.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
