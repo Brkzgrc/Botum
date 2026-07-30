@@ -1,7 +1,7 @@
 {
-  "updated_at": "2026-07-30 15:32:48",
+  "updated_at": "2026-07-30 16:02:53",
   "performance": {
-    "total": 96,
+    "total": 97,
     "open": 0,
     "closed": 47,
     "wins": 26,
@@ -154,44 +154,6 @@
   },
   "open": [],
   "closed": [
-    {
-      "id": "ATM_USDT_1784984405",
-      "symbol": "ATM/USDT",
-      "entry": 1.695,
-      "stop": 1.646725,
-      "tp1": 1.743275,
-      "tp2": 1.79155,
-      "tp3": null,
-      "limit_price": 1.695,
-      "signal_price": 2.039,
-      "sig_type": "smc",
-      "sub_type": "CHoCH",
-      "source": "smc-v2",
-      "phase": "choch_v2",
-      "candle": "",
-      "funding_neg": false,
-      "status": "no_retest",
-      "open_time": "2026-07-25T16:00:05.225854+03:00",
-      "close_time": "2026-07-27T16:00:32.567218+03:00",
-      "close_price": null,
-      "close_reason": "no_retest",
-      "close_pct": null,
-      "peak_price": 1.695,
-      "peak_pct": 0.0,
-      "low_price": 1.695,
-      "low_pct": 0.0,
-      "current_price": 1.695,
-      "current_pct": 0.0,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-07-25T16:00:05.225854+03:00",
-      "checks": 0,
-      "extra": {
-        "tp3": null
-      }
-    },
     {
       "id": "STG_USDT_1784977203",
       "symbol": "STG/USDT",
@@ -2184,6 +2146,25 @@
       "current_pct": 0.0,
       "close_time": "2026-07-21T05:37:13.577055+03:00",
       "close_reason": "no_retest"
+    },
+    {
+      "id": "sync_AEURUSDT_2026-07-30",
+      "symbol": "AEUR/USDT",
+      "source": "smc-v2",
+      "sig_type": "choch",
+      "status": "pending_retest",
+      "signal_price": 1.1415,
+      "entry": 1.1415,
+      "limit_price": 1.1415,
+      "stop": 1.1401,
+      "tp1": 1.1426,
+      "open_time": "2026-07-28T13:00:03.315293+00:00",
+      "peak_price": 1.1415,
+      "low_price": 1.1415,
+      "current_price": 1.1415,
+      "peak_pct": 0.0,
+      "low_pct": 0.0,
+      "current_pct": 0.0
     }
   ]
 }
