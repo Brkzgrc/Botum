@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ symbol }} — Sonuç</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#0d1117; color:#e6edf3;
+         max-width:520px; margin:0 auto; padding:20px; }
+  h1 { font-size:1.4rem; }
+  h2 { font-size:1rem; margin:0 0 8px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; margin-bottom:12px; }
+  .label { color:#8b949e; font-size:0.85rem; }
+  .value { font-size:1.2rem; font-weight:bold; margin-top:2px; }
+  .veto { border-color:#f85149; }
+  .veto .label { color:#f85149; }
+  .pos { color:#3fb950; }
+  .neg { color:#f85149; }
+  ul { margin:4px 0 0 18px; padding:0; }
+  li { margin-bottom:3px; }
+  a { color:#58a6ff; text-decoration:none; }
+  .navrow { display:flex; gap:12px; margin-bottom:14px; font-size:0.9rem; }
+  .stage-row { padding:8px 0; border-top:1px solid #21262d; }
+  .stage-row:first-child { border-top:none; }
+  .stage-title { display:flex; justify-content:space-between; font-size:0.9rem; }
+  .bar-bg { background:#21262d; border-radius:4px; height:6px; margin-top:6px; overflow:hidden; }
+  .bar-fill { background:#58a6ff; height:100%; }
+  details { margin-top:6px; }
+  summary { cursor:pointer; color:#58a6ff; font-size:0.85rem; }
+  .factor-row { display:flex; justify-content:space-between; gap:8px; padding:4px 0; font-size:0.85rem;
+                border-top:1px solid #21262d; }
+  .factor-row:first-child { border-top:none; }
+  .fq { color:#c9d1d9; flex:1; }
+  .fa-yes { color:#3fb950; }
+  .fa-wait { color:#d29922; }
+  .fa-no { color:#f85149; }
+  .fa-nodata { color:#8b949e; }
+  .fv { color:#8b949e; font-size:0.78rem; }
+  button, .btn { width:100%; box-sizing:border-box; padding:12px; font-size:1rem; border-radius:8px;
+                 border:1px solid #30363d; background:#161b22; color:#e6edf3; cursor:pointer; text-align:center;
+                 display:block; margin-top:8px; }
+  .btn-primary { background:#238636; border:none; font-weight:bold; }
+  .saved-msg { color:#3fb950; font-size:0.9rem; margin-top:8px; }
+</style>
+</head>
+<body>
+  <div class="navrow"><a href="/">← Yeni analiz</a> <a href="/history">Geçmiş →</a></div>
+  <h1>{{ symbol }}</h1>
+
+  <div class="card">
+    <div class="label">Sinyal Gücü</div>
+    <div class="value">{{ "%.1f"|format(report.signal_score) }}%</div>
+    <div class="label">Güven: {{ report.confidence }}</div>
+  </div>
+
+  <div class="card">
+    <div class="label">İşlem Uygunluğu</div>
+    {% if report.risk_score is none or not report.risk_reliable %}
+      <div class="value">Yetersiz veri</div>
+      <div class="label">Risk kapsamı: %{{ "%.1f"|format(report.risk_coverage or 0) }} ·
+        Bağımsız risk boyutu: {{ report.risk_breadth }} ·
+        Güvenilirlik: {{ "Yeterli" if report.risk_reliable else "Sınırlı" }}</div>
+    {% else %}
+      <div class="value">{{ "%.1f"|format(report.risk_score) }}%</div>
+      <div class="label">Risk kapsamı: %{{ "%.1f"|format(report.risk_coverage or 0) }} ·
+        Bağımsız risk boyutu: {{ report.risk_breadth }}</div>
+    {% endif %}
+  </div>
+
+  <div class="card {{ 'veto' if report.vetos else '' }}">
+    {% if report.restricted_candidate %}
+      <div class="label">MOTOR KARARI</div>
+      <div class="value">{{ report.verdict_title }}</div>
+      <div class="label" style="margin-top:8px;">POLİTİKA DURUMU</div>
+      <div class="value">{{ model_d_label }}</div>
+      <div class="label" style="margin-top:8px;">{{ model_d_explanation }}</div>
+    {% else %}
+      <div class="label">KARAR</div>
+      <div class="value">{{ report.verdict_title }}</div>
+    {% endif %}
+    <div class="label" style="margin-top:8px;">{{ report.verdict_desc }}</div>
+    <div class="label" style="margin-top:8px;">Durum: {{ report.entry_status }}</div>
+    {% if report.vetos %}
+      <div class="label" style="margin-top:8px; color:#f85149;">VETO SEBEPLERİ</div>
+      <ul>{% for v in report.vetos %}<li>{{ v }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="label">Giriş Uygunluğu</div>
+    {% if report.entry_timing_score is none %}
+      <div class="value">Hesaplanamadı</div>
+    {% else %}
+      <div class="value">{{ report.entry_timing }} ({{ "%.1f"|format(report.entry_timing_score) }})</div>
+      <div class="label">{{ report.entry_timing_answered }}/{{ report.entry_timing_total }} veri ·
+        R:R skora dahil değil</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="label">Genel Kapsam</div>
+    <div class="value">{{ "%.1f"|format(report.coverage) }}%</div>
+    <div class="label">✓ {{ auto_count }} otomatik · 👤 {{ manual_count }} manuel ·
+      ⚠ {{ report.counts.nodata }} veri yok</div>
+  </div>
+
+  {% if pros or cons %}
+  <div class="card">
+    <h2>🎯 Sinyal Gücü Etkenleri</h2>
+    {% if pros %}
+      <div class="label pos">✓ DESTEKLEYENLER</div>
+      <ul>{% for text, w in pros %}<li>{{ text }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if cons %}
+      <div class="label neg" style="margin-top:8px;">↓ BASKILAYANLAR</div>
+      <ul>{% for text, w in cons %}<li>{{ text }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>📊 Aşama Dökümü</h2>
+    {% for s in stage_rows %}
+    <div class="stage-row">
+      <div class="stage-title">
+        <span>{{ s.title }}{{ " [İşlem Uygunluğu]" if s.is_risk else "" }}</span>
+        <span>{{ s.answered }}/{{ s.total }} · {{ "%.1f"|format(s.score) }}%</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" style="width:{{ s.score }}%;"></div></div>
+      <details>
+        <summary>Detay</summary>
+        {% for a in factors_by_stage.get(s.title, []) %}
+        <div class="factor-row">
+          <span class="fq">{{ a.question }}</span>
+          <span class="fa-{{ a.answer }}">{{ a.answer }}</span>
+        </div>
+        {% if a.value is not none %}
+          <div class="fv">Değer: {{ a.value }}{% if a.source %} · Kaynak: {{ a.source }}{% endif %}</div>
+        {% elif a.answer == "nodata" and a.reason %}
+          <div class="fv">{{ a.reason }}</div>
+        {% endif %}
+        {% endfor %}
+      </details>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if saved_message %}
+    <div class="saved-msg">{{ saved_message }}</div>
+  {% elif token %}
+    <form method="post" action="/save">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button type="submit" class="btn-primary">💾 Geçmişe Kaydet</button>
+    </form>
+  {% endif %}
+
+  <a href="/" class="btn">← Yeni analiz</a>
+</body>
+</html>

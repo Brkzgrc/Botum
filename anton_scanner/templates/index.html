@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kripto Sinyal — Level 1</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#0d1117; color:#e6edf3;
+         max-width:480px; margin:0 auto; padding:20px; }
+  h1 { font-size:1.3rem; }
+  select, button, input { width:100%; box-sizing:border-box; padding:12px; font-size:1rem; margin-top:10px;
+                           border-radius:8px; border:1px solid #30363d; background:#161b22; color:#e6edf3; }
+  button { background:#238636; border:none; font-weight:bold; cursor:pointer; }
+  .error { color:#f85149; margin-top:10px; }
+  .hint { color:#8b949e; font-size:0.8rem; margin-top:4px; }
+  .navrow { font-size:0.9rem; }
+  .navrow a { color:#58a6ff; text-decoration:none; }
+</style>
+</head>
+<body>
+  <div class="navrow"><a href="/history">🕘 Geçmiş →</a></div>
+  <h1>🧮 Anton Scanner — Level 1 (Mobil)</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/analyze">
+    <select name="symbol">
+      {% for c in coins %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+    </select>
+    <div class="hint">Validation universe listesi. Farklı bir Binance USDT paritesi için doğrudan yaz.</div>
+    <input type="text" name="symbol_custom" placeholder="veya sembol yaz (ör. NEAR)">
+    <button type="submit">Analiz Et</button>
+  </form>
+</body>
+</html>

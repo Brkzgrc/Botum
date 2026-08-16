@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geçmiş</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#0d1117; color:#e6edf3;
+         max-width:520px; margin:0 auto; padding:20px; }
+  h1 { font-size:1.4rem; }
+  .navrow { display:flex; gap:12px; margin-bottom:14px; font-size:0.9rem; }
+  a { color:#58a6ff; text-decoration:none; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:12px; margin-bottom:10px;
+          display:block; }
+  .card.veto { border-color:#f85149; }
+  .row1 { display:flex; justify-content:space-between; font-weight:bold; }
+  .label { color:#8b949e; font-size:0.8rem; margin-top:4px; }
+  .empty { color:#8b949e; margin-top:20px; }
+  button { width:100%; box-sizing:border-box; padding:12px; font-size:1rem; border-radius:8px;
+           border:1px solid #30363d; background:#161b22; color:#e6edf3; cursor:pointer; margin-bottom:14px; }
+  .error { color:#f85149; }
+</style>
+</head>
+<body>
+  <div class="navrow"><a href="/">← Yeni analiz</a></div>
+  <h1>🕘 Geçmiş Analizler</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+
+  <form method="post" action="/history/update-tracking">
+    <button type="submit">📊 Fiyatları Güncelle</button>
+  </form>
+
+  {% if not items %}
+    <p class="empty">Henüz kayıt yok.</p>
+  {% endif %}
+  {% for it in items %}
+  <a class="card {{ 'veto' if it.veto else '' }}" href="/history/{{ it.id }}">
+    <div class="row1"><span>{{ it.symbol }}</span><span>{{ "%.1f"|format(it.signal_score) }}%</span></div>
+    <div class="label">{{ it.time }} · {{ it.level }}</div>
+    <div class="label">{{ it.verdict_display }}</div>
+    <div class="label">Risk: {{ it.risk_display }} · Kapsam: %{{ "%.0f"|format(it.coverage) }}
+      {% if it.veto %} · ⚠ VETO{% endif %}</div>
+    {% if it.tracking_24h %}
+      <div class="label">24s: {{ "%+.1f"|format(it.tracking_24h.close_return_pct) if it.tracking_24h.close_return_pct is not none else "—" }}%</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</body>
+</html>

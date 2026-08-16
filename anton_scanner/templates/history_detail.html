@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ row.symbol }} — Detay</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#0d1117; color:#e6edf3;
+         max-width:520px; margin:0 auto; padding:20px; }
+  h1 { font-size:1.4rem; }
+  .navrow { display:flex; gap:12px; margin-bottom:14px; font-size:0.9rem; }
+  a { color:#58a6ff; text-decoration:none; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; margin-bottom:12px; }
+  .label { color:#8b949e; font-size:0.85rem; }
+  .value { font-size:1.2rem; font-weight:bold; margin-top:2px; }
+  ul { margin:4px 0 0 18px; padding:0; }
+  .stage-row { display:flex; justify-content:space-between; padding:4px 0; font-size:0.85rem;
+               border-top:1px solid #21262d; }
+  .stage-row:first-child { border-top:none; }
+  .factor-row { padding:3px 0; font-size:0.85rem; border-top:1px solid #21262d; }
+  .factor-row:first-child { border-top:none; }
+  .fa-yes { color:#3fb950; }
+  .fa-wait { color:#d29922; }
+  .fa-no { color:#f85149; }
+  .fa-nodata { color:#8b949e; }
+  .stage-group { margin-top:10px; }
+  .stage-group h3 { font-size:0.85rem; color:#8b949e; margin:0 0 4px; }
+  .track-row { display:flex; justify-content:space-between; font-size:0.85rem; padding:3px 0; }
+</style>
+</head>
+<body>
+  <div class="navrow"><a href="/history">← Geçmiş</a> <a href="/">Yeni analiz →</a></div>
+  <h1>{{ row.symbol }} <span class="label">#{{ row.id }}</span></h1>
+  <p class="label">{{ row.analysis_time }} · {{ row.level }} · {{ row.data_source }}</p>
+
+  <div class="card">
+    <div class="label">Sinyal Gücü</div>
+    <div class="value">{{ "%.1f"|format(row.signal_score) }}%</div>
+    <div class="label" style="margin-top:8px;">İşlem Uygunluğu</div>
+    {% if row.risk_score is none or not risk_reliable %}
+      <div class="value">Yetersiz veri</div>
+    {% else %}
+      <div class="value">{{ "%.1f"|format(row.risk_score) }}%</div>
+    {% endif %}
+    <div class="label" style="margin-top:8px;">Güven: {{ row.confidence }} · Kapsam: %{{ "%.0f"|format(row.coverage) }}</div>
+  </div>
+
+  <div class="card">
+    {% if is_model_d %}
+      <div class="label">Motor Kararı</div>
+      <div class="value">{{ row.verdict }}</div>
+      <div class="label" style="margin-top:8px;">Politika Durumu</div>
+      <div class="value">{{ model_d_label }}</div>
+    {% else %}
+      <div class="label">Karar</div>
+      <div class="value">{{ row.verdict }}</div>
+    {% endif %}
+    <div class="label" style="margin-top:8px;">Durum: {{ row.entry_status }}</div>
+    {% if vetos %}
+      <div class="label" style="margin-top:8px; color:#f85149;">VETO</div>
+      <ul>{% for v in vetos %}<li>{{ v }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  {% if row.entry_timing_score is not none %}
+  <div class="card">
+    <div class="label">Giriş Uygunluğu</div>
+    <div class="value">{{ row.entry_timing }} ({{ "%.1f"|format(row.entry_timing_score) }})</div>
+    <div class="label">{{ row.entry_timing_answered }}/{{ row.entry_timing_total }} veri</div>
+  </div>
+  {% endif %}
+
+  {% if tracking_rows %}
+  <div class="card">
+    <div class="label" style="margin-bottom:6px;">Tracking</div>
+    {% for t in tracking_rows %}
+    <div class="track-row">
+      <span>{{ t.horizon_hours }}s</span>
+      <span>{{ "%+.1f"|format(t.close_return_pct) if t.close_return_pct is not none else "—" }}%
+        (MFE {{ "%+.1f"|format(t.mfe_pct) if t.mfe_pct is not none else "—" }}% ·
+        MAE {{ "%+.1f"|format(t.mae_pct) if t.mae_pct is not none else "—" }}%)</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="label" style="margin-bottom:6px;">Aşama Skorları</div>
+    {% for title, score in stage_scores.items() %}
+    <div class="stage-row"><span>{{ title }}</span><span>{{ "%.1f"|format(score) }}%</span></div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="label" style="margin-bottom:6px;">Cevaplar</div>
+    {% for stage, answers in answers_by_stage.items() %}
+    <div class="stage-group">
+      <h3>{{ stage }}</h3>
+      {% for a in answers %}
+      <div class="factor-row"><span class="fa-{{ a.answer }}">●</span> {{ a.question }}</div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    {% if disabled_answers %}
+    <div class="stage-group">
+      <h3>Devre dışı / analize dahil edilmedi</h3>
+      {% for a in disabled_answers %}
+      <div class="factor-row">⊘ {{ a.question }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</body>
+</html>
