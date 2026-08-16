@@ -25,6 +25,7 @@ görülmeden queue/polling altyapısı EKLENMEDİ (kasıtlı, talimat gereği).
 import importlib.util
 import os
 import sys
+from importlib.machinery import SourceFileLoader
 
 from flask import Flask, render_template, request
 
@@ -33,13 +34,21 @@ _PROD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 def _load_kss_module():
-    """Production .pyw'yi Qt penceresi açmadan modül olarak yükler -- bu
-    oturumdaki 273 permanent testin tamamının kullandığı AYNI teknik
-    (importlib.util.spec_from_file_location). main()'in yalnız
-    `if __name__ == "__main__":` altında çağrıldığı doğrulanmıştı (Final
-    Report, madde 1) -- bu yüzden import hiçbir QApplication/pencere
-    oluşturmaz."""
-    spec = importlib.util.spec_from_file_location("kss", _PROD_FILE)
+    """Production .pyw'yi Qt penceresi açmadan modül olarak yükler.
+
+    RENDER DEPLOY FIX (onaylı, gerçek crash -- freeze policy madde 1'e göre
+    development yeniden açıldı): `.pyw` uzantısı CPython'ın kendi
+    importlib._bootstrap_external.SOURCE_SUFFIXES listesine YALNIZ Windows'ta
+    ekleniyor (`sys.platform.startswith('win')` koşuluyla). Bu yüzden
+    `spec_from_file_location(name, path)` -- loader argümanı VERİLMEDEN --
+    Linux'ta (Render) uzantıdan loader çıkaramayıp `None` döner, bu da
+    `module_from_spec(None)` -> `AttributeError: 'NoneType' object has no
+    attribute 'loader'` ile production'da GERÇEKTEN çöktü (Render deploy
+    logu, doğrulandı). Fix: loader'ı AÇIKÇA `SourceFileLoader` olarak
+    veriyoruz -- uzantıdan bağımsız, her platformda aynı davranış. Motor
+    dosyasına (.pyw) hiç dokunulmadı, yalnız bu yükleme çağrısı düzeltildi."""
+    loader = SourceFileLoader("kss", _PROD_FILE)
+    spec = importlib.util.spec_from_file_location("kss", _PROD_FILE, loader=loader)
     module = importlib.util.module_from_spec(spec)
     sys.modules["kss"] = module
     spec.loader.exec_module(module)
