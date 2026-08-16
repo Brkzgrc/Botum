@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ symbol }} — Sonuç</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#0d1117; color:#e6edf3;
+         max-width:480px; margin:0 auto; padding:20px; }
+  h1 { font-size:1.4rem; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:14px; margin-bottom:12px; }
+  .label { color:#8b949e; font-size:0.85rem; }
+  .value { font-size:1.2rem; font-weight:bold; margin-top:2px; }
+  .veto { border-color:#f85149; }
+  .veto .label { color:#f85149; }
+  ul { margin:4px 0 0 18px; padding:0; }
+  a { color:#58a6ff; }
+</style>
+</head>
+<body>
+  <h1>{{ symbol }}</h1>
+
+  <div class="card">
+    <div class="label">Sinyal Gücü</div>
+    <div class="value">{{ "%.1f"|format(report.signal_score) }}%</div>
+  </div>
+
+  <div class="card">
+    <div class="label">İşlem Uygunluğu</div>
+    {% if report.risk_score is none or not report.risk_reliable %}
+      <div class="value">Yetersiz veri</div>
+      <div class="label">Risk kapsamı: %{{ "%.1f"|format(report.risk_coverage or 0) }} ·
+        Bağımsız risk boyutu: {{ report.risk_breadth }}</div>
+    {% else %}
+      <div class="value">{{ "%.1f"|format(report.risk_score) }}%</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="label">Güven Düzeyi</div>
+    <div class="value">{{ report.confidence }}</div>
+  </div>
+
+  <div class="card">
+    {% if report.restricted_candidate %}
+      <div class="label">MOTOR KARARI</div>
+      <div class="value">{{ report.verdict_title }}</div>
+      <div class="label" style="margin-top:8px;">POLİTİKA DURUMU</div>
+      <div class="value">{{ model_d_label }}</div>
+    {% else %}
+      <div class="label">KARAR</div>
+      <div class="value">{{ report.verdict_title }}</div>
+    {% endif %}
+    <div class="label" style="margin-top:8px;">{{ report.verdict_desc }}</div>
+    <div class="label" style="margin-top:8px;">Durum: {{ report.entry_status }}</div>
+  </div>
+
+  {% if report.vetos %}
+  <div class="card veto">
+    <div class="label">VETO SEBEPLERİ</div>
+    <ul>
+    {% for v in report.vetos %}<li>{{ v }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="label">Giriş Uygunluğu</div>
+    {% if report.entry_timing_score is none %}
+      <div class="value">Hesaplanamadı</div>
+    {% else %}
+      <div class="value">{{ report.entry_timing }} ({{ "%.1f"|format(report.entry_timing_score) }})</div>
+      <div class="label">{{ report.entry_timing_answered }}/{{ report.entry_timing_total }} veri</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="label">Genel Kapsam</div>
+    <div class="value">{{ "%.1f"|format(report.coverage) }}%</div>
+  </div>
+
+  <p><a href="/">← Yeni analiz</a></p>
+</body>
+</html>
