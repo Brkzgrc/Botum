@@ -55,7 +55,7 @@ MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
 MAX_CANDIDATES = max(1, int(os.getenv("MAX_CANDIDATES", "8")))
 MIN_SCORE = float(os.getenv("MIN_SCORE", "58"))
 MIN_TARGET_PCT = float(os.getenv("MIN_TARGET_PCT", "1.5"))
-MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "5000000"))
+MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
 COOLDOWN_HOURS = float(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
 SUPPORT_BUFFER_PCT = float(os.getenv("SUPPORT_BUFFER_PCT", "2.5"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_opportunity_state.json")
@@ -73,9 +73,16 @@ IGNORED_BASES = {
     "GUSD", "FDUSD", "EUR", "TRY", "GBP", "USD", "BRL", "RUB", "AUD",
     "XUSD", "USD1", "USDE", "BFUSD", "USDS", "USDD", "PYUSD", "AEUR",
     "EURI", "USTC", "PAXG", "XAUT", "WBTC", "WETH", "WBNB", "BETH",
-    "BTCB", "HBTC",
+    "BTCB", "HBTC", "U",
 }
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR", "2L", "2S", "3L", "3S", "5L", "5S")
+# Binance Spot evrenine dönemsel olarak eklenen tokenlaştırılmış hisse/ETF
+# sembolleri kripto coin taramasına dahil edilmez.
+TOKENIZED_EQUITY_BASES = {
+    "AAPL", "AMD", "AMZN", "AVGO", "COIN", "CRCL", "GLD", "GOOGL",
+    "HOOD", "INTC", "META", "MSFT", "MSTR", "NFLX", "NVDA", "PLTR",
+    "QQQ", "SNDK", "SNXXB", "SPCX", "SPY", "TSLA",
+}
 
 app = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -483,7 +490,8 @@ def btc_context() -> dict[str, float]:
 
 
 def classify_setup(states: dict[str, dict], support_distance: float) -> str:
-    h1, h4, d1 = states["1H"], states["4H"], states["1D"]
+    h1, h4 = states["1H"], states["4H"]
+    d1 = states.get("1D", h4)
     if h1["momentum"] >= 62 and h4["trend"] < 45:
         return "KISA VADELİ TEPKİ"
     if h1["trend"] >= 60 and h4["trend"] >= 55:
@@ -499,7 +507,13 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     frames = {"1H": h1_state}
     requests_map = {"4H": ("4h", 260), "1D": ("1d", 260), "1W": ("1w", 160)}
     for label, (interval, limit) in requests_map.items():
-        frames[label] = timeframe_state(fetch_ohlcv(symbol, interval, limit), label)
+        try:
+            frames[label] = timeframe_state(fetch_ohlcv(symbol, interval, limit), label)
+        except Exception:
+            # 4H değerlendirme için temel bağlamdır; 1D ve 1W ise mevcutsa
+            # ağırlık sağlar ama hiçbir zaman dilimi tek başına veto değildir.
+            if label == "4H":
+                raise
 
     price = h1_state["price"]
     supports, resistances = build_zones(frames, price)
@@ -554,7 +568,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     if frames["4H"]["trend"] < 42:
         risk += 10
         risks.append("4H ana yapı hâlâ zayıf")
-    if frames["1D"]["trend"] < 42:
+    if "1D" in frames and frames["1D"]["trend"] < 42:
         risk += 7
         risks.append("1D yapı düşüş baskısında")
     if btc["ret_1h"] < -1.2 or btc["ret_4h"] < -2.4:
@@ -597,7 +611,8 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         stop_pct=stop_pct, rr=rr, setup=setup,
         positives=positives[:5] or ["Çoklu gösterge dengesi incelemeye değer"],
         risks=risks[:5] or ["Belirgin ek risk sinyali yok; manuel grafik kontrolü gerekli"],
-        tf_summary={label: frames[label]["text"] for label in ("1H", "4H", "1D", "1W")},
+        tf_summary={label: (frames[label]["text"] if label in frames else "yeterli geçmiş veri yok")
+                    for label in ("1H", "4H", "1D", "1W")},
         metrics=metrics,
     )
 
@@ -766,7 +781,7 @@ def get_spot_universe() -> list[tuple[str, float]]:
             continue
         # Kısa gerçek sembolleri (örn. JUP) yanlışlıkla "UP token" sanma.
         is_leveraged = any(base.endswith(s) and len(base) > len(s) + 2 for s in LEVERAGED_SUFFIXES)
-        if base in IGNORED_BASES or base == "BTC" or is_leveraged:
+        if base in IGNORED_BASES or base in TOKENIZED_EQUITY_BASES or base == "BTC" or is_leveraged:
             continue
         quote_volume = safe_float(ticker_map.get(symbol, {}).get("quoteVolume"))
         if quote_volume < MIN_QUOTE_VOLUME:
