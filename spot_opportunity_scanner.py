@@ -82,6 +82,8 @@ TOKENIZED_EQUITY_BASES = {
     "AAPL", "AMD", "AMZN", "AVGO", "COIN", "CRCL", "GLD", "GOOGL",
     "HOOD", "INTC", "META", "MSFT", "MSTR", "NFLX", "NVDA", "PLTR",
     "QQQ", "SNDK", "SNXXB", "SPCX", "SPY", "TSLA",
+    # Binance'taki tokenlaştırılmış ürünlerin B-sonekli sembolleri
+    "EWYB", "SKHYB", "SNDKB", "SOXLB",
 }
 
 app = Flask(__name__)
@@ -587,7 +589,14 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         risks.append("Fiyat seçilen ana desteğin uzağında")
     risk = clamp(risk)
 
-    score = clamp(reaction * 0.50 + room * 0.30 + (100 - risk) * 0.20)
+    score = reaction * 0.47 + room * 0.28 + (100 - risk) * 0.25
+    # Düşük R/R kesin ret değildir; güçlü ve hızlı tepki yine incelenebilir.
+    # Fakat listeyi, hedefi stop mesafesine göre çok küçük adaylar doldurmasın.
+    score -= max(0.0, 0.80 - rr) * 16
+    # Çok geniş yapısal stop, yüksek momentum/alan puanlarıyla maskelenmesin.
+    if risk >= 75:
+        score = min(score, 57)
+    score = clamp(score)
     if score < MIN_SCORE:
         return None
 
