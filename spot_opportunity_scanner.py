@@ -72,10 +72,12 @@ IGNORED_BASES = {
     "USDT", "USDC", "BUSD", "TUSD", "DAI", "PAX", "HUSD", "USDP",
     "GUSD", "FDUSD", "EUR", "TRY", "GBP", "USD", "BRL", "RUB", "AUD",
     "XUSD", "USD1", "USDE", "BFUSD", "USDS", "USDD", "PYUSD", "AEUR",
-    "EURI", "USTC", "PAXG", "XAUT", "WBTC", "WETH", "WBNB", "BETH",
+    "EURI", "USTC", "FRAX", "LUSD", "SUSD", "USDX", "CUSD", "OUSD",
+    "MUSD", "RLUSD", "BIDR", "IDRT", "VAI",
+    "PAXG", "XAUT", "WBTC", "WETH", "WBNB", "BETH",
     "BTCB", "HBTC", "U",
 }
-LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR", "2L", "2S", "3L", "3S", "5L", "5S")
+LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR", "2L", "2S", "3L", "3S", "5L", "5S", "10L", "10S")
 # Binance Spot evrenine dönemsel olarak eklenen tokenlaştırılmış hisse/ETF
 # sembolleri kripto coin taramasına dahil edilmez.
 TOKENIZED_EQUITY_BASES = {
