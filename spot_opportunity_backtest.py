@@ -105,8 +105,10 @@ def frame_at(df: pd.DataFrame, cutoff: datetime, limit: int) -> pd.DataFrame:
 
 
 def btc_at(data: dict[str, pd.DataFrame], cutoff: datetime) -> dict[str, float]:
-    h1 = frame_at(data["1h"], cutoff, 30)
-    h4 = frame_at(data["4h"], cutoff, 10)
+    # frame_at ortak olarak en az 50 kapanmış mum doğrular. BTC getirileri daha
+    # az mum kullansa da yeterli geçmiş bulunduğunu aynı kuralla teyit ederiz.
+    h1 = frame_at(data["1h"], cutoff, 50)
+    h4 = frame_at(data["4h"], cutoff, 50)
     return {
         "ret_1h": (h1["close"].iloc[-1] / h1["close"].iloc[-2] - 1) * 100,
         "ret_6h": (h1["close"].iloc[-1] / h1["close"].iloc[-7] - 1) * 100,
