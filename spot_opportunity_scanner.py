@@ -50,6 +50,7 @@ PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_TOKEN", "")
 
 SCAN_INTERVAL_MIN = int(os.getenv("SCAN_INTERVAL_MIN", "60"))
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
 MAX_CANDIDATES = max(1, int(os.getenv("MAX_CANDIDATES", "8")))
 MIN_SCORE = float(os.getenv("MIN_SCORE", "58"))
@@ -81,6 +82,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 runtime = {
     "status": "BOOT",
+    "dry_run": DRY_RUN,
     "last_scan_start": None,
     "last_scan_end": None,
     "symbols": 0,
@@ -814,10 +816,15 @@ def scan_once() -> list[Candidate]:
     for c in selected:
         message = candidate_message(c)
         print("\n" + message.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", ""), flush=True)
-        portfolio_id = send_portfolio(c)
-        if portfolio_id:
-            threading.Thread(target=request_analyzer, args=(c, portfolio_id), daemon=True).start()
-        telegram_ok = send_telegram(message)
+        if DRY_RUN:
+            print(f"[DRY-RUN] {c.symbol}: Portfolio, Analyzer ve Telegram gönderimi yapılmadı.", flush=True)
+            portfolio_id = ""
+            telegram_ok = False
+        else:
+            portfolio_id = send_portfolio(c)
+            if portfolio_id:
+                threading.Thread(target=request_analyzer, args=(c, portfolio_id), daemon=True).start()
+            telegram_ok = send_telegram(message)
         # Portfolio kapalı olsa bile Telegram başarıyla gittiyse cooldown uygula.
         if portfolio_id or telegram_ok:
             state[c.symbol] = time.time()
@@ -873,6 +880,7 @@ def main() -> None:
     print("=" * 68, flush=True)
     print("SPOT OPPORTUNITY SCANNER — manuel inceleme adayı sistemi", flush=True)
     print(f"Spot only | MIN_SCORE={MIN_SCORE:g} | hedef≥%{MIN_TARGET_PCT:g} | stop tamponu=%{SUPPORT_BUFFER_PCT:g}", flush=True)
+    print(f"DRY_RUN={DRY_RUN} — " + ("hiçbir dış gönderim yapılmaz" if DRY_RUN else "Portfolio/Telegram gönderimi AKTİF"), flush=True)
     print("Gerçek emir fonksiyonu yoktur.", flush=True)
     print("=" * 68, flush=True)
     runtime["status"] = "STARTING"
