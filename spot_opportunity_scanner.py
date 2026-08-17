@@ -80,13 +80,9 @@ IGNORED_BASES = {
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR", "2L", "2S", "3L", "3S", "5L", "5S", "10L", "10S")
 # Binance Spot evrenine dönemsel olarak eklenen tokenlaştırılmış hisse/ETF
 # sembolleri kripto coin taramasına dahil edilmez.
-TOKENIZED_EQUITY_BASES = {
-    "AAPL", "AMD", "AMZN", "AVGO", "COIN", "CRCL", "GLD", "GOOGL",
-    "HOOD", "INTC", "META", "MSFT", "MSTR", "NFLX", "NVDA", "PLTR",
-    "QQQ", "SNDK", "SNXXB", "SPCX", "SPY", "TSLA",
-    # Binance'taki tokenlaştırılmış ürünlerin B-sonekli sembolleri
-    "EWYB", "SKHYB", "SNDKB", "SOXLB",
-}
+# Binance bStock sembolleri B ile biter. Aşağıdaki gerçek kripto varlıklar da
+# doğal olarak B ile bittiği için genelleştirilmiş bStock filtresinden muaftır.
+CRYPTO_BASES_ENDING_B = {"BNB", "DGB", "TRB", "CKB", "SHIB", "ARB", "BB", "YB"}
 
 app = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -792,7 +788,8 @@ def get_spot_universe() -> list[tuple[str, float]]:
             continue
         # Kısa gerçek sembolleri (örn. JUP) yanlışlıkla "UP token" sanma.
         is_leveraged = any(base.endswith(s) and len(base) > len(s) + 2 for s in LEVERAGED_SUFFIXES)
-        if base in IGNORED_BASES or base in TOKENIZED_EQUITY_BASES or base == "BTC" or is_leveraged:
+        is_bstock = base.endswith("B") and base not in CRYPTO_BASES_ENDING_B
+        if base in IGNORED_BASES or base == "BTC" or is_leveraged or is_bstock:
             continue
         quote_volume = safe_float(ticker_map.get(symbol, {}).get("quoteVolume"))
         if quote_volume < MIN_QUOTE_VOLUME:
