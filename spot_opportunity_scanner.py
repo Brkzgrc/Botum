@@ -53,7 +53,6 @@ SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
-COOLDOWN_HOURS = float(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
 SUPPORT_BUFFER_PCT = float(os.getenv("SUPPORT_BUFFER_PCT", "2.5"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_opportunity_state.json")
 
@@ -122,7 +121,9 @@ class Candidate:
     stop_pct: float
     rr: float
     setup: str
+    event_key: str
     observed_setups: list[str]
+    movement_summary: dict[str, str]
     positives: list[str]
     risks: list[str]
     historical_notes: list[str]
@@ -154,6 +155,46 @@ def clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, float(v)))
 
 
+def movement_phase(series: pd.Series, epsilon: float = 0.0) -> str:
+    """Son değerlerin seviyesini değil hareket evresini açıklar."""
+    values = pd.to_numeric(series, errors="coerce").dropna().tail(5)
+    if len(values) < 5:
+        return "belirsiz"
+    d1 = float(values.iloc[-1] - values.iloc[-2])
+    d2 = float(values.iloc[-2] - values.iloc[-3])
+    scale = max(float(values.max() - values.min()), abs(float(values.iloc[-1])) * 0.01, 1e-12)
+    tol = max(epsilon, scale * 0.06)
+    if d1 > tol and d2 <= tol:
+        return "yukarı_dönüş"
+    if d1 < -tol and d2 >= -tol:
+        return "aşağı_dönüş"
+    if d1 > tol and d2 > tol:
+        return "yükseliyor"
+    if d1 < -tol and d2 < -tol:
+        return "düşüyor"
+    if d1 > -tol and d2 < -tol:
+        return "düşüş_yavaşlıyor"
+    if d1 < tol and d2 > tol:
+        return "yükseliş_yavaşlıyor"
+    return "yataylaşıyor"
+
+
+def bullish_cross_phase(fast: pd.Series, slow: pd.Series) -> str:
+    f, s = pd.to_numeric(fast, errors="coerce"), pd.to_numeric(slow, errors="coerce")
+    if len(f) < 4 or f.tail(4).isna().any() or s.tail(4).isna().any():
+        return "belirsiz"
+    gap = f - s
+    if gap.iloc[-1] > 0 >= gap.iloc[-2]:
+        return "yukarı_kesti"
+    if gap.iloc[-1] < 0 <= gap.iloc[-2]:
+        return "aşağı_kesti"
+    if gap.iloc[-1] < 0 and gap.iloc[-1] > gap.iloc[-2] > gap.iloc[-3]:
+        return "yukarı_kesişime_yaklaşıyor"
+    if gap.iloc[-1] > 0 and gap.iloc[-1] < gap.iloc[-2] < gap.iloc[-3]:
+        return "aşağı_kesişime_yaklaşıyor"
+    return "pozitif" if gap.iloc[-1] > 0 else "negatif"
+
+
 def safe_float(v: Any, default: float = 0.0) -> float:
     try:
         x = float(v)
@@ -181,11 +222,6 @@ def save_state(data: dict) -> None:
         print(f"[STATE] Yazma hatası: {exc}", flush=True)
 
 
-def in_cooldown(symbol: str, state: dict) -> bool:
-    last = safe_float(state.get(symbol))
-    return last > 0 and time.time() - last < COOLDOWN_HOURS * 3600
-
-
 def api_get(path: str, params: dict | None = None, attempts: int = 4) -> Any:
     last_exc: Exception | None = None
     for attempt in range(attempts):
@@ -210,7 +246,7 @@ def fetch_ohlcv(symbol: str, interval: str, limit: int) -> pd.DataFrame:
         "open_time", "open", "high", "low", "close", "volume", "close_time",
         "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
     ])
-    for col in ("open", "high", "low", "close", "volume", "quote_volume"):
+    for col in ("open", "high", "low", "close", "volume", "quote_volume", "taker_quote"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     # Son mum henüz kapanmadıysa karar hesaplarına dahil edilmez.
@@ -340,23 +376,57 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
     ret_1 = (price / safe_float(p["close"], price) - 1) * 100
     ret_6 = (price / safe_float(d["close"].iloc[-7], price) - 1) * 100 if len(d) >= 7 else 0
 
-    if trend >= 65 and momentum >= 57:
-        text = "trend ve momentum olumlu"
-    elif momentum >= 62:
-        text = "tepki momentumu güçleniyor"
-    elif trend < 42 and momentum >= 50:
-        text = "ana yapı zayıf, tepki denemesi var"
-    elif trend < 42:
-        text = "düşüş baskısı sürüyor"
+    phases = {
+        "rsi": movement_phase(d["rsi"]),
+        "willr": movement_phase(d["willr"]),
+        "macd_hist": movement_phase(d["macd_hist"]),
+        "macd_cross": bullish_cross_phase(d["macd"], d["macd_signal"]),
+        "stoch_rsi": movement_phase(d["stoch_rsi_k"]),
+        "stoch_rsi_cross": bullish_cross_phase(d["stoch_rsi_k"], d["stoch_rsi_d"]),
+        "kdj": movement_phase(d["kdj_j"]),
+        "obv": movement_phase(d["obv"]),
+        "ema20_relation": bullish_cross_phase(d["close"], d["ema20"]),
+        "ema20_slope": movement_phase(d["ema20"]),
+    }
+    turning_phases = {"yukarı_dönüş", "yükseliyor", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
+    weakening_phases = {"düşüyor", "aşağı_dönüş", "aşağı_kesti", "aşağı_kesişime_yaklaşıyor"}
+    momentum_keys = ("rsi", "willr", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "kdj")
+    turning_up = [key for key in momentum_keys if phases[key] in turning_phases]
+    weakening = [key for key in momentum_keys if phases[key] in weakening_phases]
+    quote_volume = max(safe_float(x.get("quote_volume")), 1e-12)
+    taker_buy_ratio = safe_float(x.get("taker_quote")) / quote_volume
+    ema20_distance_atr = (price - safe_float(x["ema20"], price)) / max(atr, 1e-12)
+
+    if phases["obv"] in {"yukarı_dönüş", "yükseliyor"} and taker_buy_ratio >= 0.52:
+        flow_text = "Spot alış katılımı ve OBV birlikte güçleniyor"
+    elif phases["obv"] in {"yukarı_dönüş", "yükseliyor"}:
+        flow_text = "OBV yukarı yönlü; anlık Spot alış üstünlüğü sınırlı"
+    elif taker_buy_ratio >= 0.55:
+        flow_text = "Anlık Spot alış üstünlüğü var; OBV henüz eşlik etmiyor"
     else:
-        text = "karışık/yatay"
+        flow_text = "Para akışı teyidi zayıf; kısa tepki yine mümkün"
+
+    fresh_turn_count = sum(phases[key] in {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
+                           for key in momentum_keys)
+    if fresh_turn_count >= 2:
+        text = "birden fazla göstergede yukarı yön değişimi oluşuyor"
+    elif len(turning_up) >= 5:
+        text = "göstergelerin çoğu yukarı yönlü"
+    elif len(weakening) >= 5:
+        text = "göstergelerin çoğu aşağı yönlü veya güç kaybediyor"
+    elif phases["ema20_relation"] in {"aşağı_kesti", "aşağı_kesişime_yaklaşıyor"}:
+        text = "EMA20 çevresinde geri çekilme riski var"
+    else:
+        text = "yönler karışık; geçiş aşaması"
 
     return {
         "label": label, "df": d, "price": price, "atr": atr,
         "trend": clamp(trend), "momentum": clamp(momentum), "volume": clamp(volume),
         "candle": candle_score, "candle_notes": candle_notes,
         "rsi": rv, "vol_ratio": vr, "ret_1": ret_1, "ret_6": ret_6,
-        "text": text,
+        "text": text, "phases": phases, "turning_up": turning_up,
+        "weakening": weakening, "taker_buy_ratio": taker_buy_ratio,
+        "ema20_distance_atr": ema20_distance_atr, "flow_text": flow_text,
     }
 
 
@@ -466,20 +536,6 @@ def btc_context() -> dict[str, float]:
         return {"ret_1h": 0, "ret_6h": 0, "ret_24h": 0, "ret_4h": 0}
 
 
-def classify_setup(states: dict[str, dict], support_distance: float) -> str:
-    h1, h4 = states["1H"], states["4H"]
-    d1 = states.get("1D", h4)
-    if h1["momentum"] >= 62 and h4["trend"] < 45:
-        return "KISA VADELİ TEPKİ"
-    if h1["trend"] >= 60 and h4["trend"] >= 55:
-        return "TREND İÇİ GERİ ÇEKİLME"
-    if support_distance <= 2.0 and h1["momentum"] >= 55:
-        return "DESTEK TEPKİSİ"
-    if d1["trend"] < 45 and h1["momentum"] > 58:
-        return "KARŞI-TREND TEPKİ"
-    return "KISA VADELİ FIRSAT"
-
-
 def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candidate | None:
     frames = {"1H": h1_state}
     requests_map = {"4H": ("4h", 260), "1D": ("1d", 260), "1W": ("1w", 160)}
@@ -508,24 +564,48 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     rr = target_pct / stop_pct
     support_distance = (price - support.high) / price * 100
 
-    # Birleşik puan yoktur. Adaylık, kullanıcının baktığı gözlemlenebilir teknik
-    # durumların açık kombinasyonlarıyla oluşur; hiçbir timeframe tek başına veto değildir.
-    momentum_turn = h1_state["momentum"] >= 60
-    h4_confirmation = frames["4H"]["momentum"] >= 58
+    # Birleşik puan ve sabit osilatör seviyesi yoktur. Yeni bir yön değişimi,
+    # bulunduğu konum ve diğer timeframe bağlamıyla beraber olay oluşturur.
+    h1_phases = h1_state["phases"]
+    h4_phases = frames["4H"]["phases"]
+    fresh_up = {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
+    h1_fresh_turns = [k for k, v in h1_phases.items() if v in fresh_up]
+    h4_upward = len(frames["4H"]["turning_up"])
+    h1_upward = len(h1_state["turning_up"])
     candle_confirmation = h1_state["candle"] > 0
-    volume_confirmation = h1_state["volume"] >= 58
-    near_support = support_distance <= 3.0
+    near_support = support_distance <= 4.0
+    ema_retest = (
+        abs(h1_state["ema20_distance_atr"]) <= 0.80 and
+        h1_phases["ema20_relation"] in {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor", "pozitif"}
+    )
     observed_setups: list[str] = []
-    if near_support and (momentum_turn or candle_confirmation or h4_confirmation):
+    event_codes: list[str] = []
+    if near_support and h1_upward >= 3 and (h1_fresh_turns or candle_confirmation):
         observed_setups.append("Anlamlı destek yakınında tepki işareti")
-    if h1_state["trend"] >= 55 and frames["4H"]["trend"] >= 55 and support_distance <= 4.0:
-        observed_setups.append("1H–4H trend yapısında desteğe yakınlık")
-    if momentum_turn and (h4_confirmation or candle_confirmation or volume_confirmation):
-        observed_setups.append("1H momentum dönüşüne ek teyit")
-    if candle_confirmation and volume_confirmation:
-        observed_setups.append("Mum davranışı ve hacim birlikte olumlu")
-    if not observed_setups:
+        event_codes.append("support_turn")
+    if h4_upward >= 4 and h1_upward >= 3 and h1_fresh_turns:
+        observed_setups.append("4H yönü olumlu; 1H zamanlaması yukarı dönüyor")
+        event_codes.append("h4_context_h1_turn")
+    if ema_retest and h1_upward >= 3 and (h1_fresh_turns or candle_confirmation):
+        observed_setups.append("EMA20 yakınında retest/reclaim davranışı")
+        event_codes.append("ema20_retest")
+    core_turns = {"rsi", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "obv"}
+    if len(core_turns.intersection(h1_fresh_turns)) >= 2 and (near_support or candle_confirmation or h4_upward >= 4):
+        observed_setups.append("Birden fazla göstergede eşzamanlı yön değişimi")
+        event_codes.append("multi_indicator_turn")
+    if not event_codes:
         return None
+
+    if "support_turn" in event_codes:
+        setup = "DESTEK TEPKİSİ"
+    elif "ema20_retest" in event_codes and h4_upward >= 4:
+        setup = "TREND İÇİ GERİ ÇEKİLME"
+    elif len(frames["4H"]["weakening"]) > h4_upward:
+        setup = "KISA VADELİ TEPKİ"
+    elif "1D" in frames and len(frames["1D"]["weakening"]) > len(frames["1D"]["turning_up"]):
+        setup = "KARŞI-TREND TEPKİ"
+    else:
+        setup = "KISA VADELİ FIRSAT"
 
     positives: list[str] = []
     risks: list[str] = []
@@ -535,12 +615,11 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
             risks.append(note)
         elif len(positives) < 2:
             positives.append(note)
-    if h1_state["momentum"] >= 60:
-        positives.append("1H momentum ailesi yukarı dönüyor")
-    if frames["4H"]["momentum"] >= 58:
-        positives.append("4H momentum tepkiyi destekliyor")
-    if h1_state["volume"] >= 58:
-        positives.append("OBV/hacim akışı olumlu")
+    if h1_fresh_turns:
+        positives.append("1H yön değiştirenler: " + ", ".join(h1_fresh_turns))
+    if h4_upward >= 4:
+        positives.append("4H göstergelerinin çoğu yukarı yönlü")
+    positives.append(h1_state["flow_text"])
     if len(support.timeframes) >= 2:
         positives.append(f"Destek çakışması: {'+'.join(support.timeframes)}")
     if h1_state["ret_6"] > btc["ret_6h"] + 1.0:
@@ -549,10 +628,10 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     if stop_pct > 5:
         risks.append(f"Yapısal stop mesafesi geniş: %{stop_pct:.1f}")
         historical_notes.append("İlk 90 günlük örneklemde %5 üzeri stop mesafeleri daha zayıftı; eleme değildir")
-    if frames["4H"]["trend"] < 42:
-        risks.append("4H ana yapı hâlâ zayıf")
-    if "1D" in frames and frames["1D"]["trend"] < 42:
-        risks.append("1D yapı düşüş baskısında")
+    if len(frames["4H"]["weakening"]) >= 5:
+        risks.append("4H göstergelerinin çoğu aşağı yönlü veya güç kaybediyor")
+    if "1D" in frames and len(frames["1D"]["weakening"]) >= 5:
+        risks.append("1D göstergelerinin çoğu aşağı yönlü veya güç kaybediyor")
     if btc["ret_1h"] < -1.2 or btc["ret_4h"] < -2.4:
         risks.append("BTC kısa vadeli baskı oluşturuyor")
     elif btc["ret_6h"] < -2 and h1_state["ret_6"] >= btc["ret_6h"] + 1:
@@ -567,22 +646,43 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     if target_pct > 3:
         historical_notes.append("İlk 90 günlük örneklemde %3 üzeri ilk hedefler 24 saatte daha seyrek gerçekleşti; eleme değildir")
 
+    if h1_state["ema20_distance_atr"] > 2.0:
+        risks.append("Fiyat 1H EMA20'den belirgin uzak; geri çekilme/retest riski var")
+    if len(h1_state["weakening"]) >= 4:
+        risks.append("1H göstergelerinin çoğunda aşağı yön veya güç kaybı sürüyor")
+
     entry_pad = min(h1_state["atr"] * 0.18, price * 0.004)
     entry_low = max(support.high, price - entry_pad)
     entry_high = price + entry_pad * 0.35
-    setup = classify_setup(frames, support_distance)
+    movement_summary = {
+        "1H": (
+            f"RSI {h1_phases['rsi']}; MACD histogram {h1_phases['macd_hist']}; "
+            f"MACD {h1_phases['macd_cross']}; Stoch RSI {h1_phases['stoch_rsi_cross']}; "
+            f"OBV {h1_phases['obv']}; EMA20 {h1_phases['ema20_relation']}"
+        ),
+        "4H": (
+            f"RSI {h4_phases['rsi']}; MACD histogram {h4_phases['macd_hist']}; "
+            f"MACD {h4_phases['macd_cross']}; Stoch RSI {h4_phases['stoch_rsi_cross']}; "
+            f"OBV {h4_phases['obv']}"
+        ),
+    }
+    event_key = "+".join(sorted(event_codes))
     metrics = {
         "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
         "btc_1h_pct": round(btc["ret_1h"], 2), "btc_6h_pct": round(btc["ret_6h"], 2),
         "rsi_1h": round(h1_state["rsi"], 1), "rsi_4h": round(frames["4H"]["rsi"], 1),
         "vol_ratio_1h": round(h1_state["vol_ratio"], 2),
+        "taker_buy_ratio_1h": round(h1_state["taker_buy_ratio"], 3),
+        "ema20_distance_atr_1h": round(h1_state["ema20_distance_atr"], 2),
+        "indicator_phases_1h": h1_phases, "indicator_phases_4h": h4_phases,
     }
     return Candidate(
         symbol=symbol, price=price, entry_low=entry_low, entry_high=entry_high,
         support=support, stop=stop, resistance=resistance,
         target_low=target_low, target_high=target_high, target_pct=target_pct,
-        stop_pct=stop_pct, rr=rr, setup=setup, observed_setups=observed_setups,
+        stop_pct=stop_pct, rr=rr, setup=setup, event_key=event_key,
+        observed_setups=observed_setups, movement_summary=movement_summary,
         positives=positives[:5] or ["Çoklu gösterge dengesi incelemeye değer"],
         risks=risks[:5] or ["Belirgin ek risk sinyali yok; manuel grafik kontrolü gerekli"],
         historical_notes=historical_notes,
@@ -622,6 +722,9 @@ def candidate_message(c: Candidate) -> str:
         f"• 4H: {c.tf_summary['4H']}\n"
         f"• 1D: {c.tf_summary['1D']}\n"
         f"• 1W: {c.tf_summary['1W']}\n\n"
+        f"<b>Hareket okuması</b>\n"
+        f"• 1H: {c.movement_summary['1H']}\n"
+        f"• 4H: {c.movement_summary['4H']}\n\n"
         f"<b>Neden taramaya takıldı?</b>\n{observed}\n\n"
         f"<b>Olumlu kanıtlar</b>\n{positives}\n\n"
         f"<b>Riskler</b>\n{risks}{history_block}\n"
@@ -669,6 +772,7 @@ def send_portfolio(c: Candidate) -> str:
         "source": "smc-v2",
         "phase": "manual_review",
         "observed_setups": c.observed_setups,
+        "movement_summary": c.movement_summary,
         "entry_zone": [round(c.entry_low, 10), round(c.entry_high, 10)],
         "support_zone": [round(c.support.low, 10), round(c.support.high, 10)],
         "resistance_zone": [round(c.target_low, 10), round(c.target_high, 10)],
@@ -715,6 +819,7 @@ def request_analyzer(c: Candidate, portfolio_id: str) -> None:
         "tp2": round(c.target_high, 10),
         "setup": c.setup,
         "observed_setups": c.observed_setups,
+        "movement_summary": c.movement_summary,
         "target_pct": round(c.target_pct, 2),
         "stop_pct": round(c.stop_pct, 2),
         "rr": round(c.rr, 2),
@@ -784,8 +889,7 @@ def scan_once() -> list[Candidate]:
             symbol = jobs[future]
             try:
                 st = timeframe_state(future.result(), "1H")
-                if not in_cooldown(symbol, state):
-                    h1_states.append((symbol, st))
+                h1_states.append((symbol, st))
             except Exception as exc:
                 print(f"[1H] {symbol}: {str(exc)[:100]}", flush=True)
 
@@ -802,6 +906,19 @@ def scan_once() -> list[Candidate]:
             except Exception as exc:
                 print(f"[DEEP] {symbol}: {str(exc)[:120]}", flush=True)
 
+    # Aynı teknik olay devam ederken tekrar mesaj üretme. Olay kaybolup yeniden
+    # oluşursa veya yön-geçiş imzası değişirse yeni inceleme adayıdır.
+    active_state: dict[str, dict[str, Any]] = {}
+    new_events: list[Candidate] = []
+    for candidate in candidates:
+        previous = state.get(candidate.symbol, {})
+        previous_key = previous.get("event_key") if isinstance(previous, dict) else ""
+        emitted_at = safe_float(previous.get("emitted_at")) if isinstance(previous, dict) else 0.0
+        active_state[candidate.symbol] = {"event_key": candidate.event_key, "emitted_at": emitted_at}
+        if previous_key != candidate.event_key:
+            new_events.append(candidate)
+
+    candidates = new_events
     # Puan veya kalite sıralaması yoktur; yalnızca okunabilir ve kararlı çıktı.
     candidates.sort(key=lambda c: (c.setup, c.symbol))
     sent = 0
@@ -819,9 +936,9 @@ def scan_once() -> list[Candidate]:
             telegram_ok = send_telegram(message)
         # Portfolio kapalı olsa bile Telegram başarıyla gittiyse cooldown uygula.
         if portfolio_id or telegram_ok:
-            state[c.symbol] = time.time()
+            active_state[c.symbol]["emitted_at"] = time.time()
             sent += 1
-    save_state(state)
+    save_state(active_state)
     runtime.update({
         "status": "RUNNING", "last_scan_end": tr_now().isoformat(),
         "candidates": len(candidates), "sent": sent,
