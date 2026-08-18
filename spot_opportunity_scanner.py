@@ -121,6 +121,7 @@ class Candidate:
     stop_pct: float
     rr: float
     setup: str
+    stage: str
     event_key: str
     observed_setups: list[str]
     movement_summary: dict[str, str]
@@ -620,16 +621,22 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
 
     if event_codes == ["early_turn_watch"]:
         setup = "ERKEN DÖNÜŞ İZLEME"
+        stage = "EARLY"
     elif "support_turn" in event_codes:
         setup = "DESTEK TEPKİSİ"
+        stage = "TURN"
     elif "ema20_retest" in event_codes and h4_upward >= 4:
         setup = "TREND İÇİ GERİ ÇEKİLME"
+        stage = "TURN"
     elif len(frames["4H"]["weakening"]) > h4_upward:
         setup = "KISA VADELİ TEPKİ"
+        stage = "TURN"
     elif "1D" in frames and len(frames["1D"]["weakening"]) > len(frames["1D"]["turning_up"]):
         setup = "KARŞI-TREND TEPKİ"
+        stage = "TURN"
     else:
         setup = "KISA VADELİ FIRSAT"
+        stage = "TURN"
 
     positives: list[str] = []
     risks: list[str] = []
@@ -689,7 +696,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         ),
         "Akış": h1_state["flow_text"],
     }
-    event_key = "+".join(sorted(event_codes))
+    event_key = stage
     metrics = {
         "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
@@ -699,12 +706,14 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "taker_buy_ratio_1h": round(h1_state["taker_buy_ratio"], 3),
         "ema20_distance_atr_1h": round(h1_state["ema20_distance_atr"], 2),
         "indicator_phases_1h": h1_phases, "indicator_phases_4h": h4_phases,
+        "last_high_1h": round(float(h1_state["df"]["high"].iloc[-1]), 10),
+        "last_low_1h": round(float(h1_state["df"]["low"].iloc[-1]), 10),
     }
     return Candidate(
         symbol=symbol, price=price, entry_low=entry_low, entry_high=entry_high,
         support=support, stop=stop, resistance=resistance,
         target_low=target_low, target_high=target_high, target_pct=target_pct,
-        stop_pct=stop_pct, rr=rr, setup=setup, event_key=event_key,
+        stop_pct=stop_pct, rr=rr, setup=setup, stage=stage, event_key=event_key,
         observed_setups=observed_setups, movement_summary=movement_summary,
         positives=positives[:5] or ["Çoklu gösterge dengesi incelemeye değer"],
         risks=risks[:5] or ["Belirgin ek risk sinyali yok; manuel grafik kontrolü gerekli"],
@@ -930,16 +939,40 @@ def scan_once() -> list[Candidate]:
             except Exception as exc:
                 print(f"[DEEP] {symbol}: {str(exc)[:120]}", flush=True)
 
-    # Aynı teknik olay devam ederken tekrar mesaj üretme. Olay kaybolup yeniden
-    # oluşursa veya yön-geçiş imzası değişirse yeni inceleme adayıdır.
+    # Aynı salınımı, olay bileşimi değişti diye tekrar tekrar sayma. Yalnız
+    # EARLY -> TURN yükseltmesi yeni bildirimdir. Hedef/stop görülürse veya
+    # şartlar iki tarama boyunca kaybolursa yapı yeniden kurulabilir.
     active_state: dict[str, dict[str, Any]] = {}
+    for symbol, previous in state.items():
+        if isinstance(previous, dict) and int(previous.get("misses", 0)) < 1:
+            active_state[symbol] = {**previous, "misses": int(previous.get("misses", 0)) + 1}
     new_events: list[Candidate] = []
     for candidate in candidates:
         previous = state.get(candidate.symbol, {})
-        previous_key = previous.get("event_key") if isinstance(previous, dict) else ""
-        emitted_at = safe_float(previous.get("emitted_at")) if isinstance(previous, dict) else 0.0
-        active_state[candidate.symbol] = {"event_key": candidate.event_key, "emitted_at": emitted_at}
-        if previous_key != candidate.event_key:
+        previous = previous if isinstance(previous, dict) else {}
+        last_high = safe_float(candidate.metrics.get("last_high_1h"), candidate.price)
+        last_low = safe_float(candidate.metrics.get("last_low_1h"), candidate.price)
+        completed = bool(previous) and (
+            last_high >= safe_float(previous.get("target"), float("inf")) or
+            last_low <= safe_float(previous.get("stop"), float("-inf"))
+        )
+        if completed:
+            active_state.pop(candidate.symbol, None)
+            continue
+
+        previous_stage = previous.get("stage", "")
+        is_new = not previous
+        is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
+        if previous_stage == "TURN" and candidate.stage == "EARLY":
+            active_state[candidate.symbol] = {**previous, "misses": 0}
+            continue
+
+        active_state[candidate.symbol] = {
+            "stage": candidate.stage, "event_key": candidate.event_key,
+            "target": candidate.target_low, "stop": candidate.stop,
+            "emitted_at": safe_float(previous.get("emitted_at")), "misses": 0,
+        }
+        if is_new or is_upgrade:
             new_events.append(candidate)
 
     candidates = new_events
