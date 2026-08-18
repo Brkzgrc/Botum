@@ -393,6 +393,14 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
     momentum_keys = ("rsi", "willr", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "kdj")
     turning_up = [key for key in momentum_keys if phases[key] in turning_phases]
     weakening = [key for key in momentum_keys if phases[key] in weakening_phases]
+    relative_low_sources = {
+        "rsi": d["rsi"], "willr": d["willr"], "stoch_rsi": d["stoch_rsi_k"],
+        "kdj": d["kdj_j"], "macd_hist": d["macd_hist"],
+    }
+    relative_lows = [
+        key for key, series in relative_low_sources.items()
+        if safe_float(series.iloc[-1]) <= safe_float(series.tail(20).quantile(0.25))
+    ]
     quote_volume = max(safe_float(x.get("quote_volume")), 1e-12)
     taker_buy_ratio = safe_float(x.get("taker_quote")) / quote_volume
     ema20_distance_atr = (price - safe_float(x["ema20"], price)) / max(atr, 1e-12)
@@ -425,7 +433,8 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
         "candle": candle_score, "candle_notes": candle_notes,
         "rsi": rv, "vol_ratio": vr, "ret_1": ret_1, "ret_6": ret_6,
         "text": text, "phases": phases, "turning_up": turning_up,
-        "weakening": weakening, "taker_buy_ratio": taker_buy_ratio,
+        "weakening": weakening, "relative_lows": relative_lows,
+        "taker_buy_ratio": taker_buy_ratio,
         "ema20_distance_atr": ema20_distance_atr, "flow_text": flow_text,
     }
 
@@ -569,34 +578,44 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     h1_phases = h1_state["phases"]
     h4_phases = frames["4H"]["phases"]
     fresh_up = {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
-    h1_fresh_turns = [k for k, v in h1_phases.items() if v in fresh_up]
+    core_keys = {"rsi", "willr", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "kdj", "obv"}
+    h1_fresh_turns = [k for k, v in h1_phases.items() if k in core_keys and v in fresh_up]
     h4_upward = len(frames["4H"]["turning_up"])
     h1_upward = len(h1_state["turning_up"])
     candle_confirmation = h1_state["candle"] > 0
-    near_support = support_distance <= 4.0
+    near_support = support_distance <= 2.5
     ema_retest = (
         abs(h1_state["ema20_distance_atr"]) <= 0.80 and
         h1_phases["ema20_relation"] in {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor", "pozitif"}
     )
     observed_setups: list[str] = []
     event_codes: list[str] = []
-    if near_support and h1_upward >= 3 and (h1_fresh_turns or candle_confirmation):
+    if near_support and h1_upward >= 4 and (
+        len(h1_fresh_turns) >= 2 or (candle_confirmation and len(h1_fresh_turns) >= 1)
+    ):
         observed_setups.append("Anlamlı destek yakınında tepki işareti")
         event_codes.append("support_turn")
-    if h4_upward >= 4 and h1_upward >= 3 and h1_fresh_turns:
+    if h4_upward >= 5 and h1_upward >= 4 and len(h1_fresh_turns) >= 2:
         observed_setups.append("4H yönü olumlu; 1H zamanlaması yukarı dönüyor")
         event_codes.append("h4_context_h1_turn")
-    if ema_retest and h1_upward >= 3 and (h1_fresh_turns or candle_confirmation):
+    if ema_retest and h1_upward >= 4 and len(h1_fresh_turns) >= 2:
         observed_setups.append("EMA20 yakınında retest/reclaim davranışı")
         event_codes.append("ema20_retest")
     core_turns = {"rsi", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "obv"}
-    if len(core_turns.intersection(h1_fresh_turns)) >= 2 and (near_support or candle_confirmation or h4_upward >= 4):
+    if len(core_turns.intersection(h1_fresh_turns)) >= 3 and (near_support or candle_confirmation or h4_upward >= 5):
         observed_setups.append("Birden fazla göstergede eşzamanlı yön değişimi")
         event_codes.append("multi_indicator_turn")
+    # ZEC örneğindeki gibi para girişi başlamadan önce: sabit RSI/W%R eşiği
+    # değil, kendi yakın geçmişine göre eşzamanlı sıkışma ve destek konumu.
+    if near_support and len(h1_state["relative_lows"]) >= 4 and len(h1_fresh_turns) <= 1:
+        observed_setups.append("Destek bölgesinde göstergeler kendi yakın dönem diplerine sıkışıyor; dönüş henüz teyitsiz")
+        event_codes.append("early_turn_watch")
     if not event_codes:
         return None
 
-    if "support_turn" in event_codes:
+    if event_codes == ["early_turn_watch"]:
+        setup = "ERKEN DÖNÜŞ İZLEME"
+    elif "support_turn" in event_codes:
         setup = "DESTEK TEPKİSİ"
     elif "ema20_retest" in event_codes and h4_upward >= 4:
         setup = "TREND İÇİ GERİ ÇEKİLME"
@@ -639,7 +658,6 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     if h1_state["rsi"] > 73:
         risks.append("1H RSI kısa vadede ısınmış")
     if target_pct < stop_pct:
-        risk += 10
         risks.append("İlk hedef mesafesi yapısal stop mesafesinden küçük")
     if support_distance > 5:
         risks.append("Fiyat seçilen ana desteğin uzağında")
@@ -652,7 +670,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         risks.append("1H göstergelerinin çoğunda aşağı yön veya güç kaybı sürüyor")
 
     entry_pad = min(h1_state["atr"] * 0.18, price * 0.004)
-    entry_low = max(support.high, price - entry_pad)
+    entry_low = max(support.low, price - entry_pad)
     entry_high = price + entry_pad * 0.35
     movement_summary = {
         "1H": (
