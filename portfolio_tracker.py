@@ -1321,20 +1321,19 @@ def clear_all_signals():
 
 @app.route("/api/signals/clear-history", methods=["POST"])
 def clear_signal_history():
-    """Sadece kapanmış/no-retest geçmişini temizler — açık ('open') ve retest
-    bekleyen ('pending_retest') kayıtlara DOKUNMAZ. Bunlar bot'ta hâlâ gerçek,
-    yönetilen pozisyonlar/emirler — dashboard'dan silinirse bot ile dashboard
-    arasında desync oluşur (bot pozisyonu yönetmeye devam eder ama dashboard
-    artık onu hiç göstermez). Site geneli Basic Auth (before_request) zaten
-    koruyor, ayrıca token kontrolüne gerek yok."""
+    """UI geçmişini ve retest bekleyen kayıtları temizler; yalnızca gerçekten
+    açık ('open') kayıtları korur. Bu işlem signals_db/portfolio_signals.json
+    üzerinde çalışır; learning_archive.json öğrenme arşivine dokunmaz.
+    Site geneli Basic Auth (before_request) zaten koruyor, ayrıca token
+    kontrolüne gerek yok."""
     with _lock:
         before = len(signals_db)
-        signals_db[:] = [s for s in signals_db if s.get("status") in ("open", "pending_retest")]
+        signals_db[:] = [s for s in signals_db if s.get("status") == "open"]
         removed = before - len(signals_db)
         kept = len(signals_db)
         if removed:
             save_signals()
-    print(f"[TEMİZLE] Geçmiş temizlendi: {removed} kayıt silindi, {kept} kayıt (open/pending_retest) korundu", flush=True)
+    print(f"[TEMİZLE] Geçmiş ve pending temizlendi: {removed} kayıt silindi, {kept} açık kayıt korundu", flush=True)
     return jsonify({"ok": True, "removed": removed, "kept": kept})
 
 @app.route("/api/signals/delete-by-id", methods=["POST"])
@@ -2974,7 +2973,7 @@ tr:hover td{{background:var(--card);}}
         {now}
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
         <button class="btn-clear"
-            onclick="if(confirm('Kapanmış/no-retest geçmişi temizlenecek.\\nAçık ve retest bekleyen işlemlere DOKUNULMAZ.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt (açık/pending korundu)');location.reload()}})}}"
+            onclick="if(confirm('Kapanmış geçmiş ve retest bekleyen kayıtlar temizlenecek.\\nAçık pozisyonlara DOKUNULMAZ.\\nÖğrenme arşivi korunur.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt ('+d.kept+' açık kayıt korundu)');location.reload()}})}}"
         >🧹 Geçmişi Temizle</button>
     </span>
 </div>
