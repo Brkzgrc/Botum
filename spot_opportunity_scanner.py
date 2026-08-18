@@ -519,11 +519,16 @@ def choose_resistance(resistances: list[Zone], current: float) -> Zone | None:
     viable = [z for z in resistances if z.low > current]
     if not viable:
         return None
+    # Çok yakın mikro seviyeyi hedef diye sunma. Bu bir aday elemesi değildir;
+    # ilerideki ilk kullanılabilir satış bölgesini seçer. Böyle bölge yoksa en
+    # yakın direnç yine bağlam olarak gösterilir.
+    meaningful = [z for z in viable if (z.low - current) / current >= 0.015]
+    search = meaningful or viable
     # İlk gerçekçi satış bölgesi; çok zayıf tek dokunuşlu bölgeyi atlayabilir.
-    for z in viable:
+    for z in search:
         if z.strength >= 5 or z.touches >= 2:
             return z
-    return viable[0]
+    return search[0]
 
 
 # =============================================================================
@@ -638,7 +643,6 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         positives.append("1H yön değiştirenler: " + ", ".join(h1_fresh_turns))
     if h4_upward >= 4:
         positives.append("4H göstergelerinin çoğu yukarı yönlü")
-    positives.append(h1_state["flow_text"])
     if len(support.timeframes) >= 2:
         positives.append(f"Destek çakışması: {'+'.join(support.timeframes)}")
     if h1_state["ret_6"] > btc["ret_6h"] + 1.0:
@@ -683,6 +687,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
             f"MACD {h4_phases['macd_cross']}; Stoch RSI {h4_phases['stoch_rsi_cross']}; "
             f"OBV {h4_phases['obv']}"
         ),
+        "Akış": h1_state["flow_text"],
     }
     event_key = "+".join(sorted(event_codes))
     metrics = {
@@ -743,6 +748,7 @@ def candidate_message(c: Candidate) -> str:
         f"<b>Hareket okuması</b>\n"
         f"• 1H: {c.movement_summary['1H']}\n"
         f"• 4H: {c.movement_summary['4H']}\n\n"
+        f"<b>Spot para akışı</b>\n• {c.movement_summary['Akış']}\n\n"
         f"<b>Neden taramaya takıldı?</b>\n{observed}\n\n"
         f"<b>Olumlu kanıtlar</b>\n{positives}\n\n"
         f"<b>Riskler</b>\n{risks}{history_block}\n"
