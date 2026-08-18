@@ -790,8 +790,8 @@ def send_telegram(text: str) -> bool:
 def send_portfolio(c: Candidate) -> str:
     if not PORTFOLIO_URL:
         return ""
-    # Portfolio'nun mevcut SMC yaşam döngüsünü kullanabilmek için source smc-v2
-    # kalır. sig_type/sub_type bu sistemin SMC olmadığını açıkça ayırır.
+    # Bağımsız kaynak kullanılır: Portfolio kaydı eski SMC/retest yaşam
+    # döngüsüne ve trading-bot hattına sokmadan doğrudan izlemeye alır.
     payload = {
         "symbol": c.symbol.replace("USDT", "/USDT"),
         "entry": round(c.price, 10),
@@ -803,7 +803,7 @@ def send_portfolio(c: Candidate) -> str:
         "tp3": None,
         "sig_type": "spot_opportunity",
         "sub_type": c.setup.lower().replace(" ", "_"),
-        "source": "smc-v2",
+        "source": "spot-scanner",
         "phase": "manual_review",
         "observed_setups": c.observed_setups,
         "movement_summary": c.movement_summary,
@@ -846,7 +846,7 @@ def request_analyzer(c: Candidate, portfolio_id: str) -> None:
     signal = {
         "symbol": c.symbol.replace("USDT", "/USDT"),
         "type": "spot_opportunity",
-        "source": "smc",
+        "source": "spot-scanner",
         "entry": round(c.price, 10),
         "stop": round(c.stop, 10),
         "tp1": round(c.target_low, 10),
