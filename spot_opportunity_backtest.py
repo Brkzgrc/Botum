@@ -249,6 +249,7 @@ def main() -> None:
 
     records: list[dict] = []
     active_events: dict[str, dict] = {}
+    last_cycle_at: dict[str, datetime] = {}
     for number, cutoff in enumerate(cutoffs, start=1):
         btc = btc_at(all_data["BTCUSDT"], cutoff)
         h1_states: list[tuple[str, dict]] = []
@@ -291,10 +292,10 @@ def main() -> None:
                 last_low <= float(previous.get("stop", float("-inf")))
             )
             if completed:
-                next_events.pop(candidate.symbol, None)
+                next_events[candidate.symbol] = {**previous, "stage": "WAIT_RESET", "misses": 0}
                 continue
             previous_stage = previous.get("stage", "")
-            is_new = not previous
+            is_new = not previous or previous_stage == "WAIT_RESET"
             is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
             if previous_stage == "TURN" and candidate.stage == "EARLY":
                 next_events[candidate.symbol] = {**previous, "misses": 0}
@@ -303,8 +304,12 @@ def main() -> None:
                 "stage": candidate.stage, "target": candidate.target_low,
                 "stop": candidate.stop, "misses": 0,
             }
-            if not (is_new or is_upgrade):
+            last_time = last_cycle_at.get(candidate.symbol)
+            rearmed = last_time is None or (cutoff - last_time).total_seconds() >= scanner.EVENT_REARM_HOURS * 3600
+            # EARLY -> TURN aynı fırsatın güncellemesidir; yeni işlem adayı değildir.
+            if not (is_new and rearmed):
                 continue
+            last_cycle_at[candidate.symbol] = cutoff
             measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
             records.append({
                 "time": cutoff.isoformat(), "symbol": candidate.symbol,
