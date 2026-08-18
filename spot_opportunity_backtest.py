@@ -248,7 +248,7 @@ def main() -> None:
         raise SystemExit("BTC bağlam verisi indirilemedi")
 
     records: list[dict] = []
-    active_events: dict[str, str] = {}
+    active_events: dict[str, dict] = {}
     for number, cutoff in enumerate(cutoffs, start=1):
         btc = btc_at(all_data["BTCUSDT"], cutoff)
         h1_states: list[tuple[str, dict]] = []
@@ -277,14 +277,39 @@ def main() -> None:
             except Exception:
                 continue
         candidates.sort(key=lambda c: (c.setup, c.symbol))
-        current_events = {candidate.symbol: candidate.event_key for candidate in candidates}
+        next_events = {
+            symbol: {**event, "misses": int(event.get("misses", 0)) + 1}
+            for symbol, event in active_events.items()
+            if int(event.get("misses", 0)) < 1
+        }
         for candidate in candidates:
-            if active_events.get(candidate.symbol) == candidate.event_key:
+            previous = active_events.get(candidate.symbol, {})
+            last_high = float(candidate.metrics.get("last_high_1h", candidate.price))
+            last_low = float(candidate.metrics.get("last_low_1h", candidate.price))
+            completed = bool(previous) and (
+                last_high >= float(previous.get("target", float("inf"))) or
+                last_low <= float(previous.get("stop", float("-inf")))
+            )
+            if completed:
+                next_events.pop(candidate.symbol, None)
+                continue
+            previous_stage = previous.get("stage", "")
+            is_new = not previous
+            is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
+            if previous_stage == "TURN" and candidate.stage == "EARLY":
+                next_events[candidate.symbol] = {**previous, "misses": 0}
+                continue
+            next_events[candidate.symbol] = {
+                "stage": candidate.stage, "target": candidate.target_low,
+                "stop": candidate.stop, "misses": 0,
+            }
+            if not (is_new or is_upgrade):
                 continue
             measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
             records.append({
                 "time": cutoff.isoformat(), "symbol": candidate.symbol,
                 "setup": candidate.setup,
+                "stage": candidate.stage,
                 "event_key": candidate.event_key,
                 "observed_setups": candidate.observed_setups,
                 "entry": candidate.price, "stop": candidate.stop,
@@ -296,9 +321,7 @@ def main() -> None:
                 "metrics": candidate.metrics,
                 **measured,
             })
-        # Bir olay şartları kaybolduğunda yeniden kurulabilir; aynı olay devam
-        # ederken sonraki karar noktalarında tekrar sinyal sayılmaz.
-        active_events = current_events
+        active_events = next_events
         if number % 20 == 0 or number == len(cutoffs):
             print(f"[REPLAY] {number}/{len(cutoffs)} | sinyal={len(records)}")
 
