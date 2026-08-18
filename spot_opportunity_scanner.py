@@ -266,20 +266,25 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
         reasons.append("erken izleme teyitli dönüşe ilerledi")
 
     # Erken dönüş yalnızca göreceli-dip fotoğrafı olduğu için gönderilmez.
-    # Sıkışmanın bu mumda oluşması, desteğin anlamlı olması ve ilk toparlanma
-    # belirtisinin başlaması birlikte görülürse erken uyarı olur.
+    # Coin önceki kapalı mumda EARLY adayı değilken bu muma destek çevresinde
+    # sıkışma olarak girerse ve ilk toparlanma görülürse bir kez erken uyarı olur.
+    # Böylece tüm kesişimleri bekleyip girişi geciktirmeyiz; aynı EARLY görünümünü
+    # de her saat yeniden bildirmeyiz.
     if candidate.stage == "EARLY":
         support_ok = len(candidate.support.timeframes) >= 2 or candidate.support.strength >= 20
-        compression_new = (
-            current["relative_low_count"] >= 4 and
-            current["relative_low_count"] > int(before.get("relative_low_count", 0))
+        entered_early = (
+            previous_stage != "EARLY" and
+            current["relative_low_count"] >= 4
         )
         first_response = (
             current["fresh_count"] >= 1 or
             current["price"] > safe_float(before.get("price"))
         )
-        if support_ok and compression_new and first_response:
-            reasons.append("destekte yeni sıkışma ve ilk tepki hazırlığı")
+        pressure_not_expanding = (
+            current["weakening_count"] <= int(before.get("weakening_count", 0)) + 1
+        )
+        if support_ok and entered_early and first_response and pressure_not_expanding:
+            reasons.append("destekte yeni erken dönüş görünümü ve ilk tepki hazırlığı")
 
     return bool(reasons), reasons
 
