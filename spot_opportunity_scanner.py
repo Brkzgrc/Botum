@@ -52,17 +52,10 @@ SCAN_INTERVAL_MIN = int(os.getenv("SCAN_INTERVAL_MIN", "60"))
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
-MAX_CANDIDATES = max(1, int(os.getenv("MAX_CANDIDATES", "8")))
-MIN_SCORE = float(os.getenv("MIN_SCORE", "58"))
-MIN_TARGET_PCT = float(os.getenv("MIN_TARGET_PCT", "1.5"))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
 COOLDOWN_HOURS = float(os.getenv("SIGNAL_COOLDOWN_HOURS", "4"))
 SUPPORT_BUFFER_PCT = float(os.getenv("SUPPORT_BUFFER_PCT", "2.5"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_opportunity_state.json")
-
-# İlk aşamada bütün evreni 1H ile ucuzca eleyip bu kadar sembol için 4H/1D/1W
-# indiririz. Bu bir strateji filtresi değil, Render ve Binance yük kontrolüdür.
-DEEP_SCAN_LIMIT = max(MAX_CANDIDATES * 5, int(os.getenv("DEEP_SCAN_LIMIT", "80")))
 
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
@@ -118,10 +111,6 @@ class Zone:
 class Candidate:
     symbol: str
     price: float
-    score: float
-    reaction_score: float
-    room_score: float
-    risk_score: float
     entry_low: float
     entry_high: float
     support: Zone
@@ -133,8 +122,10 @@ class Candidate:
     stop_pct: float
     rr: float
     setup: str
+    observed_setups: list[str]
     positives: list[str]
     risks: list[str]
+    historical_notes: list[str]
     tf_summary: dict[str, str]
     metrics: dict[str, Any]
 
@@ -446,7 +437,7 @@ def choose_support(supports: list[Zone], current: float, atr: float) -> Zone | N
 
 
 def choose_resistance(resistances: list[Zone], current: float) -> Zone | None:
-    viable = [z for z in resistances if (z.low - current) / current >= MIN_TARGET_PCT / 100]
+    viable = [z for z in resistances if z.low > current]
     if not viable:
         return None
     # İlk gerçekçi satış bölgesi; çok zayıf tek dokunuşlu bölgeyi atlayabilir.
@@ -459,20 +450,6 @@ def choose_resistance(resistances: list[Zone], current: float) -> Zone | None:
 # =============================================================================
 # ADAY DEĞERLENDİRME
 # =============================================================================
-
-def preliminary_score(state: dict) -> float:
-    d = state["df"]
-    x = d.iloc[-1]
-    price = state["price"]
-    proximity = min(abs(price - safe_float(x[f"ema{p}"], price)) / price for p in (20, 50, 100, 200))
-    score = state["momentum"] * 0.42 + state["volume"] * 0.20 + state["trend"] * 0.20
-    score += clamp(state["candle"], 0, 60) * 0.18
-    score += max(0, 8 - proximity * 200)
-    # Aşırı uzamış fiyatı aday havuzunda geriye at; kesin veto yapma.
-    if abs(state["ret_6"]) > 12:
-        score -= min(18, abs(state["ret_6"]) - 12)
-    return score
-
 
 def btc_context() -> dict[str, float]:
     try:
@@ -526,25 +503,33 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     target_low, target_high = resistance.low, resistance.high
     target_pct = (target_low / price - 1) * 100
     stop_pct = (price - stop) / price * 100
-    if target_pct < MIN_TARGET_PCT or stop_pct <= 0:
+    if target_pct <= 0 or stop_pct <= 0:
         return None
     rr = target_pct / stop_pct
-
-    # Tepki kanıtı: 1H ağır, 4H bağlam; 1D/1W veto değildir.
-    reaction = (
-        h1_state["momentum"] * 0.38 + h1_state["volume"] * 0.20 +
-        frames["4H"]["momentum"] * 0.18 + h1_state["trend"] * 0.12 +
-        clamp(h1_state["candle"], 0, 70) * 0.12
-    )
     support_distance = (price - support.high) / price * 100
-    confluence = min(14, support.strength * 0.75 + len(support.timeframes) * 2)
-    reaction = clamp(reaction + confluence - max(0, support_distance - 4) * 2)
 
-    # Hareket alanı, sadece yüzde değil direncin niteliğiyle beraber ölçülür.
-    room = clamp(35 + target_pct * 9 - max(0, resistance.strength - 14) * 0.6)
+    # Birleşik puan yoktur. Adaylık, kullanıcının baktığı gözlemlenebilir teknik
+    # durumların açık kombinasyonlarıyla oluşur; hiçbir timeframe tek başına veto değildir.
+    momentum_turn = h1_state["momentum"] >= 60
+    h4_confirmation = frames["4H"]["momentum"] >= 58
+    candle_confirmation = h1_state["candle"] > 0
+    volume_confirmation = h1_state["volume"] >= 58
+    near_support = support_distance <= 3.0
+    observed_setups: list[str] = []
+    if near_support and (momentum_turn or candle_confirmation or h4_confirmation):
+        observed_setups.append("Anlamlı destek yakınında tepki işareti")
+    if h1_state["trend"] >= 55 and frames["4H"]["trend"] >= 55 and support_distance <= 4.0:
+        observed_setups.append("1H–4H trend yapısında desteğe yakınlık")
+    if momentum_turn and (h4_confirmation or candle_confirmation or volume_confirmation):
+        observed_setups.append("1H momentum dönüşüne ek teyit")
+    if candle_confirmation and volume_confirmation:
+        observed_setups.append("Mum davranışı ve hacim birlikte olumlu")
+    if not observed_setups:
+        return None
 
     positives: list[str] = []
     risks: list[str] = []
+    historical_notes: list[str] = []
     for note in h1_state["candle_notes"]:
         if "satış baskısı" in note:
             risks.append(note)
@@ -561,63 +546,46 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     if h1_state["ret_6"] > btc["ret_6h"] + 1.0:
         positives.append("BTC'ye karşı kısa vadeli göreceli güç")
 
-    risk = 35.0
     if stop_pct > 5:
-        risk += min(28, (stop_pct - 5) * 5)
         risks.append(f"Yapısal stop mesafesi geniş: %{stop_pct:.1f}")
+        historical_notes.append("İlk 90 günlük örneklemde %5 üzeri stop mesafeleri daha zayıftı; eleme değildir")
     if frames["4H"]["trend"] < 42:
-        risk += 10
         risks.append("4H ana yapı hâlâ zayıf")
     if "1D" in frames and frames["1D"]["trend"] < 42:
-        risk += 7
         risks.append("1D yapı düşüş baskısında")
     if btc["ret_1h"] < -1.2 or btc["ret_4h"] < -2.4:
-        risk += 10
         risks.append("BTC kısa vadeli baskı oluşturuyor")
     elif btc["ret_6h"] < -2 and h1_state["ret_6"] >= btc["ret_6h"] + 1:
         risks.append("BTC zayıf; coin şimdilik göreceli güçlü")
     if h1_state["rsi"] > 73:
-        risk += 12
         risks.append("1H RSI kısa vadede ısınmış")
     if target_pct < stop_pct:
         risk += 10
         risks.append("İlk hedef mesafesi yapısal stop mesafesinden küçük")
     if support_distance > 5:
-        risk += min(15, (support_distance - 5) * 3)
         risks.append("Fiyat seçilen ana desteğin uzağında")
-    risk = clamp(risk)
-
-    score = reaction * 0.47 + room * 0.28 + (100 - risk) * 0.25
-    # Düşük R/R kesin ret değildir; güçlü ve hızlı tepki yine incelenebilir.
-    # Fakat listeyi, hedefi stop mesafesine göre çok küçük adaylar doldurmasın.
-    score -= max(0.0, 0.80 - rr) * 16
-    # Çok geniş yapısal stop, yüksek momentum/alan puanlarıyla maskelenmesin.
-    if risk >= 75:
-        score = min(score, 57)
-    score = clamp(score)
-    if score < MIN_SCORE:
-        return None
+    if target_pct > 3:
+        historical_notes.append("İlk 90 günlük örneklemde %3 üzeri ilk hedefler 24 saatte daha seyrek gerçekleşti; eleme değildir")
 
     entry_pad = min(h1_state["atr"] * 0.18, price * 0.004)
     entry_low = max(support.high, price - entry_pad)
     entry_high = price + entry_pad * 0.35
     setup = classify_setup(frames, support_distance)
     metrics = {
-        "reaction_score": round(reaction, 1), "room_score": round(room, 1),
-        "risk_score": round(risk, 1), "support_strength": round(support.strength, 1),
+        "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
         "btc_1h_pct": round(btc["ret_1h"], 2), "btc_6h_pct": round(btc["ret_6h"], 2),
         "rsi_1h": round(h1_state["rsi"], 1), "rsi_4h": round(frames["4H"]["rsi"], 1),
         "vol_ratio_1h": round(h1_state["vol_ratio"], 2),
     }
     return Candidate(
-        symbol=symbol, price=price, score=score, reaction_score=reaction,
-        room_score=room, risk_score=risk, entry_low=entry_low, entry_high=entry_high,
+        symbol=symbol, price=price, entry_low=entry_low, entry_high=entry_high,
         support=support, stop=stop, resistance=resistance,
         target_low=target_low, target_high=target_high, target_pct=target_pct,
-        stop_pct=stop_pct, rr=rr, setup=setup,
+        stop_pct=stop_pct, rr=rr, setup=setup, observed_setups=observed_setups,
         positives=positives[:5] or ["Çoklu gösterge dengesi incelemeye değer"],
         risks=risks[:5] or ["Belirgin ek risk sinyali yok; manuel grafik kontrolü gerekli"],
+        historical_notes=historical_notes,
         tf_summary={label: (frames[label]["text"] if label in frames else "yeterli geçmiş veri yok")
                     for label in ("1H", "4H", "1D", "1W")},
         metrics=metrics,
@@ -630,11 +598,14 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
 
 def candidate_message(c: Candidate) -> str:
     sym = c.symbol.removesuffix("USDT")
+    observed = "\n".join(f"• {x}" for x in c.observed_setups)
     positives = "\n".join(f"✅ {x}" for x in c.positives)
     risks = "\n".join(f"⚠️ {x}" for x in c.risks)
+    history = "\n".join(f"ℹ️ {x}" for x in c.historical_notes)
+    history_block = f"\n\n<b>Geçmiş örneklem notu</b>\n{history}" if history else ""
     return (
         f"🔎 <b>İNCELEME ADAYI — #{sym}</b>\n"
-        f"<b>{c.setup}</b> | Genel uygunluk: <b>{c.score:.0f}/100</b>\n"
+        f"<b>{c.setup}</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📊 Anlık: <code>{fmt_price(c.price)}</code>\n"
         f"🟦 Giriş değerlendirme: <code>{fmt_price(c.entry_low)}–{fmt_price(c.entry_high)}</code>\n"
@@ -651,10 +622,10 @@ def candidate_message(c: Candidate) -> str:
         f"• 4H: {c.tf_summary['4H']}\n"
         f"• 1D: {c.tf_summary['1D']}\n"
         f"• 1W: {c.tf_summary['1W']}\n\n"
+        f"<b>Neden taramaya takıldı?</b>\n{observed}\n\n"
         f"<b>Olumlu kanıtlar</b>\n{positives}\n\n"
-        f"<b>Riskler</b>\n{risks}\n"
+        f"<b>Riskler</b>\n{risks}{history_block}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Tepki: {c.reaction_score:.0f} | Alan: {c.room_score:.0f} | Risk: {c.risk_score:.0f}\n"
         f"<i>Otomatik alım değildir; grafiği manuel incele.</i>"
     )
 
@@ -697,10 +668,7 @@ def send_portfolio(c: Candidate) -> str:
         "sub_type": c.setup.lower().replace(" ", "_"),
         "source": "smc-v2",
         "phase": "manual_review",
-        "score": round(c.score, 1),
-        "reaction_score": round(c.reaction_score, 1),
-        "room_score": round(c.room_score, 1),
-        "risk_score": round(c.risk_score, 1),
+        "observed_setups": c.observed_setups,
         "entry_zone": [round(c.entry_low, 10), round(c.entry_high, 10)],
         "support_zone": [round(c.support.low, 10), round(c.support.high, 10)],
         "resistance_zone": [round(c.target_low, 10), round(c.target_high, 10)],
@@ -710,6 +678,7 @@ def send_portfolio(c: Candidate) -> str:
         "tf_summary": c.tf_summary,
         "positives": c.positives,
         "risks": c.risks,
+        "historical_notes": c.historical_notes,
         **c.metrics,
     }
     headers = {"Content-Type": "application/json"}
@@ -745,13 +714,14 @@ def request_analyzer(c: Candidate, portfolio_id: str) -> None:
         "tp1": round(c.target_low, 10),
         "tp2": round(c.target_high, 10),
         "setup": c.setup,
-        "score": round(c.score, 1),
+        "observed_setups": c.observed_setups,
         "target_pct": round(c.target_pct, 2),
         "stop_pct": round(c.stop_pct, 2),
         "rr": round(c.rr, 2),
         "tf_summary": c.tf_summary,
         "positives": c.positives,
         "risks": c.risks,
+        "historical_notes": c.historical_notes,
         **c.metrics,
     }
     headers = {"Content-Type": "application/json"}
@@ -807,23 +777,22 @@ def scan_once() -> list[Candidate]:
     btc = btc_context()
     print(f"[SCAN] {len(universe)} spot parite | BTC 1H {btc['ret_1h']:+.2f}% 6H {btc['ret_6h']:+.2f}%", flush=True)
 
-    prelim: list[tuple[float, str, dict]] = []
+    h1_states: list[tuple[str, dict]] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         jobs = {pool.submit(fetch_ohlcv, symbol, "1h", 260): symbol for symbol, _ in universe}
         for future in as_completed(jobs):
             symbol = jobs[future]
             try:
                 st = timeframe_state(future.result(), "1H")
-                prelim.append((preliminary_score(st), symbol, st))
+                if not in_cooldown(symbol, state):
+                    h1_states.append((symbol, st))
             except Exception as exc:
                 print(f"[1H] {symbol}: {str(exc)[:100]}", flush=True)
 
-    prelim.sort(key=lambda x: x[0], reverse=True)
-    deep = [(sym, st) for _, sym, st in prelim[:DEEP_SCAN_LIMIT] if not in_cooldown(sym, state)]
-    runtime["deep_scanned"] = len(deep)
+    runtime["deep_scanned"] = len(h1_states)
     candidates: list[Candidate] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        jobs = {pool.submit(evaluate_symbol, sym, st, btc): sym for sym, st in deep}
+        jobs = {pool.submit(evaluate_symbol, sym, st, btc): sym for sym, st in h1_states}
         for future in as_completed(jobs):
             symbol = jobs[future]
             try:
@@ -833,10 +802,10 @@ def scan_once() -> list[Candidate]:
             except Exception as exc:
                 print(f"[DEEP] {symbol}: {str(exc)[:120]}", flush=True)
 
-    candidates.sort(key=lambda c: (c.score, c.target_pct, -c.risk_score), reverse=True)
-    selected = candidates[:MAX_CANDIDATES]
+    # Puan veya kalite sıralaması yoktur; yalnızca okunabilir ve kararlı çıktı.
+    candidates.sort(key=lambda c: (c.setup, c.symbol))
     sent = 0
-    for c in selected:
+    for c in candidates:
         message = candidate_message(c)
         print("\n" + message.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", ""), flush=True)
         if DRY_RUN:
@@ -855,10 +824,10 @@ def scan_once() -> list[Candidate]:
     save_state(state)
     runtime.update({
         "status": "RUNNING", "last_scan_end": tr_now().isoformat(),
-        "candidates": len(selected), "sent": sent,
+        "candidates": len(candidates), "sent": sent,
     })
-    print(f"[SCAN] Bitti: {len(selected)} aday, {sent} gönderim, {time.time()-started:.1f}s", flush=True)
-    return selected
+    print(f"[SCAN] Bitti: {len(candidates)} aday, {sent} gönderim, {time.time()-started:.1f}s", flush=True)
+    return candidates
 
 
 def scanner_loop() -> None:
@@ -902,7 +871,7 @@ def run_flask() -> None:
 def main() -> None:
     print("=" * 68, flush=True)
     print("SPOT OPPORTUNITY SCANNER — manuel inceleme adayı sistemi", flush=True)
-    print(f"Spot only | MIN_SCORE={MIN_SCORE:g} | hedef≥%{MIN_TARGET_PCT:g} | stop tamponu=%{SUPPORT_BUFFER_PCT:g}", flush=True)
+    print(f"Spot only | birleşik puan yok | stop tamponu=%{SUPPORT_BUFFER_PCT:g}", flush=True)
     print(f"DRY_RUN={DRY_RUN} — " + ("hiçbir dış gönderim yapılmaz" if DRY_RUN else "Portfolio/Telegram gönderimi AKTİF"), flush=True)
     print("Gerçek emir fonksiyonu yoktur.", flush=True)
     print("=" * 68, flush=True)
