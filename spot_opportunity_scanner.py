@@ -52,7 +52,7 @@ SCAN_INTERVAL_MIN = int(os.getenv("SCAN_INTERVAL_MIN", "60"))
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
-EVENT_REARM_HOURS = float(os.getenv("EVENT_REARM_HOURS", "12"))
+EVENT_REARM_HOURS = float(os.getenv("EVENT_REARM_HOURS", "8"))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
 SUPPORT_BUFFER_PCT = float(os.getenv("SUPPORT_BUFFER_PCT", "2.5"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_opportunity_state.json")
@@ -265,26 +265,20 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
     if previous_stage == "EARLY" and candidate.stage == "TURN":
         reasons.append("erken izleme teyitli dönüşe ilerledi")
 
-    # Erken dönüş yalnızca göreceli-dip fotoğrafı olduğu için gönderilmez.
-    # EARLY görünümü önceki mumlarda başlamış olsa bile, destek çevresinde ilk
-    # gerçek toparlanma bu mumda görülürse uyarı verilir. Canlı döngüdeki
-    # EVENT_REARM_HOURS aynı görünümün saatlik tekrarını engeller.
+    # EARLY sinyali dönüş tamamlandıktan sonra değil, destek çevresindeki
+    # sıkışma belirgin biçimde derinleştiği anda manuel inceleme için üretilir.
+    # Bu bir AL sinyali değildir; göstergeler henüz yukarı dönmemiş olabilir.
     if candidate.stage == "EARLY":
         support_ok = len(candidate.support.timeframes) >= 2 or candidate.support.strength >= 20
-        compression_ok = current["relative_low_count"] >= 4
-        price_response = current["price"] > safe_float(before.get("price"))
-        indicator_response = (
-            current["fresh_count"] >= 1 and
-            current["fresh_count"] > int(before.get("fresh_count", 0))
+        new_deep_compression = (
+            current["relative_low_count"] >= 5 and
+            current["relative_low_count"] > int(before.get("relative_low_count", 0))
         )
-        pressure_not_expanding = (
+        pressure_not_accelerating = (
             current["weakening_count"] <= int(before.get("weakening_count", 0)) + 1
         )
-        if (
-            support_ok and compression_ok and pressure_not_expanding and
-            (price_response or indicator_response)
-        ):
-            reasons.append("destekte erken görünümden ilk saatlik toparlanma")
+        if support_ok and new_deep_compression and pressure_not_accelerating:
+            reasons.append("destekte derinleşen yeni gösterge sıkışması; erken inceleme")
 
     return bool(reasons), reasons
 
