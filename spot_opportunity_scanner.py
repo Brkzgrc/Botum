@@ -448,18 +448,22 @@ def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
         (price - safe_float(closes.iloc[-2])) >= atr * 0.20
     )
 
+    # Dinlenme sonrası devam için yalnız yeşil mum yetmez: fiyat bandın
+    # üst bölümünü geri almalı ve son kısa tepeyi kapanışla aşmalıdır.
     base_resume = (
         impulse_up_atr >= 2.0 and range_contracting and
         price >= safe_float(recent["low"].min()) + (
             safe_float(recent["high"].max()) - safe_float(recent["low"].min())
-        ) * 0.55 and
-        last_up and two_bar_progress
+        ) * 0.72 and
+        last_up and reclaimed_prev_high
     )
+    # Kontrollü geri çekilmede de iki mumluk sıradan yükseliş yerine,
+    # geri çekilmenin son kısa tepesinin gerçekten geri alınması aranır.
     pullback_resume = (
         impulse_up_atr >= 2.0 and
         0.20 <= pullback_ratio <= 0.85 and
         pullback_atr >= 0.35 and
-        last_up and (reclaimed_prev_high or two_bar_progress)
+        last_up and reclaimed_prev_high
     )
     reversal_turn = (
         down_move_atr >= 1.8 and near_recent_floor and
