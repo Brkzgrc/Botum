@@ -207,20 +207,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Spot Opportunity Scanner geçmiş testi")
     parser.add_argument("--days", type=int, default=90, help="Test dönemi; varsayılan 90 gün")
     parser.add_argument("--symbols", type=int, default=40, help="Likidite sırasıyla sembol sayısı; 0=tümü")
+    parser.add_argument("--only-symbol", default="", help="Yalnız tek sembol; örn. ZECUSDT")
     parser.add_argument("--step-hours", type=int, default=6, help="Karar noktaları arası saat")
     parser.add_argument("--horizon-hours", type=int, default=24, help="Her adayın takip süresi")
     parser.add_argument("--workers", type=int, default=4, help="Veri indirme işçisi")
     parser.add_argument("--output", default="/tmp/spot_opportunity_backtest.json")
     args = parser.parse_args()
 
-    if args.days < 14 or args.step_hours < 1 or args.horizon_hours < 1:
-        raise SystemExit("days>=14, step-hours>=1 ve horizon-hours>=1 olmalı")
+    minimum_days = 2 if args.only_symbol else 14
+    if args.days < minimum_days or args.step_hours < 1 or args.horizon_hours < 1:
+        raise SystemExit(f"days>={minimum_days}, step-hours>=1 ve horizon-hours>=1 olmalı")
 
     final_end = closed_hour()
     last_cutoff = final_end - timedelta(hours=args.horizon_hours)
     first_cutoff = last_cutoff - timedelta(days=args.days)
     cutoffs = list(pd.date_range(first_cutoff, last_cutoff, freq=f"{args.step_hours}h", tz="UTC").to_pydatetime())
-    symbols = current_crypto_symbols(args.symbols)
+    if args.only_symbol:
+        symbol = args.only_symbol.upper().replace("/", "")
+        symbol = symbol if symbol.endswith("USDT") else symbol + "USDT"
+        symbols = [symbol]
+    else:
+        symbols = current_crypto_symbols(args.symbols)
     print(f"[TEST] {len(symbols)} sembol | {args.days} gün | {len(cutoffs)} karar noktası")
     print("[TEST] Veriler indiriliyor; canlı tarayıcı ve dış servisler kullanılmaz.")
 
