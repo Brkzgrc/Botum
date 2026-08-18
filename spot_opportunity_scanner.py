@@ -26,6 +26,7 @@ import math
 import os
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1037,6 +1038,8 @@ def scan_once() -> list[Candidate]:
         }
 
     new_events: list[Candidate] = []
+    event_setup_counts: Counter[str] = Counter()
+    event_reason_counts: Counter[str] = Counter()
     for candidate in candidates:
         previous = state.get(candidate.symbol, {})
         previous = previous if isinstance(previous, dict) else {}
@@ -1056,6 +1059,8 @@ def scan_once() -> list[Candidate]:
                 0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
             )
             new_events.append(candidate)
+            event_setup_counts[candidate.setup] += 1
+            event_reason_counts.update(transition_reasons)
 
     if not initialized:
         print(
@@ -1092,6 +1097,15 @@ def scan_once() -> list[Candidate]:
         "status": "RUNNING", "last_scan_end": tr_now().isoformat(),
         "candidates": len(candidates), "sent": sent,
     })
+    if candidates:
+        setup_text = " | ".join(
+            f"{name}={count}" for name, count in event_setup_counts.most_common()
+        )
+        reason_text = " | ".join(
+            f"{name}={count}" for name, count in event_reason_counts.most_common()
+        )
+        print(f"[SCAN-ÖZET] Türler: {setup_text}", flush=True)
+        print(f"[SCAN-ÖZET] Geçişler: {reason_text}", flush=True)
     print(f"[SCAN] Bitti: {len(candidates)} aday, {sent} gönderim, {time.time()-started:.1f}s", flush=True)
     return candidates
 
