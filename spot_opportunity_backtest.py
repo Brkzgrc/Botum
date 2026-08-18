@@ -48,7 +48,7 @@ def raw_to_df(rows: list[list]) -> pd.DataFrame:
         "open_time", "open", "high", "low", "close", "volume", "close_time",
         "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
     ])
-    for col in ("open", "high", "low", "close", "volume", "quote_volume"):
+    for col in ("open", "high", "low", "close", "volume", "quote_volume", "taker_quote"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     df["close_time"] = pd.to_datetime(df["close_time"], unit="ms", utc=True)
@@ -241,6 +241,7 @@ def main() -> None:
         raise SystemExit("BTC bağlam verisi indirilemedi")
 
     records: list[dict] = []
+    active_events: dict[str, str] = {}
     for number, cutoff in enumerate(cutoffs, start=1):
         btc = btc_at(all_data["BTCUSDT"], cutoff)
         h1_states: list[tuple[str, dict]] = []
@@ -269,11 +270,15 @@ def main() -> None:
             except Exception:
                 continue
         candidates.sort(key=lambda c: (c.setup, c.symbol))
+        current_events = {candidate.symbol: candidate.event_key for candidate in candidates}
         for candidate in candidates:
+            if active_events.get(candidate.symbol) == candidate.event_key:
+                continue
             measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
             records.append({
                 "time": cutoff.isoformat(), "symbol": candidate.symbol,
                 "setup": candidate.setup,
+                "event_key": candidate.event_key,
                 "observed_setups": candidate.observed_setups,
                 "entry": candidate.price, "stop": candidate.stop,
                 "target": candidate.target_low, "target_pct": round(candidate.target_pct, 3),
@@ -284,6 +289,9 @@ def main() -> None:
                 "metrics": candidate.metrics,
                 **measured,
             })
+        # Bir olay şartları kaybolduğunda yeniden kurulabilir; aynı olay devam
+        # ederken sonraki karar noktalarında tekrar sinyal sayılmaz.
+        active_events = current_events
         if number % 20 == 0 or number == len(cutoffs):
             print(f"[REPLAY] {number}/{len(cutoffs)} | sinyal={len(records)}")
 
