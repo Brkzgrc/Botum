@@ -1295,6 +1295,33 @@ def close_signal(signal_id):
                 return jsonify({"ok": True, "closed": signal_id})
     return jsonify({"error": "not found or not open"}), 404
 
+@app.route("/api/signals/close-spot-scanner", methods=["POST"])
+def close_spot_scanner_signals():
+    """UI'dan yalnızca Spot Scanner kaynaklı açık izleme kayıtlarını kapatır.
+
+    Legacy SMC ve diğer kaynaklardaki açık kayıtlara dokunmaz. Öğrenme arşivi
+    ayrı tutulduğu için bu işlem learning_archive.json dosyasını değiştirmez.
+    """
+    now_str = datetime.now(TR_TZ).isoformat()
+    closed = 0
+    with _lock:
+        for sig in signals_db:
+            if sig.get("status") != "open" or sig.get("source") != "spot-scanner":
+                continue
+            current = float(sig.get("current_price") or sig.get("entry") or 0)
+            entry = float(sig.get("entry") or 0)
+            sig["status"] = "closed"
+            sig["outcome"] = "manual"
+            sig["close_reason"] = "bulk_spot_scanner_cleanup"
+            sig["close_time"] = now_str
+            sig["close_price"] = current
+            sig["close_pct"] = round((current - entry) / entry * 100, 2) if entry else 0.0
+            closed += 1
+        if closed:
+            save_signals()
+    print(f"[TEMİZLE] Spot Scanner açık kayıtları topluca kapatıldı: {closed}", flush=True)
+    return jsonify({"ok": True, "closed": closed})
+
 @app.route("/api/signals/clear-test", methods=["POST"])
 def clear_test_signals():
     if AUTH_TOKEN:
@@ -2972,6 +2999,9 @@ tr:hover td{{background:var(--card);}}
     <span class="time">
         {now}
         <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+        <button class="btn-clear"
+            onclick="if(confirm('Yalnızca Spot Scanner kaynaklı açık kayıtlar topluca kapatılacak.\\nDiğer açık kayıtlara ve öğrenme arşivine dokunulmayacak.\\nEmin misiniz?')){{fetch('/api/signals/close-spot-scanner',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Kapatılan Spot Scanner kaydı: '+d.closed);location.reload()}})}}"
+        >⛔ Spot Açıklarını Kapat</button>
         <button class="btn-clear"
             onclick="if(confirm('Kapanmış geçmiş ve retest bekleyen kayıtlar temizlenecek.\\nAçık pozisyonlara DOKUNULMAZ.\\nÖğrenme arşivi korunur.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt ('+d.kept+' açık kayıt korundu)');location.reload()}})}}"
         >🧹 Geçmişi Temizle</button>
