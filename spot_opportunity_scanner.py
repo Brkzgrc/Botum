@@ -1007,6 +1007,8 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
         "support_distance_pct": round(support_distance, 3),
+        "support_zone_width_pct": round((support.high - support.low) / price * 100, 3),
+        "support_timeframe_count": len(support.timeframes),
         "coin_1h_pct": round(h1_state["ret_1"], 3),
         "coin_6h_pct": round(h1_state["ret_6"], 3),
         "relative_low_count": len(h1_state["relative_lows"]),
@@ -1065,17 +1067,24 @@ def select_distinct_events(
     selected: list[tuple[Candidate, list[str]]] = []
     if early:
         max_lows = max(int(c.metrics.get("relative_low_count", 0)) for c, _ in early)
+
+        def support_utility(candidate: Candidate) -> float:
+            """Desteğin kanıtını, bölgenin kullanılabilir konumundan ayırmadan karşılaştır."""
+            strength = safe_float(candidate.metrics.get("support_strength"))
+            distance = max(0.0, safe_float(candidate.metrics.get("support_distance_pct")))
+            width = max(0.0, safe_float(candidate.metrics.get("support_zone_width_pct")))
+            confluence = safe_float(candidate.metrics.get("support_timeframe_count"), 1.0)
+            # Eleme eşiği değildir. Uzak/geniş bölge yalnız karşılaştırmada avantaj kaybeder.
+            return math.log1p(max(strength, 0.0)) + confluence * 0.55 - distance * 0.45 - width * 0.35
+
         support_median = float(np.median([
-            safe_float(c.metrics.get("support_strength")) for c, _ in early
+            support_utility(candidate) for candidate, _ in early
         ]))
         for candidate, reasons in early:
             structure = candidate.metrics.get("price_structure_1h", {})
             reversal_prepared = "reversal" in structure.get("watch_keys", [])
             deepest = int(candidate.metrics.get("relative_low_count", 0)) >= max_lows
-            support_distinct = (
-                len(candidate.support.timeframes) >= 2 or
-                candidate.support.strength >= support_median
-            )
+            support_distinct = support_utility(candidate) >= support_median
             if reversal_prepared and deepest and support_distinct:
                 reasons = [*reasons, "erken adaylar içinde dip sıkışması ve destek ayrışıyor"]
                 selected.append((candidate, reasons))
@@ -1118,7 +1127,12 @@ def select_distinct_events(
             "location": -safe_float(candidate.metrics.get("support_distance_pct")),
             "space": min(candidate.target_pct, 8.0),
             "relative": relative_move,
-            "support": safe_float(candidate.metrics.get("support_strength")),
+            "support": (
+                math.log1p(max(safe_float(candidate.metrics.get("support_strength")), 0.0)) +
+                safe_float(candidate.metrics.get("support_timeframe_count"), 1.0) * 0.55 -
+                max(0.0, safe_float(candidate.metrics.get("support_distance_pct"))) * 0.45 -
+                max(0.0, safe_float(candidate.metrics.get("support_zone_width_pct"))) * 0.35
+            ),
         }))
 
     names = ("structure", "location", "space", "relative", "support")
