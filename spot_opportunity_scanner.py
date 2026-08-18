@@ -205,6 +205,85 @@ def safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def compact_market_state(h1_state: dict) -> dict[str, Any]:
+    """Bir coinin saatlik hareket fotoğrafını küçük ve kalıcı biçimde saklar."""
+    phases = h1_state.get("phases", {})
+    bullish = {"yukarı_dönüş", "yükseliyor", "yukarı_kesti", "pozitif"}
+    fresh = {"yukarı_dönüş", "yukarı_kesti"}
+    return {
+        "phases": phases,
+        "upward_count": sum(v in bullish for v in phases.values()),
+        "fresh_count": sum(v in fresh for v in phases.values()),
+        "weakening_count": len(h1_state.get("weakening", [])),
+        "relative_low_count": len(h1_state.get("relative_lows", [])),
+        "candle_notes": h1_state.get("candle_notes", []),
+        "price": safe_float(h1_state.get("price")),
+    }
+
+
+def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tuple[bool, list[str]]:
+    """Anlık aday fotoğrafını değil, önceki kapalı muma göre gerçek ilerlemeyi arar."""
+    before = previous.get("market") if isinstance(previous, dict) else None
+    if not isinstance(before, dict):
+        return False, []
+
+    old_phases = before.get("phases", {})
+    new_phases = current.get("phases", {})
+    reasons: list[str] = []
+
+    actual_cross_keys = ("macd_cross", "stoch_rsi_cross", "ema20_relation")
+    new_crosses = [
+        key for key in actual_cross_keys
+        if new_phases.get(key) == "yukarı_kesti" and old_phases.get(key) != "yukarı_kesti"
+    ]
+    if new_crosses and current["upward_count"] >= 5:
+        reasons.append("gerçekleşen yukarı kesişim: " + ", ".join(new_crosses))
+
+    if (
+        new_phases.get("ema20_relation") in {"yukarı_kesti", "pozitif"} and
+        old_phases.get("ema20_relation") in {"negatif", "yukarı_kesişime_yaklaşıyor"} and
+        current["upward_count"] >= 5
+    ):
+        reasons.append("1H EMA20 geri kazanımı")
+
+    if (
+        current["fresh_count"] >= 3 and
+        current["fresh_count"] >= int(before.get("fresh_count", 0)) + 2 and
+        current["upward_count"] >= 5
+    ):
+        reasons.append("yön değişimi birden fazla göstergeye yayıldı")
+
+    old_candles = set(before.get("candle_notes", []))
+    new_bullish_candle = [
+        note for note in current.get("candle_notes", [])
+        if note not in old_candles and "satış baskısı" not in note
+    ]
+    if new_bullish_candle and current["fresh_count"] >= 2 and current["upward_count"] >= 5:
+        reasons.append("yeni mum teyidi: " + new_bullish_candle[0])
+
+    previous_stage = previous.get("candidate_stage", "")
+    if previous_stage == "EARLY" and candidate.stage == "TURN":
+        reasons.append("erken izleme teyitli dönüşe ilerledi")
+
+    # Erken dönüş yalnızca göreceli-dip fotoğrafı olduğu için gönderilmez.
+    # Sıkışmanın bu mumda oluşması, desteğin anlamlı olması ve ilk toparlanma
+    # belirtisinin başlaması birlikte görülürse erken uyarı olur.
+    if candidate.stage == "EARLY":
+        support_ok = len(candidate.support.timeframes) >= 2 or candidate.support.strength >= 20
+        compression_new = (
+            current["relative_low_count"] >= 4 and
+            current["relative_low_count"] > int(before.get("relative_low_count", 0))
+        )
+        first_response = (
+            current["fresh_count"] >= 1 or
+            current["price"] > safe_float(before.get("price"))
+        )
+        if support_ok and compression_new and first_response:
+            reasons.append("destekte yeni sıkışma ve ilk tepki hazırlığı")
+
+    return bool(reasons), reasons
+
+
 def load_state() -> dict:
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -942,57 +1021,47 @@ def scan_once() -> list[Candidate]:
             except Exception as exc:
                 print(f"[DEEP] {symbol}: {str(exc)[:120]}", flush=True)
 
-    # Aynı salınımı, olay bileşimi değişti diye tekrar tekrar sayma. Yalnız
-    # EARLY -> TURN yükseltmesi yeni bildirimdir. Hedef/stop görülürse veya
-    # şartlar iki tarama boyunca kaybolursa yapı yeniden kurulabilir.
+    # Gevşek aday koşulları yalnızca dahili izleme havuzudur. Mesaj üretmek
+    # için bir önceki kapalı 1H muma göre gerçek ilerleme görülmelidir.
     now_ts = time.time()
+    h1_map = {symbol: st for symbol, st in h1_states}
     active_state: dict[str, dict[str, Any]] = {}
-    for symbol, previous in state.items():
-        if not isinstance(previous, dict):
-            continue
-        within_rearm = now_ts - safe_float(previous.get("emitted_at")) < EVENT_REARM_HOURS * 3600
-        if within_rearm or int(previous.get("misses", 0)) < 1:
-            active_state[symbol] = {**previous, "misses": int(previous.get("misses", 0)) + 1}
+    for symbol, h1_state in h1_map.items():
+        previous = state.get(symbol, {})
+        previous = previous if isinstance(previous, dict) else {}
+        active_state[symbol] = {
+            "market": compact_market_state(h1_state),
+            "candidate_stage": "",
+            "target": safe_float(previous.get("target")),
+            "stop": safe_float(previous.get("stop")),
+            "emitted_at": safe_float(previous.get("emitted_at")),
+        }
+
     new_events: list[Candidate] = []
     for candidate in candidates:
         previous = state.get(candidate.symbol, {})
         previous = previous if isinstance(previous, dict) else {}
-        last_high = safe_float(candidate.metrics.get("last_high_1h"), candidate.price)
-        last_low = safe_float(candidate.metrics.get("last_low_1h"), candidate.price)
-        completed = bool(previous) and (
-            last_high >= safe_float(previous.get("target"), float("inf")) or
-            last_low <= safe_float(previous.get("stop"), float("-inf"))
-        )
-        if completed:
-            active_state[candidate.symbol] = {**previous, "stage": "WAIT_RESET", "misses": 0}
-            continue
-
-        previous_stage = previous.get("stage", "")
-        is_new = not previous or previous_stage == "WAIT_RESET"
-        is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
-        if previous_stage == "TURN" and candidate.stage == "EARLY":
-            active_state[candidate.symbol] = {**previous, "misses": 0}
-            continue
-
-        active_state[candidate.symbol] = {
-            "stage": candidate.stage, "event_key": candidate.event_key,
-            "target": candidate.target_low, "stop": candidate.stop,
-            "emitted_at": safe_float(previous.get("emitted_at")), "misses": 0,
-        }
+        current = active_state[candidate.symbol]["market"]
+        ready, transition_reasons = transition_ready(previous, candidate, current)
         last_emitted = safe_float(previous.get("emitted_at"))
         rearmed = not last_emitted or now_ts - last_emitted >= EVENT_REARM_HOURS * 3600
-        # EARLY -> TURN aynı fırsatın ilerlemesidir; yeni işlem adayı sayılmaz.
-        # İlk tarama bir başlangıç fotoğrafıdır: o anda zaten var olan onlarca
-        # adayı canlı sinyal gibi göndermez, yalnızca olay hafızasını kurar.
-        if is_new and rearmed:
+
+        active_state[candidate.symbol].update({
+            "candidate_stage": candidate.stage,
+            "target": candidate.target_low,
+            "stop": candidate.stop,
+        })
+        if initialized and ready and rearmed:
             active_state[candidate.symbol]["emitted_at"] = now_ts
-            if initialized:
-                new_events.append(candidate)
+            candidate.observed_setups.insert(
+                0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
+            )
+            new_events.append(candidate)
 
     if not initialized:
         print(
-            f"[WARMUP] İlk tarama: {len(candidates)} mevcut aday hafızaya alındı; "
-            "Portfolio/Telegram gönderimi yapılmadı.",
+            f"[WARMUP] İlk tarama: {len(candidates)} mevcut aday ve "
+            f"{len(h1_map)} piyasa durumu hafızaya alındı; gönderim yapılmadı.",
             flush=True,
         )
     active_state["__scanner_meta__"] = {
