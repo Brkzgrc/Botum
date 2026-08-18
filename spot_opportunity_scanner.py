@@ -219,56 +219,22 @@ def compact_market_state(h1_state: dict) -> dict[str, Any]:
         "relative_low_count": len(h1_state.get("relative_lows", [])),
         "candle_notes": h1_state.get("candle_notes", []),
         "price": safe_float(h1_state.get("price")),
+        "structure_key": h1_state.get("structure", {}).get("key", "none"),
     }
 
 
 def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tuple[bool, list[str]]:
-    """Anlık aday fotoğrafını değil, önceki kapalı muma göre gerçek ilerlemeyi arar."""
+    """Yalnız indikatör kıpırdamasını değil, yeni fiyat senaryosunu olay sayar."""
     before = previous.get("market") if isinstance(previous, dict) else None
     if not isinstance(before, dict):
         return False, []
 
-    old_phases = before.get("phases", {})
-    new_phases = current.get("phases", {})
+    previous_stage = previous.get("candidate_stage", "")
+    old_structure = before.get("structure_key", "none")
+    new_structure = current.get("structure_key", "none")
     reasons: list[str] = []
 
-    actual_cross_keys = ("macd_cross", "stoch_rsi_cross", "ema20_relation")
-    new_crosses = [
-        key for key in actual_cross_keys
-        if new_phases.get(key) == "yukarı_kesti" and old_phases.get(key) != "yukarı_kesti"
-    ]
-    if new_crosses and current["upward_count"] >= 5:
-        reasons.append("gerçekleşen yukarı kesişim: " + ", ".join(new_crosses))
-
-    if (
-        new_phases.get("ema20_relation") in {"yukarı_kesti", "pozitif"} and
-        old_phases.get("ema20_relation") in {"negatif", "yukarı_kesişime_yaklaşıyor"} and
-        current["upward_count"] >= 5
-    ):
-        reasons.append("1H EMA20 geri kazanımı")
-
-    if (
-        current["fresh_count"] >= 3 and
-        current["fresh_count"] >= int(before.get("fresh_count", 0)) + 2 and
-        current["upward_count"] >= 5
-    ):
-        reasons.append("yön değişimi birden fazla göstergeye yayıldı")
-
-    old_candles = set(before.get("candle_notes", []))
-    new_bullish_candle = [
-        note for note in current.get("candle_notes", [])
-        if note not in old_candles and "satış baskısı" not in note
-    ]
-    if new_bullish_candle and current["fresh_count"] >= 2 and current["upward_count"] >= 5:
-        reasons.append("yeni mum teyidi: " + new_bullish_candle[0])
-
-    previous_stage = previous.get("candidate_stage", "")
-    if previous_stage == "EARLY" and candidate.stage == "TURN":
-        reasons.append("erken izleme teyitli dönüşe ilerledi")
-
-    # EARLY sinyali dönüş tamamlandıktan sonra değil, destek çevresindeki
-    # sıkışma belirgin biçimde derinleştiği anda manuel inceleme için üretilir.
-    # Bu bir AL sinyali değildir; göstergeler henüz yukarı dönmemiş olabilir.
+    # Destekte erken izleme, dönüş tamamlanmadan önce bilinçli olarak ayrı tutulur.
     if candidate.stage == "EARLY":
         support_ok = len(candidate.support.timeframes) >= 2 or candidate.support.strength >= 20
         new_deep_compression = (
@@ -280,9 +246,20 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
         )
         if support_ok and new_deep_compression and pressure_not_accelerating:
             reasons.append("destekte derinleşen yeni gösterge sıkışması; erken inceleme")
+        return bool(reasons), reasons
+
+    if previous_stage == "EARLY" and candidate.stage == "TURN":
+        reasons.append("erken izleme fiyat hareketiyle teyit edildi")
+
+    if new_structure != "none" and new_structure != old_structure:
+        reasons.append("yeni fiyat olayı: " + new_structure)
+
+    # Önceki saatte aday yokken tamamlanmış bir fiyat senaryosu doğdu.
+    if previous_stage == "" and candidate.stage == "TURN" and new_structure != "none":
+        if not reasons:
+            reasons.append("yeni yapısal fırsat döngüsü başladı")
 
     return bool(reasons), reasons
-
 
 def load_state() -> dict:
     try:
@@ -418,6 +395,107 @@ def candle_evidence(df: pd.DataFrame) -> tuple[float, list[str]]:
     return clamp(score, -30, 70), notes
 
 
+def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
+    """Fiyatın son hareket dizisini ATR'ye göre sınıflandırır.
+
+    Tek bir trend yönünü zorunlu tutmaz. Yükseliş-dinlenme-devam,
+    kontrollü geri çekilme, bant genişlemesi ve düşüş sonrası tepki
+    birbirinden bağımsız senaryolardır.
+    """
+    if len(d) < 35:
+        return {"key": "none", "text": "fiyat dizisi için veri yetersiz"}
+
+    x = d.iloc[-1]
+    price = safe_float(x["close"])
+    atr = max(safe_float(x["atr"]), price * 0.005, 1e-12)
+    closes = d["close"]
+    highs = d["high"]
+    lows = d["low"]
+
+    # Önceki hareket ile son dinlenme/geri çekilmeyi birbirinden ayır.
+    anchor = d.iloc[-24:-6]
+    recent = d.iloc[-6:]
+    impulse_low_i = anchor["low"].idxmin()
+    after_low = anchor.loc[impulse_low_i:]
+    impulse_high_i = after_low["high"].idxmax()
+    impulse_low = safe_float(anchor.loc[impulse_low_i, "low"])
+    impulse_high = safe_float(anchor.loc[impulse_high_i, "high"])
+    impulse_up_atr = max(0.0, (impulse_high - impulse_low) / atr)
+
+    recent_peak = safe_float(d["high"].iloc[-12:].max())
+    recent_floor = safe_float(d["low"].iloc[-12:].min())
+    pullback_atr = max(0.0, (recent_peak - price) / atr)
+    impulse_size = max(impulse_high - impulse_low, atr)
+    pullback_ratio = max(0.0, (impulse_high - price) / impulse_size)
+
+    recent_range_atr = (safe_float(recent["high"].max()) - safe_float(recent["low"].min())) / atr
+    prior_range = d.iloc[-14:-6]
+    prior_range_atr = (
+        safe_float(prior_range["high"].max()) - safe_float(prior_range["low"].min())
+    ) / atr
+    range_contracting = recent_range_atr <= max(1.8, prior_range_atr * 0.72)
+
+    down_peak = safe_float(d["high"].iloc[-18:].max())
+    down_move_atr = max(0.0, (down_peak - safe_float(lows.iloc[-1])) / atr)
+    near_recent_floor = price <= recent_floor + atr * 0.65
+
+    last_up = price > safe_float(closes.iloc[-2])
+    two_bar_progress = price > safe_float(closes.iloc[-3])
+    reclaimed_prev_high = price > safe_float(highs.iloc[-2])
+    breakout_level = safe_float(highs.iloc[-7:-1].max())
+    range_break = (
+        range_contracting and price > breakout_level and
+        (price - safe_float(closes.iloc[-2])) >= atr * 0.20
+    )
+
+    base_resume = (
+        impulse_up_atr >= 2.0 and range_contracting and
+        price >= safe_float(recent["low"].min()) + (
+            safe_float(recent["high"].max()) - safe_float(recent["low"].min())
+        ) * 0.55 and
+        last_up and two_bar_progress
+    )
+    pullback_resume = (
+        impulse_up_atr >= 2.0 and
+        0.20 <= pullback_ratio <= 0.85 and
+        pullback_atr >= 0.35 and
+        last_up and (reclaimed_prev_high or two_bar_progress)
+    )
+    reversal_turn = (
+        down_move_atr >= 1.8 and near_recent_floor and
+        last_up and (reclaimed_prev_high or price > safe_float(d["open"].iloc[-1]))
+    )
+
+    if range_break:
+        key = "range_expansion"
+        text = "daralan fiyat bandından yukarı genişleme başladı"
+    elif base_resume:
+        key = "base_continuation"
+        text = "yükseliş sonrası dinlenme tamamlanıp fiyat yeniden ilerliyor"
+    elif pullback_resume:
+        key = "pullback_resume"
+        text = "önceki yükselişin kontrollü geri çekilmesinden tepki oluşuyor"
+    elif reversal_turn:
+        key = "support_reversal"
+        text = "aşağı hareket sonrası fiyat taban çevresinde yukarı tepki veriyor"
+    else:
+        key = "none"
+        text = "henüz tamamlanmış yeni fiyat olayı yok"
+
+    return {
+        "key": key,
+        "text": text,
+        "impulse_up_atr": round(impulse_up_atr, 3),
+        "pullback_atr": round(pullback_atr, 3),
+        "pullback_ratio": round(pullback_ratio, 3),
+        "recent_range_atr": round(recent_range_atr, 3),
+        "prior_range_atr": round(prior_range_atr, 3),
+        "down_move_atr": round(down_move_atr, 3),
+        "range_contracting": bool(range_contracting),
+        "last_up": bool(last_up),
+    }
+
+
 def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
     d = add_indicators(df)
     x, p = d.iloc[-1], d.iloc[-2]
@@ -454,6 +532,7 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
     volume += min(16, max(-8, (vr - 1) * 16))
 
     candle_score, candle_notes = candle_evidence(d)
+    structure = price_action_structure(d)
     ret_1 = (price / safe_float(p["close"], price) - 1) * 100
     ret_6 = (price / safe_float(d["close"].iloc[-7], price) - 1) * 100 if len(d) >= 7 else 0
 
@@ -517,6 +596,7 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
         "weakening": weakening, "relative_lows": relative_lows,
         "taker_buy_ratio": taker_buy_ratio,
         "ema20_distance_atr": ema20_distance_atr, "flow_text": flow_text,
+        "structure": structure,
     }
 
 
@@ -659,8 +739,8 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     rr = target_pct / stop_pct
     support_distance = (price - support.high) / price * 100
 
-    # Birleşik puan ve sabit osilatör seviyesi yoktur. Yeni bir yön değişimi,
-    # bulunduğu konum ve diğer timeframe bağlamıyla beraber olay oluşturur.
+    # Önce fiyat senaryosu belirlenir; indikatörler senaryonun zamanlamasını
+    # ve risklerini açıklar, kendi başına aday oluşturmaz.
     h1_phases = h1_state["phases"]
     h4_phases = frames["4H"]["phases"]
     fresh_up = {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
@@ -670,52 +750,52 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     h1_upward = len(h1_state["turning_up"])
     candle_confirmation = h1_state["candle"] > 0
     near_support = support_distance <= 2.5
-    ema_retest = (
-        abs(h1_state["ema20_distance_atr"]) <= 0.80 and
-        h1_phases["ema20_relation"] in {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor", "pozitif"}
-    )
+    structure = h1_state.get("structure", {})
+    structure_key = structure.get("key", "none")
+
     observed_setups: list[str] = []
     event_codes: list[str] = []
-    if near_support and h1_upward >= 4 and (
-        len(h1_fresh_turns) >= 2 or (candle_confirmation and len(h1_fresh_turns) >= 1)
-    ):
-        observed_setups.append("Anlamlı destek yakınında tepki işareti")
-        event_codes.append("support_turn")
-    if h4_upward >= 5 and h1_upward >= 4 and len(h1_fresh_turns) >= 2:
-        observed_setups.append("4H yönü olumlu; 1H zamanlaması yukarı dönüyor")
-        event_codes.append("h4_context_h1_turn")
-    if ema_retest and h1_upward >= 4 and len(h1_fresh_turns) >= 2:
-        observed_setups.append("EMA20 yakınında retest/reclaim davranışı")
-        event_codes.append("ema20_retest")
-    core_turns = {"rsi", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "obv"}
-    if len(core_turns.intersection(h1_fresh_turns)) >= 3 and (near_support or candle_confirmation or h4_upward >= 5):
-        observed_setups.append("Birden fazla göstergede eşzamanlı yön değişimi")
-        event_codes.append("multi_indicator_turn")
-    # ZEC örneğindeki gibi para girişi başlamadan önce: sabit RSI/W%R eşiği
-    # değil, kendi yakın geçmişine göre eşzamanlı sıkışma ve destek konumu.
-    if near_support and len(h1_state["relative_lows"]) >= 4 and len(h1_fresh_turns) <= 1:
-        observed_setups.append("Destek bölgesinde göstergeler kendi yakın dönem diplerine sıkışıyor; dönüş henüz teyitsiz")
-        event_codes.append("early_turn_watch")
+
+    # ZEC örneğindeki erken inceleme: dönüş teyidi değil, anlamlı destek
+    # çevresindeki derin göreceli sıkışmadır.
+    early_compression = (
+        near_support and len(h1_state["relative_lows"]) >= 4 and
+        len(h1_fresh_turns) <= 1
+    )
+    if early_compression:
+        observed_setups.append(
+            "Destek bölgesinde göstergeler yakın dönem diplerine sıkışıyor; "
+            "fiyat dönüşü henüz teyitsiz"
+        )
+        event_codes.append("early_support_compression")
+
+    structure_labels = {
+        "range_expansion": "Daralan fiyat bandından yukarı genişleme",
+        "base_continuation": "Yükseliş sonrası dinlenme ve yeniden devam",
+        "pullback_resume": "Yükseliş sonrası kontrollü geri çekilmeden tepki",
+        "support_reversal": "Aşağı hareket sonrası taban çevresinden fiyat tepkisi",
+    }
+    if structure_key in structure_labels:
+        observed_setups.append(structure_labels[structure_key])
+        event_codes.append(structure_key)
+
     if not event_codes:
         return None
 
-    if event_codes == ["early_turn_watch"]:
+    if event_codes == ["early_support_compression"]:
         setup = "ERKEN DÖNÜŞ İZLEME"
         stage = "EARLY"
-    elif "support_turn" in event_codes:
-        setup = "DESTEK TEPKİSİ"
+    elif structure_key == "range_expansion":
+        setup = "SIKIŞMA SONRASI DEVAM"
         stage = "TURN"
-    elif "ema20_retest" in event_codes and h4_upward >= 4:
-        setup = "TREND İÇİ GERİ ÇEKİLME"
+    elif structure_key == "base_continuation":
+        setup = "YÜKSELİŞ-DİNLENME-DEVAM"
         stage = "TURN"
-    elif len(frames["4H"]["weakening"]) > h4_upward:
-        setup = "KISA VADELİ TEPKİ"
-        stage = "TURN"
-    elif "1D" in frames and len(frames["1D"]["weakening"]) > len(frames["1D"]["turning_up"]):
-        setup = "KARŞI-TREND TEPKİ"
+    elif structure_key == "pullback_resume":
+        setup = "KONTROLLÜ GERİ ÇEKİLME TEPKİSİ"
         stage = "TURN"
     else:
-        setup = "KISA VADELİ FIRSAT"
+        setup = "DESTEK TEPKİSİ"
         stage = "TURN"
 
     positives: list[str] = []
@@ -765,6 +845,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     entry_high = price + entry_pad * 0.35
     movement_summary = {
         "1H": (
+            f"Fiyat yapısı: {structure.get('text', 'belirsiz')}; "
             f"RSI {h1_phases['rsi']}; MACD histogram {h1_phases['macd_hist']}; "
             f"MACD {h1_phases['macd_cross']}; Stoch RSI {h1_phases['stoch_rsi_cross']}; "
             f"OBV {h1_phases['obv']}; EMA20 {h1_phases['ema20_relation']}"
@@ -776,7 +857,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         ),
         "Akış": h1_state["flow_text"],
     }
-    event_key = stage
+    event_key = "EARLY" if stage == "EARLY" else structure_key
     metrics = {
         "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
@@ -785,6 +866,7 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "vol_ratio_1h": round(h1_state["vol_ratio"], 2),
         "taker_buy_ratio_1h": round(h1_state["taker_buy_ratio"], 3),
         "ema20_distance_atr_1h": round(h1_state["ema20_distance_atr"], 2),
+        "price_structure_1h": structure,
         "indicator_phases_1h": h1_phases, "indicator_phases_4h": h4_phases,
         "last_high_1h": round(float(h1_state["df"]["high"].iloc[-1]), 10),
         "last_low_1h": round(float(h1_state["df"]["low"].iloc[-1]), 10),
