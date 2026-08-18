@@ -896,6 +896,10 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     metrics = {
         "support_strength": round(support.strength, 1),
         "support_timeframes": support.timeframes, "resistance_strength": round(resistance.strength, 1),
+        "support_distance_pct": round(support_distance, 3),
+        "coin_1h_pct": round(h1_state["ret_1"], 3),
+        "coin_6h_pct": round(h1_state["ret_6"], 3),
+        "relative_low_count": len(h1_state["relative_lows"]),
         "btc_1h_pct": round(btc["ret_1h"], 2), "btc_6h_pct": round(btc["ret_6h"], 2),
         "rsi_1h": round(h1_state["rsi"], 1), "rsi_4h": round(frames["4H"]["rsi"], 1),
         "vol_ratio_1h": round(h1_state["vol_ratio"], 2),
@@ -919,6 +923,116 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
                     for label in ("1H", "4H", "1D", "1W")},
         metrics=metrics,
     )
+
+
+# =============================================================================
+# GÖRECELİ ADAY SEÇİMİ
+# =============================================================================
+
+def select_distinct_events(
+    event_pool: list[tuple[Candidate, list[str]]],
+    h1_map: dict[str, dict],
+) -> list[tuple[Candidate, list[str]]]:
+    """Aynı saatteki benzer olaylardan yalnız belirgin ayrışanları geçirir.
+
+    Mutlak uygunluk puanı veya günlük kota üretmez. Yapısal olgunluk ana
+    koşuldur; destek konumu, direnç alanı, piyasa geneline göre hareket ve
+    destek kalitesi yalnızca aynı saat adaylarını birbirinden ayırır.
+    """
+    if len(event_pool) <= 2:
+        return event_pool
+
+    early = [(c, r) for c, r in event_pool if c.stage == "EARLY"]
+    confirmed = [(c, r) for c, r in event_pool if c.stage != "EARLY"]
+
+    # Erken dönüşler farklı bir karar türüdür; teyitli devamlarla yarışmaz.
+    selected: list[tuple[Candidate, list[str]]] = []
+    if early:
+        max_lows = max(int(c.metrics.get("relative_low_count", 0)) for c, _ in early)
+        support_median = float(np.median([
+            safe_float(c.metrics.get("support_strength")) for c, _ in early
+        ]))
+        for candidate, reasons in early:
+            structure = candidate.metrics.get("price_structure_1h", {})
+            reversal_prepared = "reversal" in structure.get("watch_keys", [])
+            deepest = int(candidate.metrics.get("relative_low_count", 0)) >= max_lows
+            support_distinct = (
+                len(candidate.support.timeframes) >= 2 or
+                candidate.support.strength >= support_median
+            )
+            if reversal_prepared and deepest and support_distinct:
+                reasons = [*reasons, "erken adaylar içinde dip sıkışması ve destek ayrışıyor"]
+                selected.append((candidate, reasons))
+
+    if not confirmed:
+        return selected
+
+    market_ret1 = float(np.median([
+        safe_float(st.get("ret_1")) for st in h1_map.values()
+    ]))
+    market_ret6 = float(np.median([
+        safe_float(st.get("ret_6")) for st in h1_map.values()
+    ]))
+
+    rows: list[tuple[Candidate, list[str], dict[str, float]]] = []
+    for candidate, reasons in confirmed:
+        structure = candidate.metrics.get("price_structure_1h", {})
+        key = structure.get("key", "none")
+        if key == "range_expansion":
+            intensity = safe_float(structure.get("prior_range_atr")) / max(
+                safe_float(structure.get("recent_range_atr")), 0.25
+            )
+        elif key == "base_continuation":
+            intensity = safe_float(structure.get("impulse_up_atr")) / max(
+                safe_float(structure.get("recent_range_atr")), 0.5
+            )
+        elif key == "pullback_resume":
+            ratio = safe_float(structure.get("pullback_ratio"), 0.5)
+            balance = max(0.0, 1.0 - abs(ratio - 0.5))
+            intensity = safe_float(structure.get("impulse_up_atr")) * balance
+        else:
+            intensity = safe_float(structure.get("down_move_atr"))
+
+        relative_move = max(
+            safe_float(candidate.metrics.get("coin_1h_pct")) - market_ret1,
+            (safe_float(candidate.metrics.get("coin_6h_pct")) - market_ret6) / 2,
+        )
+        rows.append((candidate, reasons, {
+            "structure": intensity,
+            "location": -safe_float(candidate.metrics.get("support_distance_pct")),
+            "space": min(candidate.target_pct, 8.0),
+            "relative": relative_move,
+            "support": safe_float(candidate.metrics.get("support_strength")),
+        }))
+
+    names = ("structure", "location", "space", "relative", "support")
+    thresholds70 = {
+        name: float(np.quantile([row[2][name] for row in rows], 0.70))
+        for name in names
+    }
+    thresholds55 = {
+        name: float(np.quantile([row[2][name] for row in rows], 0.55))
+        for name in names
+    }
+
+    for candidate, reasons, values in rows:
+        high = [name for name in names if values[name] >= thresholds70[name]]
+        supporting = [name for name in names if values[name] >= thresholds55[name]]
+        structurally_distinct = values["structure"] >= thresholds70["structure"]
+        broad_distinction = len(high) >= 3
+        if (structurally_distinct and len(supporting) >= 2) or broad_distinction:
+            readable = {
+                "structure": "fiyat olayı",
+                "location": "destek konumu",
+                "space": "direnç alanı",
+                "relative": "piyasa geneline göre hareket",
+                "support": "destek kalitesi",
+            }
+            distinctions = ", ".join(readable[name] for name in high)
+            reasons = [*reasons, "aynı saat adaylarından ayrışanlar: " + distinctions]
+            selected.append((candidate, reasons))
+
+    return selected
 
 
 # =============================================================================
@@ -1154,7 +1268,7 @@ def scan_once() -> list[Candidate]:
             "emitted_at": safe_float(previous.get("emitted_at")),
         }
 
-    new_events: list[Candidate] = []
+    event_pool: list[tuple[Candidate, list[str]]] = []
     event_setup_counts: Counter[str] = Counter()
     event_reason_counts: Counter[str] = Counter()
     for candidate in candidates:
@@ -1171,13 +1285,24 @@ def scan_once() -> list[Candidate]:
             "stop": candidate.stop,
         })
         if initialized and ready and rearmed:
-            active_state[candidate.symbol]["emitted_at"] = now_ts
-            candidate.observed_setups.insert(
-                0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
-            )
-            new_events.append(candidate)
-            event_setup_counts[candidate.setup] += 1
-            event_reason_counts.update(transition_reasons)
+            event_pool.append((candidate, transition_reasons))
+
+    selected_events = select_distinct_events(event_pool, h1_map) if initialized else []
+    new_events: list[Candidate] = []
+    for candidate, transition_reasons in selected_events:
+        active_state[candidate.symbol]["emitted_at"] = now_ts
+        candidate.observed_setups.insert(
+            0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
+        )
+        new_events.append(candidate)
+        event_setup_counts[candidate.setup] += 1
+        event_reason_counts.update(transition_reasons)
+
+    if initialized and event_pool:
+        print(
+            f"[SEÇİM] Ham olay={len(event_pool)} | ayrışan aday={len(new_events)}",
+            flush=True,
+        )
 
     if not initialized:
         print(
