@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import statistics
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -164,11 +163,6 @@ def safe_mean(values: list[float]) -> float:
     return round(statistics.fmean(values), 3) if values else 0.0
 
 
-def score_bucket(score: float) -> str:
-    low = int(math.floor(score / 5) * 5)
-    return f"{low}-{low + 4}"
-
-
 def summarize(records: list[dict]) -> dict:
     counts = Counter(r["result"] for r in records)
     decided = counts["TARGET"] + counts["STOP"] + counts["STOP_AMBIGUOUS"]
@@ -183,24 +177,13 @@ def summarize(records: list[dict]) -> dict:
             "avg_mfe_pct": safe_mean([r["mfe"] for r in group]),
             "avg_mae_pct": safe_mean([r["mae"] for r in group]),
         }
-    by_score: dict[str, dict] = {}
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for record in records:
-        grouped[score_bucket(record["score"])].append(record)
-    for bucket, group in sorted(grouped.items()):
-        c = Counter(r["result"] for r in group)
-        d = c["TARGET"] + c["STOP"] + c["STOP_AMBIGUOUS"]
-        by_score[bucket] = {
-            "n": len(group), "target_first_pct": round(100 * c["TARGET"] / d, 2) if d else 0,
-            "avg_24h_close_pct": safe_mean([r["close_return"] for r in group]),
-        }
     return {
         "signals": len(records), "outcomes": dict(counts),
         "target_first_pct": round(target_rate, 2),
         "avg_mfe_pct": safe_mean([r["mfe"] for r in records]),
         "avg_mae_pct": safe_mean([r["mae"] for r in records]),
         "avg_horizon_close_pct": safe_mean([r["close_return"] for r in records]),
-        "by_setup": by_setup, "by_score": by_score,
+        "by_setup": by_setup,
     }
 
 
@@ -218,10 +201,6 @@ def print_summary(summary: dict) -> None:
     for name, row in summary["by_setup"].items():
         print(f"  {name}: n={row['n']} hedef-önce=%{row['target_first_pct']:.1f} "
               f"MFE=%{row['avg_mfe_pct']:.2f} MAE=%{row['avg_mae_pct']:.2f}")
-    print("\nPuan dilimleri:")
-    for name, row in summary["by_score"].items():
-        print(f"  {name}: n={row['n']} hedef-önce=%{row['target_first_pct']:.1f} "
-              f"kapanış=%{row['avg_24h_close_pct']:.2f}")
 
 
 def main() -> None:
@@ -264,7 +243,7 @@ def main() -> None:
     records: list[dict] = []
     for number, cutoff in enumerate(cutoffs, start=1):
         btc = btc_at(all_data["BTCUSDT"], cutoff)
-        prelim: list[tuple[float, str, dict]] = []
+        h1_states: list[tuple[str, dict]] = []
         for symbol in symbols:
             data = all_data.get(symbol)
             if not data:
@@ -276,13 +255,12 @@ def main() -> None:
                 if quote_volume < scanner.MIN_QUOTE_VOLUME:
                     continue
                 h1_state = scanner.timeframe_state(h1_raw, "1H")
-                prelim.append((scanner.preliminary_score(h1_state), symbol, h1_state))
+                h1_states.append((symbol, h1_state))
             except Exception:
                 continue
-        prelim.sort(reverse=True, key=lambda x: x[0])
         candidates = []
         # Context monkeypatch global olduğu için değerlendirme bu bölümde sıralıdır.
-        for _, symbol, h1_state in prelim[:scanner.DEEP_SCAN_LIMIT]:
+        for symbol, h1_state in h1_states:
             try:
                 with FETCH_LOCK, historical_fetch(all_data[symbol], cutoff):
                     candidate = scanner.evaluate_symbol(symbol, h1_state, btc)
@@ -290,15 +268,20 @@ def main() -> None:
                     candidates.append(candidate)
             except Exception:
                 continue
-        candidates.sort(key=lambda c: (c.score, c.target_pct, -c.risk_score), reverse=True)
-        for candidate in candidates[:scanner.MAX_CANDIDATES]:
+        candidates.sort(key=lambda c: (c.setup, c.symbol))
+        for candidate in candidates:
             measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
             records.append({
                 "time": cutoff.isoformat(), "symbol": candidate.symbol,
-                "setup": candidate.setup, "score": round(candidate.score, 2),
+                "setup": candidate.setup,
+                "observed_setups": candidate.observed_setups,
                 "entry": candidate.price, "stop": candidate.stop,
                 "target": candidate.target_low, "target_pct": round(candidate.target_pct, 3),
                 "stop_pct": round(candidate.stop_pct, 3), "rr": round(candidate.rr, 3),
+                "tf_summary": candidate.tf_summary,
+                "positives": candidate.positives, "risks": candidate.risks,
+                "historical_notes": candidate.historical_notes,
+                "metrics": candidate.metrics,
                 **measured,
             })
         if number % 20 == 0 or number == len(cutoffs):
