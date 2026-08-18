@@ -220,6 +220,7 @@ def compact_market_state(h1_state: dict) -> dict[str, Any]:
         "candle_notes": h1_state.get("candle_notes", []),
         "price": safe_float(h1_state.get("price")),
         "structure_key": h1_state.get("structure", {}).get("key", "none"),
+        "structure_watch_keys": h1_state.get("structure", {}).get("watch_keys", []),
     }
 
 
@@ -248,16 +249,24 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
             reasons.append("destekte derinleşen yeni gösterge sıkışması; erken inceleme")
         return bool(reasons), reasons
 
-    if previous_stage == "EARLY" and candidate.stage == "TURN":
-        reasons.append("erken izleme fiyat hareketiyle teyit edildi")
+    required_watch = {
+        "range_expansion": "range",
+        "base_continuation": "base",
+        "pullback_resume": "pullback",
+        "support_reversal": "reversal",
+    }.get(new_structure)
+    previous_watches = set(before.get("structure_watch_keys", []))
+    prepared = bool(required_watch and required_watch in previous_watches)
 
-    if new_structure != "none" and new_structure != old_structure:
-        reasons.append("yeni fiyat olayı: " + new_structure)
+    if previous_stage == "EARLY" and candidate.stage == "TURN" and prepared:
+        reasons.append("erken izleme, önceden takip edilen fiyat hareketiyle teyit edildi")
 
-    # Önceki saatte aday yokken tamamlanmış bir fiyat senaryosu doğdu.
-    if previous_stage == "" and candidate.stage == "TURN" and new_structure != "none":
-        if not reasons:
-            reasons.append("yeni yapısal fırsat döngüsü başladı")
+    if (
+        new_structure != "none" and
+        new_structure != old_structure and
+        prepared
+    ):
+        reasons.append("hazırlığı izlenen yeni fiyat olayı: " + new_structure)
 
     return bool(reasons), reasons
 
@@ -443,6 +452,27 @@ def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
     two_bar_progress = price > safe_float(closes.iloc[-3])
     reclaimed_prev_high = price > safe_float(highs.iloc[-2])
     breakout_level = safe_float(highs.iloc[-7:-1].max())
+
+    # Bunlar sinyal değil, bir sonraki fiyat olayının hazırlık durumlarıdır.
+    # Canlı yaşam döngüsü bu hazırlığı önceki kapalı mumda görmeden olay üretmez.
+    range_watch = range_contracting
+    base_watch = impulse_up_atr >= 2.0 and range_contracting
+    pullback_watch = (
+        impulse_up_atr >= 2.0 and
+        0.20 <= pullback_ratio <= 0.85 and
+        pullback_atr >= 0.35
+    )
+    reversal_watch = down_move_atr >= 1.8 and near_recent_floor
+    watch_keys = [
+        name for name, active in (
+            ("range", range_watch),
+            ("base", base_watch),
+            ("pullback", pullback_watch),
+            ("reversal", reversal_watch),
+        )
+        if active
+    ]
+
     range_break = (
         range_contracting and price > breakout_level and
         (price - safe_float(closes.iloc[-2])) >= atr * 0.20
@@ -497,6 +527,7 @@ def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
         "down_move_atr": round(down_move_atr, 3),
         "range_contracting": bool(range_contracting),
         "last_up": bool(last_up),
+        "watch_keys": watch_keys,
     }
 
 
