@@ -52,6 +52,7 @@ SCAN_INTERVAL_MIN = int(os.getenv("SCAN_INTERVAL_MIN", "60"))
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
+EVENT_REARM_HOURS = float(os.getenv("EVENT_REARM_HOURS", "12"))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
 SUPPORT_BUFFER_PCT = float(os.getenv("SUPPORT_BUFFER_PCT", "2.5"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_opportunity_state.json")
@@ -942,9 +943,13 @@ def scan_once() -> list[Candidate]:
     # Aynı salınımı, olay bileşimi değişti diye tekrar tekrar sayma. Yalnız
     # EARLY -> TURN yükseltmesi yeni bildirimdir. Hedef/stop görülürse veya
     # şartlar iki tarama boyunca kaybolursa yapı yeniden kurulabilir.
+    now_ts = time.time()
     active_state: dict[str, dict[str, Any]] = {}
     for symbol, previous in state.items():
-        if isinstance(previous, dict) and int(previous.get("misses", 0)) < 1:
+        if not isinstance(previous, dict):
+            continue
+        within_rearm = now_ts - safe_float(previous.get("emitted_at")) < EVENT_REARM_HOURS * 3600
+        if within_rearm or int(previous.get("misses", 0)) < 1:
             active_state[symbol] = {**previous, "misses": int(previous.get("misses", 0)) + 1}
     new_events: list[Candidate] = []
     for candidate in candidates:
@@ -957,11 +962,11 @@ def scan_once() -> list[Candidate]:
             last_low <= safe_float(previous.get("stop"), float("-inf"))
         )
         if completed:
-            active_state.pop(candidate.symbol, None)
+            active_state[candidate.symbol] = {**previous, "stage": "WAIT_RESET", "misses": 0}
             continue
 
         previous_stage = previous.get("stage", "")
-        is_new = not previous
+        is_new = not previous or previous_stage == "WAIT_RESET"
         is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
         if previous_stage == "TURN" and candidate.stage == "EARLY":
             active_state[candidate.symbol] = {**previous, "misses": 0}
@@ -972,7 +977,11 @@ def scan_once() -> list[Candidate]:
             "target": candidate.target_low, "stop": candidate.stop,
             "emitted_at": safe_float(previous.get("emitted_at")), "misses": 0,
         }
-        if is_new or is_upgrade:
+        last_emitted = safe_float(previous.get("emitted_at"))
+        rearmed = not last_emitted or now_ts - last_emitted >= EVENT_REARM_HOURS * 3600
+        # EARLY -> TURN aynı fırsatın ilerlemesidir; yeni işlem adayı sayılmaz.
+        if is_new and rearmed:
+            active_state[candidate.symbol]["emitted_at"] = now_ts
             new_events.append(candidate)
 
     candidates = new_events
