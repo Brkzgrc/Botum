@@ -911,6 +911,8 @@ def scan_once() -> list[Candidate]:
     runtime.update({"status": "SCANNING", "last_scan_start": tr_now().isoformat(), "last_error": None})
     started = time.time()
     state = load_state()
+    meta = state.pop("__scanner_meta__", {})
+    initialized = bool(meta.get("initialized")) if isinstance(meta, dict) else False
     universe = get_spot_universe()
     runtime["symbols"] = len(universe)
     btc = btc_context()
@@ -980,10 +982,23 @@ def scan_once() -> list[Candidate]:
         last_emitted = safe_float(previous.get("emitted_at"))
         rearmed = not last_emitted or now_ts - last_emitted >= EVENT_REARM_HOURS * 3600
         # EARLY -> TURN aynı fırsatın ilerlemesidir; yeni işlem adayı sayılmaz.
+        # İlk tarama bir başlangıç fotoğrafıdır: o anda zaten var olan onlarca
+        # adayı canlı sinyal gibi göndermez, yalnızca olay hafızasını kurar.
         if is_new and rearmed:
             active_state[candidate.symbol]["emitted_at"] = now_ts
-            new_events.append(candidate)
+            if initialized:
+                new_events.append(candidate)
 
+    if not initialized:
+        print(
+            f"[WARMUP] İlk tarama: {len(candidates)} mevcut aday hafızaya alındı; "
+            "Portfolio/Telegram gönderimi yapılmadı.",
+            flush=True,
+        )
+    active_state["__scanner_meta__"] = {
+        "initialized": True,
+        "initialized_at": meta.get("initialized_at") or tr_now().isoformat(),
+    }
     candidates = new_events
     # Puan veya kalite sıralaması yoktur; yalnızca okunabilir ve kararlı çıktı.
     candidates.sort(key=lambda c: (c.setup, c.symbol))
