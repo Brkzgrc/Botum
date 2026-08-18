@@ -211,6 +211,10 @@ def main() -> None:
     parser.add_argument("--step-hours", type=int, default=6, help="Karar noktaları arası saat")
     parser.add_argument("--horizon-hours", type=int, default=24, help="Her adayın takip süresi")
     parser.add_argument("--workers", type=int, default=4, help="Veri indirme işçisi")
+    parser.add_argument(
+        "--trace-hours", type=int, default=0,
+        help="Son N karar saatinde aday/geçiş teşhisini yazdır; 0=kapalı",
+    )
     parser.add_argument("--output", default="/tmp/spot_opportunity_backtest.json")
     args = parser.parse_args()
 
@@ -278,6 +282,7 @@ def main() -> None:
             except Exception:
                 continue
         candidates.sort(key=lambda c: (c.setup, c.symbol))
+        candidate_debug: dict[str, dict] = {}
         next_states = {
             symbol: {
                 "market": scanner.compact_market_state(h1_state),
@@ -296,6 +301,14 @@ def main() -> None:
                 last_time is None or
                 (cutoff - last_time).total_seconds() >= scanner.EVENT_REARM_HOURS * 3600
             )
+            candidate_debug[candidate.symbol] = {
+                "setup": candidate.setup,
+                "stage": candidate.stage,
+                "ready": ready,
+                "rearmed": rearmed,
+                "reasons": transition_reasons,
+                "previous_stage": previous.get("candidate_stage", ""),
+            }
             # İlk karar noktası warm-up'tır; yalnızca sonraki kapalı mumlarda
             # gerçekten ilerleyen durum geçişleri backtest sinyali sayılır.
             if not market_states or not ready or not rearmed:
@@ -321,6 +334,27 @@ def main() -> None:
                 "transition_reasons": transition_reasons,
                 **measured,
             })
+        if args.trace_hours > 0 and cutoff >= last_cutoff - timedelta(hours=args.trace_hours):
+            tr_time = cutoff.astimezone(scanner.TR_TZ).strftime("%Y-%m-%d %H:%M")
+            for symbol, current_state in next_states.items():
+                market = current_state["market"]
+                debug = candidate_debug.get(symbol)
+                if debug:
+                    print(
+                        f"[TRACE] {tr_time} {symbol} | aday={debug['setup']} "
+                        f"stage={debug['stage']} prev={debug['previous_stage'] or '-'} "
+                        f"ready={debug['ready']} rearm={debug['rearmed']} "
+                        f"up={market['upward_count']} fresh={market['fresh_count']} "
+                        f"weak={market['weakening_count']} low={market['relative_low_count']} "
+                        f"price={market['price']:.8g} | neden={debug['reasons'] or '-'}"
+                    )
+                else:
+                    print(
+                        f"[TRACE] {tr_time} {symbol} | ADAY_YOK "
+                        f"up={market['upward_count']} fresh={market['fresh_count']} "
+                        f"weak={market['weakening_count']} low={market['relative_low_count']} "
+                        f"price={market['price']:.8g}"
+                    )
         market_states = next_states
         if number % 20 == 0 or number == len(cutoffs):
             print(f"[REPLAY] {number}/{len(cutoffs)} | sinyal={len(records)}")
