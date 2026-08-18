@@ -106,6 +106,10 @@ class Zone:
     strength: float
     timeframes: list[str] = field(default_factory=list)
     touches: int = 1
+    historical_origin: str = ""
+    role_state: str = ""
+    wick_breach_without_close: bool = False
+    consecutive_closed_beyond: int = 0
 
 
 @dataclass
@@ -639,65 +643,167 @@ def timeframe_state(df: pd.DataFrame, label: str) -> dict[str, Any]:
 # DESTEK / DİRENÇ BÖLGELERİ
 # =============================================================================
 
-def pivot_points(df: pd.DataFrame, window: int = 3) -> tuple[list[float], list[float]]:
-    lows = df["low"]
-    highs = df["high"]
-    p_lows: list[float] = []
-    p_highs: list[float] = []
-    for i in range(window, len(df) - window):
-        if lows.iloc[i] <= lows.iloc[i-window:i+window+1].min():
-            p_lows.append(float(lows.iloc[i]))
-        if highs.iloc[i] >= highs.iloc[i-window:i+window+1].max():
-            p_highs.append(float(highs.iloc[i]))
-    return p_lows[-40:], p_highs[-40:]
+def confirmed_pivots(df: pd.DataFrame, window: int = 3) -> tuple[list[dict], list[dict]]:
+    """Yalnız kapanmış mumlarla onaylanan, oluştuğu andaki ATR'yi taşıyan pivotlar."""
+    d = df.reset_index(drop=True)
+    lows = d["low"]
+    highs = d["high"]
+    atrs = d["atr"] if "atr" in d else pd.Series(np.nan, index=d.index)
+
+    def find(series: pd.Series, mode: str) -> list[dict]:
+        candidates: list[int] = []
+        for i in range(window, len(d) - window):
+            values = series.iloc[i-window:i+window+1]
+            extreme = values.min() if mode == "support" else values.max()
+            if series.iloc[i] == extreme:
+                # Eşit fiyatlı bitişik bir plato iki ayrı pivot sayılmaz.
+                if candidates and series.iloc[candidates[-1]] == series.iloc[i] and i - candidates[-1] <= window:
+                    continue
+                candidates.append(i)
+
+        raw: list[dict] = []
+        for i in candidates:
+            confirmed_at = i + window
+            atr_at_confirmation = safe_float(atrs.iloc[confirmed_at])
+            if atr_at_confirmation <= 0:
+                atr_at_confirmation = max(
+                    safe_float(d["high"].iloc[confirmed_at] - d["low"].iloc[confirmed_at]),
+                    safe_float(d["close"].iloc[confirmed_at]) * 0.002,
+                )
+            raw.append({
+                "price": safe_float(series.iloc[i]),
+                "bar_index": i,
+                "confirmed_at": confirmed_at,
+                "atr": atr_at_confirmation,
+                "origin": mode,
+            })
+
+        # Fiyatça ve zamanda birbirine çok yakın mikro pivotları tek olay say.
+        filtered: list[dict] = []
+        for point in raw:
+            if filtered:
+                previous = filtered[-1]
+                close_in_price = abs(point["price"] - previous["price"]) < 0.5 * point["atr"]
+                close_in_time = point["bar_index"] - previous["bar_index"] <= 2 * window
+                if close_in_price and close_in_time:
+                    continue
+            filtered.append(point)
+        return filtered[-40:]
+
+    return find(lows, "support"), find(highs, "resistance")
 
 
-def cluster_levels(items: list[tuple[float, str, float]], current: float) -> list[Zone]:
+def cluster_levels(items: list[dict], current: float, origin: str) -> list[Zone]:
+    """ATR çapalı ve genişliği sınırlı bölge kümeleri üretir."""
     if not items:
         return []
-    # Fiyat ölçeğine uyarlanan küme toleransı; çok volatil bölgelerde yine aşırı
-    # geniş tek bir bölge oluşmaması için %0.35-%1.2 aralığında tutulur.
-    tolerance = current * 0.007
-    ordered = sorted(items, key=lambda x: x[0])
-    groups: list[list[tuple[float, str, float]]] = []
+    ordered = sorted(items, key=lambda x: x["price"])
+    groups: list[list[dict]] = []
     for item in ordered:
-        if not groups or abs(item[0] - np.average([x[0] for x in groups[-1]], weights=[x[2] for x in groups[-1]])) > tolerance:
+        if not groups:
             groups.append([item])
+            continue
+        group = groups[-1]
+        anchor = group[0]
+        atr_ref = max(safe_float(anchor["atr"]), safe_float(item["atr"]), current * 0.001)
+        # Son noktaya değil ilk noktaya göre ölçülür; zincirleme dev bölge oluşmaz.
+        if item["price"] - anchor["price"] <= 0.5 * atr_ref:
+            group.append(item)
         else:
-            groups[-1].append(item)
+            groups.append([item])
+
     zones: list[Zone] = []
     for group in groups:
-        prices = [x[0] for x in group]
-        weights = [x[2] for x in group]
+        prices = [x["price"] for x in group]
+        weights = [x["weight"] for x in group]
         center = float(np.average(prices, weights=weights))
-        pad = max(current * 0.0025, (max(prices) - min(prices)) / 2)
-        tfs = sorted(set(x[1] for x in group))
+        atr_ref = float(np.median([max(safe_float(x["atr"]), current * 0.001) for x in group]))
+        raw_span = max(prices) - min(prices)
+        half_width = min(0.25 * atr_ref, max(0.12 * atr_ref, raw_span / 2))
+        tfs = sorted(set(x["timeframe"] for x in group))
         strength = sum(weights) + len(tfs) * 2.5 + min(6, len(group))
-        zones.append(Zone(center - pad, center + pad, center, strength, tfs, len(group)))
+        zones.append(Zone(
+            center - half_width, center + half_width, center, strength, tfs, len(group),
+            historical_origin=origin,
+        ))
     return zones
 
 
+def add_closed_candle_evidence(zone: Zone, d: pd.DataFrame, current: float) -> None:
+    """Fitil ihlali ile bölge dışı kapanışı ayırır ve tarihsel rolü korur."""
+    last = d.iloc[-1]
+    if zone.historical_origin == "support":
+        beyond = lambda close: safe_float(close) < zone.low
+        zone.wick_breach_without_close = (
+            safe_float(last["low"]) < zone.low and not beyond(last["close"])
+        )
+        zone.role_state = (
+            "active_support" if current > zone.high else
+            "tested_support" if zone.low <= current <= zone.high else
+            "lost_support"
+        )
+    else:
+        beyond = lambda close: safe_float(close) > zone.high
+        zone.wick_breach_without_close = (
+            safe_float(last["high"]) > zone.high and not beyond(last["close"])
+        )
+        zone.role_state = (
+            "active_resistance" if current < zone.low else
+            "tested_resistance" if zone.low <= current <= zone.high else
+            "broken_resistance"
+        )
+
+    count = 0
+    for close in reversed(d["close"].tolist()):
+        if beyond(close):
+            count += 1
+        else:
+            break
+    zone.consecutive_closed_beyond = count
+
+
 def build_zones(states: dict[str, dict], current: float) -> tuple[list[Zone], list[Zone]]:
-    support_items: list[tuple[float, str, float]] = []
-    resistance_items: list[tuple[float, str, float]] = []
+    support_items: list[dict] = []
+    resistance_items: list[dict] = []
     tf_weights = {"1H": 1.0, "4H": 1.55, "1D": 2.15, "1W": 2.7}
     for label, state in states.items():
-        d = state["df"]
+        d = state["df"].tail(180).reset_index(drop=True)
         weight = tf_weights[label]
-        lows, highs = pivot_points(d.tail(180), 3 if label in ("1H", "4H") else 2)
-        support_items.extend((v, label, weight) for v in lows if v < current * 1.01)
-        resistance_items.extend((v, label, weight) for v in highs if v > current * 0.99)
+        lows, highs = confirmed_pivots(d, 3 if label in ("1H", "4H") else 2)
+        for point in lows:
+            support_items.append({**point, "timeframe": label, "weight": weight})
+        for point in highs:
+            resistance_items.append({**point, "timeframe": label, "weight": weight})
+
+        # EMA'lar yardımcı referanstır; tarihsel pivotlarla aynı ağırlıkta değildir.
         last = d.iloc[-1]
+        atr_now = max(safe_float(last["atr"]), current * 0.001)
         for p in (20, 50, 100, 200):
             ema = safe_float(last[f"ema{p}"])
             if not ema:
                 continue
-            ew = weight * (0.75 + p / 400)
-            (support_items if ema <= current else resistance_items).append((ema, label, ew))
-    supports = [z for z in cluster_levels(support_items, current) if z.center < current]
-    resistances = [z for z in cluster_levels(resistance_items, current) if z.center > current]
-    supports.sort(key=lambda z: (current - z.high, -z.strength))
-    resistances.sort(key=lambda z: (z.low - current, -z.strength))
+            item = {
+                "price": ema, "bar_index": len(d) - 1, "confirmed_at": len(d) - 1,
+                "atr": atr_now, "timeframe": label,
+                "weight": weight * (0.45 + p / 800),
+            }
+            if ema <= current:
+                support_items.append({**item, "origin": "support"})
+            else:
+                resistance_items.append({**item, "origin": "resistance"})
+
+    all_supports = cluster_levels(support_items, current, "support")
+    all_resistances = cluster_levels(resistance_items, current, "resistance")
+    h1 = states["1H"]["df"]
+
+    for zone in all_supports + all_resistances:
+        add_closed_candle_evidence(zone, h1, current)
+
+    # Tarihsel rol değiştiren bölgeler normal destek/direnç diye sessizce yeniden adlandırılmaz.
+    supports = [z for z in all_supports if z.role_state in ("active_support", "tested_support")]
+    resistances = [z for z in all_resistances if z.role_state in ("active_resistance", "tested_resistance")]
+    supports.sort(key=lambda z: (max(0.0, current - z.high), -z.strength))
+    resistances.sort(key=lambda z: (max(0.0, z.low - current), -z.strength))
     return supports, resistances
 
 
@@ -847,6 +953,10 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         positives.append("4H göstergelerinin çoğu yukarı yönlü")
     if len(support.timeframes) >= 2:
         positives.append(f"Destek çakışması: {'+'.join(support.timeframes)}")
+    if support.wick_breach_without_close:
+        positives.append("1H fitil desteğin altını yokladı ancak mum bölge altında kapanmadı")
+    if resistance.wick_breach_without_close:
+        risks.append("1H fitil direnç bölgesini yokladı ancak mum bölge üzerinde kapanmadı")
     if h1_state["ret_6"] > btc["ret_6h"] + 1.0:
         positives.append("BTC'ye karşı kısa vadeli göreceli güç")
 
@@ -900,6 +1010,12 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "coin_1h_pct": round(h1_state["ret_1"], 3),
         "coin_6h_pct": round(h1_state["ret_6"], 3),
         "relative_low_count": len(h1_state["relative_lows"]),
+        "support_role_state": support.role_state,
+        "support_wick_breach_without_close": support.wick_breach_without_close,
+        "support_closed_beyond_count": support.consecutive_closed_beyond,
+        "resistance_role_state": resistance.role_state,
+        "resistance_wick_breach_without_close": resistance.wick_breach_without_close,
+        "resistance_closed_beyond_count": resistance.consecutive_closed_beyond,
         "btc_1h_pct": round(btc["ret_1h"], 2), "btc_6h_pct": round(btc["ret_6h"], 2),
         "rsi_1h": round(h1_state["rsi"], 1), "rsi_4h": round(frames["4H"]["rsi"], 1),
         "vol_ratio_1h": round(h1_state["vol_ratio"], 2),
