@@ -248,7 +248,7 @@ def main() -> None:
         raise SystemExit("BTC bağlam verisi indirilemedi")
 
     records: list[dict] = []
-    active_events: dict[str, dict] = {}
+    market_states: dict[str, dict] = {}
     last_cycle_at: dict[str, datetime] = {}
     for number, cutoff in enumerate(cutoffs, start=1):
         btc = btc_at(all_data["BTCUSDT"], cutoff)
@@ -278,38 +278,32 @@ def main() -> None:
             except Exception:
                 continue
         candidates.sort(key=lambda c: (c.setup, c.symbol))
-        next_events = {
-            symbol: {**event, "misses": int(event.get("misses", 0)) + 1}
-            for symbol, event in active_events.items()
-            if int(event.get("misses", 0)) < 1
+        next_states = {
+            symbol: {
+                "market": scanner.compact_market_state(h1_state),
+                "candidate_stage": "",
+            }
+            for symbol, h1_state in h1_states
         }
         for candidate in candidates:
-            previous = active_events.get(candidate.symbol, {})
-            last_high = float(candidate.metrics.get("last_high_1h", candidate.price))
-            last_low = float(candidate.metrics.get("last_low_1h", candidate.price))
-            completed = bool(previous) and (
-                last_high >= float(previous.get("target", float("inf"))) or
-                last_low <= float(previous.get("stop", float("-inf")))
-            )
-            if completed:
-                next_events[candidate.symbol] = {**previous, "stage": "WAIT_RESET", "misses": 0}
-                continue
-            previous_stage = previous.get("stage", "")
-            is_new = not previous or previous_stage == "WAIT_RESET"
-            is_upgrade = previous_stage == "EARLY" and candidate.stage == "TURN"
-            if previous_stage == "TURN" and candidate.stage == "EARLY":
-                next_events[candidate.symbol] = {**previous, "misses": 0}
-                continue
-            next_events[candidate.symbol] = {
-                "stage": candidate.stage, "target": candidate.target_low,
-                "stop": candidate.stop, "misses": 0,
-            }
+            previous = market_states.get(candidate.symbol, {})
+            current = next_states[candidate.symbol]["market"]
+            ready, transition_reasons = scanner.transition_ready(previous, candidate, current)
+            next_states[candidate.symbol]["candidate_stage"] = candidate.stage
+
             last_time = last_cycle_at.get(candidate.symbol)
-            rearmed = last_time is None or (cutoff - last_time).total_seconds() >= scanner.EVENT_REARM_HOURS * 3600
-            # EARLY -> TURN aynı fırsatın güncellemesidir; yeni işlem adayı değildir.
-            if not (is_new and rearmed):
+            rearmed = (
+                last_time is None or
+                (cutoff - last_time).total_seconds() >= scanner.EVENT_REARM_HOURS * 3600
+            )
+            # İlk karar noktası warm-up'tır; yalnızca sonraki kapalı mumlarda
+            # gerçekten ilerleyen durum geçişleri backtest sinyali sayılır.
+            if not market_states or not ready or not rearmed:
                 continue
             last_cycle_at[candidate.symbol] = cutoff
+            candidate.observed_setups.insert(
+                0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
+            )
             measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
             records.append({
                 "time": cutoff.isoformat(), "symbol": candidate.symbol,
@@ -324,9 +318,10 @@ def main() -> None:
                 "positives": candidate.positives, "risks": candidate.risks,
                 "historical_notes": candidate.historical_notes,
                 "metrics": candidate.metrics,
+                "transition_reasons": transition_reasons,
                 **measured,
             })
-        active_events = next_events
+        market_states = next_states
         if number % 20 == 0 or number == len(cutoffs):
             print(f"[REPLAY] {number}/{len(cutoffs)} | sinyal={len(records)}")
 
