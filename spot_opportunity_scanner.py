@@ -266,25 +266,25 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
         reasons.append("erken izleme teyitli dönüşe ilerledi")
 
     # Erken dönüş yalnızca göreceli-dip fotoğrafı olduğu için gönderilmez.
-    # Coin önceki kapalı mumda EARLY adayı değilken bu muma destek çevresinde
-    # sıkışma olarak girerse ve ilk toparlanma görülürse bir kez erken uyarı olur.
-    # Böylece tüm kesişimleri bekleyip girişi geciktirmeyiz; aynı EARLY görünümünü
-    # de her saat yeniden bildirmeyiz.
+    # EARLY görünümü önceki mumlarda başlamış olsa bile, destek çevresinde ilk
+    # gerçek toparlanma bu mumda görülürse uyarı verilir. Canlı döngüdeki
+    # EVENT_REARM_HOURS aynı görünümün saatlik tekrarını engeller.
     if candidate.stage == "EARLY":
         support_ok = len(candidate.support.timeframes) >= 2 or candidate.support.strength >= 20
-        entered_early = (
-            previous_stage != "EARLY" and
-            current["relative_low_count"] >= 4
-        )
-        first_response = (
-            current["fresh_count"] >= 1 or
-            current["price"] > safe_float(before.get("price"))
+        compression_ok = current["relative_low_count"] >= 4
+        price_response = current["price"] > safe_float(before.get("price"))
+        indicator_response = (
+            current["fresh_count"] >= 1 and
+            current["fresh_count"] > int(before.get("fresh_count", 0))
         )
         pressure_not_expanding = (
             current["weakening_count"] <= int(before.get("weakening_count", 0)) + 1
         )
-        if support_ok and entered_early and first_response and pressure_not_expanding:
-            reasons.append("destekte yeni erken dönüş görünümü ve ilk tepki hazırlığı")
+        if (
+            support_ok and compression_ok and pressure_not_expanding and
+            (price_response or indicator_response)
+        ):
+            reasons.append("destekte erken görünümden ilk saatlik toparlanma")
 
     return bool(reasons), reasons
 
