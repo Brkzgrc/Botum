@@ -531,6 +531,13 @@ def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
         "down_move_atr": round(down_move_atr, 3),
         "range_contracting": bool(range_contracting),
         "last_up": bool(last_up),
+        "reclaimed_prev_high": bool(reclaimed_prev_high),
+        "breakout_displacement_atr": round(
+            max(0.0, (price - breakout_level) / atr), 3
+        ),
+        "close_progress_atr": round(
+            max(0.0, (price - safe_float(closes.iloc[-2])) / atr), 3
+        ),
         "watch_keys": watch_keys,
     }
 
@@ -1012,6 +1019,11 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "coin_1h_pct": round(h1_state["ret_1"], 3),
         "coin_6h_pct": round(h1_state["ret_6"], 3),
         "relative_low_count": len(h1_state["relative_lows"]),
+        "h1_fresh_turn_count": len(h1_fresh_turns),
+        "h1_upward_count": h1_upward,
+        "h1_weakening_count": len(h1_state["weakening"]),
+        "h4_upward_count": h4_upward,
+        "candle_confirmation": bool(candle_confirmation),
         "support_role_state": support.role_state,
         "support_wick_breach_without_close": support.wick_breach_without_close,
         "support_closed_beyond_count": support.consecutive_closed_beyond,
@@ -1051,116 +1063,104 @@ def select_distinct_events(
     event_pool: list[tuple[Candidate, list[str]]],
     h1_map: dict[str, dict],
 ) -> list[tuple[Candidate, list[str]]]:
-    """Aynı saatteki benzer olaylardan yalnız belirgin ayrışanları geçirir.
+    """Yalnız kendi fiyat olayı tamamlanmış adayları geçirir.
 
-    Mutlak uygunluk puanı veya günlük kota üretmez. Yapısal olgunluk ana
-    koşuldur; destek konumu, direnç alanı, piyasa geneline göre hareket ve
-    destek kalitesi yalnızca aynı saat adaylarını birbirinden ayırır.
+    Bu fonksiyon saatlik sıralama, yüzdelik dilim, birleşik puan veya kota
+    kullanmaz. Her coin başka coinlere göre değil; kendi hazırlığı, kapanmış
+    mumdaki fiyat davranışı, yapısal bölgesi ve gösterge yön değişimiyle
+    doğrulanır. Böylece o saat bütün adaylar vasatsa sonuç sıfır olabilir.
     """
-    if len(event_pool) <= 2:
-        return event_pool
-
-    early = [(c, r) for c, r in event_pool if c.stage == "EARLY"]
-    confirmed = [(c, r) for c, r in event_pool if c.stage != "EARLY"]
-
-    # Erken dönüşler farklı bir karar türüdür; teyitli devamlarla yarışmaz.
+    del h1_map  # İmza backtest ve canlı tarayıcıyla uyumlu kalır.
     selected: list[tuple[Candidate, list[str]]] = []
-    if early:
-        max_lows = max(int(c.metrics.get("relative_low_count", 0)) for c, _ in early)
 
-        def support_utility(candidate: Candidate) -> float:
-            """Desteğin kanıtını, bölgenin kullanılabilir konumundan ayırmadan karşılaştır."""
-            strength = safe_float(candidate.metrics.get("support_strength"))
-            distance = max(0.0, safe_float(candidate.metrics.get("support_distance_pct")))
-            width = max(0.0, safe_float(candidate.metrics.get("support_zone_width_pct")))
-            confluence = safe_float(candidate.metrics.get("support_timeframe_count"), 1.0)
-            # Eleme eşiği değildir. Uzak/geniş bölge yalnız karşılaştırmada avantaj kaybeder.
-            return math.log1p(max(strength, 0.0)) + confluence * 0.55 - distance * 0.45 - width * 0.35
-
-        support_median = float(np.median([
-            support_utility(candidate) for candidate, _ in early
-        ]))
-        for candidate, reasons in early:
-            structure = candidate.metrics.get("price_structure_1h", {})
-            reversal_prepared = "reversal" in structure.get("watch_keys", [])
-            deepest = int(candidate.metrics.get("relative_low_count", 0)) >= max_lows
-            support_distinct = support_utility(candidate) >= support_median
-            if reversal_prepared and deepest and support_distinct:
-                reasons = [*reasons, "erken adaylar içinde dip sıkışması ve destek ayrışıyor"]
-                selected.append((candidate, reasons))
-
-    if not confirmed:
-        return selected
-
-    market_ret1 = float(np.median([
-        safe_float(st.get("ret_1")) for st in h1_map.values()
-    ]))
-    market_ret6 = float(np.median([
-        safe_float(st.get("ret_6")) for st in h1_map.values()
-    ]))
-
-    rows: list[tuple[Candidate, list[str], dict[str, float]]] = []
-    for candidate, reasons in confirmed:
-        structure = candidate.metrics.get("price_structure_1h", {})
+    for candidate, reasons in event_pool:
+        metrics = candidate.metrics
+        structure = metrics.get("price_structure_1h", {})
         key = structure.get("key", "none")
-        if key == "range_expansion":
-            intensity = safe_float(structure.get("prior_range_atr")) / max(
-                safe_float(structure.get("recent_range_atr")), 0.25
-            )
-        elif key == "base_continuation":
-            intensity = safe_float(structure.get("impulse_up_atr")) / max(
-                safe_float(structure.get("recent_range_atr")), 0.5
-            )
-        elif key == "pullback_resume":
-            ratio = safe_float(structure.get("pullback_ratio"), 0.5)
-            balance = max(0.0, 1.0 - abs(ratio - 0.5))
-            intensity = safe_float(structure.get("impulse_up_atr")) * balance
-        else:
-            intensity = safe_float(structure.get("down_move_atr"))
-
-        relative_move = max(
-            safe_float(candidate.metrics.get("coin_1h_pct")) - market_ret1,
-            (safe_float(candidate.metrics.get("coin_6h_pct")) - market_ret6) / 2,
+        support_distance = max(0.0, safe_float(metrics.get("support_distance_pct")))
+        support_width = max(0.0, safe_float(metrics.get("support_zone_width_pct")))
+        support_tf = int(metrics.get("support_timeframe_count", 0))
+        support_strength = safe_float(metrics.get("support_strength"))
+        fresh_turns = int(metrics.get("h1_fresh_turn_count", 0))
+        upward = int(metrics.get("h1_upward_count", 0))
+        weakening = int(metrics.get("h1_weakening_count", 0))
+        candle = bool(metrics.get("candle_confirmation", False))
+        support_usable = (
+            metrics.get("support_role_state") != "confirmed_break" and
+            support_width <= 5.0 and
+            (support_tf >= 2 or support_strength >= 20)
         )
-        rows.append((candidate, reasons, {
-            "structure": intensity,
-            "location": -safe_float(candidate.metrics.get("support_distance_pct")),
-            "space": min(candidate.target_pct, 8.0),
-            "relative": relative_move,
-            "support": (
-                math.log1p(max(safe_float(candidate.metrics.get("support_strength")), 0.0)) +
-                safe_float(candidate.metrics.get("support_timeframe_count"), 1.0) * 0.55 -
-                max(0.0, safe_float(candidate.metrics.get("support_distance_pct"))) * 0.45 -
-                max(0.0, safe_float(candidate.metrics.get("support_zone_width_pct"))) * 0.35
-            ),
-        }))
+        has_room = candidate.target_pct >= 1.2
+        indicator_turn = fresh_turns >= 2 or (fresh_turns >= 1 and candle)
 
-    names = ("structure", "location", "space", "relative", "support")
-    thresholds70 = {
-        name: float(np.quantile([row[2][name] for row in rows], 0.70))
-        for name in names
-    }
-    thresholds55 = {
-        name: float(np.quantile([row[2][name] for row in rows], 0.55))
-        for name in names
-    }
+        # Teyitsiz erken izleme yalnız çok belirgin destek sıkışmasında kalır.
+        # Bu bir AL sinyali değildir ve teyitli fiyat olaylarıyla yarışmaz.
+        if candidate.stage == "EARLY":
+            early_valid = (
+                "reversal" in structure.get("watch_keys", []) and
+                int(metrics.get("relative_low_count", 0)) >= 5 and
+                support_usable and support_distance <= 2.0 and
+                weakening <= 6
+            )
+            if early_valid:
+                selected.append((
+                    candidate,
+                    [*reasons, "mutlak doğrulama: destekte belirgin erken sıkışma"],
+                ))
+            continue
 
-    for candidate, reasons, values in rows:
-        high = [name for name in names if values[name] >= thresholds70[name]]
-        supporting = [name for name in names if values[name] >= thresholds55[name]]
-        structurally_distinct = values["structure"] >= thresholds70["structure"]
-        broad_distinction = len(high) >= 3
-        if (structurally_distinct and len(supporting) >= 2) or broad_distinction:
-            readable = {
-                "structure": "fiyat olayı",
-                "location": "destek konumu",
-                "space": "direnç alanı",
-                "relative": "piyasa geneline göre hareket",
-                "support": "destek kalitesi",
-            }
-            distinctions = ", ".join(readable[name] for name in high)
-            reasons = [*reasons, "aynı saat adaylarından ayrışanlar: " + distinctions]
-            selected.append((candidate, reasons))
+        if key == "range_expansion":
+            valid = (
+                support_usable and has_room and
+                safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
+                safe_float(structure.get("breakout_displacement_atr")) >= 0.20 and
+                safe_float(structure.get("close_progress_atr")) >= 0.20 and
+                structure.get("reclaimed_prev_high", False) and
+                (indicator_turn or upward >= 5)
+            )
+            proof = "kapanışla bant üstü genişleme"
+
+        elif key == "base_continuation":
+            valid = (
+                support_usable and has_room and
+                safe_float(structure.get("impulse_up_atr")) >= 2.5 and
+                safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
+                structure.get("reclaimed_prev_high", False) and
+                safe_float(structure.get("close_progress_atr")) >= 0.15 and
+                (indicator_turn or (candle and upward >= 5))
+            )
+            proof = "dinlenme sonrası kısa tepenin kapanışla geri alınması"
+
+        elif key == "pullback_resume":
+            pullback_ratio = safe_float(structure.get("pullback_ratio"), -1)
+            valid = (
+                support_usable and has_room and support_distance <= 3.0 and
+                safe_float(structure.get("impulse_up_atr")) >= 2.2 and
+                0.25 <= pullback_ratio <= 0.75 and
+                safe_float(structure.get("pullback_atr")) >= 0.45 and
+                structure.get("reclaimed_prev_high", False) and
+                indicator_turn and weakening <= 5
+            )
+            proof = "kontrollü geri çekilmenin kısa tepesinin geri alınması"
+
+        elif key == "support_reversal":
+            valid = (
+                support_usable and has_room and support_distance <= 2.0 and
+                safe_float(structure.get("down_move_atr")) >= 2.2 and
+                structure.get("reclaimed_prev_high", False) and
+                indicator_turn and candle and weakening <= 5
+            )
+            proof = "destek çevresinde kapanış teyitli fiyat dönüşü"
+
+        else:
+            valid = False
+            proof = ""
+
+        if valid:
+            selected.append((
+                candidate,
+                [*reasons, "mutlak fiyat olayı doğrulandı: " + proof],
+            ))
 
     return selected
 
