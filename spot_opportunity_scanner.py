@@ -1154,16 +1154,24 @@ def select_distinct_events(
         # Teyitsiz erken izleme yalnız çok belirgin destek sıkışmasında kalır.
         # Bu bir AL sinyali değildir ve teyitli fiyat olaylarıyla yarışmaz.
         if candidate.stage == "EARLY":
+            # Erken izleme, yalnızca anlamlı bir aşağı hareketin ardından fiyat
+            # gerçekten ana desteğin dibine kadar geldiyse dışarı çıkar. Hacim
+            # veya sabit osilatör seviyesi veto değildir. Bu ikili fiyat şartı,
+            # ZEC'teki 486.40 ve 501.18 örneklerini korurken sığ geri çekilmeleri
+            # ve uzaktaki "dip" görünümlerini dahili izleme halinde bırakır.
             early_valid = (
                 "reversal" in structure.get("watch_keys", []) and
                 int(metrics.get("relative_low_count", 0)) >= 5 and
-                support_usable and support_distance <= 2.0 and
+                support_usable and
+                support_distance <= 1.0 and
+                safe_float(structure.get("down_move_atr")) >= 3.5 and
+                candidate.stop_pct <= 5.0 and
                 weakening <= 6
             )
             if early_valid:
                 selected.append((
                     candidate,
-                    [*reasons, "mutlak doğrulama: destekte belirgin erken sıkışma"],
+                    [*reasons, "mutlak doğrulama: anlamlı düşüş sonrası desteğin dibinde erken sıkışma"],
                 ))
             continue
 
@@ -1171,7 +1179,8 @@ def select_distinct_events(
             valid = (
                 support_usable and has_room and
                 safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
-                safe_float(structure.get("breakout_displacement_atr")) >= 0.20 and
+                # Küçük bant taşmaları değil, kapanışla belirgin ayrışma.
+                safe_float(structure.get("breakout_displacement_atr")) >= 0.60 and
                 safe_float(structure.get("close_progress_atr")) >= 0.20 and
                 structure.get("reclaimed_prev_high", False) and
                 family_count >= 2
