@@ -218,7 +218,7 @@ def main() -> None:
     parser.add_argument("--output", default="/tmp/spot_opportunity_backtest.json")
     args = parser.parse_args()
 
-    minimum_days = 2 if args.only_symbol else 14
+    minimum_days = 2 if args.only_symbol else 3
     if args.days < minimum_days or args.step_hours < 1 or args.horizon_hours < 1:
         raise SystemExit(f"days>={minimum_days}, step-hours>=1 ve horizon-hours>=1 olmalı")
 
