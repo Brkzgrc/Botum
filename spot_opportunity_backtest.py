@@ -283,6 +283,7 @@ def main() -> None:
                 continue
         candidates.sort(key=lambda c: (c.setup, c.symbol))
         candidate_debug: dict[str, dict] = {}
+        h1_map = {symbol: state for symbol, state in h1_states}
         next_states = {
             symbol: {
                 "market": scanner.compact_market_state(h1_state),
@@ -290,6 +291,7 @@ def main() -> None:
             }
             for symbol, h1_state in h1_states
         }
+        event_pool: list[tuple] = []
         for candidate in candidates:
             previous = market_states.get(candidate.symbol, {})
             current = next_states[candidate.symbol]["market"]
@@ -306,13 +308,22 @@ def main() -> None:
                 "stage": candidate.stage,
                 "ready": ready,
                 "rearmed": rearmed,
+                "selected": False,
                 "reasons": transition_reasons,
                 "previous_stage": previous.get("candidate_stage", ""),
             }
             # İlk karar noktası warm-up'tır; yalnızca sonraki kapalı mumlarda
-            # gerçekten ilerleyen durum geçişleri backtest sinyali sayılır.
+            # gerçekten ilerleyen durum geçişleri seçime girebilir.
             if not market_states or not ready or not rearmed:
                 continue
+            event_pool.append((candidate, transition_reasons))
+
+        # Canlı tarayıcıyla aynı mutlak fiyat-olayı doğrulamasını uygula.
+        # Saatin en iyisini seçen yüzdelik/sıralama yoktur; hiçbiri kendi
+        # koşullarını tamamlamadıysa bu karar noktasında sıfır sinyal oluşur.
+        selected_events = scanner.select_distinct_events(event_pool, h1_map)
+        for candidate, transition_reasons in selected_events:
+            candidate_debug[candidate.symbol]["selected"] = True
             last_cycle_at[candidate.symbol] = cutoff
             candidate.observed_setups.insert(
                 0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
@@ -344,6 +355,7 @@ def main() -> None:
                         f"[TRACE] {tr_time} {symbol} | aday={debug['setup']} "
                         f"stage={debug['stage']} prev={debug['previous_stage'] or '-'} "
                         f"ready={debug['ready']} rearm={debug['rearmed']} "
+                        f"selected={debug['selected']} "
                         f"up={market['upward_count']} fresh={market['fresh_count']} "
                         f"weak={market['weakening_count']} low={market['relative_low_count']} "
                         f"price={market['price']:.8g} | neden={debug['reasons'] or '-'}"
