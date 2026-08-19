@@ -927,6 +927,26 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
     fresh_up = {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
     core_keys = {"rsi", "willr", "macd_hist", "macd_cross", "stoch_rsi", "stoch_rsi_cross", "kdj", "obv"}
     h1_fresh_turns = [k for k, v in h1_phases.items() if k in core_keys and v in fresh_up]
+
+    # Benzer osilatörler ayrı ayrı kanıt sayılmaz. Kullanıcının görsel
+    # değerlendirmesindeki gibi yön değişimi dört bağımsız ailede okunur.
+    confirmed_up = {"yukarı_dönüş", "yukarı_kesti", "yükseliyor"}
+    family_turns: list[str] = []
+    if h1_phases.get("ema20_relation") in confirmed_up:
+        family_turns.append("trend_ema")
+    if (
+        h1_phases.get("macd_hist") in confirmed_up or
+        h1_phases.get("macd_cross") in confirmed_up
+    ):
+        family_turns.append("macd_momentum")
+    if any(
+        h1_phases.get(name) in confirmed_up
+        for name in ("rsi", "willr", "stoch_rsi", "stoch_rsi_cross", "kdj")
+    ):
+        family_turns.append("oscillator")
+    if h1_phases.get("obv") in confirmed_up:
+        family_turns.append("obv_flow")
+
     h4_upward = len(frames["4H"]["turning_up"])
     h1_upward = len(h1_state["turning_up"])
     candle_confirmation = h1_state["candle"] > 0
@@ -1053,6 +1073,8 @@ def evaluate_symbol(symbol: str, h1_state: dict, btc: dict[str, float]) -> Candi
         "coin_6h_pct": round(h1_state["ret_6"], 3),
         "relative_low_count": len(h1_state["relative_lows"]),
         "h1_fresh_turn_count": len(h1_fresh_turns),
+        "confirmation_families": family_turns,
+        "confirmation_family_count": len(family_turns),
         "h1_upward_count": h1_upward,
         "h1_weakening_count": len(h1_state["weakening"]),
         "h4_upward_count": h4_upward,
@@ -1115,6 +1137,9 @@ def select_distinct_events(
         support_tf = int(metrics.get("support_timeframe_count", 0))
         support_strength = safe_float(metrics.get("support_strength"))
         fresh_turns = int(metrics.get("h1_fresh_turn_count", 0))
+        families = set(metrics.get("confirmation_families", []))
+        family_count = int(metrics.get("confirmation_family_count", len(families)))
+        directional_core = bool(families & {"trend_ema", "macd_momentum"})
         upward = int(metrics.get("h1_upward_count", 0))
         weakening = int(metrics.get("h1_weakening_count", 0))
         candle = bool(metrics.get("candle_confirmation", False))
@@ -1149,7 +1174,7 @@ def select_distinct_events(
                 safe_float(structure.get("breakout_displacement_atr")) >= 0.20 and
                 safe_float(structure.get("close_progress_atr")) >= 0.20 and
                 structure.get("reclaimed_prev_high", False) and
-                (indicator_turn or upward >= 5)
+                family_count >= 2
             )
             proof = "kapanışla bant üstü genişleme"
 
@@ -1159,8 +1184,9 @@ def select_distinct_events(
                 safe_float(structure.get("impulse_up_atr")) >= 2.5 and
                 safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
                 structure.get("reclaimed_prev_high", False) and
-                safe_float(structure.get("close_progress_atr")) >= 0.15 and
-                (indicator_turn or (candle and upward >= 5))
+                safe_float(structure.get("close_progress_atr")) >= 0.20 and
+                family_count >= 2 and directional_core and
+                weakening <= 4
             )
             proof = "dinlenme sonrası kısa tepenin kapanışla geri alınması"
 
@@ -1170,9 +1196,10 @@ def select_distinct_events(
                 support_usable and has_room and support_distance <= 3.0 and
                 safe_float(structure.get("impulse_up_atr")) >= 2.2 and
                 0.25 <= pullback_ratio <= 0.75 and
-                safe_float(structure.get("pullback_atr")) >= 0.45 and
+                safe_float(structure.get("pullback_atr")) >= 0.55 and
+                safe_float(structure.get("breakout_displacement_atr")) >= 0.05 and
                 structure.get("reclaimed_prev_high", False) and
-                indicator_turn and weakening <= 5
+                family_count >= 2 and directional_core and weakening <= 4
             )
             proof = "kontrollü geri çekilmenin kısa tepesinin geri alınması"
 
@@ -1181,7 +1208,7 @@ def select_distinct_events(
                 support_usable and has_room and support_distance <= 2.0 and
                 safe_float(structure.get("down_move_atr")) >= 2.2 and
                 structure.get("reclaimed_prev_high", False) and
-                indicator_turn and candle and weakening <= 5
+                family_count >= 2 and candle and weakening <= 4
             )
             proof = "destek çevresinde kapanış teyitli fiyat dönüşü"
 
