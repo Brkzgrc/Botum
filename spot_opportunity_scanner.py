@@ -1178,30 +1178,12 @@ def select_distinct_events(
             )
             proof = "kapanışla bant üstü genişleme"
 
-        elif key == "base_continuation":
-            valid = (
-                support_usable and has_room and
-                safe_float(structure.get("impulse_up_atr")) >= 2.5 and
-                safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
-                structure.get("reclaimed_prev_high", False) and
-                safe_float(structure.get("close_progress_atr")) >= 0.20 and
-                family_count >= 2 and directional_core and
-                weakening <= 4
-            )
-            proof = "dinlenme sonrası kısa tepenin kapanışla geri alınması"
-
-        elif key == "pullback_resume":
-            pullback_ratio = safe_float(structure.get("pullback_ratio"), -1)
-            valid = (
-                support_usable and has_room and support_distance <= 3.0 and
-                safe_float(structure.get("impulse_up_atr")) >= 2.2 and
-                0.25 <= pullback_ratio <= 0.75 and
-                safe_float(structure.get("pullback_atr")) >= 0.55 and
-                safe_float(structure.get("breakout_displacement_atr")) >= 0.05 and
-                structure.get("reclaimed_prev_high", False) and
-                family_count >= 2 and directional_core and weakening <= 4
-            )
-            proof = "kontrollü geri çekilmenin kısa tepesinin geri alınması"
+        elif key in {"base_continuation", "pullback_resume"}:
+            # Bu iki yapı hazırlık olarak izlenir; tek başına inceleme sinyali
+            # değildir. Sonraki saatlerde gerçek destek tepkisine veya kapanış
+            # teyitli bant genişlemesine dönüşürse ilgili kurulumdan geçebilir.
+            valid = False
+            proof = ""
 
         elif key == "support_reversal":
             valid = (
