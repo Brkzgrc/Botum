@@ -8,6 +8,7 @@ mumları gösterir; sonraki 1H mumlarla hedef/stop sonucunu ölçer.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import statistics
 import time
@@ -210,7 +211,11 @@ def main() -> None:
     parser.add_argument("--only-symbol", default="", help="Yalnız tek sembol; örn. ZECUSDT")
     parser.add_argument("--step-hours", type=int, default=6, help="Karar noktaları arası saat")
     parser.add_argument("--horizon-hours", type=int, default=24, help="Her adayın takip süresi")
-    parser.add_argument("--workers", type=int, default=4, help="Veri indirme işçisi")
+    parser.add_argument("--workers", type=int, default=3, help="Veri indirme işçisi")
+    parser.add_argument(
+        "--batch-size", type=int, default=15,
+        help="RAM kullanımını sınırlamak için aynı anda tutulacak sembol sayısı",
+    )
     parser.add_argument(
         "--trace-hours", type=int, default=0,
         help="Son N karar saatinde aday/geçiş teşhisini yazdır; 0=kapalı",
@@ -235,151 +240,208 @@ def main() -> None:
     print(f"[TEST] {len(symbols)} sembol | {args.days} gün | {len(cutoffs)} karar noktası")
     print("[TEST] Veriler indiriliyor; canlı tarayıcı ve dış servisler kullanılmaz.")
 
-    all_data: dict[str, dict[str, pd.DataFrame]] = {}
-    download_symbols = ["BTCUSDT", *[s for s in symbols if s != "BTCUSDT"]]
-    with ThreadPoolExecutor(max_workers=max(1, min(6, args.workers))) as pool:
-        jobs = {pool.submit(download_symbol, s, first_cutoff, final_end): s for s in download_symbols}
-        for future in as_completed(jobs):
-            symbol = jobs[future]
-            try:
-                key, data = future.result()
-                all_data[key] = data
-                print(f"[DATA] {key} hazır")
-            except Exception as exc:
-                print(f"[DATA] {symbol} atlandı: {exc}")
+    # BTC bağlamı bütün gruplarda ortaktır; yalnız bir kez bellekte tutulur.
+    try:
+        _, btc_data = download_symbol("BTCUSDT", first_cutoff, final_end)
+        print("[DATA] BTCUSDT hazır")
+    except Exception as exc:
+        raise SystemExit(f"BTC bağlam verisi indirilemedi: {exc}")
 
-    if "BTCUSDT" not in all_data:
-        raise SystemExit("BTC bağlam verisi indirilemedi")
-
+    batch_size = max(1, min(25, args.batch_size))
+    batches = [
+        symbols[i:i + batch_size]
+        for i in range(0, len(symbols), batch_size)
+    ]
     records: list[dict] = []
-    market_states: dict[str, dict] = {}
-    last_cycle_at: dict[str, datetime] = {}
-    for number, cutoff in enumerate(cutoffs, start=1):
-        btc = btc_at(all_data["BTCUSDT"], cutoff)
-        h1_states: list[tuple[str, dict]] = []
-        for symbol in symbols:
-            data = all_data.get(symbol)
-            if not data:
-                continue
-            try:
-                h1_raw = frame_at(data["1h"], cutoff, 260)
-                # Geçmişteki son 24 saatin gerçek quote hacmi; bugünkü ticker kullanılmaz.
-                quote_volume = float(h1_raw.tail(24)["quote_volume"].sum())
-                if quote_volume < scanner.MIN_QUOTE_VOLUME:
+    downloaded_count = 0
+
+    for batch_no, batch_symbols in enumerate(batches, start=1):
+        print(
+            f"\n[BATCH] {batch_no}/{len(batches)} | "
+            f"{len(batch_symbols)} sembol yükleniyor"
+        )
+        all_data: dict[str, dict[str, pd.DataFrame]] = {"BTCUSDT": btc_data}
+        to_download = [symbol for symbol in batch_symbols if symbol != "BTCUSDT"]
+        with ThreadPoolExecutor(max_workers=max(1, min(4, args.workers))) as pool:
+            jobs = {
+                pool.submit(download_symbol, symbol, first_cutoff, final_end): symbol
+                for symbol in to_download
+            }
+            for future in as_completed(jobs):
+                symbol = jobs[future]
+                try:
+                    key, data = future.result()
+                    all_data[key] = data
+                    downloaded_count += 1
+                    print(f"[DATA] {key} hazır")
+                except Exception as exc:
+                    print(f"[DATA] {symbol} atlandı: {exc}")
+        if "BTCUSDT" in batch_symbols:
+            downloaded_count += 1
+
+        # Durum yaşam döngüsü her sembol için bağımsızdır. Seçici artık
+        # çapraz-sembol yüzdelik sıralaması kullanmadığından gruplama sonucu
+        # değiştirmez; yalnız RAM tüketimini sınırlar.
+        market_states: dict[str, dict] = {}
+        last_cycle_at: dict[str, datetime] = {}
+
+        for number, cutoff in enumerate(cutoffs, start=1):
+            btc = btc_at(btc_data, cutoff)
+            h1_states: list[tuple[str, dict]] = []
+            for symbol in batch_symbols:
+                data = all_data.get(symbol)
+                if not data:
                     continue
-                h1_state = scanner.timeframe_state(h1_raw, "1H")
-                h1_states.append((symbol, h1_state))
-            except Exception:
-                continue
-        candidates = []
-        # Context monkeypatch global olduğu için değerlendirme bu bölümde sıralıdır.
-        for symbol, h1_state in h1_states:
-            try:
-                with FETCH_LOCK, historical_fetch(all_data[symbol], cutoff):
-                    candidate = scanner.evaluate_symbol(symbol, h1_state, btc)
-                if candidate:
-                    candidates.append(candidate)
-            except Exception:
-                continue
-        candidates.sort(key=lambda c: (c.setup, c.symbol))
-        candidate_debug: dict[str, dict] = {}
-        h1_map = {symbol: state for symbol, state in h1_states}
-        next_states = {
-            symbol: {
-                "market": scanner.compact_market_state(h1_state),
-                "candidate_stage": "",
-                "last_event_id": market_states.get(symbol, {}).get("last_event_id", ""),
-            }
-            for symbol, h1_state in h1_states
-        }
-        event_pool: list[tuple] = []
-        for candidate in candidates:
-            previous = market_states.get(candidate.symbol, {})
-            current = next_states[candidate.symbol]["market"]
-            ready, transition_reasons = scanner.transition_ready(previous, candidate, current)
-            next_states[candidate.symbol]["candidate_stage"] = candidate.stage
+                try:
+                    h1_raw = frame_at(data["1h"], cutoff, 260)
+                    quote_volume = float(h1_raw.tail(24)["quote_volume"].sum())
+                    if quote_volume < scanner.MIN_QUOTE_VOLUME:
+                        continue
+                    h1_state = scanner.timeframe_state(h1_raw, "1H")
+                    h1_states.append((symbol, h1_state))
+                except Exception:
+                    continue
 
-            last_time = last_cycle_at.get(candidate.symbol)
-            rearmed = (
-                last_time is None or
-                (cutoff - last_time).total_seconds() >= scanner.EVENT_REARM_HOURS * 3600
-            )
-            candidate_debug[candidate.symbol] = {
-                "setup": candidate.setup,
-                "stage": candidate.stage,
-                "ready": ready,
-                "rearmed": rearmed,
-                "selected": False,
-                "reasons": transition_reasons,
-                "previous_stage": previous.get("candidate_stage", ""),
-            }
-            # İlk karar noktası warm-up'tır; yalnızca sonraki kapalı mumlarda
-            # gerçekten ilerleyen durum geçişleri seçime girebilir.
-            if not market_states or not ready or not rearmed:
-                continue
-            event_pool.append((candidate, transition_reasons))
+            candidates = []
+            # Context monkeypatch global olduğu için değerlendirme sıralıdır.
+            for symbol, h1_state in h1_states:
+                try:
+                    with FETCH_LOCK, historical_fetch(all_data[symbol], cutoff):
+                        candidate = scanner.evaluate_symbol(symbol, h1_state, btc)
+                    if candidate:
+                        candidates.append(candidate)
+                except Exception:
+                    continue
 
-        # Canlı tarayıcıyla aynı mutlak fiyat-olayı doğrulamasını uygula.
-        # Saatin en iyisini seçen yüzdelik/sıralama yoktur; hiçbiri kendi
-        # koşullarını tamamlamadıysa bu karar noktasında sıfır sinyal oluşur.
-        selected_events = scanner.select_distinct_events(event_pool, h1_map)
-        for candidate, transition_reasons in selected_events:
-            candidate_debug[candidate.symbol]["selected"] = True
-            last_cycle_at[candidate.symbol] = cutoff
-            next_states[candidate.symbol]["last_event_id"] = (
-                next_states[candidate.symbol]["market"].get("structure_event_id", "")
-            )
-            candidate.observed_setups.insert(
-                0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
-            )
-            measured = outcome(candidate, all_data[candidate.symbol]["1h"], cutoff, args.horizon_hours)
-            records.append({
-                "time": cutoff.isoformat(), "symbol": candidate.symbol,
-                "setup": candidate.setup,
-                "stage": candidate.stage,
-                "event_key": candidate.event_key,
-                "observed_setups": candidate.observed_setups,
-                "entry": candidate.price, "stop": candidate.stop,
-                "target": candidate.target_low, "target_pct": round(candidate.target_pct, 3),
-                "stop_pct": round(candidate.stop_pct, 3), "rr": round(candidate.rr, 3),
-                "tf_summary": candidate.tf_summary,
-                "positives": candidate.positives, "risks": candidate.risks,
-                "historical_notes": candidate.historical_notes,
-                "metrics": candidate.metrics,
-                "transition_reasons": transition_reasons,
-                **measured,
-            })
-        if args.trace_hours > 0 and cutoff >= last_cutoff - timedelta(hours=args.trace_hours):
-            tr_time = cutoff.astimezone(scanner.TR_TZ).strftime("%Y-%m-%d %H:%M")
-            for symbol, current_state in next_states.items():
-                market = current_state["market"]
-                debug = candidate_debug.get(symbol)
-                if debug:
-                    print(
-                        f"[TRACE] {tr_time} {symbol} | aday={debug['setup']} "
-                        f"stage={debug['stage']} prev={debug['previous_stage'] or '-'} "
-                        f"ready={debug['ready']} rearm={debug['rearmed']} "
-                        f"selected={debug['selected']} "
-                        f"up={market['upward_count']} fresh={market['fresh_count']} "
-                        f"weak={market['weakening_count']} low={market['relative_low_count']} "
-                        f"price={market['price']:.8g} | neden={debug['reasons'] or '-'}"
+            candidates.sort(key=lambda candidate: (candidate.setup, candidate.symbol))
+            candidate_debug: dict[str, dict] = {}
+            h1_map = {symbol: state for symbol, state in h1_states}
+            next_states = {
+                symbol: {
+                    "market": scanner.compact_market_state(h1_state),
+                    "candidate_stage": "",
+                    "last_event_id": market_states.get(symbol, {}).get("last_event_id", ""),
+                }
+                for symbol, h1_state in h1_states
+            }
+            event_pool: list[tuple] = []
+
+            for candidate in candidates:
+                previous = market_states.get(candidate.symbol, {})
+                current = next_states[candidate.symbol]["market"]
+                ready, transition_reasons = scanner.transition_ready(
+                    previous, candidate, current
+                )
+                next_states[candidate.symbol]["candidate_stage"] = candidate.stage
+                last_time = last_cycle_at.get(candidate.symbol)
+                rearmed = (
+                    last_time is None or
+                    (cutoff - last_time).total_seconds() >=
+                    scanner.EVENT_REARM_HOURS * 3600
+                )
+                candidate_debug[candidate.symbol] = {
+                    "setup": candidate.setup,
+                    "stage": candidate.stage,
+                    "ready": ready,
+                    "rearmed": rearmed,
+                    "selected": False,
+                    "reasons": transition_reasons,
+                    "previous_stage": previous.get("candidate_stage", ""),
+                }
+                if not market_states or not ready or not rearmed:
+                    continue
+                event_pool.append((candidate, transition_reasons))
+
+            selected_events = scanner.select_distinct_events(event_pool, h1_map)
+            for candidate, transition_reasons in selected_events:
+                candidate_debug[candidate.symbol]["selected"] = True
+                last_cycle_at[candidate.symbol] = cutoff
+                next_states[candidate.symbol]["last_event_id"] = (
+                    next_states[candidate.symbol]["market"].get(
+                        "structure_event_id", ""
                     )
-                else:
-                    print(
-                        f"[TRACE] {tr_time} {symbol} | ADAY_YOK "
-                        f"up={market['upward_count']} fresh={market['fresh_count']} "
-                        f"weak={market['weakening_count']} low={market['relative_low_count']} "
-                        f"price={market['price']:.8g}"
-                    )
-        market_states = next_states
-        if number % 20 == 0 or number == len(cutoffs):
-            print(f"[REPLAY] {number}/{len(cutoffs)} | sinyal={len(records)}")
+                )
+                candidate.observed_setups.insert(
+                    0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
+                )
+                measured = outcome(
+                    candidate, all_data[candidate.symbol]["1h"],
+                    cutoff, args.horizon_hours
+                )
+                records.append({
+                    "time": cutoff.isoformat(), "symbol": candidate.symbol,
+                    "setup": candidate.setup,
+                    "stage": candidate.stage,
+                    "event_key": candidate.event_key,
+                    "observed_setups": candidate.observed_setups,
+                    "entry": candidate.price, "stop": candidate.stop,
+                    "target": candidate.target_low,
+                    "target_pct": round(candidate.target_pct, 3),
+                    "stop_pct": round(candidate.stop_pct, 3),
+                    "rr": round(candidate.rr, 3),
+                    "tf_summary": candidate.tf_summary,
+                    "positives": candidate.positives,
+                    "risks": candidate.risks,
+                    "historical_notes": candidate.historical_notes,
+                    "metrics": candidate.metrics,
+                    "transition_reasons": transition_reasons,
+                    **measured,
+                })
+
+            if (
+                args.trace_hours > 0 and
+                cutoff >= last_cutoff - timedelta(hours=args.trace_hours)
+            ):
+                tr_time = cutoff.astimezone(scanner.TR_TZ).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                for symbol, current_state in next_states.items():
+                    market = current_state["market"]
+                    debug = candidate_debug.get(symbol)
+                    if debug:
+                        print(
+                            f"[TRACE] {tr_time} {symbol} | "
+                            f"aday={debug['setup']} stage={debug['stage']} "
+                            f"prev={debug['previous_stage'] or '-'} "
+                            f"ready={debug['ready']} rearm={debug['rearmed']} "
+                            f"selected={debug['selected']} "
+                            f"up={market['upward_count']} "
+                            f"fresh={market['fresh_count']} "
+                            f"weak={market['weakening_count']} "
+                            f"low={market['relative_low_count']} "
+                            f"price={market['price']:.8g} | "
+                            f"neden={debug['reasons'] or '-'}"
+                        )
+                    else:
+                        print(
+                            f"[TRACE] {tr_time} {symbol} | ADAY_YOK "
+                            f"up={market['upward_count']} "
+                            f"fresh={market['fresh_count']} "
+                            f"weak={market['weakening_count']} "
+                            f"low={market['relative_low_count']} "
+                            f"price={market['price']:.8g}"
+                        )
+
+            market_states = next_states
+            if number % 20 == 0 or number == len(cutoffs):
+                print(
+                    f"[REPLAY B{batch_no}] {number}/{len(cutoffs)} | "
+                    f"toplam sinyal={len(records)}"
+                )
+
+        # Bu grubun veri çerçevelerini sonraki gruptan önce serbest bırak.
+        del all_data, market_states, last_cycle_at
+        gc.collect()
+        print(
+            f"[BATCH] {batch_no}/{len(batches)} tamamlandı | "
+            f"toplam sinyal={len(records)}"
+        )
 
     summary = summarize(records)
     payload = {
         "config": vars(args), "first_cutoff": first_cutoff.isoformat(),
         "last_cutoff": last_cutoff.isoformat(), "symbols_requested": len(symbols),
-        "symbols_downloaded": len(all_data) - 1,
+        "symbols_downloaded": downloaded_count,
         "limitations": [
             "Sembol evreni bugünkü Binance liste durumuna göre kurulur (survivorship bias).",
             "Aynı 1H mumda hedef ve stop görülürse STOP_AMBIGUOUS kabul edilir.",
