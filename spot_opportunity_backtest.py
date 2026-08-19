@@ -288,6 +288,7 @@ def main() -> None:
             symbol: {
                 "market": scanner.compact_market_state(h1_state),
                 "candidate_stage": "",
+                "last_event_id": market_states.get(symbol, {}).get("last_event_id", ""),
             }
             for symbol, h1_state in h1_states
         }
@@ -325,6 +326,9 @@ def main() -> None:
         for candidate, transition_reasons in selected_events:
             candidate_debug[candidate.symbol]["selected"] = True
             last_cycle_at[candidate.symbol] = cutoff
+            next_states[candidate.symbol]["last_event_id"] = (
+                next_states[candidate.symbol]["market"].get("structure_event_id", "")
+            )
             candidate.observed_setups.insert(
                 0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
             )
