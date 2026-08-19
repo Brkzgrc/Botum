@@ -224,6 +224,7 @@ def compact_market_state(h1_state: dict) -> dict[str, Any]:
         "candle_notes": h1_state.get("candle_notes", []),
         "price": safe_float(h1_state.get("price")),
         "structure_key": h1_state.get("structure", {}).get("key", "none"),
+        "structure_event_id": h1_state.get("structure", {}).get("event_id", ""),
         "structure_watch_keys": h1_state.get("structure", {}).get("watch_keys", []),
     }
 
@@ -261,6 +262,13 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
     }.get(new_structure)
     previous_watches = set(before.get("structure_watch_keys", []))
     prepared = bool(required_watch and required_watch in previous_watches)
+    new_event_id = current.get("structure_event_id", "")
+    already_emitted = bool(
+        new_event_id and new_event_id == previous.get("last_event_id", "")
+    )
+
+    if already_emitted:
+        return False, []
 
     if previous_stage == "EARLY" and candidate.stage == "TURN" and prepared:
         reasons.append("erken izleme, önceden takip edilen fiyat hareketiyle teyit edildi")
@@ -409,64 +417,85 @@ def candle_evidence(df: pd.DataFrame) -> tuple[float, list[str]]:
 
 
 def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
-    """Fiyatın son hareket dizisini ATR'ye göre sınıflandırır.
+    """Hazırlık mumlarını tetikleyici mumdan ayırarak fiyat olayını okur.
 
-    Tek bir trend yönünü zorunlu tutmaz. Yükseliş-dinlenme-devam,
-    kontrollü geri çekilme, bant genişlemesi ve düşüş sonrası tepki
-    birbirinden bağımsız senaryolardır.
+    Son kapalı mum yalnız tetikleyicidir. Sıkışma, dinlenme, geri çekilme ve
+    taban hazırlığı ondan önceki mumlardan hesaplanır; böylece tetikleyici mum
+    kendi hazırlık koşulunu geriye dönük olarak oluşturamaz.
     """
-    if len(d) < 35:
+    if len(d) < 40:
         return {"key": "none", "text": "fiyat dizisi için veri yetersiz"}
 
-    x = d.iloc[-1]
-    price = safe_float(x["close"])
-    atr = max(safe_float(x["atr"]), price * 0.005, 1e-12)
-    closes = d["close"]
-    highs = d["high"]
-    lows = d["low"]
+    trigger = d.iloc[-1]
+    setup = d.iloc[-7:-1]       # Tetikleyiciden önceki 6 kapalı mum
+    prior = d.iloc[-24:-7]      # Hazırlıktan önceki hareket
+    earlier = d.iloc[-14:-7]    # Sıkışma karşılaştırması
+    price = safe_float(trigger["close"])
+    prev_close = safe_float(setup["close"].iloc[-1])
+    atr = max(safe_float(trigger["atr"]), price * 0.005, 1e-12)
 
-    # Önceki hareket ile son dinlenme/geri çekilmeyi birbirinden ayır.
-    anchor = d.iloc[-24:-6]
-    recent = d.iloc[-6:]
-    impulse_low_i = anchor["low"].idxmin()
-    after_low = anchor.loc[impulse_low_i:]
+    trigger_range = max(
+        safe_float(trigger["high"]) - safe_float(trigger["low"]), 1e-12
+    )
+    trigger_body = price - safe_float(trigger["open"])
+    body_atr = trigger_body / atr
+    close_location = (
+        price - safe_float(trigger["low"])
+    ) / trigger_range
+
+    setup_high = safe_float(setup["high"].max())
+    setup_low = safe_float(setup["low"].min())
+    setup_range_atr = (setup_high - setup_low) / atr
+    earlier_range_atr = (
+        safe_float(earlier["high"].max()) - safe_float(earlier["low"].min())
+    ) / atr
+    range_contracting = (
+        setup_range_atr <= 1.8 and
+        setup_range_atr <= earlier_range_atr * 0.78
+    )
+
+    # Önceki yükseliş dürtüsü yalnız hazırlık öncesindeki mumlardan ölçülür.
+    impulse_low_i = prior["low"].idxmin()
+    after_low = prior.loc[impulse_low_i:]
     impulse_high_i = after_low["high"].idxmax()
-    impulse_low = safe_float(anchor.loc[impulse_low_i, "low"])
-    impulse_high = safe_float(anchor.loc[impulse_high_i, "high"])
+    impulse_low = safe_float(prior.loc[impulse_low_i, "low"])
+    impulse_high = safe_float(prior.loc[impulse_high_i, "high"])
+    impulse_size = max(impulse_high - impulse_low, atr)
     impulse_up_atr = max(0.0, (impulse_high - impulse_low) / atr)
 
-    recent_peak = safe_float(d["high"].iloc[-12:].max())
-    recent_floor = safe_float(d["low"].iloc[-12:].min())
-    pullback_atr = max(0.0, (recent_peak - price) / atr)
-    impulse_size = max(impulse_high - impulse_low, atr)
-    pullback_ratio = max(0.0, (impulse_high - price) / impulse_size)
-
-    recent_range_atr = (safe_float(recent["high"].max()) - safe_float(recent["low"].min())) / atr
-    prior_range = d.iloc[-14:-6]
-    prior_range_atr = (
-        safe_float(prior_range["high"].max()) - safe_float(prior_range["low"].min())
-    ) / atr
-    range_contracting = recent_range_atr <= max(1.8, prior_range_atr * 0.72)
-
-    down_peak = safe_float(d["high"].iloc[-18:].max())
-    down_move_atr = max(0.0, (down_peak - safe_float(lows.iloc[-1])) / atr)
-    near_recent_floor = price <= recent_floor + atr * 0.65
-
-    last_up = price > safe_float(closes.iloc[-2])
-    two_bar_progress = price > safe_float(closes.iloc[-3])
-    reclaimed_prev_high = price > safe_float(highs.iloc[-2])
-    breakout_level = safe_float(highs.iloc[-7:-1].max())
-
-    # Bunlar sinyal değil, bir sonraki fiyat olayının hazırlık durumlarıdır.
-    # Canlı yaşam döngüsü bu hazırlığı önceki kapalı mumda görmeden olay üretmez.
-    range_watch = range_contracting
-    base_watch = impulse_up_atr >= 2.0 and range_contracting
-    pullback_watch = (
-        impulse_up_atr >= 2.0 and
-        0.20 <= pullback_ratio <= 0.85 and
-        pullback_atr >= 0.35
+    pretrigger_price = prev_close
+    pullback_atr = max(0.0, (impulse_high - setup_low) / atr)
+    pullback_ratio = max(0.0, (impulse_high - setup_low) / impulse_size)
+    pullback_progress = (
+        safe_float(setup["close"].iloc[-1]) <
+        safe_float(setup["close"].iloc[0])
     )
-    reversal_watch = down_move_atr >= 1.8 and near_recent_floor
+    micro_reclaim_level = safe_float(setup["high"].iloc[-3:].max())
+
+    # Düşüş ve taban da tetikleyici mum hariç hesaplanır.
+    reversal_window = d.iloc[-20:-1]
+    down_peak = safe_float(reversal_window["high"].max())
+    floor_before_trigger = safe_float(setup["low"].min())
+    down_move_atr = max(0.0, (down_peak - floor_before_trigger) / atr)
+    floor_age = str(setup["low"].idxmin())
+    support_test = safe_float(trigger["low"]) <= floor_before_trigger + atr * 0.35
+
+    range_watch = range_contracting
+    base_watch = (
+        impulse_up_atr >= 2.8 and
+        setup_range_atr <= 2.0 and
+        setup_low >= impulse_low + impulse_size * 0.45
+    )
+    pullback_watch = (
+        impulse_up_atr >= 2.5 and
+        0.20 <= pullback_ratio <= 0.72 and
+        pullback_atr >= 0.55 and
+        pullback_progress
+    )
+    reversal_watch = (
+        down_move_atr >= 2.4 and
+        pretrigger_price <= floor_before_trigger + atr * 0.75
+    )
     watch_keys = [
         name for name, active in (
             ("range", range_watch),
@@ -477,67 +506,71 @@ def price_action_structure(d: pd.DataFrame) -> dict[str, Any]:
         if active
     ]
 
+    bullish_trigger = (
+        trigger_body > 0 and body_atr >= 0.22 and close_location >= 0.62
+    )
+    reclaimed_micro_high = price > micro_reclaim_level
     range_break = (
-        range_contracting and price > breakout_level and
-        (price - safe_float(closes.iloc[-2])) >= atr * 0.20
+        range_watch and bullish_trigger and
+        price > setup_high + atr * 0.08
     )
-
-    # Dinlenme sonrası devam için yalnız yeşil mum yetmez: fiyat bandın
-    # üst bölümünü geri almalı ve son kısa tepeyi kapanışla aşmalıdır.
     base_resume = (
-        impulse_up_atr >= 2.0 and range_contracting and
-        price >= safe_float(recent["low"].min()) + (
-            safe_float(recent["high"].max()) - safe_float(recent["low"].min())
-        ) * 0.72 and
-        last_up and reclaimed_prev_high
+        base_watch and bullish_trigger and reclaimed_micro_high and
+        price > setup_high
     )
-    # Kontrollü geri çekilmede de iki mumluk sıradan yükseliş yerine,
-    # geri çekilmenin son kısa tepesinin gerçekten geri alınması aranır.
     pullback_resume = (
-        impulse_up_atr >= 2.0 and
-        0.20 <= pullback_ratio <= 0.85 and
-        pullback_atr >= 0.35 and
-        last_up and reclaimed_prev_high
+        pullback_watch and bullish_trigger and reclaimed_micro_high
     )
     reversal_turn = (
-        down_move_atr >= 1.8 and near_recent_floor and
-        last_up and (reclaimed_prev_high or price > safe_float(d["open"].iloc[-1]))
+        reversal_watch and support_test and bullish_trigger and
+        price > safe_float(setup["high"].iloc[-2:].max())
     )
 
-    if range_break:
-        key = "range_expansion"
-        text = "daralan fiyat bandından yukarı genişleme başladı"
+    # Daha özel geri çekilme ve taban senaryoları genel bant kırılımından önce
+    # değerlendirilir; aynı hareket iki farklı kurulum gibi görünmez.
+    if pullback_resume:
+        key = "pullback_resume"
+        text = "önceki yükselişin kontrollü geri çekilmesinden fiyat teyitli tepki oluşuyor"
+        anchor = str(impulse_high_i)
     elif base_resume:
         key = "base_continuation"
-        text = "yükseliş sonrası dinlenme tamamlanıp fiyat yeniden ilerliyor"
-    elif pullback_resume:
-        key = "pullback_resume"
-        text = "önceki yükselişin kontrollü geri çekilmesinden tepki oluşuyor"
+        text = "yükseliş sonrası dinlenme, hazırlık bandı üstünde kapanışla tamamlanıyor"
+        anchor = str(impulse_high_i)
     elif reversal_turn:
         key = "support_reversal"
-        text = "aşağı hareket sonrası fiyat taban çevresinde yukarı tepki veriyor"
+        text = "aşağı hareket sonrası taban testi kapanışla geri alınıyor"
+        anchor = floor_age
+    elif range_break:
+        key = "range_expansion"
+        text = "önceden oluşmuş dar bandın üstünde kapanış gerçekleşiyor"
+        anchor = str(setup.index[0])
     else:
         key = "none"
         text = "henüz tamamlanmış yeni fiyat olayı yok"
+        anchor = ""
 
     return {
         "key": key,
         "text": text,
+        "event_id": f"{key}:{anchor}" if key != "none" else "",
         "impulse_up_atr": round(impulse_up_atr, 3),
         "pullback_atr": round(pullback_atr, 3),
         "pullback_ratio": round(pullback_ratio, 3),
-        "recent_range_atr": round(recent_range_atr, 3),
-        "prior_range_atr": round(prior_range_atr, 3),
+        "recent_range_atr": round(setup_range_atr, 3),
+        "prior_range_atr": round(earlier_range_atr, 3),
         "down_move_atr": round(down_move_atr, 3),
         "range_contracting": bool(range_contracting),
-        "last_up": bool(last_up),
-        "reclaimed_prev_high": bool(reclaimed_prev_high),
+        "last_up": bool(price > prev_close),
+        "reclaimed_prev_high": bool(reclaimed_micro_high),
         "breakout_displacement_atr": round(
-            max(0.0, (price - breakout_level) / atr), 3
+            max(0.0, (price - setup_high) / atr), 3
         ),
         "close_progress_atr": round(
-            max(0.0, (price - safe_float(closes.iloc[-2])) / atr), 3
+            max(0.0, (price - prev_close) / atr), 3
         ),
+        "trigger_body_atr": round(body_atr, 3),
+        "trigger_close_location": round(close_location, 3),
+        "support_test": bool(support_test),
         "watch_keys": watch_keys,
     }
 
@@ -1396,6 +1429,7 @@ def scan_once() -> list[Candidate]:
             "target": safe_float(previous.get("target")),
             "stop": safe_float(previous.get("stop")),
             "emitted_at": safe_float(previous.get("emitted_at")),
+            "last_event_id": previous.get("last_event_id", ""),
         }
 
     event_pool: list[tuple[Candidate, list[str]]] = []
@@ -1421,6 +1455,9 @@ def scan_once() -> list[Candidate]:
     new_events: list[Candidate] = []
     for candidate, transition_reasons in selected_events:
         active_state[candidate.symbol]["emitted_at"] = now_ts
+        active_state[candidate.symbol]["last_event_id"] = (
+            active_state[candidate.symbol]["market"].get("structure_event_id", "")
+        )
         candidate.observed_setups.insert(
             0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
         )
