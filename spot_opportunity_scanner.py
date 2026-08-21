@@ -52,6 +52,8 @@ PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_TOKEN", "")
 SCAN_INTERVAL_MIN = int(os.getenv("SCAN_INTERVAL_MIN", "60"))
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+QUICK_SCAN_ENABLED = os.getenv("QUICK_SCAN_ENABLED", "true").lower() == "true"
+QUICK_WATCH_MAX = max(1, min(40, int(os.getenv("QUICK_WATCH_MAX", "30"))))
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
 EVENT_REARM_HOURS = float(os.getenv("EVENT_REARM_HOURS", "8"))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
@@ -90,6 +92,9 @@ runtime = {
     "deep_scanned": 0,
     "candidates": 0,
     "sent": 0,
+    "quick_watch_symbols": 0,
+    "quick_alerts": 0,
+    "last_quick_scan": None,
     "last_error": None,
 }
 
@@ -270,8 +275,23 @@ def transition_ready(previous: dict, candidate: Candidate, current: dict) -> tup
     if already_emitted:
         return False, []
 
-    if previous_stage == "EARLY" and candidate.stage == "TURN" and prepared:
-        reasons.append("erken izleme, önceden takip edilen fiyat hareketiyle teyit edildi")
+    if previous_stage == "EARLY" and candidate.stage == "TURN":
+        # Önceki saat erken destek adayı olan coin, sonraki kapalı saatte
+        # yaygın ve taze bir dönüş yaparsa yalnız yapı-watch anahtarının
+        # eksikliği yüzünden kaçırılmaz. Fiyatın hazırlık bölgesinden fazla
+        # uzaklaşmaması geç kalmış kovalamayı engeller.
+        before_price = max(safe_float(before.get("price")), 1e-12)
+        early_follow_through = (
+            int(current.get("upward_count", 0)) >= 6 and
+            int(current.get("fresh_count", 0)) >= 3 and
+            int(current.get("weakening_count", 99)) <= 2 and
+            candidate.price <= before_price * 1.025 and
+            candidate.metrics.get("support_role_state") != "confirmed_break"
+        )
+        if prepared:
+            reasons.append("erken izleme, önceden takip edilen fiyat hareketiyle teyit edildi")
+        elif early_follow_through:
+            reasons.append("erken izleme sonraki kapalı mumda güçlü dönüşe ilerledi")
 
     if (
         new_structure != "none" and
@@ -1175,7 +1195,22 @@ def select_distinct_events(
                 ))
             continue
 
-        if key == "range_expansion":
+        rescued_early_turn = any(
+            reason == "erken izleme sonraki kapalı mumda güçlü dönüşe ilerledi"
+            for reason in reasons
+        )
+
+        if rescued_early_turn:
+            # Bu yol yalnız ardışık EARLY -> TURN dizisini kurtarır; genel
+            # destek/indikatör eşikleri gevşetilmez.
+            valid = (
+                support_usable and has_room and support_distance <= 2.5 and
+                family_count >= 3 and fresh_turns >= 3 and
+                upward >= 6 and weakening <= 2
+            )
+            proof = "önceki saat destek hazırlığı sonrası yaygın ve taze dönüş"
+
+        elif key == "range_expansion":
             valid = (
                 support_usable and has_room and
                 safe_float(structure.get("recent_range_atr"), 99) <= 2.2 and
@@ -1537,6 +1572,137 @@ def scan_once() -> list[Candidate]:
     return candidates
 
 
+quick_seen: dict[str, int] = {}
+
+
+def quick_watch_once() -> None:
+    """Saatlik taramanın hazırlık havuzunu kapalı 15 dakikalık mumlarla izler.
+
+    Tüm evreni veya yüksek timeframe'leri yeniden taramaz. Bu katman yalnız
+    gözlem kaydı üretir; Portfolio, Telegram ve Analyzer'a gönderim yapmaz.
+    """
+    state = load_state()
+    watches: list[tuple[str, dict, list[str]]] = []
+    for symbol, record in state.items():
+        if symbol.startswith("__") or not isinstance(record, dict):
+            continue
+        market = record.get("market")
+        if not isinstance(market, dict):
+            continue
+        watch_keys = list(market.get("structure_watch_keys", []))
+        stage = str(record.get("candidate_stage", ""))
+        if stage == "EARLY" or watch_keys:
+            watches.append((symbol, record, watch_keys))
+
+    watches.sort(key=lambda item: (
+        item[1].get("candidate_stage") != "EARLY",
+        -len(item[2]),
+        item[0],
+    ))
+    watches = watches[:QUICK_WATCH_MAX]
+    runtime.update({
+        "quick_watch_symbols": len(watches),
+        "quick_alerts": 0,
+        "last_quick_scan": tr_now().isoformat(),
+    })
+    if not watches:
+        print("[15M-İZLEME] Hazırlık havuzunda coin yok.", flush=True)
+        return
+
+    alerts: list[tuple[str, dict, list[str], dict]] = []
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, 4)) as pool:
+        jobs = {
+            pool.submit(fetch_ohlcv, symbol, "15m", 80): (symbol, record, watch_keys)
+            for symbol, record, watch_keys in watches
+        }
+        for future in as_completed(jobs):
+            symbol, record, watch_keys = jobs[future]
+            try:
+                st = timeframe_state(future.result(), "15M")
+                d = st["df"]
+                if len(d) < 3:
+                    continue
+                previous_bar, trigger = d.iloc[-2], d.iloc[-1]
+                close = safe_float(trigger["close"])
+                open_ = safe_float(trigger["open"])
+                high = safe_float(trigger["high"])
+                low = safe_float(trigger["low"])
+                candle_range = max(high - low, 1e-12)
+                body_ratio = (close - open_) / candle_range
+                reference = max(
+                    safe_float(record.get("market", {}).get("price")),
+                    1e-12,
+                )
+                phases = st.get("phases", {})
+                fresh_states = {"yukarı_dönüş", "yukarı_kesti", "yukarı_kesişime_yaklaşıyor"}
+                fresh = sum(value in fresh_states for value in phases.values())
+                upward = len(st.get("turning_up", []))
+                reclaimed = (
+                    close > safe_float(previous_bar["high"]) and
+                    close >= safe_float(trigger.get("ema20"), close)
+                )
+                not_chasing = close <= reference * 1.04
+                confirmed = (
+                    reclaimed and body_ratio >= 0.45 and not_chasing and
+                    upward >= 4 and fresh >= 2
+                )
+                bar_id = int(pd.Timestamp(trigger["open_time"]).timestamp())
+                if confirmed and quick_seen.get(symbol) != bar_id:
+                    quick_seen[symbol] = bar_id
+                    alerts.append((
+                        symbol,
+                        record,
+                        watch_keys,
+                        {
+                            "time": trigger["open_time"],
+                            "reference": reference,
+                            "close": close,
+                            "change": (close / reference - 1) * 100,
+                            "upward": upward,
+                            "fresh": fresh,
+                        },
+                    ))
+            except Exception as exc:
+                print(f"[15M-İZLEME] {symbol}: {str(exc)[:100]}", flush=True)
+
+    runtime["quick_alerts"] = len(alerts)
+    for symbol, record, watch_keys, info in sorted(alerts):
+        stage = record.get("candidate_stage") or "-"
+        watched = ",".join(watch_keys) or "early"
+        print(
+            f"[15M-İZLEME] {symbol} | kapalı mum={info['time']} | "
+            f"saatlik aşama={stage} | hazırlık={watched} | "
+            f"referans={fmt_price(info['reference'])} | "
+            f"15m kapanış={fmt_price(info['close'])} "
+            f"({info['change']:+.2f}%) | yön={info['upward']} taze={info['fresh']} | "
+            "YÜZEYSEL ERKEN UYARI; dış gönderim yok",
+            flush=True,
+        )
+    print(
+        f"[15M-İZLEME] Bitti: {len(watches)} izlenen, {len(alerts)} erken uyarı.",
+        flush=True,
+    )
+
+
+def quick_watch_loop() -> None:
+    """Saatlik tam taramanın arasında :17, :32 ve :47'de hafif kontrol."""
+    while QUICK_SCAN_ENABLED:
+        now = tr_now()
+        targets = [
+            now.replace(minute=minute, second=0, microsecond=0)
+            for minute in (17, 32, 47)
+        ]
+        future = [target for target in targets if target > now]
+        next_run = min(future) if future else (
+            (now + timedelta(hours=1)).replace(minute=17, second=0, microsecond=0)
+        )
+        time.sleep(max(30, (next_run - now).total_seconds()))
+        try:
+            quick_watch_once()
+        except Exception as exc:
+            print(f"[15M-İZLEME] Döngü hatası: {exc}", flush=True)
+
+
 def scanner_loop() -> None:
     if SCAN_ON_START:
         try:
@@ -1581,9 +1747,20 @@ def main() -> None:
     print(f"Spot only | birleşik puan yok | stop tamponu=%{SUPPORT_BUFFER_PCT:g}", flush=True)
     print(f"DRY_RUN={DRY_RUN} — " + ("hiçbir dış gönderim yapılmaz" if DRY_RUN else "Portfolio/Telegram gönderimi AKTİF"), flush=True)
     print("Gerçek emir fonksiyonu yoktur.", flush=True)
+    print(
+        "15M yüzeysel izleme: " +
+        ("AKTİF — yalnız log, dış gönderim yok" if QUICK_SCAN_ENABLED else "KAPALI"),
+        flush=True,
+    )
     print("=" * 68, flush=True)
     runtime["status"] = "STARTING"
     threading.Thread(target=run_flask, daemon=True, name="health-server").start()
+    if QUICK_SCAN_ENABLED:
+        threading.Thread(
+            target=quick_watch_loop,
+            daemon=True,
+            name="quick-watch-loop",
+        ).start()
     scanner_loop()
 
 
