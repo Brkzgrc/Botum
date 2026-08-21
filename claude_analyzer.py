@@ -989,8 +989,23 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("stabil hale dönmesi", "yönünü yeniden yukarı çevirmesi")
     cleaned = cleaned.replace("pullback", "geri çekilme").replace("Pullback", "Geri çekilme")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
+    cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
+    cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
     cleaned = cleaned.replace("rüzgâr arkası kesintiye uğratabilir", "yükselişi destekleyen ortam zayıflayabilir")
     return cleaned.strip()
+
+
+def _manual_action_text(price: float, zones: dict) -> str:
+    """En kritik uygulama bölümünü model yorumuna bırakmadan tutarlı üretir."""
+    near = _manual_zone_text(zones.get("near_support"))
+    next_zone = _manual_zone_text(zones.get("next_support"))
+    return (
+        "Ben olsam ne yapardım?\n"
+        f"Mevcut fiyat {_fmt(price)} civarındayken fiyatı kovalamazdım. "
+        f"{near} yakın destek bölgesinde 1H kapanışın desteği korumasını ve StochRSI hızlı çizgisinin "
+        "aşağıdan yukarı dönmesini veya MACD histogramının yeniden güçlenmesini beklerdim. "
+        f"Yakın destek 1H kapanışla kaybedilirse işlemden uzak durup {next_zone} sonraki destek bölgesini izlerdim."
+    )
 
 
 def _manual_tf_text(label: str, snap: dict | None) -> str:
@@ -1111,6 +1126,10 @@ En fazla 3 kısa ve tamamlanmış cümle. Kesin emir verme. Şu sade sırayı ku
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
                    prompt_chars=len(prompt))
         body = _clean_manual_analysis(resp.content[0].text)
+        # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
+        body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
+        body = body.replace(f"{base}'nin", f"{base}'in")
+        body = f"{body}\n\n{_manual_action_text(current_price, zones)}"
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
