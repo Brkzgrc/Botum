@@ -995,16 +995,56 @@ def _clean_manual_analysis(text: str) -> str:
     return cleaned.strip()
 
 
-def _manual_action_text(price: float, zones: dict) -> str:
-    """En kritik uygulama bölümünü model yorumuna bırakmadan tutarlı üretir."""
+def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str:
+    """Devam, kararsızlık ve yorulmayı ayırarak tutarlı uygulama senaryosu üretir."""
     near = _manual_zone_text(zones.get("near_support"))
     next_zone = _manual_zone_text(zones.get("next_support"))
+    h1, h4, d1 = coin.get("1H") or {}, coin.get("4H") or {}, coin.get("1D") or {}
+    b1, b4 = btc.get("1H") or {}, btc.get("4H") or {}
+
+    broad_up = all([
+        h4.get("ema20_direction") == "yükseliyor", d1.get("ema20_direction") == "yükseliyor",
+        h4.get("ema20_relation") == "üstünde", d1.get("ema20_relation") == "üstünde",
+    ])
+    h1_up = sum([
+        h1.get("rsi_direction") == "yükseliyor",
+        h1.get("macd_hist_direction") == "yükseliyor",
+        h1.get("stoch_direction") == "yükseliyor",
+        h1.get("obv_direction") == "yükseliyor",
+    ])
+    h1_weak = sum([
+        h1.get("rsi_direction") == "düşüyor",
+        h1.get("macd_hist_direction") == "düşüyor",
+        h1.get("stoch_direction") == "düşüyor",
+        h1.get("obv_direction") == "düşüyor",
+    ])
+    btc_weak = sum([
+        b1.get("macd_hist_direction") == "düşüyor", b1.get("obv_direction") == "düşüyor",
+        b4.get("macd_hist_direction") == "düşüyor", b4.get("obv_direction") == "düşüyor",
+    ])
+    stretched = (h1.get("ema20_distance_atr") or 0) > 2.2
+    flow_support = h1.get("obv_direction") == "yükseliyor" or (h1.get("vol_ratio") or 0) >= 1.2
+
+    if broad_up and h1_up >= 2 and flow_support and not stretched and btc_weak < 3:
+        return (
+            "Ben olsam ne yapardım?\n"
+            "Geniş zaman dilimlerindeki yükseliş sürerken 1H hareketi ve para akışı da yeniden güçlendiği için "
+            "yalnız geri çekilme bekleyip tamamen kenarda kalmazdım. Güçlü 1H kapanışın ardından fiyatın kırdığı "
+            f"bölgeyi koruduğunu görürsem kontrollü ve kademeli değerlendirebilirdim; {near} bölgesi kaybedilirse "
+            f"devam senaryosundan vazgeçip {next_zone} bölgesini beklerdim."
+        )
+    if stretched or (h1_weak >= 3 and btc_weak >= 2):
+        return (
+            "Ben olsam ne yapardım?\n"
+            "Coin kısa vadede fiyat ortalamasından uzaklaşmış veya coin ile BTC birlikte güç kaybediyor; bu nedenle "
+            f"mevcut fiyatı kovalamazdım. {near} bölgesinde 1H kapanışın desteği korumasını ve para akışıyla birlikte "
+            f"yukarı dönüş oluşmasını beklerdim; bölge kaybedilirse {next_zone} bölgesini izlerdim."
+        )
     return (
         "Ben olsam ne yapardım?\n"
-        f"Mevcut fiyat {_fmt(price)} civarındayken fiyatı kovalamazdım. "
-        f"{near} yakın destek bölgesinde 1H kapanışın desteği korumasını ve StochRSI hızlı çizgisinin "
-        "aşağıdan yukarı dönmesini veya MACD histogramının yeniden güçlenmesini beklerdim. "
-        f"Yakın destek 1H kapanışla kaybedilirse işlemden uzak durup {next_zone} sonraki destek bölgesini izlerdim."
+        "Geniş yapı olumlu olsa da kısa vadeli kanıtlar aynı yönde değil; bu nedenle ne doğrudan fiyatı kovalar ne de "
+        f"yükseliş ihtimalini tamamen elerdim. {near} bölgesinin korunmasıyla 1H momentumunun yeniden güçlenmesini "
+        f"beklerdim; yakın destek kaybedilirse {next_zone} bölgesine kadar işlemden uzak dururdum."
     )
 
 
@@ -1129,7 +1169,7 @@ En fazla 3 kısa ve tamamlanmış cümle. Kesin emir verme. Şu sade sırayı ku
         # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
         body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
         body = body.replace(f"{base}'nin", f"{base}'in")
-        body = f"{body}\n\n{_manual_action_text(current_price, zones)}"
+        body = f"{body}\n\n{_manual_action_text(current_price, zones, coin, btc)}"
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
