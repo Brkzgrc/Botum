@@ -23,6 +23,7 @@ from flask import Flask, request, jsonify, Response, session, redirect
 from news_watcher import start_news_watcher
 from market_analyzer import start_market_analyzer
 from claude_analyzer import (process_and_send as _analyzer_process,
+                             analyze_coin_on_demand as _analyzer_current_coin,
                              start_market_watcher as _start_market_watcher,
                              update_archive_outcome as _update_archive_outcome)
 from intraday_scanner import start_intraday_scanner
@@ -518,16 +519,8 @@ def _run_manual_analyzer(pair: str):
             return
         _MANUAL_ANALYZER_INFLIGHT.add(pair)
     try:
-        found = _latest_spot_scanner_signal(pair)
-        if not found:
-            _send_analyzer_thread(
-                f"#{pair[:-4]} için Portfolio'da Spot Scanner kaydı bulunamadı; analiz yapılmadı."
-            )
-            print(f"[MANUEL ANALYZER] {pair}: Spot Scanner kaydı yok, API çağrılmadı.", flush=True)
-            return
-        stored, signal = found
-        print(f"[MANUEL ANALYZER] {pair}: kullanıcı isteğiyle Haiku analizi başlatıldı.", flush=True)
-        _analyzer_process(signal, 0, 0, stored.get("id", ""))
+        print(f"[MANUEL ANALYZER] {pair}: güncel verilerle Haiku analizi başlatıldı.", flush=True)
+        _analyzer_current_coin(pair)
     finally:
         with _MANUAL_ANALYZER_INFLIGHT_LOCK:
             _MANUAL_ANALYZER_INFLIGHT.discard(pair)
