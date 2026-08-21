@@ -11,6 +11,7 @@ Yeni bir sistem eklemek için: signals = {...}; process_and_send(signals)
 
 import os
 import json
+import html
 import threading
 import time
 import requests
@@ -29,6 +30,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
+_PROMPT_V_MANUAL  = "1.0"   # kullanıcı isteğiyle güncel coin görünümü
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -263,6 +265,131 @@ def _vol_ratio(volumes, period=20):
         return None
     avg = np.mean(volumes[-period - 1:-1])
     return round(float(volumes[-1]) / avg, 2) if avg > 0 else None
+
+
+def _direction(values, lookback=3, epsilon=0.0):
+    """Son değerlerin seviyesinden çok hareket yönünü sade biçimde anlatır."""
+    clean = [float(v) for v in values if v is not None and np.isfinite(v)]
+    if len(clean) < lookback + 1:
+        return "veri_yetersiz"
+    delta = clean[-1] - clean[-1 - lookback]
+    if delta > epsilon:
+        return "yükseliyor"
+    if delta < -epsilon:
+        return "düşüyor"
+    return "yatay"
+
+
+def _manual_tf_snapshot(data: dict | None) -> dict | None:
+    """Manuel analiz için seviye değil yön ağırlıklı teknik özet üretir."""
+    if not data or len(data.get("closes", [])) < 60:
+        return None
+    c = pd.Series(data["closes"], dtype=float)
+    h = pd.Series(data["highs"], dtype=float)
+    l = pd.Series(data["lows"], dtype=float)
+    v = pd.Series(data["volumes"], dtype=float)
+
+    ema = {n: c.ewm(span=n, adjust=False).mean() for n in (20, 50, 100, 200)}
+    delta = c.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+    fast = c.ewm(span=12, adjust=False).mean()
+    slow = c.ewm(span=26, adjust=False).mean()
+    macd = fast - slow
+    macd_signal = macd.ewm(span=9, adjust=False).mean()
+    macd_hist = macd - macd_signal
+
+    rsi_low = rsi.rolling(14).min()
+    rsi_high = rsi.rolling(14).max()
+    stoch_rsi = (rsi - rsi_low) / (rsi_high - rsi_low).replace(0, np.nan) * 100
+    stoch_k = stoch_rsi.rolling(3).mean()
+    stoch_d = stoch_k.rolling(3).mean()
+    obv = (np.sign(c.diff()).fillna(0) * v).cumsum()
+    hh = h.rolling(14).max()
+    ll = l.rolling(14).min()
+    willr = -100 * (hh - c) / (hh - ll).replace(0, np.nan)
+
+    prev_close = c.shift(1)
+    tr = pd.concat([(h - l), (h - prev_close).abs(), (l - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    price = float(c.iloc[-1])
+    atr_now = float(atr.iloc[-1]) if pd.notna(atr.iloc[-1]) else 0.0
+    ema20 = float(ema[20].iloc[-1])
+    return {
+        "price": price,
+        "rsi": round(float(rsi.iloc[-1]), 1) if pd.notna(rsi.iloc[-1]) else None,
+        "rsi_direction": _direction(rsi.tolist(), epsilon=0.4),
+        "macd_position": "pozitif" if macd.iloc[-1] >= 0 else "negatif",
+        "macd_hist_direction": _direction(macd_hist.tolist()),
+        "macd_cross": "üstünde" if macd.iloc[-1] >= macd_signal.iloc[-1] else "altında",
+        "stoch_rsi": round(float(stoch_k.iloc[-1]), 1) if pd.notna(stoch_k.iloc[-1]) else None,
+        "stoch_direction": _direction(stoch_k.tolist(), epsilon=1.0),
+        "stoch_cross": "üstünde" if stoch_k.iloc[-1] >= stoch_d.iloc[-1] else "altında",
+        "obv_direction": _direction(obv.tolist()),
+        "willr": round(float(willr.iloc[-1]), 1) if pd.notna(willr.iloc[-1]) else None,
+        "willr_direction": _direction(willr.tolist(), epsilon=1.0),
+        "ema20_relation": "üstünde" if price >= ema20 else "altında",
+        "ema20_direction": _direction(ema[20].tolist()),
+        "ema_order": "20>50>100>200" if all(ema[a].iloc[-1] > ema[b].iloc[-1]
+                                                   for a, b in ((20, 50), (50, 100), (100, 200)))
+                     else "karışık",
+        "ema20_distance_atr": round((price - ema20) / atr_now, 2) if atr_now > 0 else None,
+        "atr": atr_now,
+        "vol_ratio": _vol_ratio(v.tolist()),
+    }
+
+
+def _cluster_price_zones(points: list[dict], price: float, atr_1h: float) -> list[dict]:
+    """Çoklu zaman dilimi pivotlarını yakınlıklarına göre gerçek fiyat bölgelerine toplar."""
+    if not points or price <= 0:
+        return []
+    tolerance = max(price * 0.0035, atr_1h * 0.35 if atr_1h else 0)
+    clusters = []
+    for point in sorted(points, key=lambda x: x["price"]):
+        matched = next((z for z in clusters if abs(point["price"] - z["center"]) <= tolerance), None)
+        if matched:
+            matched["prices"].append(point["price"])
+            matched["weights"] += point["weight"]
+            matched["tfs"].add(point["tf"])
+            matched["center"] = float(np.average(matched["prices"]))
+        else:
+            clusters.append({"center": point["price"], "prices": [point["price"]],
+                             "weights": point["weight"], "tfs": {point["tf"]}})
+    for zone in clusters:
+        pad = max(tolerance * 0.35, (max(zone["prices"]) - min(zone["prices"])) / 2)
+        zone["low"] = min(zone["prices"]) - pad
+        zone["high"] = max(zone["prices"]) + pad
+    return clusters
+
+
+def _manual_zones(frames: dict, price: float) -> dict:
+    points = []
+    weights = {"1H": 1, "4H": 2, "1D": 3}
+    for label, data in frames.items():
+        if not data or len(data.get("closes", [])) < 20:
+            continue
+        highs, lows = data["highs"], data["lows"]
+        window = 3 if label == "1H" else 2
+        start = max(window, len(highs) - (180 if label == "1H" else 120))
+        for i in range(start, len(highs) - window):
+            if lows[i] <= min(lows[i-window:i+window+1]):
+                points.append({"price": float(lows[i]), "tf": label, "weight": weights[label]})
+            if highs[i] >= max(highs[i-window:i+window+1]):
+                points.append({"price": float(highs[i]), "tf": label, "weight": weights[label]})
+    atr_1h = (_manual_tf_snapshot(frames.get("1H")) or {}).get("atr", 0)
+    zones = _cluster_price_zones(points, price, atr_1h)
+    supports = sorted([z for z in zones if z["center"] < price],
+                      key=lambda z: (price - z["center"]))
+    resistances = sorted([z for z in zones if z["center"] > price],
+                         key=lambda z: (z["center"] - price))
+    strong_supports = sorted(supports, key=lambda z: (-z["weights"], price - z["center"]))
+    return {
+        "near_support": supports[0] if supports else None,
+        "main_support": strong_supports[0] if strong_supports else None,
+        "resistance_1": resistances[0] if resistances else None,
+        "resistance_2": resistances[1] if len(resistances) > 1 else None,
+    }
 
 def _adx_calc(highs, lows, closes, period=14):
     """Standart Wilder ADX (0-100 aralığı) — backtest: ADX>=40+drop<=-8% → WR %92."""
@@ -834,6 +961,127 @@ def _fmt_ind(v) -> str:
     if v >= 1:     return f"{v:.2f}"
     if v >= 0.01:  return f"{v:.4f}"
     return         f"{v:.6f}"
+
+def _manual_zone_text(zone: dict | None) -> str:
+    if not zone:
+        return "veriyle güvenilir bölge oluşmadı"
+    tfs = "/".join(sorted(zone["tfs"]))
+    return f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
+
+
+def _manual_tf_text(label: str, snap: dict | None) -> str:
+    if not snap:
+        return f"{label}: veri yok"
+    return (
+        f"{label}: fiyat={_fmt(snap['price'])}; RSI={snap['rsi']} ve {snap['rsi_direction']}; "
+        f"MACD={snap['macd_position']}, histogram {snap['macd_hist_direction']}, çizgi sinyalin {snap['macd_cross']}; "
+        f"StochRSI={snap['stoch_rsi']}, {snap['stoch_direction']}, K çizgisi D'nin {snap['stoch_cross']}; "
+        f"OBV {snap['obv_direction']}; Williams%R={snap['willr']} ve {snap['willr_direction']}; "
+        f"fiyat EMA20'nin {snap['ema20_relation']} ({snap['ema20_distance_atr']} ATR), "
+        f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x"
+    )
+
+
+def analyze_coin_on_demand(symbol: str) -> bool:
+    """Thread 38 için, Portfolio sinyalinden bağımsız tek seferlik güncel coin analizi."""
+    pair = symbol.replace("/", "").upper()
+    base = pair[:-4] if pair.endswith("USDT") else pair
+    pair = base + "USDT"
+    display_symbol = base + "/USDT"
+    tasks = {
+        "coin_1h": (display_symbol, "1h", 240), "coin_4h": (display_symbol, "4h", 240),
+        "coin_1d": (display_symbol, "1d", 240), "btc_1h": ("BTC/USDT", "1h", 240),
+        "btc_4h": ("BTC/USDT", "4h", 240), "btc_1d": ("BTC/USDT", "1d", 240),
+    }
+    raw = {}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(_fetch_klines, sym, tf, lim): key for key, (sym, tf, lim) in tasks.items()}
+        for fut in as_completed(futures):
+            try: raw[futures[fut]] = fut.result()
+            except Exception: raw[futures[fut]] = None
+    if not raw.get("coin_1h") or not raw.get("coin_4h"):
+        send_decision(f"#{html.escape(base)} için Binance Spot USDT verisi alınamadı; analiz yapılmadı.")
+        print(f"[MANUEL ANALYZER] {pair}: güncel Binance verisi yok, API çağrılmadı.", flush=True)
+        return False
+    if not ANTHROPIC_API_KEY:
+        send_decision("Manuel analiz için ANTHROPIC_API_KEY bulunamadı.")
+        return False
+
+    coin_frames = {"1H": raw.get("coin_1h"), "4H": raw.get("coin_4h"), "1D": raw.get("coin_1d")}
+    coin = {label: _manual_tf_snapshot(data) for label, data in coin_frames.items()}
+    btc = {"1H": _manual_tf_snapshot(raw.get("btc_1h")),
+           "4H": _manual_tf_snapshot(raw.get("btc_4h")),
+           "1D": _manual_tf_snapshot(raw.get("btc_1d"))}
+    current_price = coin["1H"]["price"]
+    zones = _manual_zones(coin_frames, current_price)
+    fg_val, fg_label = _fear_greed()
+    fg_text = f"{fg_val} ({fg_label})" if fg_val is not None else "veri yok"
+    technical_block = "\n".join(_manual_tf_text(x, coin[x]) for x in ("1H", "4H", "1D"))
+    btc_block = "\n".join(_manual_tf_text(x, btc[x]) for x in ("1H", "4H", "1D"))
+    zone_block = "\n".join([
+        f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
+        f"Ana destek: {_manual_zone_text(zones['main_support'])}",
+        f"İlk direnç: {_manual_zone_text(zones['resistance_1'])}",
+        f"Sonraki direnç: {_manual_zone_text(zones['resistance_2'])}",
+    ])
+    prompt = f"""Sen yalnızca kullanıcının istediği anda çalışan spot piyasa yardımcısısın.
+Bu bir otomatik emir veya kesin al-sat kararı değildir. Kullanıcı 1H, 4H ve 1D hareketlerini birlikte okuyup manuel karar verir.
+Göstergelerde sabit eşiklerden çok yön değişimini, fiyatın dinlenme/geri çekilme yapısını ve BTC bağlamını önemse.
+Bir koşulu tek başına zorunlu filtre yapma; olumlu ve olumsuz kanıtların ağırlığını birlikte anlat.
+Yalnız aşağıdaki güncel verileri kullan. Eski scanner sinyali yoktur. Bölge veya veri uydurma.
+
+[COIN: {base} | GÜNCEL FİYAT: {_fmt(current_price)}]
+{technical_block}
+
+[BTC BAĞLAMI]
+{btc_block}
+Fear & Greed: {fg_text}
+
+[HESAPLANAN GÜNCEL BÖLGELER]
+{zone_block}
+
+Türkçe, sade ve kısa yaz. Teknik terim gerekiyorsa günlük dille açıkla. GİR/DİKKAT/RİSKLİ etiketi kullanma.
+Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
+
+Ne oluyor?
+2-3 cümle.
+
+Ne anlama geliyor?
+2-3 cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş beklemek mi daha anlamlı açıkla.
+
+İzlenecek bölgeler
+• Yakın destek: verilen bölge
+• Ana destek: verilen bölge
+• İlk direnç: verilen bölge
+• Direnç aşılırsa: verilen sonraki bölge
+
+Neye dikkat edilmeli?
+1-2 cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
+
+Ben olsam ne yapardım?
+En fazla 3 kısa cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        started = time.time()
+        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=650,
+                                      messages=[{"role": "user", "content": prompt}])
+        _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
+                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
+                   prompt_chars=len(prompt))
+        body = resp.content[0].text.strip()
+    except Exception as exc:
+        print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
+        send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
+        return False
+    stamp = _tr_now().strftime("%d/%m/%Y %H:%M")
+    message = (f"🔎 <b>#{html.escape(base)} GÜNCEL GÖRÜNÜM</b>\n🕐 {stamp}\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n{html.escape(body)}\n━━━━━━━━━━━━━━━━━━━━\n"
+               "<i>Manuel inceleme içindir; otomatik emir değildir.</i>")
+    send_decision(message)
+    print(f"[MANUEL ANALYZER] {pair}: güncel analiz thread 38'e gönderildi.", flush=True)
+    return True
+
 
 def _build_sig_data(signal: dict) -> str:
     sig_type = signal.get("type", "")
