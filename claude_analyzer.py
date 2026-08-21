@@ -987,6 +987,9 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("scenario", "senaryo").replace("beklemeği", "beklemek")
     cleaned = cleaned.replace("stabilize etmesi", "yeniden güçlenmesi")
     cleaned = cleaned.replace("stabil hale dönmesi", "yönünü yeniden yukarı çevirmesi")
+    cleaned = cleaned.replace("pullback", "geri çekilme").replace("Pullback", "Geri çekilme")
+    cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
+    cleaned = cleaned.replace("rüzgâr arkası kesintiye uğratabilir", "yükselişi destekleyen ortam zayıflayabilir")
     return cleaned.strip()
 
 
@@ -1062,8 +1065,9 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Toplam yanıt 1.400 karakteri geçmesin ve bütün bölümleri mutlaka tamamla.
+Toplam yanıt yaklaşık 1.600–1.800 karakter olsun ve bütün bölümleri mutlaka tamamla.
 Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
+Metafor kullanma ve yabancı dilden kelime kelime çevrilmiş cümle kurma. Göndermeden önce her cümleyi doğal Türkçe açısından düzelt.
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
 RSI ve StochRSI'nın sayısal değerlerini metinde yazma; yalnız yükseliyor, düşüyor veya yön değiştiriyor diye anlat.
 RSI/StochRSI için herhangi bir sabit değerin aşılmasını teyit veya vazgeçme şartı yapma.
@@ -1092,12 +1096,16 @@ Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanı�
 BTC için rakamsal kapanış seviyesi yazma.
 
 Ben olsam ne yapardım?
-En fazla 2 kısa ve tamamlanmış cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
+En fazla 3 kısa ve tamamlanmış cümle. Kesin emir verme. Şu sade sırayı kullan:
+1) Mevcut fiyattan alır mıydım, bekler miydim?
+2) Yakın destekte hangi fiyat hareketini veya gösterge yön değişimini arardım?
+3) Yakın destek çalışmazsa sonraki desteği mi beklerdim, işlemden mi uzak dururdum?
+"Senaryo içeride", "kenar bulmak", "fırsat değerlendirebilirim" gibi belirsiz ifadeler kullanma."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         started = time.time()
-        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=800,
+        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=900,
                                       messages=[{"role": "user", "content": prompt}])
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
