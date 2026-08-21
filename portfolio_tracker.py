@@ -3630,10 +3630,10 @@ if __name__ == "__main__":
     threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
     start_market_analyzer()
-    if AUTO_ANALYZER_ENABLED:
-        _start_market_watcher()
-    else:
-        print("[WATCHER] Otomatik Claude market watcher kapalı; manuel Analyzer modu aktif.", flush=True)
+    # Piyasa İzleme, sinyal başına çalışan Analyzer'dan bağımsızdır. F&G/BTC
+    # değişim uyarıları eskisi gibi devam eder; AUTO_ANALYZER_ENABLED yalnız
+    # `/api/analyze` üzerinden gelen otomatik coin yorumlarını yönetir.
+    _start_market_watcher()
     threading.Thread(
         target=_manual_analyzer_poll_loop, daemon=True, name="manual-analyzer-poller"
     ).start()
