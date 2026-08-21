@@ -12,6 +12,7 @@ Kaynak: brkzgrc/Botum repo — bu dosya Render'a doğrudan deploy edilir.
 import html
 import json
 import os
+import re
 import time
 import threading
 from datetime import datetime, timedelta, timezone
@@ -41,6 +42,18 @@ TRADING_BOT_URL         = os.getenv("TRADING_BOT_URL", "")
 TRADING_BOT_TOKEN       = os.getenv("TRADING_BOT_TOKEN", "")
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
+ANALYZER_CHAT_ID = os.getenv("ANALYZER_CHAT_ID") or TELEGRAM_CHAT_ID
+ANALYZER_THREAD_ID = int(os.getenv("ANALYZER_THREAD_ID", "38"))
+# Pozitif kişisel TELEGRAM_CHAT_ID çoğu kurulumda kullanıcının Telegram user
+# id'sidir. İstenirse ANALYZER_ALLOWED_USER_ID ile açıkça geçersiz kılınabilir.
+ANALYZER_ALLOWED_USER_ID = os.getenv("ANALYZER_ALLOWED_USER_ID") or (
+    TELEGRAM_CHAT_ID if TELEGRAM_CHAT_ID and not TELEGRAM_CHAT_ID.startswith("-") else ""
+)
+AUTO_ANALYZER_ENABLED = os.getenv("AUTO_ANALYZER_ENABLED", "false").strip().lower() == "true"
+MANUAL_ANALYZER_ENABLED = os.getenv("MANUAL_ANALYZER_ENABLED", "true").strip().lower() == "true"
+_MANUAL_ANALYZER_INFLIGHT = set()
+_MANUAL_ANALYZER_INFLIGHT_LOCK = threading.Lock()
 GITHUB_REPO  = "brkzgrc/Botum"
 GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
@@ -435,6 +448,145 @@ def _send_telegram_pt(text: str):
         )
     except Exception as e:
         print(f"[PT] Telegram hata: {e}", flush=True)
+
+
+def _send_analyzer_thread(text: str):
+    """Analyzer botuyla yalnız manuel analiz thread'ine kısa sistem mesajı gönder."""
+    if not ANALYZER_TELEGRAM_TOKEN or not ANALYZER_CHAT_ID:
+        return
+    try:
+        payload = {
+            "chat_id": ANALYZER_CHAT_ID,
+            "message_thread_id": ANALYZER_THREAD_ID,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        r = requests.post(
+            f"https://api.telegram.org/bot{ANALYZER_TELEGRAM_TOKEN}/sendMessage",
+            json=payload, timeout=10,
+        )
+        if not r.ok:
+            print(f"[MANUEL ANALYZER TG] HTTP {r.status_code}: {r.text[:120]}", flush=True)
+    except Exception as e:
+        print(f"[MANUEL ANALYZER TG] Gönderim hatası: {e}", flush=True)
+
+
+def _parse_manual_analyzer_symbol(text: str):
+    """ZEC, #ZEC, ZECUSDT, ZEC/USDT ve `/analiz ZEC` biçimlerini kabul et."""
+    value = (text or "").strip().upper()
+    value = re.sub(r"^/(?:ANALIZ|ANALYZE)(?:@[A-Z0-9_]+)?\s+", "", value)
+    value = value.lstrip("#").replace("/", "").replace("-", "").replace("_", "")
+    if value.endswith("USDT"):
+        value = value[:-4]
+    if not re.fullmatch(r"[A-Z0-9]{2,15}", value):
+        return None
+    return value + "USDT"
+
+
+def _latest_spot_scanner_signal(pair: str):
+    """Manuel yorumda yalnız gerçek Portfolio kaydını kullan; seviye uydurma."""
+    with _lock:
+        matches = [
+            dict(s) for s in signals_db
+            if s.get("source") == "spot-scanner"
+            and s.get("symbol", "").replace("/", "").upper() == pair
+        ]
+    if not matches:
+        return None
+    matches.sort(key=lambda s: s.get("open_time") or "", reverse=True)
+    stored = matches[0]
+    extra = stored.get("extra") if isinstance(stored.get("extra"), dict) else {}
+    signal = {
+        **extra,
+        "symbol": stored.get("symbol", pair[:-4] + "/USDT"),
+        "type": stored.get("sig_type", "spot_opportunity"),
+        "source": "spot-scanner",
+        "entry": stored.get("entry"),
+        "stop": stored.get("stop"),
+        "tp1": stored.get("tp1"),
+        "tp2": stored.get("tp2"),
+        "tp3": stored.get("tp3"),
+        "setup": stored.get("sub_type", ""),
+    }
+    return stored, signal
+
+
+def _run_manual_analyzer(pair: str):
+    with _MANUAL_ANALYZER_INFLIGHT_LOCK:
+        if pair in _MANUAL_ANALYZER_INFLIGHT:
+            print(f"[MANUEL ANALYZER] {pair}: analiz zaten çalışıyor, tekrar yok sayıldı.", flush=True)
+            return
+        _MANUAL_ANALYZER_INFLIGHT.add(pair)
+    try:
+        found = _latest_spot_scanner_signal(pair)
+        if not found:
+            _send_analyzer_thread(
+                f"#{pair[:-4]} için Portfolio'da Spot Scanner kaydı bulunamadı; analiz yapılmadı."
+            )
+            print(f"[MANUEL ANALYZER] {pair}: Spot Scanner kaydı yok, API çağrılmadı.", flush=True)
+            return
+        stored, signal = found
+        print(f"[MANUEL ANALYZER] {pair}: kullanıcı isteğiyle Haiku analizi başlatıldı.", flush=True)
+        _analyzer_process(signal, 0, 0, stored.get("id", ""))
+    finally:
+        with _MANUAL_ANALYZER_INFLIGHT_LOCK:
+            _MANUAL_ANALYZER_INFLIGHT.discard(pair)
+
+
+def _manual_analyzer_poll_loop():
+    """Thread 38'i long-poll ile dinler; eski mesajları başlangıçta tüketir."""
+    if not MANUAL_ANALYZER_ENABLED:
+        print("[MANUEL ANALYZER] Devre dışı.", flush=True)
+        return
+    if not ANALYZER_TELEGRAM_TOKEN or not ANALYZER_CHAT_ID:
+        print("[MANUEL ANALYZER] Token veya chat id eksik; dinleyici başlamadı.", flush=True)
+        return
+
+    url = f"https://api.telegram.org/bot{ANALYZER_TELEGRAM_TOKEN}/getUpdates"
+    offset = None
+    try:
+        first = requests.get(url, params={"timeout": 0, "limit": 100}, timeout=10).json()
+        updates = first.get("result", []) if first.get("ok") else []
+        if updates:
+            offset = max(int(u["update_id"]) for u in updates) + 1
+    except Exception as e:
+        print(f"[MANUEL ANALYZER] Başlangıç offset hatası: {e}", flush=True)
+
+    print(f"[MANUEL ANALYZER] Thread {ANALYZER_THREAD_ID} dinleniyor; otomatik analiz kapalı.", flush=True)
+    while True:
+        try:
+            params = {"timeout": 25, "limit": 50, "allowed_updates": json.dumps(["message"])}
+            if offset is not None:
+                params["offset"] = offset
+            r = requests.get(url, params=params, timeout=35)
+            data = r.json()
+            if not data.get("ok"):
+                print(f"[MANUEL ANALYZER] getUpdates HTTP {r.status_code}: {r.text[:120]}", flush=True)
+                time.sleep(5)
+                continue
+            for update in data.get("result", []):
+                offset = int(update["update_id"]) + 1
+                msg = update.get("message") or {}
+                chat_id = str((msg.get("chat") or {}).get("id", ""))
+                thread_id = msg.get("message_thread_id")
+                sender_id = str((msg.get("from") or {}).get("id", ""))
+                if chat_id != str(ANALYZER_CHAT_ID) or thread_id != ANALYZER_THREAD_ID:
+                    continue
+                if (msg.get("from") or {}).get("is_bot"):
+                    continue
+                if ANALYZER_ALLOWED_USER_ID and sender_id != str(ANALYZER_ALLOWED_USER_ID):
+                    print(f"[MANUEL ANALYZER] Yetkisiz kullanıcı yok sayıldı: {sender_id}", flush=True)
+                    continue
+                pair = _parse_manual_analyzer_symbol(msg.get("text", ""))
+                if not pair:
+                    continue
+                threading.Thread(
+                    target=_run_manual_analyzer, args=(pair,), daemon=True,
+                    name=f"manual-analyzer-{pair}",
+                ).start()
+        except Exception as e:
+            print(f"[MANUEL ANALYZER] Dinleme hatası: {e}", flush=True)
+            time.sleep(5)
 
 # ============================================================
 # SİNYAL ALMA ENDPOINT'İ
@@ -1197,6 +1349,9 @@ def api_analyze():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
     if AUTH_TOKEN and token != AUTH_TOKEN:
         return jsonify({"error": "unauthorized"}), 401
+    if not AUTO_ANALYZER_ENABLED:
+        print("[ANALYZER] Otomatik istek atlandı; thread 38 manuel modda.", flush=True)
+        return jsonify({"status": "disabled", "mode": "manual_thread_38"}), 202
     data = request.get_json(silent=True) or {}
     signal       = data.get("signal", {})
     recent_count = data.get("recent_count", 0)
@@ -3475,7 +3630,13 @@ if __name__ == "__main__":
     threading.Thread(target=snapshot_loop, daemon=True, name="github_snapshot").start()
     start_news_watcher()
     start_market_analyzer()
-    _start_market_watcher()
+    if AUTO_ANALYZER_ENABLED:
+        _start_market_watcher()
+    else:
+        print("[WATCHER] Otomatik Claude market watcher kapalı; manuel Analyzer modu aktif.", flush=True)
+    threading.Thread(
+        target=_manual_analyzer_poll_loop, daemon=True, name="manual-analyzer-poller"
+    ).start()
     start_intraday_scanner()
 
     port = int(os.environ.get("PORT", "10000"))
