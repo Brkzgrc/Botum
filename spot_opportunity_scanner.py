@@ -1210,7 +1210,7 @@ def select_distinct_events(
             )
             proof = (
                 "önceki saat destek hazırlığı sonrası en az iki bağımsız "
-                "aileye ve yön çekirdeğine yayılan taze dönüş"
+                "aileye yayılan güçlü ve taze dönüş"
             )
 
         elif key == "range_expansion":
