@@ -1205,10 +1205,13 @@ def select_distinct_events(
             # destek/indikatör eşikleri gevşetilmez.
             valid = (
                 support_usable and has_room and support_distance <= 2.5 and
-                family_count >= 3 and fresh_turns >= 3 and
-                upward >= 6 and weakening <= 2
+                family_count >= 2 and directional_core and
+                fresh_turns >= 3 and upward >= 6 and weakening <= 2
             )
-            proof = "önceki saat destek hazırlığı sonrası yaygın ve taze dönüş"
+            proof = (
+                "önceki saat destek hazırlığı sonrası en az iki bağımsız "
+                "aileye ve yön çekirdeğine yayılan taze dönüş"
+            )
 
         elif key == "range_expansion":
             valid = (
