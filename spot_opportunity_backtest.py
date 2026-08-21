@@ -347,6 +347,19 @@ def main() -> None:
                     "selected": False,
                     "reasons": transition_reasons,
                     "previous_stage": previous.get("candidate_stage", ""),
+                    "selector_gates": {
+                        "support_role": candidate.metrics.get("support_role_state"),
+                        "support_width": candidate.metrics.get("support_zone_width_pct"),
+                        "support_tf": candidate.metrics.get("support_timeframe_count"),
+                        "support_strength": candidate.metrics.get("support_strength"),
+                        "support_distance": candidate.metrics.get("support_distance_pct"),
+                        "target_pct": candidate.target_pct,
+                        "family_count": candidate.metrics.get("confirmation_family_count"),
+                        "families": candidate.metrics.get("confirmation_families", []),
+                        "metric_fresh": candidate.metrics.get("h1_fresh_turn_count"),
+                        "metric_up": candidate.metrics.get("h1_upward_count"),
+                        "metric_weak": candidate.metrics.get("h1_weakening_count"),
+                    },
                 }
                 if not market_states or not ready or not rearmed:
                     continue
@@ -410,7 +423,8 @@ def main() -> None:
                             f"weak={market['weakening_count']} "
                             f"low={market['relative_low_count']} "
                             f"price={market['price']:.8g} | "
-                            f"neden={debug['reasons'] or '-'}"
+                            f"neden={debug['reasons'] or '-'} | "
+                            f"seçim_kapıları={debug['selector_gates']}"
                         )
                     else:
                         print(
