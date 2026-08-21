@@ -982,6 +982,9 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = (text or "").replace("\\*", "").replace("**", "").replace("__", "")
     cleaned = cleaned.replace("bounceback", "yukarı tepki").replace("bounce back", "yukarı tepki")
     cleaned = cleaned.replace("MACD histogram ufuklaşması", "MACD histogramının yataylaşması")
+    cleaned = cleaned.replace("cari fiyat", "mevcut fiyat").replace("Cari fiyat", "Mevcut fiyat")
+    cleaned = cleaned.replace("mikro ortam", "kısa vadeli görünüm")
+    cleaned = cleaned.replace("scenario", "senaryo").replace("beklemeği", "beklemek")
     return cleaned.strip()
 
 
@@ -1057,18 +1060,20 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Türkçe, sade ve kısa yaz. İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
+Toplam yanıt 1.400 karakteri geçmesin ve bütün bölümleri mutlaka tamamla.
+Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
 RSI'nın sayısal seviyesini merkeze alma; göstergelerin yönü ve fiyat hareketi önceliklidir.
+RSI/StochRSI için 30, 70 veya 80 gibi sabit bir değerin aşılmasını tek başına teyit şartı yapma.
 Uzak yapısal desteği güncel giriş bölgesi gibi sunma. İlk veya sonraki direnç verisi yoksa kesinlikle seviye tahmin etme;
 aynen "veriyle güvenilir bölge oluşmadı" yaz.
 Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
 
 Ne oluyor?
-2-3 cümle.
+En fazla 2 kısa cümle.
 
 Ne anlama geliyor?
-2-3 cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş beklemek mi daha anlamlı açıkla.
+En fazla 2 kısa cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş beklemek mi daha anlamlı açıkla.
 
 İzlenecek bölgeler
 • Yakın destek: verilen bölge
@@ -1078,16 +1083,16 @@ Ne anlama geliyor?
 • Direnç aşılırsa: verilen sonraki bölge
 
 Neye dikkat edilmeli?
-1-2 cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
+En fazla 1 kısa cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
 Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanış/retest kullan; 1D kapanışı isteme.
 
 Ben olsam ne yapardım?
-En fazla 3 kısa cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
+En fazla 2 kısa ve tamamlanmış cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         started = time.time()
-        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=650,
+        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=800,
                                       messages=[{"role": "user", "content": prompt}])
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
