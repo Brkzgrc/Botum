@@ -985,6 +985,8 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("cari fiyat", "mevcut fiyat").replace("Cari fiyat", "Mevcut fiyat")
     cleaned = cleaned.replace("mikro ortam", "kısa vadeli görünüm")
     cleaned = cleaned.replace("scenario", "senaryo").replace("beklemeği", "beklemek")
+    cleaned = cleaned.replace("stabilize etmesi", "yeniden güçlenmesi")
+    cleaned = cleaned.replace("stabil hale dönmesi", "yönünü yeniden yukarı çevirmesi")
     return cleaned.strip()
 
 
@@ -1063,10 +1065,12 @@ Fear & Greed: {fg_text}
 Toplam yanıt 1.400 karakteri geçmesin ve bütün bölümleri mutlaka tamamla.
 Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
-RSI'nın sayısal seviyesini merkeze alma; göstergelerin yönü ve fiyat hareketi önceliklidir.
-RSI/StochRSI için 30, 70 veya 80 gibi sabit bir değerin aşılmasını tek başına teyit şartı yapma.
+RSI ve StochRSI'nın sayısal değerlerini metinde yazma; yalnız yükseliyor, düşüyor veya yön değiştiriyor diye anlat.
+RSI/StochRSI için herhangi bir sabit değerin aşılmasını teyit veya vazgeçme şartı yapma.
 Uzak yapısal desteği güncel giriş bölgesi gibi sunma. İlk veya sonraki direnç verisi yoksa kesinlikle seviye tahmin etme;
 aynen "veriyle güvenilir bölge oluşmadı" yaz.
+BTC için destek/direnç bölgesi verilmedi. Bu nedenle BTC hakkında hiçbir fiyat seviyesi, kapanış rakamı veya hedef uydurma;
+BTC'yi yalnız gösterge yönleri ve genel hareket bağlamıyla değerlendir.
 Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
 
 Ne oluyor?
@@ -1085,6 +1089,7 @@ En fazla 2 kısa cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş bek
 Neye dikkat edilmeli?
 En fazla 1 kısa cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
 Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanış/retest kullan; 1D kapanışı isteme.
+BTC için rakamsal kapanış seviyesi yazma.
 
 Ben olsam ne yapardım?
 En fazla 2 kısa ve tamamlanmış cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
