@@ -1104,8 +1104,7 @@ En fazla 2 kısa ve tamamlanmış cümle. Kesin emir verme. Şu olursa beklerdim
         return False
     stamp = _tr_now().strftime("%d/%m/%Y %H:%M")
     message = (f"🔎 <b>#{html.escape(base)} GÜNCEL GÖRÜNÜM</b>\n🕐 {stamp}\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n{html.escape(body)}\n━━━━━━━━━━━━━━━━━━━━\n"
-               "<i>Manuel inceleme içindir; otomatik emir değildir.</i>")
+               f"━━━━━━━━━━━━━━━━━━━━\n{html.escape(body)}")
     send_decision(message)
     print(f"[MANUEL ANALYZER] {pair}: güncel analiz thread 38'e gönderildi.", flush=True)
     return True
