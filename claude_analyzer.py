@@ -384,9 +384,17 @@ def _manual_zones(frames: dict, price: float) -> dict:
     resistances = sorted([z for z in zones if z["center"] > price],
                          key=lambda z: (z["center"] - price))
     strong_supports = sorted(supports, key=lambda z: (-z["weights"], price - z["center"]))
+    next_support = None
+    if len(supports) > 1:
+        next_support = next(
+            (z for z in supports[1:] if z["high"] < supports[0]["low"]),
+            supports[1],
+        )
+    structural = strong_supports[0] if strong_supports else None
     return {
         "near_support": supports[0] if supports else None,
-        "main_support": strong_supports[0] if strong_supports else None,
+        "next_support": next_support,
+        "structural_support": structural,
         "resistance_1": resistances[0] if resistances else None,
         "resistance_2": resistances[1] if len(resistances) > 1 else None,
     }
@@ -969,6 +977,14 @@ def _manual_zone_text(zone: dict | None) -> str:
     return f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
 
 
+def _clean_manual_analysis(text: str) -> str:
+    """Model talimata rağmen Markdown/İngilizce kalıntısı üretirse Telegram öncesi temizle."""
+    cleaned = (text or "").replace("\\*", "").replace("**", "").replace("__", "")
+    cleaned = cleaned.replace("bounceback", "yukarı tepki").replace("bounce back", "yukarı tepki")
+    cleaned = cleaned.replace("MACD histogram ufuklaşması", "MACD histogramının yataylaşması")
+    return cleaned.strip()
+
+
 def _manual_tf_text(label: str, snap: dict | None) -> str:
     if not snap:
         return f"{label}: veri yok"
@@ -1020,7 +1036,8 @@ def analyze_coin_on_demand(symbol: str) -> bool:
     btc_block = "\n".join(_manual_tf_text(x, btc[x]) for x in ("1H", "4H", "1D"))
     zone_block = "\n".join([
         f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
-        f"Ana destek: {_manual_zone_text(zones['main_support'])}",
+        f"Sonraki destek: {_manual_zone_text(zones['next_support'])}",
+        f"Uzak yapısal destek: {_manual_zone_text(zones['structural_support'])}",
         f"İlk direnç: {_manual_zone_text(zones['resistance_1'])}",
         f"Sonraki direnç: {_manual_zone_text(zones['resistance_2'])}",
     ])
@@ -1040,7 +1057,11 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Türkçe, sade ve kısa yaz. Teknik terim gerekiyorsa günlük dille açıkla. GİR/DİKKAT/RİSKLİ etiketi kullanma.
+Türkçe, sade ve kısa yaz. İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
+StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
+RSI'nın sayısal seviyesini merkeze alma; göstergelerin yönü ve fiyat hareketi önceliklidir.
+Uzak yapısal desteği güncel giriş bölgesi gibi sunma. İlk veya sonraki direnç verisi yoksa kesinlikle seviye tahmin etme;
+aynen "veriyle güvenilir bölge oluşmadı" yaz.
 Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
 
 Ne oluyor?
@@ -1051,12 +1072,14 @@ Ne anlama geliyor?
 
 İzlenecek bölgeler
 • Yakın destek: verilen bölge
-• Ana destek: verilen bölge
+• Sonraki destek: verilen bölge
+• Uzak yapısal destek: verilen bölge; güncel fiyattan uzaksa bunu açıkça belirt
 • İlk direnç: verilen bölge
 • Direnç aşılırsa: verilen sonraki bölge
 
 Neye dikkat edilmeli?
 1-2 cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
+Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanış/retest kullan; 1D kapanışı isteme.
 
 Ben olsam ne yapardım?
 En fazla 3 kısa cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede şu teyidi arardım / şu durumda uzak dururdum şeklinde uygulanabilir kişisel senaryo yaz."""
@@ -1069,7 +1092,7 @@ En fazla 3 kısa cümle. Kesin emir verme. Şu olursa beklerdim / şu bölgede �
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
                    prompt_chars=len(prompt))
-        body = resp.content[0].text.strip()
+        body = _clean_manual_analysis(resp.content[0].text)
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
