@@ -1461,32 +1461,33 @@ def _manual_technical_fallbacks(coin_snapshots: dict | None) -> list[str]:
         return []
 
     items = []
-    def join_labels(labels: list[str]) -> str:
-        if len(labels) < 2:
-            return labels[0].lower() if labels else ""
-        return f"{', '.join(label.lower() for label in labels[:-1])} ve {labels[-1].lower()}"
+    def graph_location(labels: list[str]) -> str:
+        if not labels:
+            return ""
+        if len(labels) == 1:
+            return f"{labels[0].lower()} grafikte"
+        joined = f"{', '.join(label.lower() for label in labels[:-1])} ve {labels[-1].lower()}"
+        return f"{joined} grafiklerde"
 
     obv_up = [name for name, snap in available if "yüks" in str(snap.get("obv_direction", ""))]
     obv_down = [name for name, snap in available if "düş" in str(snap.get("obv_direction", ""))]
     if obv_up or obv_down:
         if len(obv_up) > len(obv_down):
-            items.append(f"OBV {join_labels(obv_up)} grafiklerde yükseliyor; bu, alıcı katılımının genel olarak sürdüğünü gösteriyor.")
+            items.append(f"OBV {graph_location(obv_up)} yükseliyor; bu, alıcı katılımının genel olarak sürdüğünü gösteriyor.")
         elif len(obv_down) > len(obv_up):
-            items.append(f"OBV {join_labels(obv_down)} grafiklerde düşüyor; bu, alıcı katılımının zayıfladığını gösteriyor.")
+            items.append(f"OBV {graph_location(obv_down)} düşüyor; bu, alıcı katılımının zayıfladığını gösteriyor.")
         else:
             items.append("OBV zaman dilimleri arasında aynı yönde ilerlemiyor; para akışı görünümü henüz tam uyumlu değil.")
 
     ema_bullish = [name for name, snap in available
                    if snap.get("ema20_relation") == "üstünde" and snap.get("ema_order") == "20>50>100>200"]
     if ema_bullish:
-        joined = join_labels(ema_bullish)
-        items.append(f"Fiyat {joined} grafiklerde EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; yükseliş yapısı henüz bozulmuş görünmüyor.")
+        items.append(f"Fiyat {graph_location(ema_bullish)} EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; yükseliş yapısı henüz bozulmuş görünmüyor.")
 
     macd_up = [name for name, snap in available
                if snap.get("macd_cross") == "üstünde" and "yüks" in str(snap.get("macd_hist_direction", ""))]
     if macd_up:
-        joined = join_labels(macd_up)
-        items.append(f"MACD {joined} grafiklerde sinyal çizgisinin üzerinde ve histogram güçleniyor; momentum yukarı yönü destekliyor.")
+        items.append(f"MACD {graph_location(macd_up)} sinyal çizgisinin üzerinde ve histogram güçleniyor; momentum yukarı yönü destekliyor.")
     return items
 
 
@@ -2017,7 +2018,7 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
         else:
             trade_ideas = (f"İlk dirence kadar yaklaşık %{resistance_gap:.1f} alan bulunurken yakın destek yaklaşık "
                            f"%{support_gap:.1f} aşağıda. Fiyatın bulunduğu konum alım ihtimalini tamamen dışlamıyor; "
-                           "yine de giriş için alıcıların gücünü koruduğunu görmek gerekir.")
+                           "yine de giriş için alıcıların yeniden güçlendiğini görmek gerekir.")
     elif zones.get("near_support"):
         trade_ideas = ("Yakın destek alım fikri için izlenebilir; ancak güvenilir bir üst direnç hesaplanmadığı için "
                        "kâr alma alanı önceden netleştirilemiyor.")
@@ -2031,6 +2032,33 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
         opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
     else:
         opening = "Ben olsam şu anda beklerdim."
+
+    reasons = set(plan.get("reasons") or [])
+    rationale_parts = []
+    if action in {"wait", "no_buy"}:
+        if len(obv_down) > len(obv_up):
+            rationale_parts.append("alıcı katılımının zayıflaması")
+        if btc_effect == "caution" or "btc_weakness" in reasons:
+            rationale_parts.append("Bitcoin'in kısa vadede baskı oluşturması")
+        if "short_term_weakness" in reasons or "mixed_timeframes" in reasons:
+            rationale_parts.append("saatlik ve 4 saatlik hareketin henüz birlikte güçlenmemesi")
+        if "limited_price_space" in reasons or "price_near_resistance" in reasons:
+            rationale_parts.append("ilk dirence kalan alanın sınırlı olması")
+    else:
+        if "aligned_uptrend" in reasons:
+            rationale_parts.append("zaman dilimlerinin yükselişi desteklemesi")
+        if len(obv_up) > len(obv_down) or "buyer_participation" in reasons:
+            rationale_parts.append("alıcı katılımının sürmesi")
+        if "favorable_price_space" in reasons:
+            rationale_parts.append("dirence kadar yeterli fiyat alanı bulunması")
+
+    if rationale_parts:
+        selected_reasons = rationale_parts[:2]
+        joined_reasons = (selected_reasons[0] if len(selected_reasons) == 1
+                          else f"{selected_reasons[0]} ve {selected_reasons[1]}")
+        rationale_text = f"Bu tercihin temel nedeni {joined_reasons}."
+    else:
+        rationale_text = "Bu tercihte fiyatın bulunduğu bölge ile kısa vadeli göstergeleri birlikte dikkate alırdım."
 
     trigger = plan.get("entry_trigger")
     if trigger == "near_support_hold" and zones.get("near_support"):
@@ -2071,7 +2099,7 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
     else:
         profit_text = "Güvenilir bir direnç hesaplanmadığı için sabit hedef yerine hareket zayıfladıkça kademeli kâr almayı düşünürdüm."
 
-    expectation = " ".join((opening, trigger_text, timing_text, invalidation_text, profit_text))
+    expectation = " ".join((opening, rationale_text, trigger_text, timing_text, invalidation_text, profit_text))
     general = " ".join((coin_view, flow_view, btc_view))
     return (
         f"🔍 Genel Değerlendirme\n{base} şu anda {_fmt(current_price)} seviyesinde işlem görüyor. "
