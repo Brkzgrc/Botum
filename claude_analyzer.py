@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.3"   # 15M yalnız eylem notunda; sayısal uydurma ve token azaltma
+_PROMPT_V_MANUAL  = "1.4"   # 15M eylem notunda somut güçlenme/bozulma koşulları
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1030,6 +1030,9 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("fırlatma senaryosu", "geri çekilme ihtimali")
     cleaned = cleaned.replace("kapalı kapanışlar", "son mum hareketleri")
     cleaned = cleaned.replace("trenditli", "trend yönündeki").replace("ATT", "fiyat birimi")
+    cleaned = cleaned.replace("yakın destek bölgesine test etmesi", "yakın destek bölgesini test etmesi")
+    cleaned = cleaned.replace("yakın desteğe test etmesi", "yakın desteği test etmesi")
+    cleaned = cleaned.replace("acil senaryosu değil", "kısa vadeli giriş bölgesi değil")
     # Model bazen talep edilmediği halde başa ikinci bir başlık koyuyor.
     if "Ne oluyor?" in cleaned:
         cleaned = "Ne oluyor?" + cleaned.split("Ne oluyor?", 1)[1]
@@ -1062,7 +1065,10 @@ def _clean_timing_note(text: str) -> str:
         safe.append(sentence)
         if len(safe) == 2:
             break
-    return " ".join(safe).strip()
+    note = " ".join(safe).strip()
+    if note and not note.lower().startswith(("15m", "15 dakika")):
+        note = f"15M açısından {note[0].lower() + note[1:] if len(note) > 1 else note.lower()}"
+    return note
 
 
 def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str:
@@ -1252,12 +1258,13 @@ BTC için rakamsal kapanış seviyesi yazma.
 
 En sonda yalnız şu etiketi ve ardından en fazla 2 kısa cümle yaz:
 15M zamanlama notu:
-En fazla 3 kısa ve doğal Türkçe cümle yaz. Gösterge durumlarını listelemekle yetinme; bunların fiyat hareketi açısından
-ne anlattığını açıkla. StochRSI'dan söz edersen "StochRSI hızlı/yavaş çizgisi", histogramdan söz edersen mutlaka
+Tam olarak 2 kısa ve doğal Türkçe cümle yaz. İlk cümlede göstergeleri listelemekle yetinmeden mevcut 15M hareketinin
+fiyat açısından ne anlattığını açıkla. İkinci cümlede bu yorumun güçlenmesini sağlayacak somut fiyat/gösterge davranışını
+ve yorumun bozulduğunu gösterecek karşı gelişmeyi "... olursa ...; buna karşılık ... olursa ..." biçiminde birlikte yaz.
+StochRSI'dan söz edersen "StochRSI hızlı/yavaş çizgisi", histogramdan söz edersen mutlaka
 "MACD histogramı" yaz; hangi göstergeye ait olduğu belirsiz "hızlı çizgi" veya "histogram" ifadeleri kullanma.
 15M'deki hareketin 1 ve 4 saatlik ana görünüm içinde kısa dinlenme mi, devam hazırlığı mı, yoksa geri çekilmenin
-derinleşme riski mi taşıdığını kanıtların ağırlığıyla yorumla. Giriş hareketini güçlendirebilecek somut fiyat davranışını
-ve mevcut yorumun yanlış çıkacağını gösterecek gelişmeyi açıkla. Son mum açıksa kapanmış gibi anlatma.
+derinleşme riski mi taşıdığını kanıtların ağırlığıyla yorumla. Son mum açıksa kapanmış gibi anlatma.
 Hiçbir sayısal fiyat seviyesi yazma; yalnız fiyat yapısını ve gösterge yönlerini kullan.
 Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük tablo", "pauzasyon", "aldatıcı",
 "kritik hale gelir" gibi ne yapılacağını açıklamayan ifadeler kullanma.
