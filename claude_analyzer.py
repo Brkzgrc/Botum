@@ -1047,6 +1047,8 @@ def _natural_manual_text(text: str) -> str:
     cleaned = re.sub(r"\b4H\b", "dört saatlik", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b1D\b", "günlük", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b15M\b", "on beş dakikalık", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b15\s*dakikalık\b", "on beş dakikalık", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b15\s*dakika\b", "on beş dakika", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bbullish\b", "yükseliş yönlü", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bbearish\b", "düşüş yönlü", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\blong\b", "spot alım", cleaned, flags=re.IGNORECASE)
