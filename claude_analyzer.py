@@ -1183,6 +1183,29 @@ def _manual_sentence_limit(text: str, limit: int) -> str:
     return " ".join(parts[:limit]).strip()
 
 
+def _manual_has_language_corruption(text: str) -> bool:
+    """Anlamı belirsizleşmiş veya dilbilgisi bozulmuş model metnini yakalar."""
+    lowered = (text or "").lower()
+    broken_phrases = (
+        "saturasyon", "tepe yaşıyor", "çift zaman dilimi", "satın alma güçünün",
+        "çizgiler kapanmış", "çizgiler açılmış", "durdurma göster", "mevcut seviyedeki stabilite",
+        "konuma alış", "çift alıcı katılımı", "momentum harita", "kapanış bulması",
+        "fiyat mevcut seviyeden alım riski", "hareket tutarlı olup uzamış",
+        "son mum yapısında sınırlı gövde", "genel yükseliş koşulunun",
+        "görmeli", "kalıcı olmama ihtimali", "tekrar azalması olası",
+    )
+    return any(phrase in lowered for phrase in broken_phrases)
+
+
+def _manual_drop_corrupt_sentences(text: str) -> str:
+    """Bozuk tek bir cümle yüzünden kullanılabilir cümleleri kaybetmez."""
+    return " ".join(
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", text or "")
+        if sentence.strip() and not _manual_has_language_corruption(sentence)
+    )
+
+
 def _manual_remove_15m_leak(text: str) -> str:
     """Yalnız 15 dakikalık blokta bulunan mum ayrıntılarının ana alanlara sızmasını engeller."""
     timing_only = (
@@ -1458,6 +1481,13 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     expectation = _manual_remove_unsafe_current_buy(expectation, zones, current_price)
     expectation = _manual_enforce_single_stance(expectation)
 
+    # Ücretli yanıt dönmüş olsa bile bozuk Türkçeyi kullanıcıya gönderme.
+    general = _manual_drop_corrupt_sentences(general)
+    trade_ideas = _manual_drop_corrupt_sentences(trade_ideas)
+    technical = [item for item in technical if not _manual_has_language_corruption(item)]
+    if _manual_has_language_corruption(expectation):
+        expectation = ""
+
     general = _manual_sentence_limit(_manual_remove_invented_levels(general, zones, current_price), 3)
     trade_ideas = _manual_sentence_limit(_manual_remove_invented_levels(trade_ideas, zones, current_price), 3)
     expectation = _manual_sentence_limit(_manual_remove_invented_levels(expectation, zones, current_price), 6)
@@ -1465,6 +1495,14 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
                  if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:5]
     if len(technical) < 2:
         for fallback_item in _manual_technical_fallbacks(coin_snapshots):
+            fallback_lower = fallback_item.lower()
+            repeated_indicator = any(
+                indicator in fallback_lower and indicator in existing.lower()
+                for existing in technical
+                for indicator in ("obv", "macd", "ema20", "hareketli ortalama")
+            )
+            if repeated_indicator:
+                continue
             if fallback_item not in technical:
                 technical.append(fallback_item)
             if len(technical) >= 2:
@@ -1489,7 +1527,9 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
                                if not any(word in sentence.lower() for word in ("hedef", "yarın"))).strip()
 
     # Ücretli yanıtın küçük bir alanı boşsa bütün analizi çöpe atma.
-    general = general or "Ana yön, fiyatın konumu ve BTC etkisi birlikte değerlendirildiğinde görünüm net değil."
+    general = general or ("Saatlik, 4 saatlik ve günlük veriler birlikte değerlendirildiğinde coin için tek yönlü "
+                          "ve yeterince güçlü bir görünüm oluşmuyor. Fiyatın konumu ile BTC'nin kısa vadeli "
+                          "hareketi birlikte izlenmeli.")
     trade_ideas = trade_ideas or ("Fiyat desteklerden belirgin biçimde uzak olduğu için mevcut seviyede giriş "
                                   "riski artmış durumda. Yükseliş sürecekse kısa bir dinlenmenin ardından alıcı "
                                   "katılımının yeniden güçlenmesi daha sağlıklı bir giriş zemini oluşturabilir.")
@@ -1727,6 +1767,9 @@ anlatmayan yapay ifadeler kullanma. "Kontrollü katılım" gibi soyut bir kalıp
 koşulda küçük veya kademeli alımı değerlendireceğini açıkça söyle. "RSI yükseliş yapıyor" yerine "RSI yükseliyor"
 gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içinde yeniden açıklama.
 "Rüzgâr arkası", "kurtarıcı", "tema", "çerçeve", "mekanik geri çekilme" gibi yapay benzetmeler kullanma.
+"Saturasyon", "tepe yaşıyor", "çift zaman dilimi", "konuma alış", "momentum harita", "çizgiler kapanmış"
+ve "stabilite" gibi doğal Türkçede anlamı belirsiz kalıplar kullanma. Bir göstergenin yönünü başka bir göstergenin
+kesin sonucu gibi sunma; yalnız verilerin birlikte ne anlattığını açıkla.
 Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
 XML/HTML etiketi üretme; özellikle <item> veya </item> yazma. Çift olumsuzluk kurma. Williams %R yükseliyorsa
 bunu satış baskısının zayıflaması olarak, düşüyorsa satış baskısının güçlenmesi olarak açık ve doğru anlat.
