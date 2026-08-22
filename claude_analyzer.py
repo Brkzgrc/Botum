@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "2.2"   # 15 dakikalık zamanlama için veri tabanlı güvenli yedek eklendi
+_PROMPT_V_MANUAL  = "2.3"   # destek riski ve dirençsiz eylem planı çelişkileri engellendi
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1022,6 +1022,9 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("stabil hale dönmesi", "yönünü yeniden yukarı çevirmesi")
     cleaned = cleaned.replace("pullback", "geri çekilme").replace("Pullback", "Geri çekilme")
     cleaned = cleaned.replace("geri çekilme (geri çekilme)", "geri çekilme")
+    cleaned = cleaned.replace("yükseliş yapıyor", "yükseliyor")
+    cleaned = cleaned.replace("belirgin bir sınama (yeniden test)", "belirgin bir yeniden test")
+    cleaned = cleaned.replace("Tam bir geri çekilme riski bulunmamakta", "Geri çekilme riski tamamen ortadan kalkmış değil")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1164,6 +1167,9 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     )
     actions = [cleaned for item in actions
                if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:6]
+    # Direnç hesaplanmadıysa hayalî bir direnç üzerinden kâr planı kurulmasın.
+    if not zones.get("resistance_1"):
+        actions = [item for item in actions if "direnç" not in item.lower()]
 
     # API çağrısı ücretlendikten sonra küçük biçim sapmaları yüzünden cevabı
     # tümden çöpe atma. Eksik alanı açıkça belirt, mevcut alanları yine göster.
@@ -1173,6 +1179,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot)
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
+    action_text = " ".join(actions)
 
     body = (
         f"Ne oluyor?\n{what}\n\n"
@@ -1184,9 +1191,8 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
         f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
         f"Neye dikkat edilmeli?\n{watch}\n\n"
-        "Ben olsam ne yapardım?\n"
-        + "\n".join(f"• {item}" for item in actions)
-        + f"\n• 15 dakikalık zamanlama: {timing_15m}"
+        f"Ben olsam ne yapardım?\n{action_text}\n\n"
+        f"15 dakikalık zamanlama: {timing_15m}"
     )
     return body.replace(f"{base}'nin", f"{base}'in")
 
@@ -1401,6 +1407,10 @@ Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiy
 Model alanlarında hiçbir rakamsal fiyat yazma; bölgeler kod tarafından ayrıca eklenecek. Bölgelere yalnız
 "yakın destek", "sonraki destek", "ilk direnç" ve "sonraki direnç" adlarıyla gönderme yap.
 Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
+Destek bölgelerinin varlığını geri çekilme riskinin olmadığına kanıt sayma; destek yalnızca fiyat gelirse izlenecek
+olası tepki alanıdır. Fiyatın desteğe yaklaşmasını tek başına olumsuzluk gibi anlatma; asıl zayıflık desteğin
+kaybedilmesi veya satış baskısının güçlenmesidir. "Birinci/ikinci/üçüncü seviye" gibi tanımsız alanlar üretme.
+İlk direnç verisi yoksa eylem planında "sonraki direnç", direnç hedefi veya seviyeye dayalı kâr alma yazma.
 Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa küçük veya kademeli
 alımın hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
 somut fakat kesinlik iddiası olmadan anlat. Her bölüm gerekçesini de içersin; yalnız "beklerdim" deme.
@@ -1441,11 +1451,12 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "action_plan": {
                     "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümünün her biri birinci tekil şahısla yazılmış, ayrı satırda "
-                        "dört-altı tamamlanmış maddesi. Emir kipinde kullanıcıya talimat verme. "
+                        "Ben olsam ne yapardım bölümü için birbiriyle bağlantılı dört-altı doğal cümleden oluşan "
+                        "tek paragraf yaz. Madde işareti veya numara kullanma; her cümlede 'ben olsam' sözünü tekrarlama. "
+                        "Birinci tekil şahısla konuş ve emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
                         "küçük veya kademeli alımın somut koşulunu, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
-                        "Bütün maddeleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
+                        "Cümleleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
                         "birinci tekil şahısla bitir; 'gözlemledim', 'izledim', 'yaptım' gibi geçmiş zaman kullanma. "
                         "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık veriden söz etme."
                     ),
