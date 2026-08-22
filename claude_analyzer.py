@@ -48,7 +48,7 @@ from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
-_PROMPT_V_MANUAL_V2 = "1.1"  # Flash-Lite: tutarlı ve kanıta bağlı danışman anlatımı
+_PROMPT_V_MANUAL_V2 = "1.2"  # Flash-Lite: bağlama uygun pozisyon ve mum anlatımı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1793,8 +1793,12 @@ def _manual_v2_quality_issues(result: dict) -> list[str]:
         "fiyatımız": "Fiyat sahiplenen bir dille anlatılmış.",
         "coinimiz": "Coin sahiplenen bir dille anlatılmış.",
         "yönümüz": "Yön sahiplenen bir dille anlatılmış.",
+        "kârı cebe": "Kullanıcının açık pozisyonu olduğu varsayılmış.",
+        "kapanma eğiliminde": "Açık veya kapanmış mumun durumu belirsiz anlatılmış.",
     }
     issues.extend(message for phrase, message in forbidden.items() if phrase in lowered)
+    if re.search(r"\bfikir\w*\s+tamamen\s+geçerliliğini\s+yitir", lowered):
+        issues.append("Yakın desteğin kaybı bütün gelecek alım ihtimallerini geçersiz göstermiş.")
     expectation = str(result.get("expectation") or "").lower()
     if "bekle" in expectation and "beklemekten vazgeç" in expectation:
         issues.append("Bekleme tavrıyla 'beklemekten vazgeçme' koşulu mantıksal olarak çelişiyor.")
@@ -1818,6 +1822,7 @@ def _manual_v2_normalize_language(result: dict) -> tuple[dict, list[str]]:
         (r"\bana trend\b", "genel eğilim", "ana trend→genel eğilim"),
         (r"\bbüyük trend\b", "geniş görünüm", "büyük trend→geniş görünüm"),
         (r"\bbekleme politikası(?:nı)?\b", "beklemeyi", "bekleme politikası→beklemeyi"),
+        (r"\bgenel piyasa ve genel eğilim\b", "genel görünüm", "genel piyasa ve genel eğilim→genel görünüm"),
     )
     applied = []
 
@@ -1892,6 +1897,13 @@ Yazım kuralları:
   ya da para akışının güçlendiğini söyle.
 - BTC görünümünü bölümler arasında aynı kanıtlara dayanarak tutarlı anlat; bir bölümde kararsız, başka bir
   bölümde kesin düşüş gibi birbiriyle çelişen sonuçlar üretme.
+- "Genel piyasa ve genel eğilim" gibi aynı anlamı tekrarlayan kalıplar kullanma; doğrudan genel görünümü anlat.
+- Kullanıcının açık pozisyonu olduğunu varsayma. Kâr alma fikrini yalnız "mevcut pozisyon varsa" veya
+  "olası bir alımdan sonra" koşuluyla anlat; "kârı cebe koy" deme.
+- Yakın desteğin kırılması yalnız o destekten alım düşüncesini geçersiz kılar. Bütün alım ihtimalinin tamamen
+  bittiğini söyleme; hesaplanmış sonraki destek varsa orada yeni değerlendirme yapılabileceğini belirt.
+- 15 dakikalık mum kapanmışsa yalnız gerçekleşen kapanışı anlat. Mum halen açıksa mevcut konumunun değişebileceğini
+  açıkça söyle; açık mum için "kapandı" veya "kapanma eğiliminde" deme.
 - Coini veya fiyatı sahiplenerek "fiyatımız", "coinimiz", "yönümüz" deme. "Lider kripto para Bitcoin",
   "bekleme politikası" gibi dolaylı ve yapay kalıplar yerine doğrudan ZEC, BTC, beklerdim veya almazdım de.
 - 15 dakikalık veriden satış baskısı, hacim zayıflığı veya toparlanma sonucu çıkarıyorsan bunu destekleyen
