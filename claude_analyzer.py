@@ -28,7 +28,7 @@ ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
 GEMINI_API_KEY          = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
-MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "legacy").strip().lower()
+MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "v2").strip().lower()
 MANUAL_ANALYZER_V2_MODEL = os.getenv("MANUAL_ANALYZER_V2_MODEL", "gemini-2.5-flash-lite").strip()
 
 from api_logger import log_usage as _log_usage
@@ -1811,6 +1811,16 @@ def analyze_coin_on_demand(symbol: str) -> bool:
         send_decision(f"#{html.escape(base)} için Binance Spot USDT verisi alınamadı; analiz yapılmadı.")
         print(f"[MANUEL ANALYZER] {pair}: güncel Binance verisi yok, API çağrılmadı.", flush=True)
         return False
+    if MANUAL_ANALYZER_MODE not in {"v2", "legacy"}:
+        send_decision(
+            "Manuel analiz modu geçersiz; güvenlik için API çağrısı yapılmadı. "
+            "MANUAL_ANALYZER_MODE yalnız v2 veya legacy olabilir."
+        )
+        print(
+            f"[MANUEL ANALYZER CONFIG ERROR] geçersiz mod={MANUAL_ANALYZER_MODE!r}; API çağrılmadı.",
+            flush=True,
+        )
+        return False
     if MANUAL_ANALYZER_MODE == "v2":
         if not GEMINI_API_KEY:
             send_decision("Manuel analiz v2 için GEMINI_API_KEY bulunamadı; ücretli modele geçiş yapılmadı.")
@@ -1982,7 +1992,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 zone_block, price_location_note,
             )
             print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} analizi alındı.", flush=True)
-        else:
+        elif MANUAL_ANALYZER_MODE == "legacy":
             import anthropic
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
             started = time.time()
