@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "4.0"   # kısa rapor şeması ve beklenti odaklı yorum
+_PROMPT_V_MANUAL  = "4.1"   # fiyat-bölge uzaklığı ve zaman dilimi sızıntısı koruması
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1002,12 +1002,22 @@ def _fmt_ind(v) -> str:
     if v >= 0.01:  return f"{v:.4f}"
     return         f"{v:.6f}"
 
-def _manual_zone_text(zone: dict | None) -> str:
+def _manual_zone_text(zone: dict | None, current_price: float = 0.0) -> str:
     if not zone:
         return "veriyle güvenilir bölge oluşmadı"
     tf_names = {"1H": "1 saatlik", "4H": "4 saatlik", "1D": "1 günlük", "1W": "1 haftalık"}
     tfs = " + ".join(tf_names.get(tf, tf) for tf in sorted(zone["tfs"]))
-    return f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
+    text = f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
+    if current_price:
+        price = float(current_price)
+        low, high = float(zone["low"]), float(zone["high"])
+        if price > high:
+            text += f" — güncel fiyatın %{(price - high) / price * 100:.1f} altında"
+        elif price < low:
+            text += f" — güncel fiyatın %{(low - price) / price * 100:.1f} üstünde"
+        else:
+            text += " — fiyat bölgenin içinde"
+    return text
 
 
 def _clean_manual_analysis(text: str) -> str:
@@ -1032,6 +1042,15 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("mekanik bir geri çekilme", "kısa vadeli bir geri çekilme")
     cleaned = cleaned.replace("mekanik satın almaktan", "alım yapmaktan")
     cleaned = cleaned.replace("henüz kurtarıcı", "ana görünümü destekliyor")
+    cleaned = cleaned.replace("MACD pozitif kalanı", "MACD'nin pozitif kalması")
+    cleaned = cleaned.replace("dip diplerle", "diplerle")
+    cleaned = cleaned.replace("ticaret katılımı", "alıcı katılımı")
+    cleaned = cleaned.replace("dinamik destek", "yakın destek")
+    cleaned = cleaned.replace("limited", "sınırlı").replace("Limited", "Sınırlı")
+    cleaned = cleaned.replace("konsolidasyon", "yatay dinlenme")
+    cleaned = cleaned.replace("genelge takip", "genel piyasayı takip")
+    cleaned = cleaned.replace("ivmen", "ivmeyi")
+    cleaned = cleaned.replace("daha samimi olabilirdim", "daha güvenli biçimde değerlendirebilirdim")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1099,6 +1118,63 @@ def _manual_sentence_limit(text: str, limit: int) -> str:
     """Bir alanın model talimatını aşarak uzamasını engeller."""
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text or "") if p.strip()]
     return " ".join(parts[:limit]).strip()
+
+
+def _manual_remove_15m_leak(text: str) -> str:
+    """Yalnız 15 dakikalık blokta bulunan mum ayrıntılarının ana alanlara sızmasını engeller."""
+    timing_only = (
+        "son dört", "son mum", "mum gövde", "gövde sınırlı", "sınırlı gövde", "kapanış alt taraf",
+        "kapanış üst taraf", "halen açık", "henüz kapanmamış",
+    )
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        lowered = sentence.lower()
+        if any(key in lowered for key in timing_only):
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def _manual_remove_unsafe_current_buy(text: str, zones: dict, current_price: float) -> str:
+    """Uzak desteğe rağmen gerekçesiz 'mevcut fiyattan al' cümlesini rapora bırakmaz."""
+    zone = zones.get("near_support")
+    if not zone or not current_price or float(current_price) <= float(zone["high"]):
+        return text
+    gap = (float(current_price) - float(zone["high"])) / float(current_price) * 100
+    if gap < 5:
+        return text
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        lowered = sentence.lower()
+        current_buy = ("mevcut fiyat" in lowered and
+                       any(word in lowered for word in ("alım", "pozisyon", "lot")))
+        risk_explained = any(word in lowered for word in ("yüksek risk", "agresif", "uzamış", "ema"))
+        if current_buy and not risk_explained:
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def _manual_price_location_note(zones: dict, current_price: float) -> str:
+    """En yakın hesaplanan desteğin gerçekten ne kadar yakın olduğunu modele açıklar."""
+    zone = zones.get("near_support")
+    if not zone or not current_price:
+        return "Güncel fiyatın en yakın desteğe uzaklığı güvenilir biçimde hesaplanamadı."
+    price = float(current_price)
+    low, high = float(zone["low"]), float(zone["high"])
+    if low <= price <= high:
+        return "Güncel fiyat en yakın destek bölgesinin içinde."
+    if price > high:
+        distance = (price - high) / price * 100
+        note = f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} altında."
+        if distance >= 5:
+            note += (" Bu bölgenin adı 'yakın destek' olsa da mevcut fiyata yakın bir giriş alanı değildir; "
+                     "fiyatın hareketli ortalamalardan uzaklığını ve hareketin ne kadar uzadığını ayrıca tart.")
+        return note
+    distance = (low - price) / price * 100
+    return f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} üstünde; fiyat destek bölgesinin altında."
 
 
 def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) -> str:
@@ -1183,6 +1259,12 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     expectation = _natural_manual_text(result.get("expectation"))
     technical = _manual_action_items(result.get("technical_indicators"))
 
+    general = _manual_remove_15m_leak(general)
+    trade_ideas = _manual_remove_15m_leak(trade_ideas)
+    technical = [_manual_remove_15m_leak(item) for item in technical]
+    trade_ideas = _manual_remove_unsafe_current_buy(trade_ideas, zones, current_price)
+    expectation = _manual_remove_unsafe_current_buy(expectation, zones, current_price)
+
     general = _manual_sentence_limit(_manual_remove_invented_levels(general, zones, current_price), 3)
     trade_ideas = _manual_sentence_limit(_manual_remove_invented_levels(trade_ideas, zones, current_price), 3)
     expectation = _manual_sentence_limit(_manual_remove_invented_levels(expectation, zones, current_price), 6)
@@ -1191,10 +1273,17 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
 
     # Direnç hesaplanmadıysa modelin hayalî direnç üzerinden senaryo kurmasını engelle.
     if not zones.get("resistance_1"):
+        def keep_resistance_sentence(sentence: str) -> bool:
+            lowered = sentence.lower()
+            if "direnç" not in lowered:
+                return True
+            return any(phrase in lowered for phrase in
+                       ("güvenilir direnç", "direnç oluşmadı", "direnç hesaplanmadı", "direnç bulunmuyor"))
+
         trade_ideas = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", trade_ideas)
-                               if "direnç" not in sentence.lower()).strip()
+                               if keep_resistance_sentence(sentence)).strip()
         expectation = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", expectation)
-                               if "direnç" not in sentence.lower()).strip()
+                               if keep_resistance_sentence(sentence)).strip()
 
     # Ücretli yanıtın küçük bir alanı boşsa bütün analizi çöpe atma.
     general = general or "Ana yön, fiyatın konumu ve BTC etkisi birlikte değerlendirildiğinde görünüm net değil."
@@ -1211,11 +1300,11 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         "📉 Teknik Göstergeler\n"
         + "\n".join(f"• {item}" for item in technical)
         + "\n\n📈 Kritik Seviyeler\n"
-        f"• Yakın destek: {_manual_zone_text(zones.get('near_support'))}\n"
-        f"• Sonraki destek: {_manual_zone_text(zones.get('next_support'))}\n"
-        f"• Uzak yapısal destek: {_manual_zone_text(zones.get('structural_support'))}\n"
-        f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
-        f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
+        f"• Yakın destek: {_manual_zone_text(zones.get('near_support'), current_price)}\n"
+        f"• Sonraki destek: {_manual_zone_text(zones.get('next_support'), current_price)}\n"
+        f"• Uzak yapısal destek: {_manual_zone_text(zones.get('structural_support'), current_price)}\n"
+        f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'), current_price)}\n"
+        f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'), current_price)}\n\n"
         f"📌 İşlem Fikirleri\n{trade_ideas}\n\n"
         f"🌌 Benim Beklentim — Ne Yapardım?\n{expectation}"
     )
@@ -1372,17 +1461,18 @@ def analyze_coin_on_demand(symbol: str) -> bool:
            "1D": _manual_tf_snapshot(raw.get("btc_1d"))}
     current_price = coin["1H"]["price"]
     zones = _manual_zones(coin_frames, current_price)
+    price_location_note = _manual_price_location_note(zones, current_price)
     fg_val, fg_label = _fear_greed()
     fg_text = f"{fg_val} ({fg_label})" if fg_val is not None else "veri yok"
     technical_block = "\n".join(_manual_tf_text(x, coin[x]) for x in ("1H", "4H", "1D"))
     timing_block = _manual_tf_text("15M", coin_15m, include_candle_structure=True)
     btc_block = "\n".join(_manual_tf_text(x, btc[x], include_price=False) for x in ("1H", "4H", "1D"))
     zone_block = "\n".join([
-        f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
-        f"Sonraki destek: {_manual_zone_text(zones['next_support'])}",
-        f"Uzak yapısal destek: {_manual_zone_text(zones['structural_support'])}",
-        f"İlk direnç: {_manual_zone_text(zones['resistance_1'])}",
-        f"Sonraki direnç: {_manual_zone_text(zones['resistance_2'])}",
+        f"Yakın destek: {_manual_zone_text(zones['near_support'], current_price)}",
+        f"Sonraki destek: {_manual_zone_text(zones['next_support'], current_price)}",
+        f"Uzak yapısal destek: {_manual_zone_text(zones['structural_support'], current_price)}",
+        f"İlk direnç: {_manual_zone_text(zones['resistance_1'], current_price)}",
+        f"Sonraki direnç: {_manual_zone_text(zones['resistance_2'], current_price)}",
     ])
     prompt = f"""Sen yalnızca kullanıcının istediği anda çalışan spot piyasa yardımcısısın.
 Bu bir otomatik emir veya kesin al-sat kararı değildir. Kullanıcı 1H, 4H ve 1D hareketlerini birlikte okuyup manuel karar verir.
@@ -1407,6 +1497,9 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
+[FİYATIN BÖLGELERE GÖRE KONUMU]
+{price_location_note}
+
 Görevin kısa ve anlaşılır bir spot değerlendirmesi üretmektir. İlk bölümleri gereksiz ayrıntıyla uzatma;
 asıl muhakeme ve açıklama ağırlığını "Benim Beklentim — Ne Yapardım?" alanına ver. Aynı kanıtı farklı
 bölümlerde tekrarlama. Göstergeleri art arda saymak yerine birlikte fiyat açısından ne anlattıklarını açıkla.
@@ -1425,6 +1518,8 @@ Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun c
 
 Ana yorum alanlarında yalnız saatlik, 4 saatlik ve günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
+Genel değerlendirme, teknik göstergeler ve işlem fikirlerinde "son mum", "mum gövdesi", "son dört kapanış",
+"son dört dip" veya "son dört tepe" ayrıntılarını kullanma; bunlar yalnız 15 dakikalık yakın gözlem verisidir.
 Sabit gösterge eşikleriyle mekanik karar verme; fiyat yapısını, hareket yönünü, hacim/OBV katılımını, BTC etkisini
 ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; küçük veya
 kademeli alımın hangi somut durumda düşünülebileceğini de anlat. Hareket uzamış ve alıcı desteği zayıflıyorsa
@@ -1434,6 +1529,9 @@ Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiy
 Model alanlarında hiçbir rakamsal fiyat yazma; bölgeler kod tarafından ayrıca eklenecek. Bölgelere yalnız
 "yakın destek", "sonraki destek", "ilk direnç" ve "sonraki direnç" adlarıyla gönderme yap.
 Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
+"Yakın destek" adı görecelidir. Fiyat konumu notunda bölge güncel fiyattan belirgin biçimde uzaktaysa onu
+yakın giriş alanı gibi anlatma. Mevcut fiyattan küçük alım önereceksen bunun yüksek riskli olduğunu açıkça söyle
+ve hareketin uzamasını, EMA uzaklığını, hacmi ve para akışını birlikte gerekçelendir.
 Destek bölgelerinin varlığını geri çekilme riskinin olmadığına kanıt sayma; destek yalnızca fiyat gelirse izlenecek
 olası tepki alanıdır. Fiyatın desteğe yaklaşmasını tek başına olumsuzluk gibi anlatma; asıl zayıflık desteğin
 kaybedilmesi veya satış baskısının güçlenmesidir. "Birinci/ikinci/üçüncü seviye" gibi tanımsız alanlar üretme.
@@ -1441,6 +1539,11 @@ kaybedilmesi veya satış baskısının güçlenmesidir. "Birinci/ikinci/üçün
 Beklenti alanında mevcut durumda ne yapacağını, nedenini, hangi koşulda küçük veya kademeli alımı
 değerlendireceğini, hangi gelişmede vazgeçeceğini ve direnç varsa kâr alma yaklaşımını sade biçimde anlat.
 15 dakikalık gözlemi yalnız bu düşüncenin giriş zamanlamasını netleştiren yardımcı kanıt olarak kullan.
+Beklenti alanının ilk cümlesinde bugünkü tavrını net seç: beklemek, yüksek riskli küçük başlangıç yapmak veya
+alım düşünmemek. Aynı mevcut koşul için hem hemen alacağını hem de önce bekleyeceğini söyleme. 15 dakikalık
+göstergeyi mekanik bir alım kuralına dönüştürme; yalnız seçtiğin tavrı güçlendiren veya zayıflatan kanıt olarak kullan.
+Hesaplanan direnç yoksa fiyatın güvenilir bir üst direnç/ hedef bölgesi bulunmayan alanda ilerlediğini açıkça söyle;
+uydurma hedef üretme.
 
 Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bir kez çağır ve bütün alanları doldur."""
 
