@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.7"   # 15M zamanlaması ayrı zorunlu alan; ifade arama yok
+_PROMPT_V_MANUAL  = "1.8"   # doğal yorum derinliği geri yüklendi; biçim farkları kayıp oluşturmaz
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1057,6 +1057,30 @@ def _natural_manual_text(text: str) -> str:
     return cleaned.strip(" \n•-")
 
 
+def _manual_action_items(value) -> list[str]:
+    """Haiku liste yerine metin döndürse bile eylem planını kaybetmeden maddelere ayırır."""
+    if isinstance(value, (list, tuple)):
+        candidates = list(value)
+    elif isinstance(value, dict):
+        candidates = list(value.values())
+    elif isinstance(value, str):
+        # Önce satır/madde ayrımını kullan. Model tek paragraf döndürdüyse
+        # tamamlanmış cümleleri ayrı eylem maddelerine dönüştür.
+        candidates = [part for part in re.split(r"\r?\n+", value) if part.strip()]
+        if len(candidates) == 1:
+            candidates = [part for part in re.split(r"(?<=[.!?])\s+", value) if part.strip()]
+    else:
+        candidates = []
+
+    actions = []
+    for item in candidates:
+        item = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", str(item))
+        cleaned_item = _natural_manual_text(item)
+        if cleaned_item:
+            actions.append(cleaned_item)
+    return actions[:7]
+
+
 def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
     """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
     if not isinstance(result, dict):
@@ -1066,19 +1090,16 @@ def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
     meaning = _natural_manual_text(result.get("meaning"))
     watch = _natural_manual_text(result.get("watch_out"))
     timing_15m = _natural_manual_text(result.get("timing_15m"))
-    raw_actions = result.get("action_plan")
-    if not isinstance(raw_actions, list):
-        raise ValueError("Eylem planı liste biçiminde değil")
-    actions = []
-    for item in raw_actions:
-        cleaned_item = _natural_manual_text(item)
-        if cleaned_item:
-            actions.append(cleaned_item)
+    actions = _manual_action_items(result.get("action_plan"))
 
-    if not what or not meaning or not watch or not timing_15m or len(actions) < 3:
-        raise ValueError("Manuel analiz alanları eksik")
-    if "on beş dakika" in f"{what} {meaning} {watch}".lower():
-        raise ValueError("On beş dakikalık gözlem ana yoruma karıştı")
+    # API çağrısı ücretlendikten sonra küçük biçim sapmaları yüzünden cevabı
+    # tümden çöpe atma. Eksik alanı açıkça belirt, mevcut alanları yine göster.
+    what = what or "Ana görünüm için yeterli açıklama üretilemedi."
+    meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
+    watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
+    timing_15m = timing_15m or "On beş dakikalık veriden güvenilir bir giriş zamanlaması çıkarılamadı."
+    if not actions:
+        actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
 
     body = (
         f"Ne oluyor?\n{what}\n\n"
@@ -1282,7 +1303,9 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Görevin göstergeleri art arda sıralamak değil, birlikte fiyat açısından ne anlattıklarını açıklamaktır.
+Görevin kısa bir gösterge özeti çıkarmak değil, deneyimli bir yatırımcı gibi kanıtları tartıp anlaşılır bir görüş
+ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıralama; birlikte fiyat açısından ne
+anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
 Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma; "saatlik", "dört saatlik", "günlük" ve "on beş dakikalık" de.
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
@@ -1295,9 +1318,9 @@ seçeneğini de anlat. Hareket uzamış ve katılım zayıflıyorsa neden beklem
 
 Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiyat seviyesi verme.
 Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
-Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, on beş dakikalık grafikte nasıl bir fiyat
-davranışının giriş zamanlamasını güçlendireceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma
-yaklaşımını somut fakat kesinlik iddiası olmadan anlat.
+Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa kontrollü katılımın
+hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
+somut fakat kesinlik iddiası olmadan anlat. Her bölüm gerekçesini de içersin; yalnız "beklerdim" deme.
 
 Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bir kez çağır ve bütün alanları doldur."""
 
@@ -1311,41 +1334,42 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "what_is_happening": {
                     "type": "string",
                     "description": (
-                        "Tam iki kısa cümle: ilk cümle yalnız coinin saatlik/dört saatlik/günlük ana görünümü, "
-                        "ikinci cümle yalnız BTC bağlamı. On beş dakikadan söz etme."
+                        "İki-dört doğal cümle. Coinin saatlik, dört saatlik ve günlük ana yönünü; fiyat yapısını, "
+                        "momentum ile para/hacim akışının uyumunu ve BTC bağlamını birlikte yorumla. Göstergeleri "
+                        "listeleme, sonuçlarını açıkla. On beş dakikadan söz etme."
                     ),
                 },
                 "meaning": {
                     "type": "string",
                     "description": (
-                        "En fazla üç doğal cümle. Göstergeleri listelemek yerine görünümün fiyat, olası devam ve "
-                        "geri çekilme açısından anlamını açıkla. On beş dakikadan söz etme."
+                        "İki-dört doğal cümle. Kanıtların ağırlığına göre yükselişin devamı, dinlenme ve geri "
+                        "çekilme ihtimallerini karşılaştır. Trend güçlü kalıyorsa kontrollü katılım ihtimalini de "
+                        "anlat; her durumda otomatik olarak beklemeyi önerme. On beş dakikadan söz etme."
                     ),
                 },
                 "watch_out": {
                     "type": "string",
                     "description": (
-                        "En fazla iki cümle. Olumlu görünümü neyin zayıflatacağını ve devam ihtimalini neyin "
-                        "güçlendireceğini sade Türkçeyle anlat. On beş dakikadan söz etme."
+                        "İki-üç doğal cümle. Olumlu görünümü neyin zayıflatacağını, devam ihtimalini neyin "
+                        "güçlendireceğini ve BTC'nin etkisini sade Türkçeyle anlat. On beş dakikadan söz etme."
                     ),
                 },
                 "action_plan": {
-                    "type": "array",
-                    "minItems": 3,
-                    "maxItems": 6,
-                    "items": {"type": "string"},
+                    "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümünün 3-6 kısa maddesi. Mevcut hareket için bekleme veya "
-                        "kontrollü katılım tercihini gerekçelendir; yalnız verilen bölgeleri kullan; vazgeçme ve "
-                        "varsa kâr alma yaklaşımını belirt. Spot dışına çıkma."
+                        "Ben olsam ne yapardım bölümünün her biri ayrı satırda dört-yedi tamamlanmış maddesi. "
+                        "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
+                        "kontrollü katılım seçeneğini, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
+                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. On beş dakikadan söz etme."
                     ),
                 },
                 "timing_15m": {
                     "type": "string",
                     "description": (
-                        "Yalnız on beş dakikalık güncel fiyat yapısı ve gösterge yönlerinden yararlanarak giriş "
-                        "zamanlamasını açıkla. Bu gözlemin güçlenmesini ve bozulmasını doğal Türkçeyle belirt; "
-                        "yeni fiyat seviyesi veya mekanik alım kuralı üretme."
+                        "İki-üç doğal cümle. Yalnız on beş dakikalık güncel fiyat ve mum yapısı ile gösterge "
+                        "yönlerinden yararlanarak giriş zamanlamasının şu anda ne anlattığını açıkla. Hangi davranışın "
+                        "katılımı güçlendireceğini ve hangisinin beklemeyi gerektireceğini belirt; yeni fiyat seviyesi "
+                        "veya mekanik alım kuralı üretme."
                     ),
                 },
             },
