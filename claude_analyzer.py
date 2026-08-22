@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "4.4"   # güncel fiyatı doğal genel değerlendirme paragrafına yerleştirir
+_PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1023,7 +1023,8 @@ def _manual_zone_text(zone: dict | None, current_price: float = 0.0) -> str:
 def _clean_manual_analysis(text: str) -> str:
     """Model talimata rağmen Markdown/İngilizce kalıntısı üretirse Telegram öncesi temizle."""
     cleaned = (text or "").replace("\\*", "").replace("**", "").replace("__", "")
-    cleaned = re.sub(r"</?item\s*>", "", cleaned, flags=re.IGNORECASE)
+    # Haiku bazen tool çağrısındaki XML benzeri etiketleri alan metnine taşıyor.
+    cleaned = re.sub(r"</?[A-Za-z][^>]*>", "", cleaned)
     cleaned = cleaned.replace(
         "OBV yükseliş patern yükselme katılımını destekliyor",
         "OBV'nin yükselmesi alıcı katılımının sürdüğünü gösteriyor",
@@ -1042,11 +1043,11 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("Tam bir geri çekilme riski bulunmamakta", "Geri çekilme riski tamamen ortadan kalkmış değil")
     cleaned = cleaned.replace("rüzgar arkasına karşı olsa da", "kısa vadeli piyasa desteği zayıf olsa da")
     cleaned = cleaned.replace("rüzgâr arkasına karşı olsa da", "kısa vadeli piyasa desteği zayıf olsa da")
-    cleaned = cleaned.replace("bağlamsal yükseliş temaı", "ana yükseliş görünümü")
+    cleaned = cleaned.replace("bağlamsal yükseliş temaı", "yükseliş görünümü")
     cleaned = cleaned.replace("yükseliş temaı", "yükseliş görünümü")
     cleaned = cleaned.replace("mekanik bir geri çekilme", "kısa vadeli bir geri çekilme")
     cleaned = cleaned.replace("mekanik satın almaktan", "alım yapmaktan")
-    cleaned = cleaned.replace("henüz kurtarıcı", "ana görünümü destekliyor")
+    cleaned = cleaned.replace("henüz kurtarıcı", "olumlu görünümü destekliyor")
     cleaned = cleaned.replace("MACD pozitif kalanı", "MACD'nin pozitif kalması")
     cleaned = cleaned.replace("dip diplerle", "diplerle")
     cleaned = cleaned.replace("ticaret katılımı", "alıcı katılımı")
@@ -1064,7 +1065,7 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("yükseliş patern yükselme katılımını", "alıcı katılımının sürdüğünü")
     cleaned = cleaned.replace("patern", "yapı")
     cleaned = cleaned.replace("küçük katılım", "küçük bir alım")
-    cleaned = cleaned.replace("destek sağlamaktadır", "ana görünümü destekliyor")
+    cleaned = cleaned.replace("destek sağlamaktadır", "olumlu görünümü destekliyor")
     cleaned = cleaned.replace(
         "destek dizilimi sağlam",
         "yükselişi destekleyen sıralama korunuyor",
@@ -1083,6 +1084,31 @@ def _clean_manual_analysis(text: str) -> str:
     )
     cleaned = cleaned.replace("müdahalenin gücü", "kısa vadeli alıcı gücü")
     cleaned = cleaned.replace("dinlenme izlerdim", "kısa bir dinlenme oluşup oluşmadığını izlerdim")
+    cleaned = cleaned.replace("güçlü yükseliş gösteriyorum", "güçlü yükseliş gösteriyor")
+    cleaned = re.sub(
+        r"\b([A-Z0-9]{2,15}) tüm EMA dizi hiyerarşisi sağlam kalmıştır",
+        lambda match: f"{match.group(1)} için hareketli ortalamaların yükselişi destekleyen sıralaması korunuyor",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = cleaned.replace("hareketlin kırılgan", "hareketin kırılgan")
+    cleaned = cleaned.replace("bu dörtte biri uyumlu olarak", "bu dört gösterge uyumlu biçimde")
+    cleaned = cleaned.replace("artan yapıdayken", "yükselirken")
+    cleaned = cleaned.replace("zayıfladığını işaret ediyor", "zayıflamaya işaret ediyor")
+    cleaned = cleaned.replace("hareketli bir yatay dinlenme", "dalgalı bir yatay seyir")
+    cleaned = cleaned.replace("kontrol kaybı riski", "daha sert geri çekilme riski")
+    cleaned = cleaned.replace("hareket kalitesi belirsizleşmiş", "kısa vadeli yönü belirsizleşmiş")
+    cleaned = cleaned.replace(
+        "saatlik ve 4 saatlik grafiklerde düşüş trendinde RSI yükselişe karşılık satış baskısı güçlenirken",
+        "saatlik ve 4 saatlik grafiklerde RSI yükselse de satış baskısı güçlenirken",
+    )
+    cleaned = cleaned.replace(
+        "bu iki yapının çelişkisi dalgalı bir yatay seyir veya daha sert geri çekilme riski taşıyor",
+        "para akışı ile satış baskısının ters yönde ilerlemesi kısa vadede dalgalı bir seyir veya daha sert bir geri çekilme riski yaratıyor",
+    )
+    cleaned = cleaned.replace("yön net yukarı yönlü gözüküyor", "yön net biçimde yukarı görünüyor")
+    cleaned = cleaned.replace("ölçeklerde", "grafiklerde")
+    cleaned = re.sub(r"\bema\b", "EMA", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace("hızlı çizginin yavaş çizginin üstünde", "hızlı çizgisinin yavaş çizgisinin üzerinde")
     cleaned = cleaned.replace(
         "günlük StochRSI yön yukarı ve hızlı üstünde",
@@ -1093,7 +1119,7 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
     cleaned = cleaned.replace("rüzgâr arkası kesintiye uğratabilir", "yükselişi destekleyen ortam zayıflayabilir")
     cleaned = cleaned.replace("pauzasyon", "kısa süreli duraklama").replace("Pauzasyon", "Kısa süreli duraklama")
-    cleaned = cleaned.replace("büyük tablo", "ana görünüm").replace("Büyük tablo", "Ana görünüm")
+    cleaned = cleaned.replace("büyük tablo", "4 saatlik ve günlük görünüm").replace("Büyük tablo", "4 saatlik ve günlük görünüm")
     cleaned = cleaned.replace("aşırı satın alım", "hızlı yükseliş").replace("aşırı satım", "hızlı düşüş")
     cleaned = cleaned.replace("fırlatma senaryosu", "geri çekilme ihtimali")
     cleaned = cleaned.replace("kapalı kapanışlar", "son mum hareketleri")
@@ -1342,7 +1368,8 @@ def _manual_expectation_fallback(zones: dict, current_price: float,
         gap = (float(current_price) - float(zone["high"])) / float(current_price) * 100
         if gap >= 5:
             opening = (f"Fiyat en yakın hesaplanan desteğin %{gap:.1f} üzerinde olduğu için mevcut seviyeden "
-                       "aceleyle alım yapmazdım; ana yükseliş sürse bile hareketin kısa süre dinlenmesini isterdim.")
+                       "aceleyle alım yapmazdım. Yükseliş devam etse bile yeni alım düşünmeden önce fiyatın kısa "
+                       "süreli dinlenmesini veya kontrollü biçimde geri çekilmesini beklerdim.")
         else:
             opening = ("Fiyat en yakın desteğe çok uzak olmadığı için alıcıların bu bölgeyi koruyup korumadığını "
                        "izler, güçlenme görülürse küçük ve kademeli bir alımı değerlendirirdim.")
@@ -1401,7 +1428,7 @@ def _manual_technical_fallbacks(coin_snapshots: dict | None) -> list[str]:
                    if snap.get("ema20_relation") == "üstünde" and snap.get("ema_order") == "20>50>100>200"]
     if ema_bullish:
         joined = ", ".join(name.lower() for name in ema_bullish)
-        items.append(f"Fiyat {joined} grafiklerde EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; ana trend yapısı henüz bozulmuş görünmüyor.")
+        items.append(f"Fiyat {joined} grafiklerde EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; yükseliş yapısı henüz bozulmuş görünmüyor.")
 
     macd_up = [name for name, snap in available
                if snap.get("macd_cross") == "üstünde" and "yüks" in str(snap.get("macd_hist_direction", ""))]
@@ -1666,7 +1693,7 @@ Göstergelerde sabit eşiklerden çok yön değişimini, fiyatın dinlenme/geri 
 Bir koşulu tek başına zorunlu filtre yapma; olumlu ve olumsuz kanıtların ağırlığını birlikte anlat.
 15M yalnız "Ben olsam ne yapardım?" bölümündeki giriş zamanlamasını daha yakından gözlemek içindir.
 Ne oluyor, Ne anlama geliyor, İzlenecek bölgeler ve Neye dikkat edilmeli bölümlerini 15M'ye göre değiştirme.
-15M ana görünümü belirlemez, adayı elemez ve tek başına alım gerekçesi olmaz. Aynı 15M oluşumunu her grafikte aynı
+15M saatlik, 4 saatlik ve günlük görünümü belirlemez, adayı elemez ve tek başına alım gerekçesi olmaz. Aynı 15M oluşumunu her grafikte aynı
 sonuca bağlama; 1H/4H/1D bağlamı, konum, hacim/OBV ve yakın bölgelere göre özgün değerlendir.
 Yalnız aşağıdaki güncel verileri kullan. Eski scanner sinyali yoktur. Bölge veya veri uydurma.
 
@@ -1703,7 +1730,7 @@ gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içi
 Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
 XML/HTML etiketi üretme; özellikle <item> veya </item> yazma. Çift olumsuzluk kurma. Williams %R yükseliyorsa
 bunu satış baskısının zayıflaması olarak, düşüyorsa satış baskısının güçlenmesi olarak açık ve doğru anlat.
-Genel değerlendirme yalnız bir gösterge özeti değildir. Coinin ana yönünü, hareketin normal mi yoksa uzamış mı
+Genel değerlendirme yalnız bir gösterge özeti değildir. Coinin saatlik, 4 saatlik ve günlük yönünü, hareketin normal mi yoksa uzamış mı
 olduğunu, hacim veya OBV'nin fiyatı destekleyip desteklemediğini, BTC'nin etkisini ve en önemli kısa vadeli riski
 üç-dört doğal cümlede birlikte anlat. Coinin kendisini anlatmadan yalnız OBV veya BTC hakkında iki cümle yazma.
 
@@ -1748,7 +1775,8 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "general_assessment": {
                     "type": "string",
                     "description": (
-                        "Üç-dört kısa ve doğal cümle. Coinin ana yönünü, hareketin uzayıp uzamadığını, hacim/para "
+                        "Üç-dört kısa ve doğal cümle. Coinin saatlik, 4 saatlik ve günlük yönünü, hareketin uzayıp "
+                        "uzamadığını, hacim/para "
                         "akışının fiyatı destekleyip desteklemediğini, BTC etkisini ve en önemli kısa vadeli riski "
                         "birlikte özetle. Yalnız OBV veya BTC özeti yazma; gösterge listesi yapma ve 15 dakikalık "
                         "veriden söz etme."
