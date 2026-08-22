@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "2.4"   # doğal dil ve 15 dakikalık/saatlik yön uyumu geliştirildi
+_PROMPT_V_MANUAL  = "3.0"   # 15 dakikalık gözlem doğal eylem paragrafına birleştirildi
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1058,6 +1058,9 @@ def _natural_manual_text(text: str) -> str:
     cleaned = re.sub(r"\b4H\b", "4 saatlik", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b1D\b", "1 günlük", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\b15M\b", "15 dakikalık", cleaned, flags=re.IGNORECASE)
+    # Analiz cümlelerinde doğal kullanım; bölge etiketleri kod tarafından ayrıca üretilir.
+    cleaned = re.sub(r"\b1 saatlik\b", "saatlik", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b1 günlük\b", "günlük", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bon beş dakikalık\b", "15 dakikalık", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bon beş dakika\b", "15 dakika", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bbullish\b", "yükseliş yönlü", cleaned, flags=re.IGNORECASE)
@@ -1125,7 +1128,7 @@ def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) 
 
     if upward >= downward + 2:
         if hourly_up >= hourly_down + 2:
-            conclusion = ("15 dakikalık hareket saatlik olumlu görünümle aynı yönde güçleniyor; bu, giriş "
+            conclusion = ("Bu kısa vadeli hareket saatlik olumlu görünümle aynı yönde güçleniyor; bu, giriş "
                           "zamanlamasını destekliyor ancak fiyatın bulunduğu bölgeyi ve hacmi yine dikkate alırdım.")
         else:
             conclusion = ("Kısa vadeli hareket yeniden yukarı güçleniyor; saatlik görünüm aynı yönde güçlenmeden "
@@ -1138,7 +1141,7 @@ def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) 
                       "fiyat hareketi ile alıcı ilgisinin birlikte güçlenmesini beklerdim.")
 
     candle = (
-        f"Son dört kapanış {snap.get('recent_close_shape', 'karışık')}; "
+        f"15 dakikalık grafikte son dört kapanış {snap.get('recent_close_shape', 'karışık')}; "
         f"dipler {snap.get('recent_low_shape', 'karışık')}, tepeler "
         f"{snap.get('recent_high_shape', 'karışık')} görünüyor."
     )
@@ -1178,15 +1181,11 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     what = _natural_manual_text(result.get("what_is_happening"))
     meaning = _natural_manual_text(result.get("meaning"))
     watch = _natural_manual_text(result.get("watch_out"))
-    timing_15m = _natural_manual_text(result.get("timing_15m"))
     actions = _manual_action_items(result.get("action_plan"))
 
     what = _manual_sentence_limit(_manual_remove_invented_levels(what, zones, current_price), 4)
     meaning = _manual_sentence_limit(_manual_remove_invented_levels(meaning, zones, current_price), 4)
     watch = _manual_sentence_limit(_manual_remove_invented_levels(watch, zones, current_price), 3)
-    timing_15m = _manual_sentence_limit(
-        _manual_remove_invented_levels(timing_15m, zones, current_price), 3
-    )
     actions = [cleaned for item in actions
                if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:6]
     # Direnç hesaplanmadıysa hayalî bir direnç üzerinden kâr planı kurulmasın.
@@ -1198,10 +1197,12 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     what = what or "Ana görünüm için yeterli açıklama üretilemedi."
     meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
     watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
-    timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot, hourly_snapshot)
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
     action_text = " ".join(actions)
+    # Model 15 dakikalık gözlemi eylem paragrafına katmazsa gerçek snapshot'tan aynı paragrafa ekle.
+    if "15 dakika" not in action_text.lower():
+        action_text = f"{action_text} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
 
     body = (
         f"Ne oluyor?\n{what}\n\n"
@@ -1213,8 +1214,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
         f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
         f"Neye dikkat edilmeli?\n{watch}\n\n"
-        f"Ben olsam ne yapardım?\n{action_text}\n\n"
-        f"15 dakikalık zamanlama: {timing_15m}"
+        f"Ben olsam ne yapardım?\n{action_text}"
     )
     return body.replace(f"{base}'nin", f"{base}'in")
 
@@ -1407,10 +1407,10 @@ Fear & Greed: {fg_text}
 Görevin kısa bir gösterge özeti çıkarmak değil, deneyimli bir yatırımcı gibi kanıtları tartıp anlaşılır bir görüş
 ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıralama; birlikte fiyat açısından ne
 anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
-Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma. Bir zaman dilimini ilk kez veya başlı başına belirtirken
-"1 saatlik", "4 saatlik", "1 günlük" ve "15 dakikalık" de. Aynı zaman diliminden devam eden doğal anlatımda
-"saatlik görünüm", "saatlik OBV" veya "günlük yön" demen doğrudur; her cümlede rakamı tekrarlama. Ancak
-4 saatlik zaman dilimini hiçbir yerde "dört saatlik" diye yazma; doğal anlatımda da daima "4 saatlik" kullan.
+Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma. Doğal analiz cümlelerinde "saatlik görünüm", "saatlik OBV",
+"4 saatlik yapı", "günlük yön" ve "15 dakikalık grafik" de. "1 saatlik" ve "1 günlük" ifadelerini doğal
+cümlelerde kullanma; bunlar yalnız kodun ürettiği bölge etiketlerinde yer alır. "Dört saatlik" yazma; daima
+"4 saatlik" kullan.
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
 "Gövde deformasyonu", "konsolide oluyor", "katılım kalitesi", "tepki adımı" gibi ne yapılacağını açıkça
@@ -1420,7 +1420,7 @@ gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içi
 "Rüzgâr arkası", "kurtarıcı", "tema", "çerçeve", "mekanik geri çekilme" gibi yapay benzetmeler kullanma.
 Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
 
-Ana yorum alanlarında yalnız 1 saatlik, 4 saatlik ve 1 günlük verileri kullan. 15 dakikalık veriyi yalnız
+Ana yorum alanlarında yalnız saatlik, 4 saatlik ve günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
 Sabit gösterge eşikleriyle mekanik karar verme; fiyat yapısını, hareket yönünü, hacim/OBV katılımını, BTC etkisini
 ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; küçük veya
@@ -1451,7 +1451,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "what_is_happening": {
                     "type": "string",
                     "description": (
-                        "İki-dört doğal ve açıklayıcı cümle. Coinin 1 saatlik, 4 saatlik ve 1 günlük ana yönünü; fiyat yapısını, "
+                        "İki-dört doğal ve açıklayıcı cümle. Coinin saatlik, 4 saatlik ve günlük ana yönünü; fiyat yapısını, "
                         "momentum ile para/hacim akışının uyumunu ve BTC bağlamını birlikte yorumla. Göstergeleri "
                         "listeleme, sonuçlarını açıkla. 15 dakikalık veriden söz etme."
                     ),
@@ -1482,20 +1482,13 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                         "küçük veya kademeli alımın somut koşulunu, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
                         "Cümleleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
                         "birinci tekil şahısla bitir; 'gözlemledim', 'izledim', 'yaptım' gibi geçmiş zaman kullanma. "
-                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık veriden söz etme."
-                    ),
-                },
-                "timing_15m": {
-                    "type": "string",
-                    "description": (
-                        "İki-üç doğal cümle. Yalnız 15 dakikalık güncel fiyat ve mum yapısı ile gösterge "
-                        "yönlerinden yararlanarak giriş zamanlamasının şu anda ne anlattığını açıkla. Hangi davranışın "
-                        "katılımı güçlendireceğini ve hangisinin beklemeyi gerektireceğini belirt; yeni fiyat seviyesi "
-                        "veya mekanik alım kuralı üretme."
+                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık mum yapısı ve gösterge "
+                        "yönlerini yalnız giriş zamanlamasını netleştiren yardımcı kanıt olarak bu paragrafın içine "
+                        "doğal biçimde kat; ayrı başlık, ayrı sonuç veya bağımsız değerlendirme oluşturma."
                     ),
                 },
             },
-            "required": ["what_is_happening", "meaning", "watch_out", "action_plan", "timing_15m"],
+            "required": ["what_is_happening", "meaning", "watch_out", "action_plan"],
         },
     }
     try:
