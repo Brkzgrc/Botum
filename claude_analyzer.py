@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.1"   # kullanıcı isteğiyle güncel coin görünümü + 15M yakın okuma
+_PROMPT_V_MANUAL  = "1.2"   # 15M yakın okuma: doğal, bağlamsal ve açık-mum farkındalıklı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -234,6 +234,7 @@ def _fetch_klines(symbol: str, interval: str, limit: int) -> dict | None:
             "highs":   [float(k[2]) for k in raw],
             "lows":    [float(k[3]) for k in raw],
             "volumes": [float(k[5]) for k in raw],
+            "close_times": [int(k[6]) for k in raw],
         }
     except Exception:
         return None
@@ -331,6 +332,7 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
         "macd_hist_direction": _direction(macd_hist.tolist()),
         "macd_cross": "üstünde" if macd.iloc[-1] >= macd_signal.iloc[-1] else "altında",
         "stoch_rsi": round(float(stoch_k.iloc[-1]), 1) if pd.notna(stoch_k.iloc[-1]) else None,
+        "stoch_signal": round(float(stoch_d.iloc[-1]), 1) if pd.notna(stoch_d.iloc[-1]) else None,
         "stoch_direction": _direction(stoch_k.tolist(), epsilon=1.0),
         "stoch_cross": "üstünde" if stoch_k.iloc[-1] >= stoch_d.iloc[-1] else "altında",
         "obv_direction": _direction(obv.tolist()),
@@ -352,6 +354,8 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
         "last_return_pct": round((price / last_open - 1) * 100, 2) if last_open else None,
         "last_body_range_ratio": round(abs(price - last_open) / last_range, 2),
         "last_close_location": round((price - last_low) / last_range, 2),
+        "last_candle_closed": bool(data.get("close_times") and
+                                   data["close_times"][-1] < int(time.time() * 1000)),
     }
 
 
@@ -1007,6 +1011,11 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
     cleaned = cleaned.replace("rüzgâr arkası kesintiye uğratabilir", "yükselişi destekleyen ortam zayıflayabilir")
+    cleaned = cleaned.replace("pauzasyon", "kısa süreli duraklama").replace("Pauzasyon", "Kısa süreli duraklama")
+    cleaned = cleaned.replace("büyük tablo", "ana görünüm").replace("Büyük tablo", "Ana görünüm")
+    cleaned = cleaned.replace("aşırı satın alım", "hızlı yükseliş").replace("aşırı satım", "hızlı düşüş")
+    cleaned = cleaned.replace("fırlatma senaryosu", "geri çekilme ihtimali")
+    cleaned = cleaned.replace("kapalı kapanışlar", "son mum hareketleri")
     return cleaned.strip()
 
 
@@ -1049,9 +1058,15 @@ def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str
             f"devam senaryosundan vazgeçip {next_zone} bölgesini beklerdim."
         )
     if stretched or (h1_weak >= 3 and btc_weak >= 2):
+        if stretched and h1_weak >= 3 and btc_weak >= 2:
+            reason = "Coin EMA20'den belirgin biçimde uzaklaşmış; ayrıca coin ile BTC'nin kısa vadeli gücü birlikte zayıflıyor."
+        elif stretched:
+            reason = "Coin kısa vadede EMA20'den belirgin biçimde uzaklaştığı için geri çekilme riski büyümüş."
+        else:
+            reason = "Coin ile BTC'nin kısa vadeli göstergeleri birlikte güç kaybettiği için yükselişin devamı henüz net değil."
         return (
             "Ben olsam ne yapardım?\n"
-            "Coin kısa vadede fiyat ortalamasından uzaklaşmış veya coin ile BTC birlikte güç kaybediyor; bu nedenle "
+            f"{reason} Bu nedenle "
             f"mevcut fiyatı kovalamazdım. {near} bölgesinde 1H kapanışın desteği korumasını ve para akışıyla birlikte "
             f"yukarı dönüş oluşmasını beklerdim; bölge kaybedilirse {next_zone} bölgesini izlerdim."
         )
@@ -1063,20 +1078,26 @@ def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str
     )
 
 
-def _manual_tf_text(label: str, snap: dict | None) -> str:
+def _manual_tf_text(label: str, snap: dict | None, include_candle_structure: bool = False) -> str:
     if not snap:
         return f"{label}: veri yok"
-    return (
+    text = (
         f"{label}: fiyat={_fmt(snap['price'])}; RSI={snap['rsi']} ve {snap['rsi_direction']}; "
         f"MACD={snap['macd_position']}, histogram {snap['macd_hist_direction']}, çizgi sinyalin {snap['macd_cross']}; "
-        f"StochRSI={snap['stoch_rsi']}, {snap['stoch_direction']}, K çizgisi D'nin {snap['stoch_cross']}; "
+        f"StochRSI hızlı={snap['stoch_rsi']}, yavaş={snap['stoch_signal']}, yön {snap['stoch_direction']}, "
+        f"hızlı çizgi yavaş çizginin {snap['stoch_cross']}; "
         f"OBV {snap['obv_direction']}; Williams%R={snap['willr']} ve {snap['willr_direction']}; "
         f"fiyat EMA20'nin {snap['ema20_relation']} ({snap['ema20_distance_atr']} ATR), "
-        f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x; "
-        f"son 4 kapanış={snap['recent_closes']}; son 4 tepe={snap['recent_highs']}; "
-        f"son 4 dip={snap['recent_lows']}; son mum değişimi=%{snap['last_return_pct']}, "
-        f"gövde/aralık={snap['last_body_range_ratio']}, kapanış konumu={snap['last_close_location']}"
+        f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x"
     )
+    if include_candle_structure:
+        status = "kapanmış" if snap["last_candle_closed"] else "halen açık ve değişebilir"
+        text += (
+            f"; son 4 mum kapanış={snap['recent_closes']}; tepe={snap['recent_highs']}; dip={snap['recent_lows']}; "
+            f"son mum {status}, anlık değişim=%{snap['last_return_pct']}, "
+            f"gövde/aralık={snap['last_body_range_ratio']}, kapanış konumu={snap['last_close_location']}"
+        )
+    return text
 
 
 def analyze_coin_on_demand(symbol: str) -> bool:
@@ -1116,7 +1137,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
     fg_val, fg_label = _fear_greed()
     fg_text = f"{fg_val} ({fg_label})" if fg_val is not None else "veri yok"
     technical_block = "\n".join(_manual_tf_text(x, coin[x]) for x in ("1H", "4H", "1D"))
-    timing_block = _manual_tf_text("15M", coin_15m)
+    timing_block = _manual_tf_text("15M", coin_15m, include_candle_structure=True)
     btc_block = "\n".join(_manual_tf_text(x, btc[x]) for x in ("1H", "4H", "1D"))
     zone_block = "\n".join([
         f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
@@ -1154,8 +1175,10 @@ Metafor kullanma ve yabancı dilden kelime kelime çevrilmiş cümle kurma. Gön
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
 RSI ve StochRSI'nın sayısal değerlerini metinde yazma; yalnız yükseliyor, düşüyor veya yön değiştiriyor diye anlat.
 RSI/StochRSI için herhangi bir sabit değerin aşılmasını teyit veya vazgeçme şartı yapma.
+"Aşırı alım/aşırı satım" etiketini tek başına bekleme veya giriş gerekçesi yapma; hareketin yönü ve fiyat yapısıyla anlamlandır.
 Uzak yapısal desteği güncel giriş bölgesi gibi sunma. İlk veya sonraki direnç verisi yoksa kesinlikle seviye tahmin etme;
 aynen "veriyle güvenilir bölge oluşmadı" yaz.
+Hesaplanan bölgeler dışında son mumların tepe, dip veya kapanış değerlerinden yeni destek, direnç ya da kırılma eşiği üretme.
 BTC için destek/direnç bölgesi verilmedi. Bu nedenle BTC hakkında hiçbir fiyat seviyesi, kapanış rakamı veya hedef uydurma;
 BTC'yi yalnız gösterge yönleri ve genel hareket bağlamıyla değerlendir.
 Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
@@ -1180,8 +1203,14 @@ BTC için rakamsal kapanış seviyesi yazma.
 
 En sonda yalnız şu etiketi ve ardından en fazla 2 kısa cümle yaz:
 15M zamanlama notu:
-15M'de şu anda ne olduğunu, giriş hareketinin güçlendiğini gösterebilecek somut gelişmeyi ve mevcut oluşumun bu
-bağlamda neden yanıltıcı olabileceğini anlat. Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme.
+En fazla 3 kısa ve doğal Türkçe cümle yaz. Gösterge durumlarını listelemekle yetinme; bunların fiyat hareketi açısından
+ne anlattığını açıkla. StochRSI'dan söz edersen "StochRSI hızlı/yavaş çizgisi", histogramdan söz edersen mutlaka
+"MACD histogramı" yaz; hangi göstergeye ait olduğu belirsiz "hızlı çizgi" veya "histogram" ifadeleri kullanma.
+15M'deki hareketin 1 ve 4 saatlik ana görünüm içinde kısa dinlenme mi, devam hazırlığı mı, yoksa geri çekilmenin
+derinleşme riski mi taşıdığını kanıtların ağırlığıyla yorumla. Giriş hareketini güçlendirebilecek somut fiyat davranışını
+ve mevcut yorumun yanlış çıkacağını gösterecek gelişmeyi açıkla. Son mum açıksa kapanmış gibi anlatma.
+Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük tablo", "pauzasyon", "aldatıcı",
+"kritik hale gelir" gibi ne yapılacağını açıklamayan ifadeler kullanma.
 "Ben olsam ne yapardım?" başlığı yazma; ana eylem bölümü teknik verilerden ayrıca oluşturulacaktır.
 "Senaryo içeride", "kenar bulmak", "fırsat değerlendirebilirim" gibi belirsiz ifadeler kullanma."""
     try:
