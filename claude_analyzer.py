@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.4"   # 15M eylem notunda somut güçlenme/bozulma koşulları
+_PROMPT_V_MANUAL  = "1.5"   # ana görünümü koru; 15M yalnız eylem notunda
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1239,7 +1239,8 @@ BTC'yi yalnız gösterge yönleri ve genel hareket bağlamıyla değerlendir.
 Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
 
 Ne oluyor?
-En fazla 2 kısa cümle.
+Tam olarak 2 kısa cümle. İlk cümlede yalnız ZEC'in 1H/4H/1D ana görünümünü, ikinci cümlede yalnız BTC bağlamını anlat.
+Bu bölümde 15M'den hiç söz etme.
 
 Ne anlama geliyor?
 En fazla 2 kısa cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş beklemek mi daha anlamlı açıkla.
@@ -1284,7 +1285,6 @@ Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük
         if "15M zamanlama notu:" in body:
             body, timing_note = body.split("15M zamanlama notu:", 1)
             timing_note = _clean_timing_note(timing_note)
-        body = _strip_15m_from_main(body)
         # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
         body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
         body = body.replace(f"{base}'nin", f"{base}'in")
