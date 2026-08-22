@@ -29,7 +29,17 @@ GEMINI_API_KEY          = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_K
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "v2").strip().lower()
-MANUAL_ANALYZER_V2_MODEL = os.getenv("MANUAL_ANALYZER_V2_MODEL", "gemini-2.5-flash-lite").strip()
+_MANUAL_ANALYZER_V2_MODEL_RAW = (
+    os.getenv("MANUAL_ANALYZER_V2_MODEL")
+    or os.getenv("GEMINI_MODEL")
+    or "gemini-3.5-flash-lite"
+).strip()
+MANUAL_ANALYZER_V2_MODEL = {
+    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite-preview": "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite-preview-09-2025": "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+}.get(_MANUAL_ANALYZER_V2_MODEL_RAW, _MANUAL_ANALYZER_V2_MODEL_RAW)
 MANUAL_ANALYZER_ALLOW_PAID_HAIKU = os.getenv(
     "MANUAL_ANALYZER_ALLOW_PAID_HAIKU", "false"
 ).strip().lower() == "true"
@@ -1695,9 +1705,70 @@ def _manual_tf_text(label: str, snap: dict | None, include_candle_structure: boo
     return text
 
 
+_MANUAL_V2_RESOLVED_MODEL = None
+
+
+def _resolve_manual_v2_model() -> str:
+    """Yapılandırılan modeli doğrular; kapanmışsa güncel kararlı Flash-Lite'ı seçer."""
+    global _MANUAL_V2_RESOLVED_MODEL
+    if _MANUAL_V2_RESOLVED_MODEL:
+        return _MANUAL_V2_RESOLVED_MODEL
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY bulunamadı")
+
+    available = []
+    page_token = None
+    for _ in range(4):
+        params = {"pageSize": 1000}
+        if page_token:
+            params["pageToken"] = page_token
+        response = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            headers={"x-goog-api-key": GEMINI_API_KEY},
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        for item in payload.get("models", []):
+            name = str(item.get("name", "")).removeprefix("models/")
+            methods = item.get("supportedGenerationMethods", [])
+            if "generateContent" in methods:
+                available.append(name)
+        page_token = payload.get("nextPageToken")
+        if not page_token:
+            break
+
+    if MANUAL_ANALYZER_V2_MODEL in available:
+        _MANUAL_V2_RESOLVED_MODEL = MANUAL_ANALYZER_V2_MODEL
+        return _MANUAL_V2_RESOLVED_MODEL
+
+    candidates = [
+        name for name in available
+        if re.fullmatch(r"gemini-\d+(?:\.\d+)*-flash-lite", name)
+    ]
+    if not candidates:
+        raise RuntimeError(
+            f"Yapılandırılan Gemini modeli erişilemiyor ({MANUAL_ANALYZER_V2_MODEL}) "
+            "ve kullanılabilir kararlı Flash-Lite modeli bulunamadı"
+        )
+
+    def version_key(name: str):
+        version = name.removeprefix("gemini-").removesuffix("-flash-lite")
+        return tuple(int(part) for part in version.split("."))
+
+    _MANUAL_V2_RESOLVED_MODEL = max(candidates, key=version_key)
+    print(
+        f"[MANUEL ANALYZER MODEL] {MANUAL_ANALYZER_V2_MODEL} erişilemiyor; "
+        f"güncel Flash-Lite={_MANUAL_V2_RESOLVED_MODEL} seçildi.",
+        flush=True,
+    )
+    return _MANUAL_V2_RESOLVED_MODEL
+
+
 def _manual_v2_gemini_analysis(base: str, current_price: float, technical_block: str,
                                timing_block: str, btc_block: str, zone_block: str,
-                               price_location_note: str) -> dict:
+                               price_location_note: str, model_name: str) -> dict:
     """Doğrulanmış piyasa verisini Flash-Lite ile sade bir danışman anlatımına dönüştürür."""
     if not GEMINI_API_KEY:
         raise ValueError("MANUAL_ANALYZER_MODE=v2 fakat GEMINI_API_KEY bulunamadı")
@@ -1757,7 +1828,7 @@ Yazım kuralları:
     }
     started = time.time()
     response = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{MANUAL_ANALYZER_V2_MODEL}:generateContent",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
         headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
         json={
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -1997,12 +2068,13 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
     }
     try:
         if MANUAL_ANALYZER_MODE == "v2":
-            print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} başlatıldı.", flush=True)
+            resolved_model = _resolve_manual_v2_model()
+            print(f"[MANUEL ANALYZER V2] {pair}: {resolved_model} başlatıldı.", flush=True)
             structured_result = _manual_v2_gemini_analysis(
                 base, current_price, technical_block, timing_block, btc_block,
-                zone_block, price_location_note,
+                zone_block, price_location_note, resolved_model,
             )
-            print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} analizi alındı.", flush=True)
+            print(f"[MANUEL ANALYZER V2] {pair}: {resolved_model} analizi alındı.", flush=True)
         elif MANUAL_ANALYZER_MODE == "legacy":
             import anthropic
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
