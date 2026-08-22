@@ -25,13 +25,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # AYARLAR
 # ============================================================
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY",       "")
+GEMINI_API_KEY          = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
+MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "legacy").strip().lower()
+MANUAL_ANALYZER_V2_MODEL = os.getenv("MANUAL_ANALYZER_V2_MODEL", "gemini-2.5-flash-lite").strip()
 
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
+_PROMPT_V_MANUAL_V2 = "1.0"  # Flash-Lite: doğrulanmış veriden danışman anlatımı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1688,6 +1692,103 @@ def _manual_tf_text(label: str, snap: dict | None, include_candle_structure: boo
     return text
 
 
+def _manual_v2_gemini_analysis(base: str, current_price: float, technical_block: str,
+                               timing_block: str, btc_block: str, zone_block: str,
+                               price_location_note: str) -> dict:
+    """Doğrulanmış piyasa verisini Flash-Lite ile sade bir danışman anlatımına dönüştürür."""
+    if not GEMINI_API_KEY:
+        raise ValueError("MANUAL_ANALYZER_MODE=v2 fakat GEMINI_API_KEY bulunamadı")
+
+    prompt = f"""Bir spot trader gibi düşün; fakat sonucu teknik terimlere hâkim olmayan bir müşteriye anlat.
+Amaç, {base} için şu dört soruya açık cevap vermektir:
+1. Coin ve genel piyasa şu anda nasıl görünüyor?
+2. Önemli teknik veriler birlikte ne anlatıyor?
+3. Şu an alım düşünülür mü, yoksa hangi koşul beklenir?
+4. Fikir hangi gelişmede geçersiz olur ve hesaplanmış direnç varsa nerede kâr alınabilir?
+
+Sabit RSI veya başka gösterge eşiklerine göre mekanik karar verme. Göstergelerin yönünü, fiyat yapısını,
+para akışını, BTC etkisini ve fiyatın destek/dirençlere konumunu birlikte değerlendir. Para akışı zayıf diye
+fırsatı otomatik eleme; bunun hareketin gücü ve süresi açısından ne anlama geldiğini söyle.
+
+[COIN — güncel fiyat {_fmt(current_price)}]
+{technical_block}
+
+[BTC]
+{btc_block}
+
+[HESAPLANMIŞ BÖLGELER]
+{zone_block}
+{price_location_note}
+
+[15 DAKİKALIK GİRİŞ ZAMANLAMASI — yalnız beklenti alanında kullan]
+{timing_block}
+
+Yazım kuralları:
+- general_assessment: Coinin saatlik, 4 saatlik ve günlük görünümünü ve BTC etkisini 3-4 doğal cümlede özetle.
+- technical_indicators: Yalnız karar açısından önemli 2-4 farklı teknik bulgu yaz; her bulgunun fiyat açısından
+  ne anlattığını aynı maddede açıkla.
+- trade_ideas: Mevcut fiyat, yakın destek ve varsa direnç arasında uygulanabilir olasılıkları 2-3 bağlantılı
+  cümlede karşılaştır.
+- expectation: En önemli alandır. Tek doğal paragrafta bugün ne yapacağını açıkça söyle: küçük alım, bekleme
+  veya alım düşünmeme seçeneklerinden birini seç. Nedenini, alım için görmek istediğin somut gelişmeyi,
+  vazgeçme koşulunu ve varsa kâr alma yaklaşımını müşterinin anlayacağı dille anlat. 15 dakikalık veriyi ayrı
+  başlık yapmadan yalnız giriş zamanlamasına yardımcı kanıt olarak bu paragrafa kat.
+- Kesin gelecek tahmini yapma. BTC zayıf diye coin fırsatını otomatik iptal etme.
+- Yeni fiyat seviyesi üretme; sayısal fiyat yazma. Bölgeler rapora kod tarafından eklenecek.
+- İngilizce işlem terimi kullanma. Teknik terim gerekiyorsa sade anlamını aynı cümlede açıkla.
+- "ana trend", "çerçeve", "tema", "saturasyon", "konuma alış", "momentum harita", "çizgiler kapanmış"
+  gibi yapay ifadeler kullanma. Kısa, doğal ve dilbilgisi düzgün Türkçe yaz.
+"""
+    schema = {
+        "type": "object",
+        "properties": {
+            "general_assessment": {"type": "string"},
+            "technical_indicators": {
+                "type": "array", "minItems": 2, "maxItems": 4,
+                "items": {"type": "string"},
+            },
+            "trade_ideas": {"type": "string"},
+            "expectation": {"type": "string"},
+        },
+        "required": ["general_assessment", "technical_indicators", "trade_ideas", "expectation"],
+    }
+    started = time.time()
+    response = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{MANUAL_ANALYZER_V2_MODEL}:generateContent",
+        headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+        json={
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+                "maxOutputTokens": 1400,
+                "temperature": 0.35,
+            },
+        },
+        timeout=45,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    raw_text = "".join(str(part.get("text") or "") for part in parts)
+    if not raw_text.strip():
+        raise ValueError("Flash-Lite boş yanıt döndürdü")
+    result = json.loads(raw_text)
+    if not isinstance(result, dict):
+        raise ValueError("Flash-Lite yapılandırılmış analiz döndürmedi")
+
+    usage = payload.get("usageMetadata") or {}
+    try:
+        _log_usage(
+            "manual_coin_analysis_v2", "gemini_flash_lite", _PROMPT_V_MANUAL_V2,
+            int(usage.get("promptTokenCount") or 0), int(usage.get("candidatesTokenCount") or 0),
+            time.time() - started, prompt_chars=len(prompt),
+        )
+    except Exception as exc:
+        print(f"[API_USAGE] Gemini kullanım kaydı yazılamadı: {exc}", flush=True)
+    return result
+
+
 def analyze_coin_on_demand(symbol: str) -> bool:
     """Thread 38 için, Portfolio sinyalinden bağımsız tek seferlik güncel coin analizi."""
     pair = symbol.replace("/", "").upper()
@@ -1710,7 +1811,11 @@ def analyze_coin_on_demand(symbol: str) -> bool:
         send_decision(f"#{html.escape(base)} için Binance Spot USDT verisi alınamadı; analiz yapılmadı.")
         print(f"[MANUEL ANALYZER] {pair}: güncel Binance verisi yok, API çağrılmadı.", flush=True)
         return False
-    if not ANTHROPIC_API_KEY:
+    if MANUAL_ANALYZER_MODE == "v2":
+        if not GEMINI_API_KEY:
+            send_decision("Manuel analiz v2 için GEMINI_API_KEY bulunamadı; ücretli modele geçiş yapılmadı.")
+            return False
+    elif not ANTHROPIC_API_KEY:
         send_decision("Manuel analiz için ANTHROPIC_API_KEY bulunamadı.")
         return False
 
@@ -1870,32 +1975,41 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         },
     }
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        started = time.time()
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
-            tools=[analysis_tool],
-            tool_choice={"type": "tool", "name": "submit_manual_analysis"},
-        )
-        _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
-                   resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
-                   prompt_chars=len(prompt))
-        tool_block = next(
-            (block for block in resp.content
-             if getattr(block, "type", "") == "tool_use"
-             and getattr(block, "name", "") == "submit_manual_analysis"),
-            None,
-        )
-        if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
-            raise ValueError("Yapılandırılmış manuel analiz alınamadı")
+        if MANUAL_ANALYZER_MODE == "v2":
+            print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} başlatıldı.", flush=True)
+            structured_result = _manual_v2_gemini_analysis(
+                base, current_price, technical_block, timing_block, btc_block,
+                zone_block, price_location_note,
+            )
+            print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} analizi alındı.", flush=True)
+        else:
+            import anthropic
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            started = time.time()
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1500,
+                messages=[{"role": "user", "content": prompt}],
+                tools=[analysis_tool],
+                tool_choice={"type": "tool", "name": "submit_manual_analysis"},
+            )
+            _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
+                       resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
+                       prompt_chars=len(prompt))
+            tool_block = next(
+                (block for block in resp.content
+                 if getattr(block, "type", "") == "tool_use"
+                 and getattr(block, "name", "") == "submit_manual_analysis"),
+                None,
+            )
+            if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
+                raise ValueError("Yapılandırılmış manuel analiz alınamadı")
+            structured_result = tool_block.input
         body = _render_manual_analysis(
-            tool_block.input, zones, base, current_price, coin_15m, coin.get("1H"), coin,
+            structured_result, zones, base, current_price, coin_15m, coin.get("1H"), coin,
         )
     except Exception as exc:
-        print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
+        print(f"[MANUEL ANALYZER {MANUAL_ANALYZER_MODE.upper()}] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
         return False
     stamp = _tr_now().strftime("%d/%m/%Y %H:%M")
