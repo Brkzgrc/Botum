@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "2.1"   # doğal Türkçe ve eylem planı anlatımı sıkılaştırıldı
+_PROMPT_V_MANUAL  = "2.2"   # 15 dakikalık zamanlama için veri tabanlı güvenli yedek eklendi
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1088,6 +1088,39 @@ def _manual_sentence_limit(text: str, limit: int) -> str:
     return " ".join(parts[:limit]).strip()
 
 
+def _manual_timing_fallback(snap: dict | None) -> str:
+    """Modelin 15 dakikalık metni kullanılamazsa gerçek snapshot'tan tutarlı bir özet üretir."""
+    if not snap:
+        return "15 dakikalık Binance verisi alınamadığı için giriş zamanlaması ayrıca değerlendirilemedi."
+
+    directions = [
+        snap.get("rsi_direction", ""), snap.get("macd_hist_direction", ""),
+        snap.get("stoch_direction", ""), snap.get("obv_direction", ""),
+        snap.get("willr_direction", ""), snap.get("ema20_direction", ""),
+    ]
+    upward = sum(any(word in str(value).lower() for word in ("yüks", "yukarı", "güçlen"))
+                 for value in directions)
+    downward = sum(any(word in str(value).lower() for word in ("düş", "aşağı", "zayıf"))
+                   for value in directions)
+
+    if upward >= downward + 2:
+        conclusion = ("Kısa vadeli hareket yeniden yukarı güçleniyor; yine de tek başına alım gerekçesi saymaz, "
+                      "saatlik görünümle aynı yönde kalıp kalmadığını izlerdim.")
+    elif downward >= upward + 2:
+        conclusion = ("Kısa vadeli hareket zayıflıyor; yeni alım düşünmeden önce satış baskısının durmasını ve "
+                      "göstergelerin yeniden yukarı dönmesini beklerdim.")
+    else:
+        conclusion = ("Kısa vadeli göstergeler aynı yönde değil; bu nedenle giriş zamanlamasının netleşmesi için "
+                      "fiyat hareketi ile alıcı ilgisinin birlikte güçlenmesini beklerdim.")
+
+    candle = (
+        f"Son dört kapanış {snap.get('recent_close_shape', 'karışık')}; "
+        f"dipler {snap.get('recent_low_shape', 'karışık')}, tepeler "
+        f"{snap.get('recent_high_shape', 'karışık')} görünüyor."
+    )
+    return f"{candle} {conclusion}"
+
+
 def _manual_remove_invented_levels(text: str, zones: dict, current_price: float) -> str:
     """Hesaplanan bölgeler ve güncel fiyat dışında uydurulan fiyatlı cümleleri çıkarır."""
     allowed = [float(current_price)] if current_price else []
@@ -1111,7 +1144,8 @@ def _manual_remove_invented_levels(text: str, zones: dict, current_price: float)
     return " ".join(kept)
 
 
-def _render_manual_analysis(result: dict, zones: dict, base: str, current_price: float = 0.0) -> str:
+def _render_manual_analysis(result: dict, zones: dict, base: str, current_price: float = 0.0,
+                            timing_snapshot: dict | None = None) -> str:
     """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
     if not isinstance(result, dict):
         raise ValueError("Yapılandırılmış manuel analiz alınamadı")
@@ -1136,7 +1170,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     what = what or "Ana görünüm için yeterli açıklama üretilemedi."
     meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
     watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
-    timing_15m = timing_15m or "15 dakikalık veriden güvenilir bir giriş zamanlaması çıkarılamadı."
+    timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot)
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
 
@@ -1451,7 +1485,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         )
         if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
             raise ValueError("Yapılandırılmış manuel analiz alınamadı")
-        body = _render_manual_analysis(tool_block.input, zones, base, current_price)
+        body = _render_manual_analysis(tool_block.input, zones, base, current_price, coin_15m)
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
