@@ -1022,7 +1022,7 @@ def _fmt_ind(v) -> str:
 def _manual_zone_text(zone: dict | None, current_price: float = 0.0) -> str:
     if not zone:
         return "veriyle güvenilir bölge oluşmadı"
-    tf_names = {"1H": "1 saatlik", "4H": "4 saatlik", "1D": "1 günlük", "1W": "1 haftalık"}
+    tf_names = {"1H": "1H", "4H": "4H", "1D": "1G", "1W": "1Hft"}
     tfs = " + ".join(tf_names.get(tf, tf) for tf in sorted(zone["tfs"]))
     text = f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
     if current_price:
@@ -1766,6 +1766,41 @@ def _resolve_manual_v2_model() -> str:
     return _MANUAL_V2_RESOLVED_MODEL
 
 
+def _manual_v2_quality_issues(result: dict) -> list[str]:
+    """Telegram'a gitmeden önce V2 anlatımındaki açık dil ve mantık kusurlarını yakalar."""
+    if not isinstance(result, dict):
+        return ["Yanıt JSON nesnesi değil."]
+    required = ("general_assessment", "technical_indicators", "trade_ideas", "expectation")
+    issues = [f"{field} alanı eksik." for field in required if not result.get(field)]
+    technical = result.get("technical_indicators")
+    if not isinstance(technical, list) or not 2 <= len(technical) <= 4:
+        issues.append("technical_indicators iki-dört maddelik liste olmalı.")
+
+    text = " ".join(
+        " ".join(value) if isinstance(value, list) else str(value or "")
+        for value in (result.get("general_assessment"), technical,
+                      result.get("trade_ideas"), result.get("expectation"))
+    )
+    lowered = text.lower()
+    forbidden = {
+        "lider kripto para": "Bitcoin için gereksiz 'lider kripto para' kalıbı kullanılmış.",
+        "bekleme politikası": "Yapay 'bekleme politikası' kalıbı kullanılmış.",
+        "büyük para girişi": "OBV'den kanıtsız 'büyük para girişi' sonucu çıkarılmış.",
+        "ana trend": "Yapay 'ana trend' kalıbı kullanılmış.",
+        "büyük trend": "Yapay 'büyük trend' kalıbı kullanılmış.",
+        "ana yön": "Belirsiz 'ana yön' kalıbı kullanılmış.",
+        "dört saatlik": "Zaman dilimi 'dört saatlik' yerine '4 saatlik' yazılmalı.",
+        "fiyatımız": "Fiyat sahiplenen bir dille anlatılmış.",
+        "coinimiz": "Coin sahiplenen bir dille anlatılmış.",
+        "yönümüz": "Yön sahiplenen bir dille anlatılmış.",
+    }
+    issues.extend(message for phrase, message in forbidden.items() if phrase in lowered)
+    expectation = str(result.get("expectation") or "").lower()
+    if "bekle" in expectation and "beklemekten vazgeç" in expectation:
+        issues.append("Bekleme tavrıyla 'beklemekten vazgeçme' koşulu mantıksal olarak çelişiyor.")
+    return issues
+
+
 def _manual_v2_gemini_analysis(base: str, current_price: float, technical_block: str,
                                timing_block: str, btc_block: str, zone_block: str,
                                price_location_note: str, model_name: str) -> dict:
@@ -1834,41 +1869,55 @@ Yazım kuralları:
         },
         "required": ["general_assessment", "technical_indicators", "trade_ideas", "expectation"],
     }
-    started = time.time()
-    response = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
-        headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
-        json={
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": schema,
-                "maxOutputTokens": 1400,
-                "temperature": 0.35,
+    request_prompt = prompt
+    for attempt in (1, 2):
+        started = time.time()
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+            headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+            json={
+                "contents": [{"role": "user", "parts": [{"text": request_prompt}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": schema,
+                    "maxOutputTokens": 1400,
+                    "temperature": 0.25 if attempt == 2 else 0.35,
+                },
             },
-        },
-        timeout=45,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    raw_text = "".join(str(part.get("text") or "") for part in parts)
-    if not raw_text.strip():
-        raise ValueError("Flash-Lite boş yanıt döndürdü")
-    result = json.loads(raw_text)
-    if not isinstance(result, dict):
-        raise ValueError("Flash-Lite yapılandırılmış analiz döndürmedi")
-
-    usage = payload.get("usageMetadata") or {}
-    try:
-        _log_usage(
-            "manual_coin_analysis_v2", "gemini_flash_lite", _PROMPT_V_MANUAL_V2,
-            int(usage.get("promptTokenCount") or 0), int(usage.get("candidatesTokenCount") or 0),
-            time.time() - started, prompt_chars=len(prompt),
+            timeout=45,
         )
-    except Exception as exc:
-        print(f"[API_USAGE] Gemini kullanım kaydı yazılamadı: {exc}", flush=True)
-    return result
+        response.raise_for_status()
+        payload = response.json()
+        parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        raw_text = "".join(str(part.get("text") or "") for part in parts)
+        if not raw_text.strip():
+            raise ValueError("Flash-Lite boş yanıt döndürdü")
+        result = json.loads(raw_text)
+        usage = payload.get("usageMetadata") or {}
+        try:
+            _log_usage(
+                "manual_coin_analysis_v2", model_name, _PROMPT_V_MANUAL_V2,
+                int(usage.get("promptTokenCount") or 0), int(usage.get("candidatesTokenCount") or 0),
+                time.time() - started, prompt_chars=len(request_prompt),
+            )
+        except Exception as exc:
+            print(f"[API_USAGE] Gemini kullanım kaydı yazılamadı: {exc}", flush=True)
+
+        issues = _manual_v2_quality_issues(result)
+        if not issues:
+            return result
+        print(
+            f"[MANUEL ANALYZER V2 KONTROL] deneme={attempt} | " + " | ".join(issues),
+            flush=True,
+        )
+        if attempt == 1:
+            request_prompt = (
+                prompt
+                + "\n\n[ÖNCEKİ YANITTA BULUNAN HATALAR]\n- "
+                + "\n- ".join(issues)
+                + "\nÖnceki yanıtı kopyalama. Aynı güncel verileri kullanarak bütün alanları bu hatalar olmadan yeniden yaz."
+            )
+    raise ValueError("Flash-Lite çıktısı iki denemede de kalite kontrolünden geçmedi")
 
 
 def analyze_coin_on_demand(symbol: str) -> bool:
