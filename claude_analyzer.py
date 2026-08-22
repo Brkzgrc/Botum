@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "3.0"   # 15 dakikalık gözlem doğal eylem paragrafına birleştirildi
+_PROMPT_V_MANUAL  = "4.0"   # kısa rapor şeması ve beklenti odaklı yorum
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1178,43 +1178,46 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     if not isinstance(result, dict):
         raise ValueError("Yapılandırılmış manuel analiz alınamadı")
 
-    what = _natural_manual_text(result.get("what_is_happening"))
-    meaning = _natural_manual_text(result.get("meaning"))
-    watch = _natural_manual_text(result.get("watch_out"))
-    actions = _manual_action_items(result.get("action_plan"))
+    general = _natural_manual_text(result.get("general_assessment"))
+    trade_ideas = _natural_manual_text(result.get("trade_ideas"))
+    expectation = _natural_manual_text(result.get("expectation"))
+    technical = _manual_action_items(result.get("technical_indicators"))
 
-    what = _manual_sentence_limit(_manual_remove_invented_levels(what, zones, current_price), 4)
-    meaning = _manual_sentence_limit(_manual_remove_invented_levels(meaning, zones, current_price), 4)
-    watch = _manual_sentence_limit(_manual_remove_invented_levels(watch, zones, current_price), 3)
-    actions = [cleaned for item in actions
-               if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:6]
-    # Direnç hesaplanmadıysa hayalî bir direnç üzerinden kâr planı kurulmasın.
+    general = _manual_sentence_limit(_manual_remove_invented_levels(general, zones, current_price), 3)
+    trade_ideas = _manual_sentence_limit(_manual_remove_invented_levels(trade_ideas, zones, current_price), 3)
+    expectation = _manual_sentence_limit(_manual_remove_invented_levels(expectation, zones, current_price), 6)
+    technical = [cleaned for item in technical
+                 if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:5]
+
+    # Direnç hesaplanmadıysa modelin hayalî direnç üzerinden senaryo kurmasını engelle.
     if not zones.get("resistance_1"):
-        actions = [item for item in actions if "direnç" not in item.lower()]
+        trade_ideas = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", trade_ideas)
+                               if "direnç" not in sentence.lower()).strip()
+        expectation = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", expectation)
+                               if "direnç" not in sentence.lower()).strip()
 
-    # API çağrısı ücretlendikten sonra küçük biçim sapmaları yüzünden cevabı
-    # tümden çöpe atma. Eksik alanı açıkça belirt, mevcut alanları yine göster.
-    what = what or "Ana görünüm için yeterli açıklama üretilemedi."
-    meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
-    watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
-    if not actions:
-        actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
-    action_text = " ".join(actions)
-    # Model 15 dakikalık gözlemi eylem paragrafına katmazsa gerçek snapshot'tan aynı paragrafa ekle.
-    if "15 dakika" not in action_text.lower():
-        action_text = f"{action_text} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
+    # Ücretli yanıtın küçük bir alanı boşsa bütün analizi çöpe atma.
+    general = general or "Ana yön, fiyatın konumu ve BTC etkisi birlikte değerlendirildiğinde görünüm net değil."
+    trade_ideas = trade_ideas or "Mevcut fiyat ile hesaplanan bölgeler arasında acele etmeden fiyat davranışını izlemek daha anlamlı görünüyor."
+    if not technical:
+        technical = ["Göstergelerden birbirini doğrulayan yeterli ve farklı teknik kanıt üretilemedi."]
+    expectation = expectation or "Mevcut verilerle acele karar vermez, fiyatın hesaplanan bölgelerde nasıl davrandığını izlerdim."
+    # Model 15 dakikalık gözlemi beklentiye katmazsa gerçek snapshot'tan aynı paragrafa ekle.
+    if "15 dakika" not in expectation.lower():
+        expectation = f"{expectation} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
 
     body = (
-        f"Ne oluyor?\n{what}\n\n"
-        f"Ne anlama geliyor?\n{meaning}\n\n"
-        "İzlenecek bölgeler\n"
+        f"🔍 Genel Değerlendirme\n{general}\n\n"
+        "📉 Teknik Göstergeler\n"
+        + "\n".join(f"• {item}" for item in technical)
+        + "\n\n📈 Kritik Seviyeler\n"
         f"• Yakın destek: {_manual_zone_text(zones.get('near_support'))}\n"
         f"• Sonraki destek: {_manual_zone_text(zones.get('next_support'))}\n"
         f"• Uzak yapısal destek: {_manual_zone_text(zones.get('structural_support'))}\n"
         f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
         f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
-        f"Neye dikkat edilmeli?\n{watch}\n\n"
-        f"Ben olsam ne yapardım?\n{action_text}"
+        f"📌 İşlem Fikirleri\n{trade_ideas}\n\n"
+        f"🌌 Benim Beklentim — Ne Yapardım?\n{expectation}"
     )
     return body.replace(f"{base}'nin", f"{base}'in")
 
@@ -1404,9 +1407,9 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Görevin kısa bir gösterge özeti çıkarmak değil, deneyimli bir yatırımcı gibi kanıtları tartıp anlaşılır bir görüş
-ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıralama; birlikte fiyat açısından ne
-anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
+Görevin kısa ve anlaşılır bir spot değerlendirmesi üretmektir. İlk bölümleri gereksiz ayrıntıyla uzatma;
+asıl muhakeme ve açıklama ağırlığını "Benim Beklentim — Ne Yapardım?" alanına ver. Aynı kanıtı farklı
+bölümlerde tekrarlama. Göstergeleri art arda saymak yerine birlikte fiyat açısından ne anlattıklarını açıkla.
 Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma. Doğal analiz cümlelerinde "saatlik görünüm", "saatlik OBV",
 "4 saatlik yapı", "günlük yön" ve "15 dakikalık grafik" de. "1 saatlik" ve "1 günlük" ifadelerini doğal
 cümlelerde kullanma; bunlar yalnız kodun ürettiği bölge etiketlerinde yer alır. "Dört saatlik" yazma; daima
@@ -1435,9 +1438,9 @@ Destek bölgelerinin varlığını geri çekilme riskinin olmadığına kanıt s
 olası tepki alanıdır. Fiyatın desteğe yaklaşmasını tek başına olumsuzluk gibi anlatma; asıl zayıflık desteğin
 kaybedilmesi veya satış baskısının güçlenmesidir. "Birinci/ikinci/üçüncü seviye" gibi tanımsız alanlar üretme.
 İlk direnç verisi yoksa eylem planında "sonraki direnç", direnç hedefi veya seviyeye dayalı kâr alma yazma.
-Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa küçük veya kademeli
-alımın hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
-somut fakat kesinlik iddiası olmadan anlat. Her bölüm gerekçesini de içersin; yalnız "beklerdim" deme.
+Beklenti alanında mevcut durumda ne yapacağını, nedenini, hangi koşulda küçük veya kademeli alımı
+değerlendireceğini, hangi gelişmede vazgeçeceğini ve direnç varsa kâr alma yaklaşımını sade biçimde anlat.
+15 dakikalık gözlemi yalnız bu düşüncenin giriş zamanlamasını netleştiren yardımcı kanıt olarak kullan.
 
 Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bir kez çağır ve bütün alanları doldur."""
 
@@ -1448,47 +1451,45 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "what_is_happening": {
+                "general_assessment": {
                     "type": "string",
                     "description": (
-                        "İki-dört doğal ve açıklayıcı cümle. Coinin saatlik, 4 saatlik ve günlük ana yönünü; fiyat yapısını, "
-                        "momentum ile para/hacim akışının uyumunu ve BTC bağlamını birlikte yorumla. Göstergeleri "
-                        "listeleme, sonuçlarını açıkla. 15 dakikalık veriden söz etme."
+                        "İki-üç kısa ve doğal cümle. Coinin ana yönünü, hareketin uzayıp uzamadığını, hacim/para "
+                        "akışını ve BTC etkisini özetle. Gösterge listesi yapma ve 15 dakikalık veriden söz etme."
                     ),
                 },
-                "meaning": {
-                    "type": "string",
+                "technical_indicators": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 5,
+                    "items": {"type": "string"},
                     "description": (
-                        "İki-dört doğal cümle. Kanıtların ağırlığına göre yükselişin devamı, dinlenme ve geri "
-                        "çekilme ihtimallerini karşılaştır. Trend güçlü kalıyorsa küçük veya kademeli alımın hangi "
-                        "somut durumda düşünülebileceğini de "
-                        "anlat; her durumda otomatik olarak beklemeyi önerme. 15 dakikalık veriden söz etme."
+                        "Yalnız karar açısından önemli, birbirinden farklı iki-beş kısa teknik bulgu. RSI, MACD, "
+                        "StochRSI, Williams %R, OBV, EMA, hacim ve ATR arasından yalnız anlamlı olanları seç. "
+                        "Ham değerleri tekrarlamak yerine fiyat açısından anlamını açıkla. 15 dakikalık veriyi kullanma."
                     ),
                 },
-                "watch_out": {
+                "trade_ideas": {
                     "type": "string",
                     "description": (
-                        "İki-üç doğal cümle. Olumlu görünümü neyin zayıflatacağını, devam ihtimalini neyin "
-                        "güçlendireceğini ve BTC'nin etkisini sade Türkçeyle anlat. 15 dakikalık veriden söz etme."
+                        "İki-üç bağlantılı doğal cümle. Mevcut fiyattan alım, yakın desteğe geri çekilme ve varsa "
+                        "direnç kırılımı olasılıklarını karşılaştır. Fikri neyin zayıflatacağını söyle. Liste veya "
+                        "kesin emir üretme; 15 dakikalık veriyi kullanma."
                     ),
                 },
-                "action_plan": {
+                "expectation": {
                     "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümü için birbiriyle bağlantılı üç-dört kısa ve doğal cümleden oluşan "
-                        "tek paragraf yaz. Madde işareti veya numara kullanma; her cümlede 'ben olsam' sözünü tekrarlama. "
-                        "Birinci tekil şahısla konuş ve emir kipinde kullanıcıya talimat verme. "
-                        "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
-                        "küçük veya kademeli alımın somut koşulunu, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
-                        "Cümleleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
-                        "birinci tekil şahısla bitir; 'gözlemledim', 'izledim', 'yaptım' gibi geçmiş zaman kullanma. "
-                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık mum yapısı ve gösterge "
-                        "yönlerini yalnız giriş zamanlamasını netleştiren yardımcı kanıt olarak bu paragrafın içine "
-                        "doğal biçimde kat; ayrı başlık, ayrı sonuç veya bağımsız değerlendirme oluşturma."
+                        "Raporun en önemli bölümü. Gerektiği kadar ayrıntılı fakat sade, tek doğal paragraf yaz. "
+                        "Birinci tekil şahısla; şu anda ne yapacağını, nedenini, olası giriş yaklaşımını, fikrini "
+                        "değiştirecek koşulu ve varsa kâr alma yaklaşımını açıkla. Belirsiz biçimde hem alıp hem "
+                        "bekleyeceğini söyleme; tercih ettiğin yaklaşımı netleştir. 15 dakikalık mum ve gösterge "
+                        "yönlerini yalnız giriş zamanlamasını destekleyen veya zayıflatan yardımcı kanıt olarak "
+                        "paragrafın içine kat. Ayrı 15 dakikalık başlığı veya bağımsız sonuç üretme."
                     ),
                 },
             },
-            "required": ["what_is_happening", "meaning", "watch_out", "action_plan"],
+            "required": ["general_assessment", "technical_indicators", "trade_ideas", "expectation"],
         },
     }
     try:
