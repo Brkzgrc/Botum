@@ -1179,6 +1179,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot)
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
+    action_text = " ".join(actions)
 
     body = (
         f"Ne oluyor?\n{what}\n\n"
@@ -1190,9 +1191,8 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
         f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
         f"Neye dikkat edilmeli?\n{watch}\n\n"
-        "Ben olsam ne yapardım?\n"
-        + "\n".join(f"• {item}" for item in actions)
-        + f"\n• 15 dakikalık zamanlama: {timing_15m}"
+        f"Ben olsam ne yapardım?\n{action_text}\n\n"
+        f"15 dakikalık zamanlama: {timing_15m}"
     )
     return body.replace(f"{base}'nin", f"{base}'in")
 
@@ -1451,11 +1451,12 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "action_plan": {
                     "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümünün her biri birinci tekil şahısla yazılmış, ayrı satırda "
-                        "dört-altı tamamlanmış maddesi. Emir kipinde kullanıcıya talimat verme. "
+                        "Ben olsam ne yapardım bölümü için birbiriyle bağlantılı dört-altı doğal cümleden oluşan "
+                        "tek paragraf yaz. Madde işareti veya numara kullanma; her cümlede 'ben olsam' sözünü tekrarlama. "
+                        "Birinci tekil şahısla konuş ve emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
                         "küçük veya kademeli alımın somut koşulunu, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
-                        "Bütün maddeleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
+                        "Cümleleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
                         "birinci tekil şahısla bitir; 'gözlemledim', 'izledim', 'yaptım' gibi geçmiş zaman kullanma. "
                         "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık veriden söz etme."
                     ),
