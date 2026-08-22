@@ -1378,7 +1378,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                     "description": (
                         "İki-dört doğal ve açıklayıcı cümle. Coinin 1 saatlik, 4 saatlik ve 1 günlük ana yönünü; fiyat yapısını, "
                         "momentum ile para/hacim akışının uyumunu ve BTC bağlamını birlikte yorumla. Göstergeleri "
-                        "listeleme, sonuçlarını açıkla. On beş dakikadan söz etme."
+                        "listeleme, sonuçlarını açıkla. 15 dakikalık veriden söz etme."
                     ),
                 },
                 "meaning": {
@@ -1386,14 +1386,14 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                     "description": (
                         "İki-dört doğal cümle. Kanıtların ağırlığına göre yükselişin devamı, dinlenme ve geri "
                         "çekilme ihtimallerini karşılaştır. Trend güçlü kalıyorsa kontrollü katılım ihtimalini de "
-                        "anlat; her durumda otomatik olarak beklemeyi önerme. On beş dakikadan söz etme."
+                        "anlat; her durumda otomatik olarak beklemeyi önerme. 15 dakikalık veriden söz etme."
                     ),
                 },
                 "watch_out": {
                     "type": "string",
                     "description": (
                         "İki-üç doğal cümle. Olumlu görünümü neyin zayıflatacağını, devam ihtimalini neyin "
-                        "güçlendireceğini ve BTC'nin etkisini sade Türkçeyle anlat. On beş dakikadan söz etme."
+                        "güçlendireceğini ve BTC'nin etkisini sade Türkçeyle anlat. 15 dakikalık veriden söz etme."
                     ),
                 },
                 "action_plan": {
@@ -1403,7 +1403,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                         "dört-altı tamamlanmış maddesi. Emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
                         "kontrollü katılım seçeneğini, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
-                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. On beş dakikadan söz etme."
+                        "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık veriden söz etme."
                     ),
                 },
                 "timing_15m": {
