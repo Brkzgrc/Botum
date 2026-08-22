@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "4.1"   # fiyat-bölge uzaklığı ve zaman dilimi sızıntısı koruması
+_PROMPT_V_MANUAL  = "4.2"   # güncel fiyat, kapsamlı genel görünüm ve tutarlı eylem tavrı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1023,6 +1023,10 @@ def _manual_zone_text(zone: dict | None, current_price: float = 0.0) -> str:
 def _clean_manual_analysis(text: str) -> str:
     """Model talimata rağmen Markdown/İngilizce kalıntısı üretirse Telegram öncesi temizle."""
     cleaned = (text or "").replace("\\*", "").replace("**", "").replace("__", "")
+    cleaned = cleaned.replace(
+        "OBV yükseliş patern yükselme katılımını destekliyor",
+        "OBV'nin yükselmesi alıcı katılımının sürdüğünü gösteriyor",
+    )
     cleaned = cleaned.replace("bounceback", "yukarı tepki").replace("bounce back", "yukarı tepki")
     cleaned = cleaned.replace("MACD histogram ufuklaşması", "MACD histogramının yataylaşması")
     cleaned = cleaned.replace("cari fiyat", "mevcut fiyat").replace("Cari fiyat", "Mevcut fiyat")
@@ -1051,6 +1055,15 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("genelge takip", "genel piyasayı takip")
     cleaned = cleaned.replace("ivmen", "ivmeyi")
     cleaned = cleaned.replace("daha samimi olabilirdim", "daha güvenli biçimde değerlendirebilirdim")
+    cleaned = cleaned.replace("hareketli ortalama dezeni", "hareketli ortalama düzeni")
+    cleaned = cleaned.replace("alım basısı", "alım baskısı")
+    cleaned = cleaned.replace("dinlenmea", "dinlenmeye")
+    cleaned = cleaned.replace("saatlik'de", "saatlik grafikte").replace("saatlik’de", "saatlik grafikte")
+    cleaned = cleaned.replace("katı destek", "destek")
+    cleaned = cleaned.replace("yükseliş patern yükselme katılımını", "alıcı katılımının sürdüğünü")
+    cleaned = cleaned.replace("patern", "yapı")
+    cleaned = cleaned.replace("küçük katılım", "küçük bir alım")
+    cleaned = cleaned.replace("destek sağlamaktadır", "ana görünümü destekliyor")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1154,6 +1167,29 @@ def _manual_remove_unsafe_current_buy(text: str, zones: dict, current_price: flo
             continue
         if sentence.strip():
             kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def _manual_enforce_single_stance(text: str) -> str:
+    """İlk tavır beklemekse sonraki cümlede mevcut fiyattan alım önermesine izin vermez."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+    if not sentences:
+        return ""
+    first = sentences[0].lower()
+    waiting = any(phrase in first for phrase in
+                  ("beklerdim", "alım düşünmezdim", "girmezdim", "uzak dururdum"))
+    if not waiting:
+        return " ".join(sentences)
+
+    kept = [sentences[0]]
+    for sentence in sentences[1:]:
+        lowered = sentence.lower()
+        current_entry = (any(phrase in lowered for phrase in
+                             ("mevcut fiyattan", "şu anki fiyattan", "hemen")) and
+                         any(word in lowered for word in ("alım", "pozisyon", "başlangıç", "giriş")))
+        if current_entry:
+            continue
+        kept.append(sentence)
     return " ".join(kept)
 
 
@@ -1264,6 +1300,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     technical = [_manual_remove_15m_leak(item) for item in technical]
     trade_ideas = _manual_remove_unsafe_current_buy(trade_ideas, zones, current_price)
     expectation = _manual_remove_unsafe_current_buy(expectation, zones, current_price)
+    expectation = _manual_enforce_single_stance(expectation)
 
     general = _manual_sentence_limit(_manual_remove_invented_levels(general, zones, current_price), 3)
     trade_ideas = _manual_sentence_limit(_manual_remove_invented_levels(trade_ideas, zones, current_price), 3)
@@ -1284,6 +1321,10 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
                                if keep_resistance_sentence(sentence)).strip()
         expectation = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", expectation)
                                if keep_resistance_sentence(sentence)).strip()
+        trade_ideas = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", trade_ideas)
+                               if not any(word in sentence.lower() for word in ("hedef", "yarın"))).strip()
+        expectation = " ".join(sentence for sentence in re.split(r"(?<=[.!?])\s+", expectation)
+                               if not any(word in sentence.lower() for word in ("hedef", "yarın"))).strip()
 
     # Ücretli yanıtın küçük bir alanı boşsa bütün analizi çöpe atma.
     general = general or "Ana yön, fiyatın konumu ve BTC etkisi birlikte değerlendirildiğinde görünüm net değil."
@@ -1296,7 +1337,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         expectation = f"{expectation} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
 
     body = (
-        f"🔍 Genel Değerlendirme\n{general}\n\n"
+        f"🔍 Genel Değerlendirme\nGüncel fiyat: {_fmt(current_price)}\n{general}\n\n"
         "📉 Teknik Göstergeler\n"
         + "\n".join(f"• {item}" for item in technical)
         + "\n\n📈 Kritik Seviyeler\n"
@@ -1515,6 +1556,9 @@ koşulda küçük veya kademeli alımı değerlendireceğini açıkça söyle. "
 gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içinde yeniden açıklama.
 "Rüzgâr arkası", "kurtarıcı", "tema", "çerçeve", "mekanik geri çekilme" gibi yapay benzetmeler kullanma.
 Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
+Genel değerlendirme yalnız bir gösterge özeti değildir. Coinin ana yönünü, hareketin normal mi yoksa uzamış mı
+olduğunu, hacim veya OBV'nin fiyatı destekleyip desteklemediğini, BTC'nin etkisini ve en önemli kısa vadeli riski
+üç-dört doğal cümlede birlikte anlat. Coinin kendisini anlatmadan yalnız OBV veya BTC hakkında iki cümle yazma.
 
 Ana yorum alanlarında yalnız saatlik, 4 saatlik ve günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
@@ -1557,8 +1601,10 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "general_assessment": {
                     "type": "string",
                     "description": (
-                        "İki-üç kısa ve doğal cümle. Coinin ana yönünü, hareketin uzayıp uzamadığını, hacim/para "
-                        "akışını ve BTC etkisini özetle. Gösterge listesi yapma ve 15 dakikalık veriden söz etme."
+                        "Üç-dört kısa ve doğal cümle. Coinin ana yönünü, hareketin uzayıp uzamadığını, hacim/para "
+                        "akışının fiyatı destekleyip desteklemediğini, BTC etkisini ve en önemli kısa vadeli riski "
+                        "birlikte özetle. Yalnız OBV veya BTC özeti yazma; gösterge listesi yapma ve 15 dakikalık "
+                        "veriden söz etme."
                     ),
                 },
                 "technical_indicators": {
@@ -1588,7 +1634,9 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                         "değiştirecek koşulu ve varsa kâr alma yaklaşımını açıkla. Belirsiz biçimde hem alıp hem "
                         "bekleyeceğini söyleme; tercih ettiğin yaklaşımı netleştir. 15 dakikalık mum ve gösterge "
                         "yönlerini yalnız giriş zamanlamasını destekleyen veya zayıflatan yardımcı kanıt olarak "
-                        "paragrafın içine kat. Ayrı 15 dakikalık başlığı veya bağımsız sonuç üretme."
+                        "paragrafın içine kat. İlk cümlede tek bir mevcut tavır seç; beklemeyi seçtiysen sonraki "
+                        "cümlede mevcut fiyattan başlangıç alımı önerme. Ayrı 15 dakikalık başlığı veya bağımsız "
+                        "sonuç üretme."
                     ),
                 },
             },
