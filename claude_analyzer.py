@@ -1865,28 +1865,6 @@ def _manual_v2_normalize_language(result: dict) -> tuple[dict, list[str]]:
     return normalized, list(dict.fromkeys(applied))
 
 
-def _manual_v2_snapshot_direction(snap: dict | None) -> str:
-    """Tek bir göstergeye bağlanmadan zaman diliminin yönünü sınıflandırır."""
-    if not snap:
-        return "mixed"
-    up = 0
-    down = 0
-    up += snap.get("ema20_relation") == "üstünde"
-    down += snap.get("ema20_relation") == "altında"
-    up += snap.get("ema_order") == "20>50>100>200"
-    up += snap.get("macd_position") == "pozitif"
-    down += snap.get("macd_position") == "negatif"
-    for key in ("rsi_direction", "macd_hist_direction", "obv_direction"):
-        value = str(snap.get(key) or "").lower()
-        up += "yüks" in value
-        down += "düş" in value
-    if up >= 4 and up >= down + 2:
-        return "up"
-    if down >= 4 and down >= up + 2:
-        return "down"
-    return "mixed"
-
-
 def _manual_v2_zone_gap(zone: dict | None, price: float, side: str) -> float | None:
     if not zone or not price:
         return None
@@ -1916,6 +1894,8 @@ seçeneklerle karar planını doldur.
 
 action: Şu anki tavır. wait=bekle, small_buy=yalnız yüksek riskli küçük başlangıç düşünülebilir,
 no_buy=mevcut koşullarda alım düşünme.
+coin_1h_view, coin_4h_view, coin_1d_view: Her zaman diliminin göstergelerini birlikte okuyarak görünümü
+up, mixed veya down olarak değerlendir; tek göstergeye bağlanma.
 reasons: Kararı en iyi açıklayan en fazla üç farklı neden.
 entry_trigger: Alımı yeniden değerlendirmek için gereken somut gelişme.
 invalidation: Mevcut alım düşüncesini bozan gelişme.
@@ -1937,6 +1917,9 @@ btc_effect: BTC'nin coin üzerindeki güncel etkisi."""
         "type": "object",
         "properties": {
             "action": {"type": "string", "enum": enums["action"]},
+            "coin_1h_view": {"type": "string", "enum": ["up", "mixed", "down"]},
+            "coin_4h_view": {"type": "string", "enum": ["up", "mixed", "down"]},
+            "coin_1d_view": {"type": "string", "enum": ["up", "mixed", "down"]},
             "reasons": {"type": "array", "minItems": 1, "maxItems": 3,
                         "items": {"type": "string", "enum": enums["reason"]}},
             "entry_trigger": {"type": "string", "enum": enums["entry"]},
@@ -1945,7 +1928,8 @@ btc_effect: BTC'nin coin üzerindeki güncel etkisi."""
             "timing_15m": {"type": "string", "enum": enums["timing"]},
             "btc_effect": {"type": "string", "enum": enums["btc"]},
         },
-        "required": ["action", "reasons", "entry_trigger", "invalidation",
+        "required": ["action", "coin_1h_view", "coin_4h_view", "coin_1d_view",
+                     "reasons", "entry_trigger", "invalidation",
                      "take_profit", "timing_15m", "btc_effect"],
     }
     started = time.time()
@@ -1979,10 +1963,11 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
                                  timing_snapshot: dict | None, coin_snapshots: dict,
                                  btc_snapshots: dict) -> str:
     """Kontrollü karar planını güncel sayısal verilerle değişmez Türkçe rapora dönüştürür."""
-    coin_dirs = {key: _manual_v2_snapshot_direction(coin_snapshots.get(key))
-                 for key in ("1H", "4H", "1D")}
-    btc_dirs = {key: _manual_v2_snapshot_direction(btc_snapshots.get(key))
-                for key in ("1H", "4H", "1D")}
+    coin_dirs = {
+        "1H": plan.get("coin_1h_view", "mixed"),
+        "4H": plan.get("coin_4h_view", "mixed"),
+        "1D": plan.get("coin_1d_view", "mixed"),
+    }
 
     if all(value == "up" for value in coin_dirs.values()):
         coin_view = f"{base} saatlik, 4 saatlik ve günlük grafiklerde yükseliş yapısını koruyor."
@@ -1997,11 +1982,11 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
 
     btc_effect = plan.get("btc_effect")
     if btc_effect == "supportive":
-        btc_view = "Bitcoin'in görünümü ZEC üzerindeki genel piyasa baskısını azaltıyor."
+        btc_view = f"Bitcoin'in görünümü {base} üzerindeki genel piyasa baskısını azaltıyor."
     elif btc_effect == "caution":
-        btc_view = "Bitcoin'deki kısa vadeli zayıflama ZEC'in yükseliş hızını sınırlayabilir."
+        btc_view = f"Bitcoin'deki kısa vadeli zayıflama {base} üzerindeki yükseliş hızını sınırlayabilir."
     else:
-        btc_view = "Bitcoin şu anda ZEC için belirgin bir destek veya baskı oluşturmuyor."
+        btc_view = f"Bitcoin şu anda {base} için belirgin bir destek veya baskı oluşturmuyor."
 
     obv_up = [key for key in ("1H", "4H", "1D")
               if "yüks" in str((coin_snapshots.get(key) or {}).get("obv_direction", ""))]
