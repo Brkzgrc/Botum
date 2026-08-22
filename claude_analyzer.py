@@ -14,6 +14,7 @@ import json
 import html
 import threading
 import time
+import re
 import requests
 import numpy as np
 import pandas as pd
@@ -30,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.2"   # 15M yakın okuma: doğal, bağlamsal ve açık-mum farkındalıklı
+_PROMPT_V_MANUAL  = "1.3"   # 15M yalnız eylem notunda; sayısal uydurma ve token azaltma
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -324,6 +325,15 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
     last_high = float(data["highs"][-1])
     last_low = float(data["lows"][-1])
     last_range = max(last_high - last_low, 1e-12)
+    def _shape(values) -> str:
+        vals = [float(x) for x in values[-4:]]
+        rises = sum(vals[i] > vals[i - 1] for i in range(1, len(vals)))
+        falls = sum(vals[i] < vals[i - 1] for i in range(1, len(vals)))
+        if rises >= 3: return "düzenli yükseliyor"
+        if falls >= 3: return "düzenli düşüyor"
+        if rises > falls: return "genel olarak yükseliyor"
+        if falls > rises: return "genel olarak düşüyor"
+        return "karışık/yatay"
     return {
         "price": price,
         "rsi": round(float(rsi.iloc[-1]), 1) if pd.notna(rsi.iloc[-1]) else None,
@@ -356,6 +366,9 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
         "last_close_location": round((price - last_low) / last_range, 2),
         "last_candle_closed": bool(data.get("close_times") and
                                    data["close_times"][-1] < int(time.time() * 1000)),
+        "recent_close_shape": _shape(c.tail(4).tolist()),
+        "recent_high_shape": _shape(h.tail(4).tolist()),
+        "recent_low_shape": _shape(l.tail(4).tolist()),
     }
 
 
@@ -1016,7 +1029,40 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("aşırı satın alım", "hızlı yükseliş").replace("aşırı satım", "hızlı düşüş")
     cleaned = cleaned.replace("fırlatma senaryosu", "geri çekilme ihtimali")
     cleaned = cleaned.replace("kapalı kapanışlar", "son mum hareketleri")
+    cleaned = cleaned.replace("trenditli", "trend yönündeki").replace("ATT", "fiyat birimi")
+    # Model bazen talep edilmediği halde başa ikinci bir başlık koyuyor.
+    if "Ne oluyor?" in cleaned:
+        cleaned = "Ne oluyor?" + cleaned.split("Ne oluyor?", 1)[1]
     return cleaned.strip()
+
+
+def _strip_15m_from_main(text: str) -> str:
+    """15M gözleminin model tarafından ana analiz bölümlerine sızmasını engeller."""
+    kept = []
+    for line in (text or "").splitlines():
+        if "15M" not in line and "15 dakika" not in line.lower():
+            kept.append(line)
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", line.strip())
+        clean_sentences = [s for s in sentences
+                           if "15M" not in s and "15 dakika" not in s.lower()]
+        if clean_sentences:
+            kept.append(" ".join(clean_sentences))
+    return "\n".join(kept).strip()
+
+
+def _clean_timing_note(text: str) -> str:
+    """15M notunu kısa tutar ve modelin hesaplanmamış sayısal eşik eklemesini siler."""
+    sentences = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+    safe = []
+    for sentence in sentences:
+        # 1H/4H/1D/15M gibi zaman dilimleri eşleşmez; bağımsız fiyat rakamları eşleşir.
+        if re.search(r"(?<![A-Za-z])\d+(?:[.,]\d+)?(?![A-Za-z])", sentence):
+            continue
+        safe.append(sentence)
+        if len(safe) == 2:
+            break
+    return " ".join(safe).strip()
 
 
 def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str:
@@ -1078,24 +1124,27 @@ def _manual_action_text(price: float, zones: dict, coin: dict, btc: dict) -> str
     )
 
 
-def _manual_tf_text(label: str, snap: dict | None, include_candle_structure: bool = False) -> str:
+def _manual_tf_text(label: str, snap: dict | None, include_candle_structure: bool = False,
+                    include_price: bool = True) -> str:
     if not snap:
         return f"{label}: veri yok"
+    price_text = f"fiyat={_fmt(snap['price'])}; " if include_price else ""
     text = (
-        f"{label}: fiyat={_fmt(snap['price'])}; RSI={snap['rsi']} ve {snap['rsi_direction']}; "
+        f"{label}: {price_text}RSI {snap['rsi_direction']}; "
         f"MACD={snap['macd_position']}, histogram {snap['macd_hist_direction']}, çizgi sinyalin {snap['macd_cross']}; "
-        f"StochRSI hızlı={snap['stoch_rsi']}, yavaş={snap['stoch_signal']}, yön {snap['stoch_direction']}, "
+        f"StochRSI yön {snap['stoch_direction']}, "
         f"hızlı çizgi yavaş çizginin {snap['stoch_cross']}; "
-        f"OBV {snap['obv_direction']}; Williams%R={snap['willr']} ve {snap['willr_direction']}; "
+        f"OBV {snap['obv_direction']}; Williams%R {snap['willr_direction']}; "
         f"fiyat EMA20'nin {snap['ema20_relation']} ({snap['ema20_distance_atr']} ATR), "
         f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x"
     )
     if include_candle_structure:
         status = "kapanmış" if snap["last_candle_closed"] else "halen açık ve değişebilir"
         text += (
-            f"; son 4 mum kapanış={snap['recent_closes']}; tepe={snap['recent_highs']}; dip={snap['recent_lows']}; "
-            f"son mum {status}, anlık değişim=%{snap['last_return_pct']}, "
-            f"gövde/aralık={snap['last_body_range_ratio']}, kapanış konumu={snap['last_close_location']}"
+            f"; son dört kapanış {snap['recent_close_shape']}; son dört tepe {snap['recent_high_shape']}; "
+            f"son dört dip {snap['recent_low_shape']}; son mum {status}; "
+            f"mum gövdesi {'belirgin' if snap['last_body_range_ratio'] >= 0.55 else 'sınırlı'}, "
+            f"kapanış mum aralığının {'üst tarafında' if snap['last_close_location'] >= 0.65 else 'alt tarafında' if snap['last_close_location'] <= 0.35 else 'orta tarafında'}"
         )
     return text
 
@@ -1138,7 +1187,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
     fg_text = f"{fg_val} ({fg_label})" if fg_val is not None else "veri yok"
     technical_block = "\n".join(_manual_tf_text(x, coin[x]) for x in ("1H", "4H", "1D"))
     timing_block = _manual_tf_text("15M", coin_15m, include_candle_structure=True)
-    btc_block = "\n".join(_manual_tf_text(x, btc[x]) for x in ("1H", "4H", "1D"))
+    btc_block = "\n".join(_manual_tf_text(x, btc[x], include_price=False) for x in ("1H", "4H", "1D"))
     zone_block = "\n".join([
         f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
         f"Sonraki destek: {_manual_zone_text(zones['next_support'])}",
@@ -1169,7 +1218,7 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Toplam yanıt yaklaşık 1.800–2.100 karakter olsun ve bütün bölümleri mutlaka tamamla.
+Toplam yanıt yaklaşık 1.500–1.800 karakter olsun ve bütün bölümleri mutlaka tamamla.
 Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
 Metafor kullanma ve yabancı dilden kelime kelime çevrilmiş cümle kurma. Göndermeden önce her cümleyi doğal Türkçe açısından düzelt.
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
@@ -1209,6 +1258,7 @@ ne anlattığını açıkla. StochRSI'dan söz edersen "StochRSI hızlı/yavaş 
 15M'deki hareketin 1 ve 4 saatlik ana görünüm içinde kısa dinlenme mi, devam hazırlığı mı, yoksa geri çekilmenin
 derinleşme riski mi taşıdığını kanıtların ağırlığıyla yorumla. Giriş hareketini güçlendirebilecek somut fiyat davranışını
 ve mevcut yorumun yanlış çıkacağını gösterecek gelişmeyi açıkla. Son mum açıksa kapanmış gibi anlatma.
+Hiçbir sayısal fiyat seviyesi yazma; yalnız fiyat yapısını ve gösterge yönlerini kullan.
 Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük tablo", "pauzasyon", "aldatıcı",
 "kritik hale gelir" gibi ne yapılacağını açıklamayan ifadeler kullanma.
 "Ben olsam ne yapardım?" başlığı yazma; ana eylem bölümü teknik verilerden ayrıca oluşturulacaktır.
@@ -1217,7 +1267,7 @@ Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         started = time.time()
-        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=900,
+        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=800,
                                       messages=[{"role": "user", "content": prompt}])
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
@@ -1226,7 +1276,8 @@ Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük
         timing_note = ""
         if "15M zamanlama notu:" in body:
             body, timing_note = body.split("15M zamanlama notu:", 1)
-            timing_note = timing_note.strip()
+            timing_note = _clean_timing_note(timing_note)
+        body = _strip_15m_from_main(body)
         # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
         body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
         body = body.replace(f"{base}'nin", f"{base}'in")
