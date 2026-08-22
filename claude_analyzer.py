@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.9"   # doğal yorum + kod tarafında uzunluk ve uydurma seviye koruması
+_PROMPT_V_MANUAL  = "2.0"   # zaman dilimi belirtimi ile doğal anlatım ayrıldı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1344,7 +1344,10 @@ Fear & Greed: {fg_text}
 Görevin kısa bir gösterge özeti çıkarmak değil, deneyimli bir yatırımcı gibi kanıtları tartıp anlaşılır bir görüş
 ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıralama; birlikte fiyat açısından ne
 anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
-Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma; tam olarak "1 saatlik", "4 saatlik", "1 günlük" ve "15 dakikalık" de.
+Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma. Bir zaman dilimini ilk kez veya başlı başına belirtirken
+"1 saatlik", "4 saatlik", "1 günlük" ve "15 dakikalık" de. Aynı zaman diliminden devam eden doğal anlatımda
+"saatlik görünüm", "saatlik OBV", "dört saatlik yapı" veya "günlük yön" demen doğrudur; her cümlede rakamı
+tekrarlama.
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
 "Gövde deformasyonu", "konsolide oluyor", "katılım kalitesi", "tepki adımı" gibi ne yapılacağını açıkça
