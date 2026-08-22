@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "2.3"   # destek riski ve dirençsiz eylem planı çelişkileri engellendi
+_PROMPT_V_MANUAL  = "2.4"   # doğal dil ve 15 dakikalık/saatlik yön uyumu geliştirildi
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1025,6 +1025,13 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("yükseliş yapıyor", "yükseliyor")
     cleaned = cleaned.replace("belirgin bir sınama (yeniden test)", "belirgin bir yeniden test")
     cleaned = cleaned.replace("Tam bir geri çekilme riski bulunmamakta", "Geri çekilme riski tamamen ortadan kalkmış değil")
+    cleaned = cleaned.replace("rüzgar arkasına karşı olsa da", "kısa vadeli piyasa desteği zayıf olsa da")
+    cleaned = cleaned.replace("rüzgâr arkasına karşı olsa da", "kısa vadeli piyasa desteği zayıf olsa da")
+    cleaned = cleaned.replace("bağlamsal yükseliş temaı", "ana yükseliş görünümü")
+    cleaned = cleaned.replace("yükseliş temaı", "yükseliş görünümü")
+    cleaned = cleaned.replace("mekanik bir geri çekilme", "kısa vadeli bir geri çekilme")
+    cleaned = cleaned.replace("mekanik satın almaktan", "alım yapmaktan")
+    cleaned = cleaned.replace("henüz kurtarıcı", "ana görünümü destekliyor")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1091,7 +1098,7 @@ def _manual_sentence_limit(text: str, limit: int) -> str:
     return " ".join(parts[:limit]).strip()
 
 
-def _manual_timing_fallback(snap: dict | None) -> str:
+def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) -> str:
     """Modelin 15 dakikalık metni kullanılamazsa gerçek snapshot'tan tutarlı bir özet üretir."""
     if not snap:
         return "15 dakikalık Binance verisi alınamadığı için giriş zamanlaması ayrıca değerlendirilemedi."
@@ -1106,9 +1113,23 @@ def _manual_timing_fallback(snap: dict | None) -> str:
     downward = sum(any(word in str(value).lower() for word in ("düş", "aşağı", "zayıf"))
                    for value in directions)
 
+    hourly_directions = [] if not hourly_snap else [
+        hourly_snap.get("rsi_direction", ""), hourly_snap.get("macd_hist_direction", ""),
+        hourly_snap.get("stoch_direction", ""), hourly_snap.get("obv_direction", ""),
+        hourly_snap.get("willr_direction", ""), hourly_snap.get("ema20_direction", ""),
+    ]
+    hourly_up = sum(any(word in str(value).lower() for word in ("yüks", "yukarı", "güçlen"))
+                    for value in hourly_directions)
+    hourly_down = sum(any(word in str(value).lower() for word in ("düş", "aşağı", "zayıf"))
+                      for value in hourly_directions)
+
     if upward >= downward + 2:
-        conclusion = ("Kısa vadeli hareket yeniden yukarı güçleniyor; yine de tek başına alım gerekçesi saymaz, "
-                      "saatlik görünümle aynı yönde kalıp kalmadığını izlerdim.")
+        if hourly_up >= hourly_down + 2:
+            conclusion = ("15 dakikalık hareket saatlik olumlu görünümle aynı yönde güçleniyor; bu, giriş "
+                          "zamanlamasını destekliyor ancak fiyatın bulunduğu bölgeyi ve hacmi yine dikkate alırdım.")
+        else:
+            conclusion = ("Kısa vadeli hareket yeniden yukarı güçleniyor; saatlik görünüm aynı yönde güçlenmeden "
+                          "bunu tek başına alım gerekçesi saymazdım.")
     elif downward >= upward + 2:
         conclusion = ("Kısa vadeli hareket zayıflıyor; yeni alım düşünmeden önce satış baskısının durmasını ve "
                       "göstergelerin yeniden yukarı dönmesini beklerdim.")
@@ -1148,7 +1169,8 @@ def _manual_remove_invented_levels(text: str, zones: dict, current_price: float)
 
 
 def _render_manual_analysis(result: dict, zones: dict, base: str, current_price: float = 0.0,
-                            timing_snapshot: dict | None = None) -> str:
+                            timing_snapshot: dict | None = None,
+                            hourly_snapshot: dict | None = None) -> str:
     """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
     if not isinstance(result, dict):
         raise ValueError("Yapılandırılmış manuel analiz alınamadı")
@@ -1176,7 +1198,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     what = what or "Ana görünüm için yeterli açıklama üretilemedi."
     meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
     watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
-    timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot)
+    timing_15m = timing_15m or _manual_timing_fallback(timing_snapshot, hourly_snapshot)
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
     action_text = " ".join(actions)
@@ -1395,6 +1417,8 @@ retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız sp
 anlatmayan yapay ifadeler kullanma. "Kontrollü katılım" gibi soyut bir kalıp kullanma; bunun yerine hangi somut
 koşulda küçük veya kademeli alımı değerlendireceğini açıkça söyle. "RSI yükseliş yapıyor" yerine "RSI yükseliyor"
 gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içinde yeniden açıklama.
+"Rüzgâr arkası", "kurtarıcı", "tema", "çerçeve", "mekanik geri çekilme" gibi yapay benzetmeler kullanma.
+Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
 
 Ana yorum alanlarında yalnız 1 saatlik, 4 saatlik ve 1 günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
@@ -1451,7 +1475,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "action_plan": {
                     "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümü için birbiriyle bağlantılı dört-altı doğal cümleden oluşan "
+                        "Ben olsam ne yapardım bölümü için birbiriyle bağlantılı üç-dört kısa ve doğal cümleden oluşan "
                         "tek paragraf yaz. Madde işareti veya numara kullanma; her cümlede 'ben olsam' sözünü tekrarlama. "
                         "Birinci tekil şahısla konuş ve emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
@@ -1496,7 +1520,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         )
         if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
             raise ValueError("Yapılandırılmış manuel analiz alınamadı")
-        body = _render_manual_analysis(tool_block.input, zones, base, current_price, coin_15m)
+        body = _render_manual_analysis(tool_block.input, zones, base, current_price, coin_15m, coin.get("1H"))
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
