@@ -21,15 +21,17 @@ _PRICES = {
     "haiku":  {"in": 0.80,  "out": 4.00},   # claude-haiku-4-5
     "sonnet": {"in": 3.00,  "out": 15.00},  # claude-sonnet-4-6
     "opus":   {"in": 15.00, "out": 75.00},  # claude-opus-*
+    "gemini_flash_lite": {"in": 0.00, "out": 0.00},  # ücretsiz Gemini katmanı
 }
 
 
 def _model_key(model: str) -> str:
-    m = model.lower()
+    m = model.lower().replace("-", "_")
+    if "gemini" in m and "flash_lite" in m: return "gemini_flash_lite"
     if "haiku"  in m: return "haiku"
     if "sonnet" in m: return "sonnet"
     if "opus"   in m: return "opus"
-    return "haiku"
+    return "unknown"
 
 
 def log_usage(
@@ -43,7 +45,7 @@ def log_usage(
 ):
     """Her Claude API çağrısından sonra çağrılır."""
     mk     = _model_key(model)
-    prices = _PRICES.get(mk, _PRICES["haiku"])
+    prices = _PRICES.get(mk, {"in": 0.0, "out": 0.0})
     cost   = (in_tok * prices["in"] + out_tok * prices["out"]) / 1_000_000
     total  = in_tok + out_tok
     ts_tr  = datetime.now(timezone.utc).astimezone(TR_TZ)
