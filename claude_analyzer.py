@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "4.2"   # güncel fiyat, kapsamlı genel görünüm ve tutarlı eylem tavrı
+_PROMPT_V_MANUAL  = "4.3"   # fiyat konumu özeti, XML temizliği ve kesin 15 dakika ayrımı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1023,6 +1023,7 @@ def _manual_zone_text(zone: dict | None, current_price: float = 0.0) -> str:
 def _clean_manual_analysis(text: str) -> str:
     """Model talimata rağmen Markdown/İngilizce kalıntısı üretirse Telegram öncesi temizle."""
     cleaned = (text or "").replace("\\*", "").replace("**", "").replace("__", "")
+    cleaned = re.sub(r"</?item\s*>", "", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace(
         "OBV yükseliş patern yükselme katılımını destekliyor",
         "OBV'nin yükselmesi alıcı katılımının sürdüğünü gösteriyor",
@@ -1137,7 +1138,7 @@ def _manual_remove_15m_leak(text: str) -> str:
     """Yalnız 15 dakikalık blokta bulunan mum ayrıntılarının ana alanlara sızmasını engeller."""
     timing_only = (
         "son dört", "son mum", "mum gövde", "gövde sınırlı", "sınırlı gövde", "kapanış alt taraf",
-        "kapanış üst taraf", "halen açık", "henüz kapanmamış",
+        "kapanış üst taraf", "halen açık", "henüz kapanmamış", "15 dakika",
     )
     kept = []
     for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
@@ -1211,6 +1212,26 @@ def _manual_price_location_note(zones: dict, current_price: float) -> str:
         return note
     distance = (low - price) / price * 100
     return f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} üstünde; fiyat destek bölgesinin altında."
+
+
+def _manual_price_position_summary(zones: dict, current_price: float) -> str:
+    """Genel değerlendirmede fiyatın bölgelere göre konumunu deterministik olarak gösterir."""
+    zone = zones.get("near_support")
+    if not zone or not current_price:
+        return "Fiyatın hesaplanan desteklere göre konumu güvenilir biçimde belirlenemedi."
+    price = float(current_price)
+    low, high = float(zone["low"]), float(zone["high"])
+    if low <= price <= high:
+        return "Fiyat şu anda en yakın hesaplanan destek bölgesinin içinde."
+    if price > high:
+        distance = (price - high) / price * 100
+        if distance >= 5:
+            return (f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} altında; fiyat desteklerden "
+                    "belirgin biçimde uzaklaşmış durumda.")
+        return f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} altında."
+    distance = (low - price) / price * 100
+    return (f"En yakın hesaplanan destek güncel fiyatın %{distance:.1f} üstünde; fiyat bu bölgenin altında "
+            "işlem görüyor.")
 
 
 def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) -> str:
@@ -1328,7 +1349,9 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
 
     # Ücretli yanıtın küçük bir alanı boşsa bütün analizi çöpe atma.
     general = general or "Ana yön, fiyatın konumu ve BTC etkisi birlikte değerlendirildiğinde görünüm net değil."
-    trade_ideas = trade_ideas or "Mevcut fiyat ile hesaplanan bölgeler arasında acele etmeden fiyat davranışını izlemek daha anlamlı görünüyor."
+    trade_ideas = trade_ideas or ("Fiyat desteklerden belirgin biçimde uzak olduğu için mevcut seviyede giriş "
+                                  "riski artmış durumda. Yükseliş sürecekse kısa bir dinlenmenin ardından alıcı "
+                                  "katılımının yeniden güçlenmesi daha sağlıklı bir giriş zemini oluşturabilir.")
     if not technical:
         technical = ["Göstergelerden birbirini doğrulayan yeterli ve farklı teknik kanıt üretilemedi."]
     expectation = expectation or "Mevcut verilerle acele karar vermez, fiyatın hesaplanan bölgelerde nasıl davrandığını izlerdim."
@@ -1337,7 +1360,8 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
         expectation = f"{expectation} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
 
     body = (
-        f"🔍 Genel Değerlendirme\nGüncel fiyat: {_fmt(current_price)}\n{general}\n\n"
+        f"🔍 Genel Değerlendirme\nGüncel fiyat: {_fmt(current_price)}\n"
+        f"{_manual_price_position_summary(zones, current_price)}\n{general}\n\n"
         "📉 Teknik Göstergeler\n"
         + "\n".join(f"• {item}" for item in technical)
         + "\n\n📈 Kritik Seviyeler\n"
@@ -1556,6 +1580,8 @@ koşulda küçük veya kademeli alımı değerlendireceğini açıkça söyle. "
 gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içinde yeniden açıklama.
 "Rüzgâr arkası", "kurtarıcı", "tema", "çerçeve", "mekanik geri çekilme" gibi yapay benzetmeler kullanma.
 Her cümlede tek ana düşünceyi tamamla; bozuk veya birbirine eklenmiş uzun cümleler kurma.
+XML/HTML etiketi üretme; özellikle <item> veya </item> yazma. Çift olumsuzluk kurma. Williams %R yükseliyorsa
+bunu satış baskısının zayıflaması olarak, düşüyorsa satış baskısının güçlenmesi olarak açık ve doğru anlat.
 Genel değerlendirme yalnız bir gösterge özeti değildir. Coinin ana yönünü, hareketin normal mi yoksa uzamış mı
 olduğunu, hacim veya OBV'nin fiyatı destekleyip desteklemediğini, BTC'nin etkisini ve en önemli kısa vadeli riski
 üç-dört doğal cümlede birlikte anlat. Coinin kendisini anlatmadan yalnız OBV veya BTC hakkında iki cümle yazma.
