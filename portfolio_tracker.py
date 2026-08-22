@@ -25,7 +25,11 @@ from market_analyzer import start_market_analyzer
 from claude_analyzer import (process_and_send as _analyzer_process,
                              analyze_coin_on_demand as _analyzer_current_coin,
                              start_market_watcher as _start_market_watcher,
-                             update_archive_outcome as _update_archive_outcome)
+                             update_archive_outcome as _update_archive_outcome,
+                             MANUAL_ANALYZER_MODE as _manual_analyzer_mode,
+                             MANUAL_ANALYZER_V2_MODEL as _manual_analyzer_v2_model,
+                             GEMINI_API_KEY as _manual_gemini_key,
+                             ANTHROPIC_API_KEY as _manual_anthropic_key)
 from intraday_scanner import start_intraday_scanner
 from liquidity_radar import get_radar, radar_ui_lines
 
@@ -519,7 +523,8 @@ def _run_manual_analyzer(pair: str):
             return
         _MANUAL_ANALYZER_INFLIGHT.add(pair)
     try:
-        print(f"[MANUEL ANALYZER] {pair}: güncel verilerle Haiku analizi başlatıldı.", flush=True)
+        provider = _manual_analyzer_v2_model if _manual_analyzer_mode == "v2" else "Haiku 4.5"
+        print(f"[MANUEL ANALYZER] {pair}: mod={_manual_analyzer_mode}, sağlayıcı={provider} başlatıldı.", flush=True)
         _analyzer_current_coin(pair)
     finally:
         with _MANUAL_ANALYZER_INFLIGHT_LOCK:
@@ -531,6 +536,13 @@ def _manual_analyzer_poll_loop():
     if not MANUAL_ANALYZER_ENABLED:
         print("[MANUEL ANALYZER] Devre dışı.", flush=True)
         return
+    provider = _manual_analyzer_v2_model if _manual_analyzer_mode == "v2" else "Haiku 4.5"
+    key_ready = bool(_manual_gemini_key) if _manual_analyzer_mode == "v2" else bool(_manual_anthropic_key)
+    print(
+        f"[MANUEL ANALYZER CONFIG] mod={_manual_analyzer_mode} | sağlayıcı={provider} | "
+        f"API anahtarı={'hazır' if key_ready else 'eksik'}",
+        flush=True,
+    )
     if not ANALYZER_TELEGRAM_TOKEN or not ANALYZER_CHAT_ID:
         print("[MANUEL ANALYZER] Token veya chat id eksik; dinleyici başlamadı.", flush=True)
         return
