@@ -1976,6 +1976,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
     }
     try:
         if MANUAL_ANALYZER_MODE == "v2":
+            print(f"[MANUEL ANALYZER V2] {pair}: {MANUAL_ANALYZER_V2_MODEL} başlatıldı.", flush=True)
             structured_result = _manual_v2_gemini_analysis(
                 base, current_price, technical_block, timing_block, btc_block,
                 zone_block, price_location_note,
@@ -2008,7 +2009,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
             structured_result, zones, base, current_price, coin_15m, coin.get("1H"), coin,
         )
     except Exception as exc:
-        print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
+        print(f"[MANUEL ANALYZER {MANUAL_ANALYZER_MODE.upper()}] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
         return False
     stamp = _tr_now().strftime("%d/%m/%Y %H:%M")
