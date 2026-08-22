@@ -2062,7 +2062,8 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
 
     trigger = plan.get("entry_trigger")
     if trigger == "near_support_hold" and zones.get("near_support"):
-        trigger_text = "Alımı yeniden değerlendirmek için yakın desteğin korunmasını ve alıcıların yeniden güçlenmesini görmek isterdim."
+        trigger_text = ("Alımı yeniden değerlendirmek için fiyatın yakın desteğe yaklaşmasını, bu bölgede tutunmasını "
+                        "ve alıcıların yeniden güçlenmesini görmek isterdim.")
     elif trigger == "resistance_break_hold" and zones.get("resistance_1"):
         trigger_text = "Alımı yeniden değerlendirmek için ilk direncin aşılmasını ve fiyatın bu bölgenin üzerinde kalmasını görmek isterdim."
     elif trigger == "momentum_recovery":
@@ -2071,10 +2072,7 @@ def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_pri
         trigger_text = "Yeni alım için mevcut görünümden daha belirgin bir fiyat avantajı oluşmasını beklerdim."
 
     if timing_snapshot:
-        closed = bool(timing_snapshot.get("last_candle_closed"))
-        if not closed:
-            timing_text = "Son 15 dakikalık mum henüz açık olduğu için mevcut görünüm değişebilir; kapanmadan giriş kararı vermezdim."
-        elif plan.get("timing_15m") == "supportive":
+        if plan.get("timing_15m") == "supportive":
             timing_text = "15 dakikalık kapanmış mumlar giriş zamanlamasını destekliyor; bunu yine de tek başına alım nedeni saymazdım."
         elif plan.get("timing_15m") == "weakening":
             timing_text = "15 dakikalık kapanmış mumlarda zayıflama sürdüğü için satış baskısının durmasını beklerdim."
