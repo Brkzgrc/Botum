@@ -48,7 +48,7 @@ from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
-_PROMPT_V_MANUAL_V2 = "1.0"  # Flash-Lite: doğrulanmış veriden danışman anlatımı
+_PROMPT_V_MANUAL_V2 = "1.1"  # Flash-Lite: tutarlı ve kanıta bağlı danışman anlatımı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1810,6 +1810,14 @@ Yazım kuralları:
 - Kesin gelecek tahmini yapma. BTC zayıf diye coin fırsatını otomatik iptal etme.
 - Yeni fiyat seviyesi üretme; sayısal fiyat yazma. Bölgeler rapora kod tarafından eklenecek.
 - İngilizce işlem terimi kullanma. Teknik terim gerekiyorsa sade anlamını aynı cümlede açıkla.
+- OBV yükselişini "büyük para girişi" veya kesin kurumsal alım diye yorumlama; yalnız alıcı katılımının
+  ya da para akışının güçlendiğini söyle.
+- BTC görünümünü bölümler arasında aynı kanıtlara dayanarak tutarlı anlat; bir bölümde kararsız, başka bir
+  bölümde kesin düşüş gibi birbiriyle çelişen sonuçlar üretme.
+- Coini veya fiyatı sahiplenerek "fiyatımız", "coinimiz", "yönümüz" deme. "Lider kripto para Bitcoin",
+  "bekleme politikası" gibi dolaylı ve yapay kalıplar yerine doğrudan ZEC, BTC, beklerdim veya almazdım de.
+- 15 dakikalık veriden satış baskısı, hacim zayıflığı veya toparlanma sonucu çıkarıyorsan bunu destekleyen
+  somut mum ya da gösterge yönünü aynı cümlede belirt; kanıt yoksa kesin hüküm verme.
 - "ana trend", "çerçeve", "tema", "saturasyon", "konuma alış", "momentum harita", "çizgiler kapanmış"
   gibi yapay ifadeler kullanma. Kısa, doğal ve dilbilgisi düzgün Türkçe yaz.
 """
