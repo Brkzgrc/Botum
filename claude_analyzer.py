@@ -1801,6 +1801,49 @@ def _manual_v2_quality_issues(result: dict) -> list[str]:
     return issues
 
 
+def _manual_v2_normalize_language(result: dict) -> tuple[dict, list[str]]:
+    """Anlamı değiştirmeyen yüzeysel dil kusurlarını ücretsiz olarak düzeltir.
+
+    Modeli yeniden çağırmak yalnızca gerçek içerik veya mantık kusurları için
+    saklanır. Buradaki dönüşümler veri, karar, koşul veya fiyat seviyesi eklemez.
+    """
+    if not isinstance(result, dict):
+        return result, []
+
+    replacements = (
+        (r"\blider kripto para\s+bitcoin\b", "Bitcoin", "lider kripto para Bitcoin→Bitcoin"),
+        (r"\blider kripto para\b", "Bitcoin", "lider kripto para→Bitcoin"),
+        (r"\bdört saatlik\b", "4 saatlik", "dört saatlik→4 saatlik"),
+        (r"\bana yön\b", "genel eğilim", "ana yön→genel eğilim"),
+        (r"\bana trend\b", "genel eğilim", "ana trend→genel eğilim"),
+        (r"\bbüyük trend\b", "geniş görünüm", "büyük trend→geniş görünüm"),
+        (r"\bbekleme politikası(?:nı)?\b", "beklemeyi", "bekleme politikası→beklemeyi"),
+    )
+    applied = []
+
+    def normalize_text(value: str) -> str:
+        text = value
+        for pattern, replacement, label in replacements:
+            def replace_match(match):
+                if match.group(0)[:1].isupper() and replacement[:1].islower():
+                    return replacement[:1].upper() + replacement[1:]
+                return replacement
+            updated, count = re.subn(pattern, replace_match, text, flags=re.IGNORECASE)
+            if count:
+                applied.append(label)
+                text = updated
+        return text
+
+    normalized = dict(result)
+    for field in ("general_assessment", "technical_indicators", "trade_ideas", "expectation"):
+        value = normalized.get(field)
+        if isinstance(value, str):
+            normalized[field] = normalize_text(value)
+        elif isinstance(value, list):
+            normalized[field] = [normalize_text(item) if isinstance(item, str) else item for item in value]
+    return normalized, list(dict.fromkeys(applied))
+
+
 def _manual_v2_gemini_analysis(base: str, current_price: float, technical_block: str,
                                timing_block: str, btc_block: str, zone_block: str,
                                price_location_note: str, model_name: str) -> dict:
@@ -1903,6 +1946,13 @@ Yazım kuralları:
         except Exception as exc:
             print(f"[API_USAGE] Gemini kullanım kaydı yazılamadı: {exc}", flush=True)
 
+        result, normalized_phrases = _manual_v2_normalize_language(result)
+        if normalized_phrases:
+            print(
+                f"[MANUEL ANALYZER V2 DİL] deneme={attempt} | "
+                + " | ".join(normalized_phrases),
+                flush=True,
+            )
         issues = _manual_v2_quality_issues(result)
         if not issues:
             return result
