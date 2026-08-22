@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.5"   # ana görünümü koru; 15M yalnız eylem notunda
+_PROMPT_V_MANUAL  = "1.6"   # yapılandırılmış doğal Türkçe analiz + 15M eylem planı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1005,7 +1005,8 @@ def _fmt_ind(v) -> str:
 def _manual_zone_text(zone: dict | None) -> str:
     if not zone:
         return "veriyle güvenilir bölge oluşmadı"
-    tfs = "/".join(sorted(zone["tfs"]))
+    tf_names = {"1H": "saatlik", "4H": "dört saatlik", "1D": "günlük", "1W": "haftalık"}
+    tfs = " + ".join(tf_names.get(tf, tf) for tf in sorted(zone["tfs"]))
     return f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
 
 
@@ -1037,6 +1038,21 @@ def _clean_manual_analysis(text: str) -> str:
     if "Ne oluyor?" in cleaned:
         cleaned = "Ne oluyor?" + cleaned.split("Ne oluyor?", 1)[1]
     return cleaned.strip()
+
+
+def _natural_manual_text(text: str) -> str:
+    """Yapılandırılmış manuel analiz alanlarını kullanıcıya doğal Türkçeyle hazırlar."""
+    cleaned = _clean_manual_analysis(str(text or ""))
+    cleaned = re.sub(r"\b1H\b", "saatlik", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b4H\b", "dört saatlik", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b1D\b", "günlük", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b15M\b", "on beş dakikalık", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bbullish\b", "yükseliş yönlü", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bbearish\b", "düşüş yönlü", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\blong\b", "spot alım", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bconfirmation\b", "teyit", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bswing low(?:'ların)?\b", "önceki belirgin diplerin", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip(" \n•-")
 
 
 def _strip_15m_from_main(text: str) -> str:
@@ -1224,74 +1240,122 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Toplam yanıt yaklaşık 1.500–1.800 karakter olsun ve bütün bölümleri mutlaka tamamla.
-Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
-Metafor kullanma ve yabancı dilden kelime kelime çevrilmiş cümle kurma. Göndermeden önce her cümleyi doğal Türkçe açısından düzelt.
-StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
-RSI ve StochRSI'nın sayısal değerlerini metinde yazma; yalnız yükseliyor, düşüyor veya yön değiştiriyor diye anlat.
-RSI/StochRSI için herhangi bir sabit değerin aşılmasını teyit veya vazgeçme şartı yapma.
-"Aşırı alım/aşırı satım" etiketini tek başına bekleme veya giriş gerekçesi yapma; hareketin yönü ve fiyat yapısıyla anlamlandır.
-Uzak yapısal desteği güncel giriş bölgesi gibi sunma. İlk veya sonraki direnç verisi yoksa kesinlikle seviye tahmin etme;
-aynen "veriyle güvenilir bölge oluşmadı" yaz.
-Hesaplanan bölgeler dışında son mumların tepe, dip veya kapanış değerlerinden yeni destek, direnç ya da kırılma eşiği üretme.
-BTC için destek/direnç bölgesi verilmedi. Bu nedenle BTC hakkında hiçbir fiyat seviyesi, kapanış rakamı veya hedef uydurma;
-BTC'yi yalnız gösterge yönleri ve genel hareket bağlamıyla değerlendir.
-Çıktı biçimi tam olarak şu olsun; Markdown işareti kullanma:
+Görevin göstergeleri art arda sıralamak değil, birlikte fiyat açısından ne anlattıklarını açıklamaktır.
+Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma; "saatlik", "dört saatlik", "günlük" ve "on beş dakikalık" de.
+Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
+retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
 
-Ne oluyor?
-Tam olarak 2 kısa cümle. İlk cümlede yalnız ZEC'in 1H/4H/1D ana görünümünü, ikinci cümlede yalnız BTC bağlamını anlat.
-Bu bölümde 15M'den hiç söz etme.
+Ana yorum alanlarında yalnız saatlik, dört saatlik ve günlük verileri kullan. On beş dakikalık veriyi yalnız
+"Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
+Sabit gösterge eşikleriyle mekanik karar verme; fiyat yapısını, hareket yönünü, hacim/OBV katılımını, BTC etkisini
+ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; kontrollü katılım
+seçeneğini de anlat. Hareket uzamış ve katılım zayıflıyorsa neden beklemenin daha anlamlı olduğunu açıkça söyle.
 
-Ne anlama geliyor?
-En fazla 2 kısa cümle; mevcut fiyattan kovalamak mı yoksa bölge/dönüş beklemek mi daha anlamlı açıkla.
+Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiyat seviyesi verme.
+Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
+Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, on beş dakikalık grafikte nasıl bir fiyat
+davranışının giriş zamanlamasını güçlendireceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma
+yaklaşımını somut fakat kesinlik iddiası olmadan anlat.
 
-İzlenecek bölgeler
-• Yakın destek: verilen bölge
-• Sonraki destek: verilen bölge
-• Uzak yapısal destek: verilen bölge; güncel fiyattan uzaksa bunu açıkça belirt
-• İlk direnç: verilen bölge
-• Direnç aşılırsa: verilen sonraki bölge
+Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bir kez çağır ve bütün alanları doldur."""
 
-Neye dikkat edilmeli?
-En fazla 1 kısa cümle; görünümü hangi fiyat kapanışı veya BTC hareketinin zayıflatacağını koşullu anlat.
-Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanış/retest kullan; 1D kapanışı isteme.
-BTC için rakamsal kapanış seviyesi yazma.
-
-En sonda yalnız şu etiketi ve ardından en fazla 2 kısa cümle yaz:
-15M zamanlama notu:
-Tam olarak 2 kısa ve doğal Türkçe cümle yaz. İlk cümlede göstergeleri listelemekle yetinmeden mevcut 15M hareketinin
-fiyat açısından ne anlattığını açıkla. İkinci cümlede bu yorumun güçlenmesini sağlayacak somut fiyat/gösterge davranışını
-ve yorumun bozulduğunu gösterecek karşı gelişmeyi "... olursa ...; buna karşılık ... olursa ..." biçiminde birlikte yaz.
-StochRSI'dan söz edersen "StochRSI hızlı/yavaş çizgisi", histogramdan söz edersen mutlaka
-"MACD histogramı" yaz; hangi göstergeye ait olduğu belirsiz "hızlı çizgi" veya "histogram" ifadeleri kullanma.
-15M'deki hareketin 1 ve 4 saatlik ana görünüm içinde kısa dinlenme mi, devam hazırlığı mı, yoksa geri çekilmenin
-derinleşme riski mi taşıdığını kanıtların ağırlığıyla yorumla. Son mum açıksa kapanmış gibi anlatma.
-Hiçbir sayısal fiyat seviyesi yazma; yalnız fiyat yapısını ve gösterge yönlerini kullan.
-Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük tablo", "pauzasyon", "aldatıcı",
-"kritik hale gelir" gibi ne yapılacağını açıklamayan ifadeler kullanma.
-"Ben olsam ne yapardım?" başlığı yazma; ana eylem bölümü teknik verilerden ayrıca oluşturulacaktır.
-"Senaryo içeride", "kenar bulmak", "fırsat değerlendirebilirim" gibi belirsiz ifadeler kullanma."""
+    analysis_tool = {
+        "name": "submit_manual_analysis",
+        "description": "Güncel spot görünümünü doğal Türkçe ve ayrı bölümler halinde döndürür.",
+        "input_schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "what_is_happening": {
+                    "type": "string",
+                    "description": (
+                        "Tam iki kısa cümle: ilk cümle yalnız coinin saatlik/dört saatlik/günlük ana görünümü, "
+                        "ikinci cümle yalnız BTC bağlamı. On beş dakikadan söz etme."
+                    ),
+                },
+                "meaning": {
+                    "type": "string",
+                    "description": (
+                        "En fazla üç doğal cümle. Göstergeleri listelemek yerine görünümün fiyat, olası devam ve "
+                        "geri çekilme açısından anlamını açıkla. On beş dakikadan söz etme."
+                    ),
+                },
+                "watch_out": {
+                    "type": "string",
+                    "description": (
+                        "En fazla iki cümle. Olumlu görünümü neyin zayıflatacağını ve devam ihtimalini neyin "
+                        "güçlendireceğini sade Türkçeyle anlat. On beş dakikadan söz etme."
+                    ),
+                },
+                "action_plan": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 6,
+                    "items": {"type": "string"},
+                    "description": (
+                        "Ben olsam ne yapardım bölümünün 3-6 kısa maddesi. Mevcut hareket için bekleme veya "
+                        "kontrollü katılım tercihini gerekçelendir; yalnız verilen bölgeleri kullan; on beş "
+                        "dakikalık fiyat yapısı ve gösterge yönlerini giriş zamanlamasına bağla; vazgeçme ve varsa "
+                        "kâr alma yaklaşımını belirt. Spot dışına çıkma."
+                    ),
+                },
+            },
+            "required": ["what_is_happening", "meaning", "watch_out", "action_plan"],
+        },
+    }
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         started = time.time()
-        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=1500,
-                                      messages=[{"role": "user", "content": prompt}])
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[analysis_tool],
+            tool_choice={"type": "tool", "name": "submit_manual_analysis"},
+        )
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
                    prompt_chars=len(prompt))
-        body = _clean_manual_analysis(resp.content[0].text)
-        timing_note = ""
-        if "15M zamanlama notu:" in body:
-            body, timing_note = body.split("15M zamanlama notu:", 1)
-            timing_note = _clean_timing_note(timing_note)
-        # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
-        body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
+        tool_block = next(
+            (block for block in resp.content
+             if getattr(block, "type", "") == "tool_use"
+             and getattr(block, "name", "") == "submit_manual_analysis"),
+            None,
+        )
+        if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
+            raise ValueError("Yapılandırılmış manuel analiz alınamadı")
+        result = tool_block.input
+        what = _natural_manual_text(result.get("what_is_happening"))
+        meaning = _natural_manual_text(result.get("meaning"))
+        watch = _natural_manual_text(result.get("watch_out"))
+        actions = []
+        for item in result.get("action_plan", []):
+            cleaned_item = _natural_manual_text(item)
+            if cleaned_item:
+                actions.append(cleaned_item)
+        if not what or not meaning or not watch or len(actions) < 3:
+            raise ValueError("Manuel analiz alanları eksik")
+        main_text = f"{what} {meaning} {watch}".lower()
+        if "on beş dakika" in main_text:
+            raise ValueError("On beş dakikalık gözlem ana yoruma karıştı")
+        if not any("on beş dakika" in item.lower() for item in actions):
+            raise ValueError("Eylem planında on beş dakikalık zamanlama eksik")
+
+        body = (
+            f"Ne oluyor?\n{what}\n\n"
+            f"Ne anlama geliyor?\n{meaning}\n\n"
+            "İzlenecek bölgeler\n"
+            f"• Yakın destek: {_manual_zone_text(zones['near_support'])}\n"
+            f"• Sonraki destek: {_manual_zone_text(zones['next_support'])}\n"
+            f"• Uzak yapısal destek: {_manual_zone_text(zones['structural_support'])}\n"
+            f"• İlk direnç: {_manual_zone_text(zones['resistance_1'])}\n"
+            f"• Direnç aşılırsa: {_manual_zone_text(zones['resistance_2'])}\n\n"
+            f"Neye dikkat edilmeli?\n{watch}\n\n"
+            "Ben olsam ne yapardım?\n"
+            + "\n".join(f"• {item}" for item in actions)
+        )
         body = body.replace(f"{base}'nin", f"{base}'in")
-        action = _manual_action_text(current_price, zones, coin, btc)
-        if timing_note:
-            action = f"{action}\n{timing_note}"
-        body = f"{body.strip()}\n\n{action}"
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
