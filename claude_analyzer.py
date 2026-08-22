@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.6"   # yapılandırılmış doğal Türkçe analiz + 15M eylem planı
+_PROMPT_V_MANUAL  = "1.7"   # 15M zamanlaması ayrı zorunlu alan; ifade arama yok
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1057,6 +1057,46 @@ def _natural_manual_text(text: str) -> str:
     return cleaned.strip(" \n•-")
 
 
+def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
+    """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
+    if not isinstance(result, dict):
+        raise ValueError("Yapılandırılmış manuel analiz alınamadı")
+
+    what = _natural_manual_text(result.get("what_is_happening"))
+    meaning = _natural_manual_text(result.get("meaning"))
+    watch = _natural_manual_text(result.get("watch_out"))
+    timing_15m = _natural_manual_text(result.get("timing_15m"))
+    raw_actions = result.get("action_plan")
+    if not isinstance(raw_actions, list):
+        raise ValueError("Eylem planı liste biçiminde değil")
+    actions = []
+    for item in raw_actions:
+        cleaned_item = _natural_manual_text(item)
+        if cleaned_item:
+            actions.append(cleaned_item)
+
+    if not what or not meaning or not watch or not timing_15m or len(actions) < 3:
+        raise ValueError("Manuel analiz alanları eksik")
+    if "on beş dakika" in f"{what} {meaning} {watch}".lower():
+        raise ValueError("On beş dakikalık gözlem ana yoruma karıştı")
+
+    body = (
+        f"Ne oluyor?\n{what}\n\n"
+        f"Ne anlama geliyor?\n{meaning}\n\n"
+        "İzlenecek bölgeler\n"
+        f"• Yakın destek: {_manual_zone_text(zones.get('near_support'))}\n"
+        f"• Sonraki destek: {_manual_zone_text(zones.get('next_support'))}\n"
+        f"• Uzak yapısal destek: {_manual_zone_text(zones.get('structural_support'))}\n"
+        f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'))}\n"
+        f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'))}\n\n"
+        f"Neye dikkat edilmeli?\n{watch}\n\n"
+        "Ben olsam ne yapardım?\n"
+        + "\n".join(f"• {item}" for item in actions)
+        + f"\n• On beş dakikalık zamanlama: {timing_15m}"
+    )
+    return body.replace(f"{base}'nin", f"{base}'in")
+
+
 def _strip_15m_from_main(text: str) -> str:
     """15M gözleminin model tarafından ana analiz bölümlerine sızmasını engeller."""
     kept = []
@@ -1296,13 +1336,20 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                     "items": {"type": "string"},
                     "description": (
                         "Ben olsam ne yapardım bölümünün 3-6 kısa maddesi. Mevcut hareket için bekleme veya "
-                        "kontrollü katılım tercihini gerekçelendir; yalnız verilen bölgeleri kullan; on beş "
-                        "dakikalık fiyat yapısı ve gösterge yönlerini giriş zamanlamasına bağla; vazgeçme ve varsa "
-                        "kâr alma yaklaşımını belirt. Spot dışına çıkma."
+                        "kontrollü katılım tercihini gerekçelendir; yalnız verilen bölgeleri kullan; vazgeçme ve "
+                        "varsa kâr alma yaklaşımını belirt. Spot dışına çıkma."
+                    ),
+                },
+                "timing_15m": {
+                    "type": "string",
+                    "description": (
+                        "Yalnız on beş dakikalık güncel fiyat yapısı ve gösterge yönlerinden yararlanarak giriş "
+                        "zamanlamasını açıkla. Bu gözlemin güçlenmesini ve bozulmasını doğal Türkçeyle belirt; "
+                        "yeni fiyat seviyesi veya mekanik alım kuralı üretme."
                     ),
                 },
             },
-            "required": ["what_is_happening", "meaning", "watch_out", "action_plan"],
+            "required": ["what_is_happening", "meaning", "watch_out", "action_plan", "timing_15m"],
         },
     }
     try:
@@ -1327,37 +1374,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         )
         if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
             raise ValueError("Yapılandırılmış manuel analiz alınamadı")
-        result = tool_block.input
-        what = _natural_manual_text(result.get("what_is_happening"))
-        meaning = _natural_manual_text(result.get("meaning"))
-        watch = _natural_manual_text(result.get("watch_out"))
-        actions = []
-        for item in result.get("action_plan", []):
-            cleaned_item = _natural_manual_text(item)
-            if cleaned_item:
-                actions.append(cleaned_item)
-        if not what or not meaning or not watch or len(actions) < 3:
-            raise ValueError("Manuel analiz alanları eksik")
-        main_text = f"{what} {meaning} {watch}".lower()
-        if "on beş dakika" in main_text:
-            raise ValueError("On beş dakikalık gözlem ana yoruma karıştı")
-        if not any("on beş dakika" in item.lower() for item in actions):
-            raise ValueError("Eylem planında on beş dakikalık zamanlama eksik")
-
-        body = (
-            f"Ne oluyor?\n{what}\n\n"
-            f"Ne anlama geliyor?\n{meaning}\n\n"
-            "İzlenecek bölgeler\n"
-            f"• Yakın destek: {_manual_zone_text(zones['near_support'])}\n"
-            f"• Sonraki destek: {_manual_zone_text(zones['next_support'])}\n"
-            f"• Uzak yapısal destek: {_manual_zone_text(zones['structural_support'])}\n"
-            f"• İlk direnç: {_manual_zone_text(zones['resistance_1'])}\n"
-            f"• Direnç aşılırsa: {_manual_zone_text(zones['resistance_2'])}\n\n"
-            f"Neye dikkat edilmeli?\n{watch}\n\n"
-            "Ben olsam ne yapardım?\n"
-            + "\n".join(f"• {item}" for item in actions)
-        )
-        body = body.replace(f"{base}'nin", f"{base}'in")
+        body = _render_manual_analysis(tool_block.input, zones, base)
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
