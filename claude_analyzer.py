@@ -1267,7 +1267,7 @@ Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme. "1H/4H büyük
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         started = time.time()
-        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=800,
+        resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=1500,
                                       messages=[{"role": "user", "content": prompt}])
         _log_usage("manual_coin_analysis", "haiku", _PROMPT_V_MANUAL,
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
