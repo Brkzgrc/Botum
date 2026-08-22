@@ -1065,6 +1065,14 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("patern", "yapı")
     cleaned = cleaned.replace("küçük katılım", "küçük bir alım")
     cleaned = cleaned.replace("destek sağlamaktadır", "ana görünümü destekliyor")
+    cleaned = cleaned.replace(
+        "destek dizilimi sağlam",
+        "yükselişi destekleyen sıralama korunuyor",
+    )
+    cleaned = cleaned.replace(
+        "bu ortam yavaşlamadan haberi verebilir",
+        "bu görünüm kısa vadeli bir yavaşlamanın habercisi olabilir",
+    )
     cleaned = cleaned.replace("seviyelerin tümünde", "grafiklerin tümünde")
     cleaned = cleaned.replace("yatay veya hafif zayıflama yapıyor", "yatay seyrediyor veya hafif zayıflıyor")
     cleaned = cleaned.replace("çizginin sinyalin üstünde", "MACD çizgisinin sinyal çizgisinin üzerinde")
@@ -1074,6 +1082,7 @@ def _clean_manual_analysis(text: str) -> str:
         "satış baskısının zayıfladığını gösteriyor",
     )
     cleaned = cleaned.replace("müdahalenin gücü", "kısa vadeli alıcı gücü")
+    cleaned = cleaned.replace("dinlenme izlerdim", "kısa bir dinlenme oluşup oluşmadığını izlerdim")
     cleaned = cleaned.replace("hızlı çizginin yavaş çizginin üstünde", "hızlı çizgisinin yavaş çizgisinin üzerinde")
     cleaned = cleaned.replace(
         "günlük StochRSI yön yukarı ve hızlı üstünde",
@@ -1368,9 +1377,44 @@ def _manual_remove_invented_levels(text: str, zones: dict, current_price: float)
     return " ".join(kept)
 
 
+def _manual_technical_fallbacks(coin_snapshots: dict | None) -> list[str]:
+    """15 dakika sızıntısı temizlenince eksilen teknik maddeleri ana zaman dilimlerinden tamamlar."""
+    if not coin_snapshots:
+        return []
+    labels = (("1H", "Saatlik"), ("4H", "4 saatlik"), ("1D", "Günlük"))
+    available = [(name, coin_snapshots.get(key)) for key, name in labels if coin_snapshots.get(key)]
+    if not available:
+        return []
+
+    items = []
+    obv_up = [name for name, snap in available if "yüks" in str(snap.get("obv_direction", ""))]
+    obv_down = [name for name, snap in available if "düş" in str(snap.get("obv_direction", ""))]
+    if obv_up or obv_down:
+        if len(obv_up) > len(obv_down):
+            items.append("OBV ana zaman dilimlerinin çoğunda yükseliyor; bu, alıcı katılımının genel olarak sürdüğünü gösteriyor.")
+        elif len(obv_down) > len(obv_up):
+            items.append("OBV ana zaman dilimlerinin çoğunda düşüyor; bu, alıcı katılımının zayıfladığını gösteriyor.")
+        else:
+            items.append("OBV zaman dilimleri arasında aynı yönde ilerlemiyor; para akışı görünümü henüz tam uyumlu değil.")
+
+    ema_bullish = [name for name, snap in available
+                   if snap.get("ema20_relation") == "üstünde" and snap.get("ema_order") == "20>50>100>200"]
+    if ema_bullish:
+        joined = ", ".join(name.lower() for name in ema_bullish)
+        items.append(f"Fiyat {joined} grafiklerde EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; ana trend yapısı henüz bozulmuş görünmüyor.")
+
+    macd_up = [name for name, snap in available
+               if snap.get("macd_cross") == "üstünde" and "yüks" in str(snap.get("macd_hist_direction", ""))]
+    if macd_up:
+        joined = ", ".join(name.lower() for name in macd_up)
+        items.append(f"MACD {joined} grafiklerde sinyal çizgisinin üzerinde ve histogram güçleniyor; momentum yukarı yönü destekliyor.")
+    return items
+
+
 def _render_manual_analysis(result: dict, zones: dict, base: str, current_price: float = 0.0,
                             timing_snapshot: dict | None = None,
-                            hourly_snapshot: dict | None = None) -> str:
+                            hourly_snapshot: dict | None = None,
+                            coin_snapshots: dict | None = None) -> str:
     """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
     if not isinstance(result, dict):
         raise ValueError("Yapılandırılmış manuel analiz alınamadı")
@@ -1392,6 +1436,12 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
     expectation = _manual_sentence_limit(_manual_remove_invented_levels(expectation, zones, current_price), 6)
     technical = [cleaned for item in technical
                  if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:5]
+    if len(technical) < 2:
+        for fallback_item in _manual_technical_fallbacks(coin_snapshots):
+            if fallback_item not in technical:
+                technical.append(fallback_item)
+            if len(technical) >= 2:
+                break
 
     # Direnç hesaplanmadıysa modelin hayalî direnç üzerinden senaryo kurmasını engelle.
     if not zones.get("resistance_1"):
@@ -1762,7 +1812,9 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         )
         if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
             raise ValueError("Yapılandırılmış manuel analiz alınamadı")
-        body = _render_manual_analysis(tool_block.input, zones, base, current_price, coin_15m, coin.get("1H"))
+        body = _render_manual_analysis(
+            tool_block.input, zones, base, current_price, coin_15m, coin.get("1H"), coin,
+        )
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
