@@ -1085,13 +1085,11 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("müdahalenin gücü", "kısa vadeli alıcı gücü")
     cleaned = cleaned.replace("dinlenme izlerdim", "kısa bir dinlenme oluşup oluşmadığını izlerdim")
     cleaned = cleaned.replace("güçlü yükseliş gösteriyorum", "güçlü yükseliş gösteriyor")
-    cleaned = cleaned.replace(
-        "ZEC tüm ema dizi hiyerarşisi sağlam kalmıştır",
-        "ZEC'te hareketli ortalamaların yükselişi destekleyen sıralaması korunuyor",
-    )
-    cleaned = cleaned.replace(
-        "ZEC tüm EMA dizi hiyerarşisi sağlam kalmıştır",
-        "ZEC'te hareketli ortalamaların yükselişi destekleyen sıralaması korunuyor",
+    cleaned = re.sub(
+        r"\b([A-Z0-9]{2,15}) tüm EMA dizi hiyerarşisi sağlam kalmıştır",
+        lambda match: f"{match.group(1)} için hareketli ortalamaların yükselişi destekleyen sıralaması korunuyor",
+        cleaned,
+        flags=re.IGNORECASE,
     )
     cleaned = cleaned.replace("hareketlin kırılgan", "hareketin kırılgan")
     cleaned = cleaned.replace("bu dörtte biri uyumlu olarak", "bu dört gösterge uyumlu biçimde")
