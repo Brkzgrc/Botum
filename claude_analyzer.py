@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "2.0"   # zaman dilimi belirtimi ile doğal anlatım ayrıldı
+_PROMPT_V_MANUAL  = "2.1"   # doğal Türkçe ve eylem planı anlatımı sıkılaştırıldı
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1021,6 +1021,7 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("stabilize etmesi", "yeniden güçlenmesi")
     cleaned = cleaned.replace("stabil hale dönmesi", "yönünü yeniden yukarı çevirmesi")
     cleaned = cleaned.replace("pullback", "geri çekilme").replace("Pullback", "Geri çekilme")
+    cleaned = cleaned.replace("geri çekilme (geri çekilme)", "geri çekilme")
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1351,20 +1352,23 @@ anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerek�
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
 "Gövde deformasyonu", "konsolide oluyor", "katılım kalitesi", "tepki adımı" gibi ne yapılacağını açıkça
-anlatmayan yapay ifadeler kullanma. Cümleleri doğal konuşma Türkçesiyle kur.
+anlatmayan yapay ifadeler kullanma. "Kontrollü katılım" gibi soyut bir kalıp kullanma; bunun yerine hangi somut
+koşulda küçük veya kademeli alımı değerlendireceğini açıkça söyle. "RSI yükseliş yapıyor" yerine "RSI yükseliyor"
+gibi doğal konuşma Türkçesi kullan. Aynı Türkçe sözcüğü parantez içinde yeniden açıklama.
 
 Ana yorum alanlarında yalnız 1 saatlik, 4 saatlik ve 1 günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
 Sabit gösterge eşikleriyle mekanik karar verme; fiyat yapısını, hareket yönünü, hacim/OBV katılımını, BTC etkisini
-ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; kontrollü katılım
-seçeneğini de anlat. Hareket uzamış ve katılım zayıflıyorsa neden beklemenin daha anlamlı olduğunu açıkça söyle.
+ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; küçük veya
+kademeli alımın hangi somut durumda düşünülebileceğini de anlat. Hareket uzamış ve alıcı desteği zayıflıyorsa
+neden beklemenin daha anlamlı olduğunu açıkça söyle.
 
 Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiyat seviyesi verme.
 Model alanlarında hiçbir rakamsal fiyat yazma; bölgeler kod tarafından ayrıca eklenecek. Bölgelere yalnız
 "yakın destek", "sonraki destek", "ilk direnç" ve "sonraki direnç" adlarıyla gönderme yap.
 Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
-Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa kontrollü katılımın
-hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
+Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa küçük veya kademeli
+alımın hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
 somut fakat kesinlik iddiası olmadan anlat. Her bölüm gerekçesini de içersin; yalnız "beklerdim" deme.
 
 Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bir kez çağır ve bütün alanları doldur."""
@@ -1388,7 +1392,8 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                     "type": "string",
                     "description": (
                         "İki-dört doğal cümle. Kanıtların ağırlığına göre yükselişin devamı, dinlenme ve geri "
-                        "çekilme ihtimallerini karşılaştır. Trend güçlü kalıyorsa kontrollü katılım ihtimalini de "
+                        "çekilme ihtimallerini karşılaştır. Trend güçlü kalıyorsa küçük veya kademeli alımın hangi "
+                        "somut durumda düşünülebileceğini de "
                         "anlat; her durumda otomatik olarak beklemeyi önerme. 15 dakikalık veriden söz etme."
                     ),
                 },
@@ -1405,7 +1410,9 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                         "Ben olsam ne yapardım bölümünün her biri birinci tekil şahısla yazılmış, ayrı satırda "
                         "dört-altı tamamlanmış maddesi. Emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
-                        "kontrollü katılım seçeneğini, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
+                        "küçük veya kademeli alımın somut koşulunu, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
+                        "Bütün maddeleri 'izlerdim', 'beklerdim', 'değerlendirirdim', 'uzak dururdum' gibi koşullu "
+                        "birinci tekil şahısla bitir; 'gözlemledim', 'izledim', 'yaptım' gibi geçmiş zaman kullanma. "
                         "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. 15 dakikalık veriden söz etme."
                     ),
                 },
