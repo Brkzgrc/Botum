@@ -40,6 +40,9 @@ MANUAL_ANALYZER_V2_MODEL = {
     "gemini-2.5-flash-lite-preview-09-2025": "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
 }.get(_MANUAL_ANALYZER_V2_MODEL_RAW, _MANUAL_ANALYZER_V2_MODEL_RAW)
+MANUAL_ANALYZER_V2_RENDERER = os.getenv(
+    "MANUAL_ANALYZER_V2_RENDERER", "controlled"
+).strip().lower()
 MANUAL_ANALYZER_ALLOW_PAID_HAIKU = os.getenv(
     "MANUAL_ANALYZER_ALLOW_PAID_HAIKU", "false"
 ).strip().lower() == "true"
@@ -49,6 +52,7 @@ _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
 _PROMPT_V_MANUAL_V2 = "1.3"  # Flash-Lite: fiyat alanı ve geri çekilme mesafesi karşılaştırması
+_PROMPT_V_MANUAL_V2_PLAN = "2.0"  # Flash-Lite karar planı; Türkçe metni kod kurar
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1861,6 +1865,244 @@ def _manual_v2_normalize_language(result: dict) -> tuple[dict, list[str]]:
     return normalized, list(dict.fromkeys(applied))
 
 
+def _manual_v2_snapshot_direction(snap: dict | None) -> str:
+    """Tek bir göstergeye bağlanmadan zaman diliminin yönünü sınıflandırır."""
+    if not snap:
+        return "mixed"
+    up = 0
+    down = 0
+    up += snap.get("ema20_relation") == "üstünde"
+    down += snap.get("ema20_relation") == "altında"
+    up += snap.get("ema_order") == "20>50>100>200"
+    up += snap.get("macd_position") == "pozitif"
+    down += snap.get("macd_position") == "negatif"
+    for key in ("rsi_direction", "macd_hist_direction", "obv_direction"):
+        value = str(snap.get(key) or "").lower()
+        up += "yüks" in value
+        down += "düş" in value
+    if up >= 4 and up >= down + 2:
+        return "up"
+    if down >= 4 and down >= up + 2:
+        return "down"
+    return "mixed"
+
+
+def _manual_v2_zone_gap(zone: dict | None, price: float, side: str) -> float | None:
+    if not zone or not price:
+        return None
+    boundary = float(zone["high"] if side == "support" else zone["low"])
+    distance = price - boundary if side == "support" else boundary - price
+    return max(0.0, distance / price * 100)
+
+
+def _manual_v2_gemini_plan(base: str, current_price: float, technical_block: str,
+                           timing_block: str, btc_block: str, zone_block: str,
+                           price_location_note: str, model_name: str) -> dict:
+    """Gemini yalnız kontrollü karar seçenekleri üretir; kullanıcı metnini yazmaz."""
+    prompt = f"""{base} için güncel spot verilerini birlikte değerlendir. Tek göstergeye veya sabit eşiğe göre
+mekanik karar verme. Fiyat yapısı, zaman dilimleri, para akışı, BTC etkisi, destek-dirence göre konum ve
+15 dakikalık giriş zamanlamasını beraber tart. Kullanıcıya gönderilecek Türkçe metni yazma; yalnız izin verilen
+seçeneklerle karar planını doldur.
+
+[COIN — güncel fiyat {_fmt(current_price)}]
+{technical_block}
+[BTC]
+{btc_block}
+[BÖLGELER]
+{zone_block}
+{price_location_note}
+[15 DAKİKALIK ZAMANLAMA]
+{timing_block}
+
+action: Şu anki tavır. wait=bekle, small_buy=yalnız yüksek riskli küçük başlangıç düşünülebilir,
+no_buy=mevcut koşullarda alım düşünme.
+reasons: Kararı en iyi açıklayan en fazla üç farklı neden.
+entry_trigger: Alımı yeniden değerlendirmek için gereken somut gelişme.
+invalidation: Mevcut alım düşüncesini bozan gelişme.
+take_profit: Hesaplanmış dirençlere göre yaklaşım; direnç yoksa follow_trend.
+timing_15m: 15 dakikalık verinin yalnız giriş zamanlamasına etkisi.
+btc_effect: BTC'nin coin üzerindeki güncel etkisi."""
+    enums = {
+        "action": ["wait", "small_buy", "no_buy"],
+        "reason": ["aligned_uptrend", "short_term_weakness", "price_near_resistance",
+                   "price_far_support", "limited_price_space", "favorable_price_space",
+                   "btc_weakness", "btc_supportive", "buyer_participation", "mixed_timeframes"],
+        "entry": ["near_support_hold", "resistance_break_hold", "momentum_recovery", "none"],
+        "invalidation": ["near_support_break", "next_support_break", "trend_break"],
+        "take_profit": ["first_resistance", "second_resistance", "follow_trend"],
+        "timing": ["supportive", "weakening", "mixed", "open_candle_wait"],
+        "btc": ["supportive", "neutral", "caution"],
+    }
+    schema = {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": enums["action"]},
+            "reasons": {"type": "array", "minItems": 1, "maxItems": 3,
+                        "items": {"type": "string", "enum": enums["reason"]}},
+            "entry_trigger": {"type": "string", "enum": enums["entry"]},
+            "invalidation": {"type": "string", "enum": enums["invalidation"]},
+            "take_profit": {"type": "string", "enum": enums["take_profit"]},
+            "timing_15m": {"type": "string", "enum": enums["timing"]},
+            "btc_effect": {"type": "string", "enum": enums["btc"]},
+        },
+        "required": ["action", "reasons", "entry_trigger", "invalidation",
+                     "take_profit", "timing_15m", "btc_effect"],
+    }
+    started = time.time()
+    response = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+        headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+        json={
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "responseSchema": schema,
+                                 "maxOutputTokens": 350, "temperature": 0.15},
+        },
+        timeout=45,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+    raw_text = "".join(str(part.get("text") or "") for part in parts)
+    if not raw_text.strip():
+        raise ValueError("Flash-Lite boş karar planı döndürdü")
+    result = json.loads(raw_text)
+    usage = payload.get("usageMetadata") or {}
+    _log_usage(
+        "manual_coin_analysis_v2_plan", model_name, _PROMPT_V_MANUAL_V2_PLAN,
+        int(usage.get("promptTokenCount") or 0), int(usage.get("candidatesTokenCount") or 0),
+        time.time() - started, prompt_chars=len(prompt),
+    )
+    return result
+
+
+def _render_manual_v2_controlled(plan: dict, zones: dict, base: str, current_price: float,
+                                 timing_snapshot: dict | None, coin_snapshots: dict,
+                                 btc_snapshots: dict) -> str:
+    """Kontrollü karar planını güncel sayısal verilerle değişmez Türkçe rapora dönüştürür."""
+    coin_dirs = {key: _manual_v2_snapshot_direction(coin_snapshots.get(key))
+                 for key in ("1H", "4H", "1D")}
+    btc_dirs = {key: _manual_v2_snapshot_direction(btc_snapshots.get(key))
+                for key in ("1H", "4H", "1D")}
+
+    if all(value == "up" for value in coin_dirs.values()):
+        coin_view = f"{base} saatlik, 4 saatlik ve günlük grafiklerde yükseliş yapısını koruyor."
+    elif coin_dirs["1D"] == "up" and coin_dirs["1H"] != "down":
+        coin_view = (f"{base} günlük grafikte yükseliş yapısını koruyor; saatlik ve 4 saatlik görünümde ise "
+                     "hareketin hızı aynı ölçüde güçlü değil.")
+    elif coin_dirs["1D"] == "down":
+        coin_view = (f"{base} günlük görünümde zayıf kalırken saatlik ve 4 saatlik hareketler henüz bu baskıyı "
+                     "ortadan kaldıracak kadar uyumlu değil.")
+    else:
+        coin_view = f"{base} saatlik, 4 saatlik ve günlük grafiklerde aynı yönde ilerlemiyor."
+
+    btc_effect = plan.get("btc_effect")
+    if btc_effect == "supportive":
+        btc_view = "Bitcoin'in görünümü ZEC üzerindeki genel piyasa baskısını azaltıyor."
+    elif btc_effect == "caution":
+        btc_view = "Bitcoin'deki kısa vadeli zayıflama ZEC'in yükseliş hızını sınırlayabilir."
+    else:
+        btc_view = "Bitcoin şu anda ZEC için belirgin bir destek veya baskı oluşturmuyor."
+
+    obv_up = [key for key in ("1H", "4H", "1D")
+              if "yüks" in str((coin_snapshots.get(key) or {}).get("obv_direction", ""))]
+    obv_down = [key for key in ("1H", "4H", "1D")
+                if "düş" in str((coin_snapshots.get(key) or {}).get("obv_direction", ""))]
+    if len(obv_up) > len(obv_down):
+        flow_view = "Para akışı göstergesi alıcı katılımının genel olarak sürdüğünü gösteriyor."
+    elif len(obv_down) > len(obv_up):
+        flow_view = "Para akışı göstergesi alıcı katılımının zayıfladığını gösteriyor."
+    else:
+        flow_view = "Para akışı zaman dilimleri arasında aynı yönde ilerlemiyor."
+
+    technical = _manual_technical_fallbacks(coin_snapshots)
+    if len(technical) < 2:
+        technical.append(flow_view)
+    if len(technical) < 2:
+        technical.append("Göstergeler zaman dilimleri arasında tam uyum göstermediği için fiyatın bulunduğu bölge daha fazla önem kazanıyor.")
+    technical = list(dict.fromkeys(technical))[:3]
+
+    support_gap = _manual_v2_zone_gap(zones.get("near_support"), current_price, "support")
+    resistance_gap = _manual_v2_zone_gap(zones.get("resistance_1"), current_price, "resistance")
+    if support_gap is not None and resistance_gap is not None:
+        if resistance_gap < support_gap:
+            trade_ideas = (f"İlk dirence kalan yaklaşık %{resistance_gap:.1f} yükseliş alanı, yakın desteğe olası "
+                           f"%{support_gap:.1f} geri çekilme mesafesinden küçük. Bu nedenle mevcut seviyeden yeni "
+                           "alımın kısa vadeli kazanç alanı sınırlı; destek tepkisini veya direnç üzerinde kalıcılığı "
+                           "beklemek daha dengeli olur.")
+        else:
+            trade_ideas = (f"İlk dirence kadar yaklaşık %{resistance_gap:.1f} alan bulunurken yakın destek yaklaşık "
+                           f"%{support_gap:.1f} aşağıda. Fiyatın bulunduğu konum alım ihtimalini tamamen dışlamıyor; "
+                           "yine de giriş için alıcıların gücünü koruduğunu görmek gerekir.")
+    elif zones.get("near_support"):
+        trade_ideas = ("Yakın destek alım fikri için izlenebilir; ancak güvenilir bir üst direnç hesaplanmadığı için "
+                       "kâr alma alanı önceden netleştirilemiyor.")
+    else:
+        trade_ideas = "Mevcut bölgeler belirgin bir giriş avantajı göstermediği için yeni alımda acele etmezdim."
+
+    action = plan.get("action")
+    if action == "small_buy":
+        opening = "Ben olsam yalnız yüksek riski kabul ederek küçük ve kademeli bir başlangıç alımını değerlendirirdim."
+    elif action == "no_buy":
+        opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
+    else:
+        opening = "Ben olsam şu anda beklerdim."
+
+    trigger = plan.get("entry_trigger")
+    if trigger == "near_support_hold" and zones.get("near_support"):
+        trigger_text = "Alımı yeniden değerlendirmek için yakın desteğin korunmasını ve alıcıların yeniden güçlenmesini görmek isterdim."
+    elif trigger == "resistance_break_hold" and zones.get("resistance_1"):
+        trigger_text = "Alımı yeniden değerlendirmek için ilk direncin aşılmasını ve fiyatın bu bölgenin üzerinde kalmasını görmek isterdim."
+    elif trigger == "momentum_recovery":
+        trigger_text = "Alımı yeniden değerlendirmek için saatlik göstergelerin ve para akışının birlikte yeniden güçlenmesini görmek isterdim."
+    else:
+        trigger_text = "Yeni alım için mevcut görünümden daha belirgin bir fiyat avantajı oluşmasını beklerdim."
+
+    if timing_snapshot:
+        closed = bool(timing_snapshot.get("last_candle_closed"))
+        if not closed:
+            timing_text = "Son 15 dakikalık mum henüz açık olduğu için mevcut görünüm değişebilir; kapanmadan giriş kararı vermezdim."
+        elif plan.get("timing_15m") == "supportive":
+            timing_text = "15 dakikalık kapanmış mumlar giriş zamanlamasını destekliyor; bunu yine de tek başına alım nedeni saymazdım."
+        elif plan.get("timing_15m") == "weakening":
+            timing_text = "15 dakikalık kapanmış mumlarda zayıflama sürdüğü için satış baskısının durmasını beklerdim."
+        else:
+            timing_text = "15 dakikalık kapanmış mumlar net bir giriş zamanlaması göstermiyor."
+    else:
+        timing_text = "15 dakikalık veri alınamadığı için giriş zamanlamasını ayrıca değerlendiremedim."
+
+    invalidation = plan.get("invalidation")
+    if invalidation == "near_support_break" and zones.get("near_support"):
+        invalidation_text = ("Yakın destek kaybedilirse yalnız bu bölgeden alım düşüncesi geçersiz olur; sonraki "
+                             "destekte güncel verilerle yeniden değerlendirme yapardım.")
+    elif invalidation == "next_support_break" and zones.get("next_support"):
+        invalidation_text = "Sonraki destek de kaybedilirse alım düşüncesini bırakır ve yeni bir yapı oluşmasını beklerdim."
+    else:
+        invalidation_text = "Saatlik ve 4 saatlik yapı birlikte aşağı dönerse alım düşüncesini bırakırdım."
+
+    if plan.get("take_profit") == "second_resistance" and zones.get("resistance_2"):
+        profit_text = "Olası bir alımdan sonra ilk dirençte kısmi, sonraki dirençte kalan bölüm için kâr almayı değerlendirirdim."
+    elif zones.get("resistance_1"):
+        profit_text = "Olası bir alımdan sonra ilk direnç bölgesinde kısmi kâr almayı değerlendirirdim."
+    else:
+        profit_text = "Güvenilir bir direnç hesaplanmadığı için sabit hedef yerine hareket zayıfladıkça kademeli kâr almayı düşünürdüm."
+
+    expectation = " ".join((opening, trigger_text, timing_text, invalidation_text, profit_text))
+    general = " ".join((coin_view, flow_view, btc_view))
+    return (
+        f"🔍 Genel Değerlendirme\n{base} şu anda {_fmt(current_price)} seviyesinde işlem görüyor. "
+        f"{_manual_price_position_summary(zones, current_price)} {general}\n\n"
+        "📉 Teknik Göstergeler\n" + "\n".join(f"• {item}" for item in technical) +
+        "\n\n📈 Kritik Seviyeler\n"
+        f"• Yakın destek: {_manual_zone_text(zones.get('near_support'), current_price)}\n"
+        f"• Sonraki destek: {_manual_zone_text(zones.get('next_support'), current_price)}\n"
+        f"• Uzak yapısal destek: {_manual_zone_text(zones.get('structural_support'), current_price)}\n"
+        f"• İlk direnç: {_manual_zone_text(zones.get('resistance_1'), current_price)}\n"
+        f"• Direnç aşılırsa: {_manual_zone_text(zones.get('resistance_2'), current_price)}\n\n"
+        f"📌 İşlem Fikirleri\n{trade_ideas}\n\n"
+        f"🌌 Benim Beklentim — Ne Yapardım?\n{expectation}"
+    )
+
+
 def _manual_v2_gemini_analysis(base: str, current_price: float, technical_block: str,
                                timing_block: str, btc_block: str, zone_block: str,
                                price_location_note: str, model_name: str) -> dict:
@@ -2033,6 +2275,13 @@ def analyze_coin_on_demand(symbol: str) -> bool:
         if not GEMINI_API_KEY:
             send_decision("Manuel analiz v2 için GEMINI_API_KEY bulunamadı; ücretli modele geçiş yapılmadı.")
             return False
+        if MANUAL_ANALYZER_V2_RENDERER not in {"controlled", "prose"}:
+            send_decision("Manuel analiz V2 renderer ayarı geçersiz; API çağrısı yapılmadı.")
+            print(
+                f"[MANUEL ANALYZER CONFIG ERROR] geçersiz V2 renderer={MANUAL_ANALYZER_V2_RENDERER!r}",
+                flush=True,
+            )
+            return False
     else:
         if not MANUAL_ANALYZER_ALLOW_PAID_HAIKU:
             send_decision(
@@ -2203,11 +2452,26 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
     try:
         if MANUAL_ANALYZER_MODE == "v2":
             resolved_model = _resolve_manual_v2_model()
-            print(f"[MANUEL ANALYZER V2] {pair}: {resolved_model} başlatıldı.", flush=True)
-            structured_result = _manual_v2_gemini_analysis(
-                base, current_price, technical_block, timing_block, btc_block,
-                zone_block, price_location_note, resolved_model,
+            print(
+                f"[MANUEL ANALYZER V2] {pair}: {resolved_model} | renderer={MANUAL_ANALYZER_V2_RENDERER} başlatıldı.",
+                flush=True,
             )
+            if MANUAL_ANALYZER_V2_RENDERER == "controlled":
+                structured_result = _manual_v2_gemini_plan(
+                    base, current_price, technical_block, timing_block, btc_block,
+                    zone_block, price_location_note, resolved_model,
+                )
+                body = _render_manual_v2_controlled(
+                    structured_result, zones, base, current_price, coin_15m, coin, btc,
+                )
+            else:
+                structured_result = _manual_v2_gemini_analysis(
+                    base, current_price, technical_block, timing_block, btc_block,
+                    zone_block, price_location_note, resolved_model,
+                )
+                body = _render_manual_analysis(
+                    structured_result, zones, base, current_price, coin_15m, coin.get("1H"), coin,
+                )
             print(f"[MANUEL ANALYZER V2] {pair}: {resolved_model} analizi alındı.", flush=True)
         elif MANUAL_ANALYZER_MODE == "legacy":
             import anthropic
@@ -2232,9 +2496,10 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
             if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
                 raise ValueError("Yapılandırılmış manuel analiz alınamadı")
             structured_result = tool_block.input
-        body = _render_manual_analysis(
-            structured_result, zones, base, current_price, coin_15m, coin.get("1H"), coin,
-        )
+        if MANUAL_ANALYZER_MODE == "legacy":
+            body = _render_manual_analysis(
+                structured_result, zones, base, current_price, coin_15m, coin.get("1H"), coin,
+            )
     except Exception as exc:
         print(f"[MANUEL ANALYZER {MANUAL_ANALYZER_MODE.upper()}] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
