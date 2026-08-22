@@ -30,6 +30,9 @@ ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "v2").strip().lower()
 MANUAL_ANALYZER_V2_MODEL = os.getenv("MANUAL_ANALYZER_V2_MODEL", "gemini-2.5-flash-lite").strip()
+MANUAL_ANALYZER_ALLOW_PAID_HAIKU = os.getenv(
+    "MANUAL_ANALYZER_ALLOW_PAID_HAIKU", "false"
+).strip().lower() == "true"
 
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
@@ -1825,9 +1828,17 @@ def analyze_coin_on_demand(symbol: str) -> bool:
         if not GEMINI_API_KEY:
             send_decision("Manuel analiz v2 için GEMINI_API_KEY bulunamadı; ücretli modele geçiş yapılmadı.")
             return False
-    elif not ANTHROPIC_API_KEY:
-        send_decision("Manuel analiz için ANTHROPIC_API_KEY bulunamadı.")
-        return False
+    else:
+        if not MANUAL_ANALYZER_ALLOW_PAID_HAIKU:
+            send_decision(
+                "Ücretli Haiku manuel analizi kilitli; API çağrısı yapılmadı. "
+                "Bilinçli geri dönüş için ayrıca MANUAL_ANALYZER_ALLOW_PAID_HAIKU=true gerekir."
+            )
+            print("[MANUEL ANALYZER LEGACY BLOCKED] ücretli API çağrılmadı.", flush=True)
+            return False
+        if not ANTHROPIC_API_KEY:
+            send_decision("Manuel analiz için ANTHROPIC_API_KEY bulunamadı.")
+            return False
 
     coin_frames = {"1H": raw.get("coin_1h"), "4H": raw.get("coin_4h"), "1D": raw.get("coin_1d")}
     coin = {label: _manual_tf_snapshot(data) for label, data in coin_frames.items()}
