@@ -48,7 +48,7 @@ from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
-_PROMPT_V_MANUAL_V2 = "1.2"  # Flash-Lite: bağlama uygun pozisyon ve mum anlatımı
+_PROMPT_V_MANUAL_V2 = "1.3"  # Flash-Lite: fiyat alanı ve geri çekilme mesafesi karşılaştırması
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1789,6 +1789,7 @@ def _manual_v2_quality_issues(result: dict) -> list[str]:
         "ana trend": "Yapay 'ana trend' kalıbı kullanılmış.",
         "büyük trend": "Yapay 'büyük trend' kalıbı kullanılmış.",
         "ana yön": "Belirsiz 'ana yön' kalıbı kullanılmış.",
+        "ana hareket": "Belirsiz 'ana hareket' kalıbı kullanılmış.",
         "dört saatlik": "Zaman dilimi 'dört saatlik' yerine '4 saatlik' yazılmalı.",
         "fiyatımız": "Fiyat sahiplenen bir dille anlatılmış.",
         "coinimiz": "Coin sahiplenen bir dille anlatılmış.",
@@ -1828,10 +1829,12 @@ def _manual_v2_normalize_language(result: dict) -> tuple[dict, list[str]]:
         (r"\bana yönün\b", "genel eğilimin", "ana yönün→genel eğilimin"),
         (r"\bana yönü\b", "genel eğilim", "ana yönü→genel eğilim"),
         (r"\bana yön\b", "genel eğilim", "ana yön→genel eğilim"),
+        (r"\bana hareket", "hareket", "ana hareket→hareket"),
         (r"\bana trend\b", "genel eğilim", "ana trend→genel eğilim"),
         (r"\bbüyük trend\b", "geniş görünüm", "büyük trend→geniş görünüm"),
         (r"\bbekleme politikası(?:nı)?\b", "beklemeyi", "bekleme politikası→beklemeyi"),
         (r"\bgenel piyasa ve genel eğilim\b", "genel görünüm", "genel piyasa ve genel eğilim→genel görünüm"),
+        (r"\bfiyatın genel eğilimin\b", "fiyatın genel eğiliminin", "fiyatın genel eğilimin→fiyatın genel eğiliminin"),
     )
     applied = []
 
@@ -1894,7 +1897,9 @@ Yazım kuralları:
 - technical_indicators: Yalnız karar açısından önemli 2-4 farklı teknik bulgu yaz; her bulgunun fiyat açısından
   ne anlattığını aynı maddede açıkla.
 - trade_ideas: Mevcut fiyat, yakın destek ve varsa direnç arasında uygulanabilir olasılıkları 2-3 bağlantılı
-  cümlede karşılaştır.
+  cümlede karşılaştır. İlk dirence kalan yükseliş alanı yakın desteğe olası geri çekilme mesafesinden küçükse,
+  yeni alımın kısa vadeli kazanç alanının geri çekilme riskine göre sınırlı olduğunu açıkça söyle. Bu karşılaştırmayı
+  destek veya direnci kesin hedefmiş gibi sunmadan, bekleme ya da küçük alım tercihinin temel gerekçesine bağla.
 - expectation: En önemli alandır. Tek doğal paragrafta bugün ne yapacağını açıkça söyle: küçük alım, bekleme
   veya alım düşünmeme seçeneklerinden birini seç. Nedenini, alım için görmek istediğin somut gelişmeyi,
   vazgeçme koşulunu ve varsa kâr alma yaklaşımını müşterinin anlayacağı dille anlat. 15 dakikalık veriyi ayrı
@@ -1907,6 +1912,7 @@ Yazım kuralları:
 - BTC görünümünü bölümler arasında aynı kanıtlara dayanarak tutarlı anlat; bir bölümde kararsız, başka bir
   bölümde kesin düşüş gibi birbiriyle çelişen sonuçlar üretme.
 - "Genel piyasa ve genel eğilim" gibi aynı anlamı tekrarlayan kalıplar kullanma; doğrudan genel görünümü anlat.
+- "Ana hareket" gibi belirsiz bir kalıp kullanma; doğrudan yükseliş, düşüş veya hareket de.
 - Kullanıcının açık pozisyonu olduğunu varsayma. Kâr alma fikrini yalnız "mevcut pozisyon varsa" veya
   "olası bir alımdan sonra" koşuluyla anlat; "kârı cebe koy" deme.
 - Yakın desteğin kırılması yalnız o destekten alım düşüncesini geçersiz kılar. Bütün alım ihtimalinin tamamen
