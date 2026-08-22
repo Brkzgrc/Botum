@@ -1108,6 +1108,7 @@ def _clean_manual_analysis(text: str) -> str:
     )
     cleaned = cleaned.replace("yön net yukarı yönlü gözüküyor", "yön net biçimde yukarı görünüyor")
     cleaned = cleaned.replace("ölçeklerde", "grafiklerde")
+    cleaned = cleaned.replace("EMA20'nin üzerinde pozisyon alıyor", "fiyat EMA20'nin üzerinde kalıyor")
     cleaned = re.sub(r"\bema\b", "EMA", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace("hızlı çizginin yavaş çizginin üstünde", "hızlı çizgisinin yavaş çizgisinin üzerinde")
     cleaned = cleaned.replace(
@@ -1193,6 +1194,8 @@ def _manual_has_language_corruption(text: str) -> bool:
         "fiyat mevcut seviyeden alım riski", "hareket tutarlı olup uzamış",
         "son mum yapısında sınırlı gövde", "genel yükseliş koşulunun",
         "görmeli", "kalıcı olmama ihtimali", "tekrar azalması olası",
+        "çift hızlı-yavaş çizgi", "çift üstünde", "momentum sınırlandırması",
+        "göstergelerin güçlü konumu", "devamının devam etmekte",
     )
     return any(phrase in lowered for phrase in broken_phrases)
 
@@ -1437,26 +1440,31 @@ def _manual_technical_fallbacks(coin_snapshots: dict | None) -> list[str]:
         return []
 
     items = []
+    def join_labels(labels: list[str]) -> str:
+        if len(labels) < 2:
+            return labels[0].lower() if labels else ""
+        return f"{', '.join(label.lower() for label in labels[:-1])} ve {labels[-1].lower()}"
+
     obv_up = [name for name, snap in available if "yüks" in str(snap.get("obv_direction", ""))]
     obv_down = [name for name, snap in available if "düş" in str(snap.get("obv_direction", ""))]
     if obv_up or obv_down:
         if len(obv_up) > len(obv_down):
-            items.append("OBV ana zaman dilimlerinin çoğunda yükseliyor; bu, alıcı katılımının genel olarak sürdüğünü gösteriyor.")
+            items.append(f"OBV {join_labels(obv_up)} grafiklerde yükseliyor; bu, alıcı katılımının genel olarak sürdüğünü gösteriyor.")
         elif len(obv_down) > len(obv_up):
-            items.append("OBV ana zaman dilimlerinin çoğunda düşüyor; bu, alıcı katılımının zayıfladığını gösteriyor.")
+            items.append(f"OBV {join_labels(obv_down)} grafiklerde düşüyor; bu, alıcı katılımının zayıfladığını gösteriyor.")
         else:
             items.append("OBV zaman dilimleri arasında aynı yönde ilerlemiyor; para akışı görünümü henüz tam uyumlu değil.")
 
     ema_bullish = [name for name, snap in available
                    if snap.get("ema20_relation") == "üstünde" and snap.get("ema_order") == "20>50>100>200"]
     if ema_bullish:
-        joined = ", ".join(name.lower() for name in ema_bullish)
+        joined = join_labels(ema_bullish)
         items.append(f"Fiyat {joined} grafiklerde EMA20'nin üzerinde ve hareketli ortalamalar yükseliş sırasını koruyor; yükseliş yapısı henüz bozulmuş görünmüyor.")
 
     macd_up = [name for name, snap in available
                if snap.get("macd_cross") == "üstünde" and "yüks" in str(snap.get("macd_hist_direction", ""))]
     if macd_up:
-        joined = ", ".join(name.lower() for name in macd_up)
+        joined = join_labels(macd_up)
         items.append(f"MACD {joined} grafiklerde sinyal çizgisinin üzerinde ve histogram güçleniyor; momentum yukarı yönü destekliyor.")
     return items
 
