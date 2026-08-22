@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "4.3"   # fiyat konumu özeti, XML temizliği ve kesin 15 dakika ayrımı
+_PROMPT_V_MANUAL  = "4.4"   # güncel fiyatı doğal genel değerlendirme paragrafına yerleştirir
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1065,6 +1065,20 @@ def _clean_manual_analysis(text: str) -> str:
     cleaned = cleaned.replace("patern", "yapı")
     cleaned = cleaned.replace("küçük katılım", "küçük bir alım")
     cleaned = cleaned.replace("destek sağlamaktadır", "ana görünümü destekliyor")
+    cleaned = cleaned.replace("seviyelerin tümünde", "grafiklerin tümünde")
+    cleaned = cleaned.replace("yatay veya hafif zayıflama yapıyor", "yatay seyrediyor veya hafif zayıflıyor")
+    cleaned = cleaned.replace("çizginin sinyalin üstünde", "MACD çizgisinin sinyal çizgisinin üzerinde")
+    cleaned = cleaned.replace("çizgi sinyal üstünde", "MACD çizgisi sinyal çizgisinin üzerinde")
+    cleaned = cleaned.replace(
+        "geri çekilme baskısının ılımlı düzeyde kalmadığını gösteriyor",
+        "satış baskısının zayıfladığını gösteriyor",
+    )
+    cleaned = cleaned.replace("müdahalenin gücü", "kısa vadeli alıcı gücü")
+    cleaned = cleaned.replace("hızlı çizginin yavaş çizginin üstünde", "hızlı çizgisinin yavaş çizgisinin üzerinde")
+    cleaned = cleaned.replace(
+        "günlük StochRSI yön yukarı ve hızlı üstünde",
+        "günlük StochRSI yukarı yönlü ve hızlı çizgisi yavaş çizgisinin üzerinde",
+    )
     cleaned = cleaned.replace("retest", "yeniden test").replace("Retest", "Yeniden test")
     cleaned = cleaned.replace("overbought", "aşırı alımda").replace("oversold", "aşırı satımda")
     cleaned = cleaned.replace("ciddiyetle aşırı alımda durumda", "belirgin biçimde aşırı alımda")
@@ -1194,6 +1208,35 @@ def _manual_enforce_single_stance(text: str) -> str:
     return " ".join(kept)
 
 
+def _manual_align_expectation_with_timing(text: str, timing_snapshot: dict | None) -> str:
+    """15 dakikalık görünüm zayıfken mevcut fiyattan alım öneren cümleyi rapordan çıkarır."""
+    if not timing_snapshot:
+        return text
+    directions = [
+        timing_snapshot.get("rsi_direction", ""), timing_snapshot.get("macd_hist_direction", ""),
+        timing_snapshot.get("stoch_direction", ""), timing_snapshot.get("obv_direction", ""),
+        timing_snapshot.get("willr_direction", ""), timing_snapshot.get("ema20_direction", ""),
+    ]
+    upward = sum(any(word in str(value).lower() for word in ("yüks", "yukarı", "güçlen"))
+                 for value in directions)
+    downward = sum(any(word in str(value).lower() for word in ("düş", "aşağı", "zayıf"))
+                   for value in directions)
+    if downward < upward + 2:
+        return text
+
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        lowered = sentence.lower()
+        current_entry = (any(phrase in lowered for phrase in
+                             ("mevcut fiyattan", "şu anki fiyattan", "hemen")) and
+                         any(word in lowered for word in ("alım", "pozisyon", "başlangıç", "giriş")))
+        if current_entry:
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
 def _manual_price_location_note(zones: dict, current_price: float) -> str:
     """En yakın hesaplanan desteğin gerçekten ne kadar yakın olduğunu modele açıklar."""
     zone = zones.get("near_support")
@@ -1281,6 +1324,27 @@ def _manual_timing_fallback(snap: dict | None, hourly_snap: dict | None = None) 
     return f"{candle} {conclusion}"
 
 
+def _manual_expectation_fallback(zones: dict, current_price: float,
+                                 timing_snapshot: dict | None,
+                                 hourly_snapshot: dict | None) -> str:
+    """Modelin beklentisi kullanılamazsa fiyat konumu ve 15 dakikalık gözlemle doğal bir plan üretir."""
+    zone = zones.get("near_support")
+    if zone and current_price and float(current_price) > float(zone["high"]):
+        gap = (float(current_price) - float(zone["high"])) / float(current_price) * 100
+        if gap >= 5:
+            opening = (f"Fiyat en yakın hesaplanan desteğin %{gap:.1f} üzerinde olduğu için mevcut seviyeden "
+                       "aceleyle alım yapmazdım; ana yükseliş sürse bile hareketin kısa süre dinlenmesini isterdim.")
+        else:
+            opening = ("Fiyat en yakın desteğe çok uzak olmadığı için alıcıların bu bölgeyi koruyup korumadığını "
+                       "izler, güçlenme görülürse küçük ve kademeli bir alımı değerlendirirdim.")
+    elif zone and current_price and float(zone["low"]) <= float(current_price) <= float(zone["high"]):
+        opening = ("Fiyat destek bölgesinin içinde olduğu için hemen karar vermez, satış baskısının durduğunu ve "
+                   "alıcıların yeniden güçlendiğini görürsem küçük bir alımı değerlendirirdim.")
+    else:
+        opening = "Mevcut fiyat konumu net bir giriş avantajı göstermediği için acele karar vermezdim."
+    return f"{opening} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
+
+
 def _manual_remove_invented_levels(text: str, zones: dict, current_price: float) -> str:
     """Hesaplanan bölgeler ve güncel fiyat dışında uydurulan fiyatlı cümleleri çıkarır."""
     allowed = [float(current_price)] if current_price else []
@@ -1354,14 +1418,21 @@ def _render_manual_analysis(result: dict, zones: dict, base: str, current_price:
                                   "katılımının yeniden güçlenmesi daha sağlıklı bir giriş zemini oluşturabilir.")
     if not technical:
         technical = ["Göstergelerden birbirini doğrulayan yeterli ve farklı teknik kanıt üretilemedi."]
-    expectation = expectation or "Mevcut verilerle acele karar vermez, fiyatın hesaplanan bölgelerde nasıl davrandığını izlerdim."
+    expectation = expectation or _manual_expectation_fallback(
+        zones, current_price, timing_snapshot, hourly_snapshot,
+    )
     # Model 15 dakikalık gözlemi beklentiye katmazsa gerçek snapshot'tan aynı paragrafa ekle.
     if "15 dakika" not in expectation.lower():
         expectation = f"{expectation} {_manual_timing_fallback(timing_snapshot, hourly_snapshot)}"
+    expectation = _manual_align_expectation_with_timing(expectation, timing_snapshot)
+    if not expectation or expectation.lower().startswith("15 dakikalık"):
+        expectation = _manual_expectation_fallback(
+            zones, current_price, timing_snapshot, hourly_snapshot,
+        )
 
     body = (
-        f"🔍 Genel Değerlendirme\nGüncel fiyat: {_fmt(current_price)}\n"
-        f"{_manual_price_position_summary(zones, current_price)}\n{general}\n\n"
+        f"🔍 Genel Değerlendirme\n{base} şu anda {_fmt(current_price)} seviyesinde işlem görüyor. "
+        f"{_manual_price_position_summary(zones, current_price)} {general}\n\n"
         "📉 Teknik Göstergeler\n"
         + "\n".join(f"• {item}" for item in technical)
         + "\n\n📈 Kritik Seviyeler\n"
