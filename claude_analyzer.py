@@ -29,7 +29,17 @@ GEMINI_API_KEY          = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_K
 ANALYZER_TELEGRAM_TOKEN = os.getenv("ANALYZER_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID", "")
 MANUAL_ANALYZER_MODE    = os.getenv("MANUAL_ANALYZER_MODE", "v2").strip().lower()
-MANUAL_ANALYZER_V2_MODEL = os.getenv("MANUAL_ANALYZER_V2_MODEL", "gemini-2.5-flash-lite").strip()
+_MANUAL_ANALYZER_V2_MODEL_RAW = (
+    os.getenv("MANUAL_ANALYZER_V2_MODEL")
+    or os.getenv("GEMINI_MODEL")
+    or "gemini-3.5-flash-lite"
+).strip()
+MANUAL_ANALYZER_V2_MODEL = {
+    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite-preview": "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite-preview-09-2025": "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+}.get(_MANUAL_ANALYZER_V2_MODEL_RAW, _MANUAL_ANALYZER_V2_MODEL_RAW)
 MANUAL_ANALYZER_ALLOW_PAID_HAIKU = os.getenv(
     "MANUAL_ANALYZER_ALLOW_PAID_HAIKU", "false"
 ).strip().lower() == "true"
