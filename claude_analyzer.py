@@ -1346,8 +1346,8 @@ ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıral
 anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
 Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma. Bir zaman dilimini ilk kez veya başlı başına belirtirken
 "1 saatlik", "4 saatlik", "1 günlük" ve "15 dakikalık" de. Aynı zaman diliminden devam eden doğal anlatımda
-"saatlik görünüm", "saatlik OBV", "dört saatlik yapı" veya "günlük yön" demen doğrudur; her cümlede rakamı
-tekrarlama.
+"saatlik görünüm", "saatlik OBV" veya "günlük yön" demen doğrudur; her cümlede rakamı tekrarlama. Ancak
+4 saatlik zaman dilimini hiçbir yerde "dört saatlik" diye yazma; doğal anlatımda da daima "4 saatlik" kullan.
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
 "Gövde deformasyonu", "konsolide oluyor", "katılım kalitesi", "tepki adımı" gibi ne yapılacağını açıkça
