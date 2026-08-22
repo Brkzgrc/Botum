@@ -31,7 +31,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.8"   # doğal yorum derinliği geri yüklendi; biçim farkları kayıp oluşturmaz
+_PROMPT_V_MANUAL  = "1.9"   # doğal yorum + kod tarafında uzunluk ve uydurma seviye koruması
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -1005,7 +1005,7 @@ def _fmt_ind(v) -> str:
 def _manual_zone_text(zone: dict | None) -> str:
     if not zone:
         return "veriyle güvenilir bölge oluşmadı"
-    tf_names = {"1H": "saatlik", "4H": "dört saatlik", "1D": "günlük", "1W": "haftalık"}
+    tf_names = {"1H": "1 saatlik", "4H": "4 saatlik", "1D": "1 günlük", "1W": "1 haftalık"}
     tfs = " + ".join(tf_names.get(tf, tf) for tf in sorted(zone["tfs"]))
     return f"{_fmt(zone['low'])}–{_fmt(zone['high'])} ({tfs})"
 
@@ -1043,12 +1043,12 @@ def _clean_manual_analysis(text: str) -> str:
 def _natural_manual_text(text: str) -> str:
     """Yapılandırılmış manuel analiz alanlarını kullanıcıya doğal Türkçeyle hazırlar."""
     cleaned = _clean_manual_analysis(str(text or ""))
-    cleaned = re.sub(r"\b1H\b", "saatlik", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b4H\b", "dört saatlik", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b1D\b", "günlük", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b15M\b", "on beş dakikalık", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b15\s*dakikalık\b", "on beş dakikalık", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\b15\s*dakika\b", "on beş dakika", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b1H\b", "1 saatlik", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b4H\b", "4 saatlik", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b1D\b", "1 günlük", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b15M\b", "15 dakikalık", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bon beş dakikalık\b", "15 dakikalık", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bon beş dakika\b", "15 dakika", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bbullish\b", "yükseliş yönlü", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bbearish\b", "düşüş yönlü", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\blong\b", "spot alım", cleaned, flags=re.IGNORECASE)
@@ -1081,7 +1081,36 @@ def _manual_action_items(value) -> list[str]:
     return actions[:7]
 
 
-def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
+def _manual_sentence_limit(text: str, limit: int) -> str:
+    """Bir alanın model talimatını aşarak uzamasını engeller."""
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text or "") if p.strip()]
+    return " ".join(parts[:limit]).strip()
+
+
+def _manual_remove_invented_levels(text: str, zones: dict, current_price: float) -> str:
+    """Hesaplanan bölgeler ve güncel fiyat dışında uydurulan fiyatlı cümleleri çıkarır."""
+    allowed = [float(current_price)] if current_price else []
+    for zone in zones.values():
+        if zone:
+            allowed.extend([float(zone["low"]), float(zone["high"])])
+
+    def is_allowed(number: float) -> bool:
+        return any(abs(number - value) <= max(abs(value) * 0.002, 1.0) for value in allowed)
+
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        # EMA20 gibi gösterge adlarındaki rakamları fiyat seviyesi sayma.
+        scan_text = re.sub(r"\b(?:1|4|15)\s+(?:saatlik|günlük|dakikalık|dakika)\b", "", sentence)
+        numbers = [float(x.replace(",", ".")) for x in
+                   re.findall(r"(?<![A-Za-zÇĞİÖŞÜçğıöşü])\b\d+(?:[.,]\d+)?\b", scan_text)]
+        if numbers and any(not is_allowed(number) for number in numbers):
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def _render_manual_analysis(result: dict, zones: dict, base: str, current_price: float = 0.0) -> str:
     """Haiku'nun yapılandırılmış cevabını doğrular ve Telegram metnine dönüştürür."""
     if not isinstance(result, dict):
         raise ValueError("Yapılandırılmış manuel analiz alınamadı")
@@ -1092,12 +1121,21 @@ def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
     timing_15m = _natural_manual_text(result.get("timing_15m"))
     actions = _manual_action_items(result.get("action_plan"))
 
+    what = _manual_sentence_limit(_manual_remove_invented_levels(what, zones, current_price), 4)
+    meaning = _manual_sentence_limit(_manual_remove_invented_levels(meaning, zones, current_price), 4)
+    watch = _manual_sentence_limit(_manual_remove_invented_levels(watch, zones, current_price), 3)
+    timing_15m = _manual_sentence_limit(
+        _manual_remove_invented_levels(timing_15m, zones, current_price), 3
+    )
+    actions = [cleaned for item in actions
+               if (cleaned := _manual_remove_invented_levels(item, zones, current_price))][:6]
+
     # API çağrısı ücretlendikten sonra küçük biçim sapmaları yüzünden cevabı
     # tümden çöpe atma. Eksik alanı açıkça belirt, mevcut alanları yine göster.
     what = what or "Ana görünüm için yeterli açıklama üretilemedi."
     meaning = meaning or "Mevcut verilerden güvenilir bir sonuç cümlesi üretilemedi."
     watch = watch or "Görünümü zayıflatacak gelişme açık biçimde üretilemedi."
-    timing_15m = timing_15m or "On beş dakikalık veriden güvenilir bir giriş zamanlaması çıkarılamadı."
+    timing_15m = timing_15m or "15 dakikalık veriden güvenilir bir giriş zamanlaması çıkarılamadı."
     if not actions:
         actions = ["Mevcut verilerle acele karar vermez, hesaplanan bölgelerde fiyat davranışını izlerdim."]
 
@@ -1113,7 +1151,7 @@ def _render_manual_analysis(result: dict, zones: dict, base: str) -> str:
         f"Neye dikkat edilmeli?\n{watch}\n\n"
         "Ben olsam ne yapardım?\n"
         + "\n".join(f"• {item}" for item in actions)
-        + f"\n• On beş dakikalık zamanlama: {timing_15m}"
+        + f"\n• 15 dakikalık zamanlama: {timing_15m}"
     )
     return body.replace(f"{base}'nin", f"{base}'in")
 
@@ -1306,17 +1344,21 @@ Fear & Greed: {fg_text}
 Görevin kısa bir gösterge özeti çıkarmak değil, deneyimli bir yatırımcı gibi kanıtları tartıp anlaşılır bir görüş
 ve uygulanabilir bir eylem planı oluşturmaktır. Göstergeleri art arda sıralama; birlikte fiyat açısından ne
 anlattıklarını, yükselişin devam ihtimalini ve geri çekilme riskini gerekçeleriyle açıkla.
-Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma; "saatlik", "dört saatlik", "günlük" ve "on beş dakikalık" de.
+Çıktıda 1H/4H/1D/15M kısaltmalarını kullanma; tam olarak "1 saatlik", "4 saatlik", "1 günlük" ve "15 dakikalık" de.
 Teknik bir terim kullanırsan aynı cümlede sade Türkçe anlamını açıkla. Bullish, bearish, long, short, setup, bias,
 retest, swing veya confirmation gibi İngilizce işlem dili kullanma. Yalnız spot alım açısından konuş.
+"Gövde deformasyonu", "konsolide oluyor", "katılım kalitesi", "tepki adımı" gibi ne yapılacağını açıkça
+anlatmayan yapay ifadeler kullanma. Cümleleri doğal konuşma Türkçesiyle kur.
 
-Ana yorum alanlarında yalnız saatlik, dört saatlik ve günlük verileri kullan. On beş dakikalık veriyi yalnız
+Ana yorum alanlarında yalnız 1 saatlik, 4 saatlik ve 1 günlük verileri kullan. 15 dakikalık veriyi yalnız
 "Ben olsam ne yapardım?" eylem planında giriş zamanlamasını açıklamak için kullan. Ana yoruma karıştırma.
 Sabit gösterge eşikleriyle mekanik karar verme; fiyat yapısını, hareket yönünü, hacim/OBV katılımını, BTC etkisini
 ve seviyelere olan konumu birlikte tart. Güçlü trend devam edebilecekse yalnız "beklerdim" deme; kontrollü katılım
 seçeneğini de anlat. Hareket uzamış ve katılım zayıflıyorsa neden beklemenin daha anlamlı olduğunu açıkça söyle.
 
 Yalnız hesaplanan bölgeleri kullan; yeni fiyat seviyesi uydurma. BTC için fiyat seviyesi verme.
+Model alanlarında hiçbir rakamsal fiyat yazma; bölgeler kod tarafından ayrıca eklenecek. Bölgelere yalnız
+"yakın destek", "sonraki destek", "ilk direnç" ve "sonraki direnç" adlarıyla gönderme yap.
 Uzak yapısal desteği yakın alım bölgesi gibi sunma. Direnç verisi yoksa direnç tahmin etme.
 Eylem planında mevcut durumda ne yapacağını, hangi bölgeyi izleyeceğini, güçlü trend sürüyorsa kontrollü katılımın
 hangi durumda düşünülebileceğini, hangi gelişmede vazgeçeceğini ve mevcut dirençler varsa kâr alma yaklaşımını
@@ -1334,7 +1376,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "what_is_happening": {
                     "type": "string",
                     "description": (
-                        "İki-dört doğal cümle. Coinin saatlik, dört saatlik ve günlük ana yönünü; fiyat yapısını, "
+                        "İki-dört doğal ve açıklayıcı cümle. Coinin 1 saatlik, 4 saatlik ve 1 günlük ana yönünü; fiyat yapısını, "
                         "momentum ile para/hacim akışının uyumunu ve BTC bağlamını birlikte yorumla. Göstergeleri "
                         "listeleme, sonuçlarını açıkla. On beş dakikadan söz etme."
                     ),
@@ -1357,7 +1399,8 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "action_plan": {
                     "type": "string",
                     "description": (
-                        "Ben olsam ne yapardım bölümünün her biri ayrı satırda dört-yedi tamamlanmış maddesi. "
+                        "Ben olsam ne yapardım bölümünün her biri birinci tekil şahısla yazılmış, ayrı satırda "
+                        "dört-altı tamamlanmış maddesi. Emir kipinde kullanıcıya talimat verme. "
                         "Mevcut fiyattaki tutumu gerekçelendir; yakın ve sonraki bölge senaryosunu, trend devamında "
                         "kontrollü katılım seçeneğini, vazgeçme koşulunu ve varsa kâr alma yaklaşımını belirt. "
                         "Yalnız verilen bölgeleri kullan ve spot dışına çıkma. On beş dakikadan söz etme."
@@ -1366,7 +1409,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
                 "timing_15m": {
                     "type": "string",
                     "description": (
-                        "İki-üç doğal cümle. Yalnız on beş dakikalık güncel fiyat ve mum yapısı ile gösterge "
+                        "İki-üç doğal cümle. Yalnız 15 dakikalık güncel fiyat ve mum yapısı ile gösterge "
                         "yönlerinden yararlanarak giriş zamanlamasının şu anda ne anlattığını açıkla. Hangi davranışın "
                         "katılımı güçlendireceğini ve hangisinin beklemeyi gerektireceğini belirt; yeni fiyat seviyesi "
                         "veya mekanik alım kuralı üretme."
@@ -1398,7 +1441,7 @@ Yanıtı serbest metin olarak yazma. Yalnız submit_manual_analysis aracını bi
         )
         if tool_block is None or not isinstance(getattr(tool_block, "input", None), dict):
             raise ValueError("Yapılandırılmış manuel analiz alınamadı")
-        body = _render_manual_analysis(tool_block.input, zones, base)
+        body = _render_manual_analysis(tool_block.input, zones, base, current_price)
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
