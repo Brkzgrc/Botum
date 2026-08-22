@@ -30,7 +30,7 @@ TELEGRAM_CHAT_ID        = os.getenv("ANALYZER_CHAT_ID") or os.getenv("TELEGRAM_C
 from api_logger import log_usage as _log_usage
 _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
-_PROMPT_V_MANUAL  = "1.0"   # kullanıcı isteğiyle güncel coin görünümü
+_PROMPT_V_MANUAL  = "1.1"   # kullanıcı isteğiyle güncel coin görünümü + 15M yakın okuma
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -316,6 +316,13 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
     price = float(c.iloc[-1])
     atr_now = float(atr.iloc[-1]) if pd.notna(atr.iloc[-1]) else 0.0
     ema20 = float(ema[20].iloc[-1])
+    recent_closes = [round(float(x), 8) for x in c.tail(4)]
+    recent_highs = [round(float(x), 8) for x in h.tail(4)]
+    recent_lows = [round(float(x), 8) for x in l.tail(4)]
+    last_open = float(data["opens"][-1])
+    last_high = float(data["highs"][-1])
+    last_low = float(data["lows"][-1])
+    last_range = max(last_high - last_low, 1e-12)
     return {
         "price": price,
         "rsi": round(float(rsi.iloc[-1]), 1) if pd.notna(rsi.iloc[-1]) else None,
@@ -337,6 +344,14 @@ def _manual_tf_snapshot(data: dict | None) -> dict | None:
         "ema20_distance_atr": round((price - ema20) / atr_now, 2) if atr_now > 0 else None,
         "atr": atr_now,
         "vol_ratio": _vol_ratio(v.tolist()),
+        # Özellikle 15M yorumunda modelin tek bir kalıba bağlı kalmadan fiyat
+        # davranışını okuyabilmesi için son mumların ham yapısını da taşı.
+        "recent_closes": recent_closes,
+        "recent_highs": recent_highs,
+        "recent_lows": recent_lows,
+        "last_return_pct": round((price / last_open - 1) * 100, 2) if last_open else None,
+        "last_body_range_ratio": round(abs(price - last_open) / last_range, 2),
+        "last_close_location": round((price - last_low) / last_range, 2),
     }
 
 
@@ -1057,7 +1072,10 @@ def _manual_tf_text(label: str, snap: dict | None) -> str:
         f"StochRSI={snap['stoch_rsi']}, {snap['stoch_direction']}, K çizgisi D'nin {snap['stoch_cross']}; "
         f"OBV {snap['obv_direction']}; Williams%R={snap['willr']} ve {snap['willr_direction']}; "
         f"fiyat EMA20'nin {snap['ema20_relation']} ({snap['ema20_distance_atr']} ATR), "
-        f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x"
+        f"EMA20 {snap['ema20_direction']}, EMA dizilimi {snap['ema_order']}; hacim {snap['vol_ratio']}x; "
+        f"son 4 kapanış={snap['recent_closes']}; son 4 tepe={snap['recent_highs']}; "
+        f"son 4 dip={snap['recent_lows']}; son mum değişimi=%{snap['last_return_pct']}, "
+        f"gövde/aralık={snap['last_body_range_ratio']}, kapanış konumu={snap['last_close_location']}"
     )
 
 
@@ -1068,6 +1086,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
     pair = base + "USDT"
     display_symbol = base + "/USDT"
     tasks = {
+        "coin_15m": (display_symbol, "15m", 240),
         "coin_1h": (display_symbol, "1h", 240), "coin_4h": (display_symbol, "4h", 240),
         "coin_1d": (display_symbol, "1d", 240), "btc_1h": ("BTC/USDT", "1h", 240),
         "btc_4h": ("BTC/USDT", "4h", 240), "btc_1d": ("BTC/USDT", "1d", 240),
@@ -1088,6 +1107,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
 
     coin_frames = {"1H": raw.get("coin_1h"), "4H": raw.get("coin_4h"), "1D": raw.get("coin_1d")}
     coin = {label: _manual_tf_snapshot(data) for label, data in coin_frames.items()}
+    coin_15m = _manual_tf_snapshot(raw.get("coin_15m"))
     btc = {"1H": _manual_tf_snapshot(raw.get("btc_1h")),
            "4H": _manual_tf_snapshot(raw.get("btc_4h")),
            "1D": _manual_tf_snapshot(raw.get("btc_1d"))}
@@ -1096,6 +1116,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
     fg_val, fg_label = _fear_greed()
     fg_text = f"{fg_val} ({fg_label})" if fg_val is not None else "veri yok"
     technical_block = "\n".join(_manual_tf_text(x, coin[x]) for x in ("1H", "4H", "1D"))
+    timing_block = _manual_tf_text("15M", coin_15m)
     btc_block = "\n".join(_manual_tf_text(x, btc[x]) for x in ("1H", "4H", "1D"))
     zone_block = "\n".join([
         f"Yakın destek: {_manual_zone_text(zones['near_support'])}",
@@ -1108,10 +1129,17 @@ def analyze_coin_on_demand(symbol: str) -> bool:
 Bu bir otomatik emir veya kesin al-sat kararı değildir. Kullanıcı 1H, 4H ve 1D hareketlerini birlikte okuyup manuel karar verir.
 Göstergelerde sabit eşiklerden çok yön değişimini, fiyatın dinlenme/geri çekilme yapısını ve BTC bağlamını önemse.
 Bir koşulu tek başına zorunlu filtre yapma; olumlu ve olumsuz kanıtların ağırlığını birlikte anlat.
+15M yalnız "Ben olsam ne yapardım?" bölümündeki giriş zamanlamasını daha yakından gözlemek içindir.
+Ne oluyor, Ne anlama geliyor, İzlenecek bölgeler ve Neye dikkat edilmeli bölümlerini 15M'ye göre değiştirme.
+15M ana görünümü belirlemez, adayı elemez ve tek başına alım gerekçesi olmaz. Aynı 15M oluşumunu her grafikte aynı
+sonuca bağlama; 1H/4H/1D bağlamı, konum, hacim/OBV ve yakın bölgelere göre özgün değerlendir.
 Yalnız aşağıdaki güncel verileri kullan. Eski scanner sinyali yoktur. Bölge veya veri uydurma.
 
 [COIN: {base} | GÜNCEL FİYAT: {_fmt(current_price)}]
 {technical_block}
+
+[15M YAKIN GÖZLEM — ANA KARAR DEĞİL]
+{timing_block}
 
 [BTC BAĞLAMI]
 {btc_block}
@@ -1120,7 +1148,7 @@ Fear & Greed: {fg_text}
 [HESAPLANAN GÜNCEL BÖLGELER]
 {zone_block}
 
-Toplam yanıt yaklaşık 1.600–1.800 karakter olsun ve bütün bölümleri mutlaka tamamla.
+Toplam yanıt yaklaşık 1.800–2.100 karakter olsun ve bütün bölümleri mutlaka tamamla.
 Türkçe, sade ve kısa yaz. "Cari fiyat", "mikro ortam", İngilizce kelime, K/D kısaltması veya "ufuklaşma" gibi doğal olmayan ifade kullanma.
 Metafor kullanma ve yabancı dilden kelime kelime çevrilmiş cümle kurma. Göndermeden önce her cümleyi doğal Türkçe açısından düzelt.
 StochRSI çizgilerini gerekiyorsa "hızlı çizgi/yavaş çizgi" diye anlat. GİR/DİKKAT/RİSKLİ etiketi kullanma.
@@ -1150,11 +1178,11 @@ En fazla 1 kısa cümle; görünümü hangi fiyat kapanışı veya BTC hareketin
 Kısa vadeli değerlendirmede direnç teyidi için 1H veya gerekirse 4H kapanış/retest kullan; 1D kapanışı isteme.
 BTC için rakamsal kapanış seviyesi yazma.
 
-Ben olsam ne yapardım?
-En fazla 3 kısa ve tamamlanmış cümle. Kesin emir verme. Şu sade sırayı kullan:
-1) Mevcut fiyattan alır mıydım, bekler miydim?
-2) Yakın destekte hangi fiyat hareketini veya gösterge yön değişimini arardım?
-3) Yakın destek çalışmazsa sonraki desteği mi beklerdim, işlemden mi uzak dururdum?
+En sonda yalnız şu etiketi ve ardından en fazla 2 kısa cümle yaz:
+15M zamanlama notu:
+15M'de şu anda ne olduğunu, giriş hareketinin güçlendiğini gösterebilecek somut gelişmeyi ve mevcut oluşumun bu
+bağlamda neden yanıltıcı olabileceğini anlat. Sabit bir kalıp, kesin eşik veya mekanik alım kuralı üretme.
+"Ben olsam ne yapardım?" başlığı yazma; ana eylem bölümü teknik verilerden ayrıca oluşturulacaktır.
 "Senaryo içeride", "kenar bulmak", "fırsat değerlendirebilirim" gibi belirsiz ifadeler kullanma."""
     try:
         import anthropic
@@ -1166,10 +1194,17 @@ En fazla 3 kısa ve tamamlanmış cümle. Kesin emir verme. Şu sade sırayı ku
                    resp.usage.input_tokens, resp.usage.output_tokens, time.time() - started,
                    prompt_chars=len(prompt))
         body = _clean_manual_analysis(resp.content[0].text)
+        timing_note = ""
+        if "15M zamanlama notu:" in body:
+            body, timing_note = body.split("15M zamanlama notu:", 1)
+            timing_note = timing_note.strip()
         # Modelin en kritik eylem bölümünde ters/çelişkili koşul üretmesini engelle.
         body = body.split("Ben olsam ne yapardım?", 1)[0].rstrip()
         body = body.replace(f"{base}'nin", f"{base}'in")
-        body = f"{body}\n\n{_manual_action_text(current_price, zones, coin, btc)}"
+        action = _manual_action_text(current_price, zones, coin, btc)
+        if timing_note:
+            action = f"{action}\n{timing_note}"
+        body = f"{body.strip()}\n\n{action}"
     except Exception as exc:
         print(f"[MANUEL ANALYZER CLAUDE] {pair}: {exc}", flush=True)
         send_decision(f"#{html.escape(base)} güncel analizi şu anda oluşturulamadı; daha sonra tekrar dene.")
