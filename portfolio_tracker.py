@@ -1262,13 +1262,13 @@ def calc_performance():
             # davranışının gerçekten daha başarılı olduğu ayrı görülebilsin.
             _spot_sub = str(sub or "").casefold().replace("\u0307", "").replace("ı", "i")
             if "erken_dönüş" in _spot_sub:
-                type_key = "SPOT_OPPORTUNITY ERKEN DÖNÜŞ İZLEME"
+                type_key = "ERKEN DÖNÜŞ İZLEME"
             elif "sikişma" in _spot_sub:
-                type_key = "SPOT_OPPORTUNITY SIKIŞMA SONRASI DEVAM"
+                type_key = "SIKIŞMA SONRASI DEVAM"
             elif "destek_tepki" in _spot_sub:
-                type_key = "SPOT_OPPORTUNITY DESTEK TEPKİSİ"
+                type_key = "DESTEK TEPKİSİ"
             else:
-                type_key = "SPOT_OPPORTUNITY DİĞER"
+                type_key = "DİĞER"
         else:
             type_key = sig_type.upper()
 
