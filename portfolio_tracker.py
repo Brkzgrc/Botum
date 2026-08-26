@@ -67,6 +67,7 @@ BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 MAX_POSITIONS  = 5              # trading_engine ile aynı değer
 OPEN_EXPIRE_H  = 24              # position_monitor.py'deki OPEN_EXPIRE_H ile aynı tutulmalı (sadece görüntüleme)
 SPOT_OPPORTUNITY_EXPIRE_H = 24   # Spot Scanner sanal inceleme ufku
+SPOT_OPPORTUNITY_TRAIL_PCT = 2.5 # TP1 sonrası peak'ten sabit takip mesafesi
 BOT_MISS_THRESHOLD = 2           # _sync_from_trading_bot: art arda kaç periyodik kontrolde
                                   # bot'ta bulunamazsa "open" kaydı kapatılır (tek blip'e güvenilmez)
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
@@ -748,6 +749,11 @@ def trail_stop_price(peak, atr):
     return peak * (1 - FALLBACK_TRAIL_PCT / 100)
 
 
+def spot_opportunity_trail_stop(entry, peak):
+    """Spot Scanner: TP1 sonrası peak'ten %2.5 trailing, en düşük giriş fiyatı."""
+    return max(entry, peak * (1 - SPOT_OPPORTUNITY_TRAIL_PCT / 100))
+
+
 def _atr_is_stale(sig):
     ts = sig.get("atr_updated_at")
     if not ts:
@@ -855,24 +861,40 @@ def check_open_positions():
                 if is_spot_opportunity:
                     # Spot Scanner Portfolio'da yalnızca SANAL işlem olarak
                     # izlenir; hiçbir Binance emri veya gerçek satış işlemi yoktur.
-                    # Stop önceliği bilinçli olarak korunur: aynı kontrol
-                    # aralığında hem stop hem hedef görülürse iyimser sonuç
-                    # yazmamak için stop kabul edilir. Kaydedilmiş peak/low da
-                    # kullanılır; böylece bu entegrasyondan önce açık kalmış
-                    # eski adaylar ilk kontrolde doğru biçimde temizlenir.
+                    # TP1 öncesinde stop önceliği korunur. Kaydedilmiş peak/low
+                    # da kullanılır; böylece eski adaylar ilk kontrolde doğru
+                    # biçimde değerlendirilir.
                     observed_low = min(low, float(sig.get("low_price", low)))
                     observed_high = max(high, float(sig.get("peak_price", high)))
-                    if observed_low <= stop:
+                    # TP1 bir kapanış değil, trailing'i etkinleştiren kilometre
+                    # taşıdır. TP1 görülmeden önce yapısal stop ve 24 saatlik
+                    # inceleme ufku geçerlidir. TP1 görüldükten sonra süre sınırı
+                    # kalkar; peak'ten %2.5 gerileme takip edilir. Trailing tabanı
+                    # giriş fiyatıdır, dolayısıyla hedefi görmüş bir kayıt sonradan
+                    # zarara dönüştürülmez.
+                    if not sig.get("tp1_hit") and observed_low <= stop:
                         close_reason = "stop"
                         close_price = stop
                         close_status = "loss"
-                    elif tp1 and observed_high >= tp1:
+                    elif not sig.get("tp1_hit") and tp1 and observed_high >= tp1:
                         sig["tp1_hit"] = True
                         sig["tp1_time"] = sig.get("tp1_time") or now.isoformat()
-                        close_reason = "tp1"
-                        close_price = tp1
-                        close_status = "win_tp1"
-                    else:
+                        sig["tp1_pct"] = round((tp1 - entry) / entry * 100, 2)
+                        need_save = True
+                        print(f"  🟡 SPOT TP1 GÖRÜLDÜ: {symbol.replace('/USDT','')} | "
+                              f"+{sig['tp1_pct']:.2f}% | %{SPOT_OPPORTUNITY_TRAIL_PCT:.1f} trailing başladı", flush=True)
+
+                    if sig.get("tp1_hit"):
+                        trail_stop = round(spot_opportunity_trail_stop(entry, sig["peak_price"]), 8)
+                        trail_ret = round((trail_stop - entry) / entry * 100, 2)
+                        # Açık 5 dakikalık mumda TP1 ve aşağı fitilin hangisinin
+                        # önce oluştuğu bilinemez. Yanlış sıra varsaymamak için
+                        # sanal trailing kapanış fiyatıyla kontrol edilir.
+                        if close <= trail_stop:
+                            close_reason = "trailing"
+                            close_price = trail_stop
+                            close_status = "win_trail"
+                    elif not close_reason:
                         open_time = datetime.fromisoformat(sig["open_time"])
                         if open_time.tzinfo is None:
                             open_time = open_time.replace(tzinfo=TR_TZ)
@@ -2845,7 +2867,17 @@ def dashboard():
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
         _tp1_confirmed = sig.get("tp1_confirmed")
-        if sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES and _tp1_confirmed:
+        _is_spot_opportunity = (
+            sig.get("source") == "spot-scanner"
+            or sig.get("sig_type") == "spot_opportunity"
+        )
+        if sig.get("tp1_hit") and _is_spot_opportunity:
+            _live_trail = spot_opportunity_trail_stop(
+                sig["entry"], sig.get("peak_price", sig["entry"])
+            )
+            _trail_pct = round((_live_trail - sig["entry"]) / sig["entry"] * 100, 2)
+            stop_cell = f"✅ {fmt_price(_live_trail)} ({_trail_pct:+.2f}%)"
+        elif sig.get("tp1_hit") and sig.get("source") in FULL_TRAIL_SOURCES and _tp1_confirmed:
             # SADECE bot onayladıysa (gerçekten Binance'te emir değişti) canlı trail
             # seviyesini "güvenli" gibi gösteriyoruz.
             _live_trail = trail_stop_price(sig.get("peak_price", sig["entry"]), sig.get("atr"))
@@ -2877,7 +2909,11 @@ def dashboard():
 
         is_full_trail_sig = sig.get("source") in FULL_TRAIL_SOURCES
         tp1_milestone = sig.get("tp1_hit")
-        if tp1_milestone and is_full_trail_sig and _tp1_confirmed:
+        if tp1_milestone and _is_spot_opportunity:
+            _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
+            tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;'
+                        f'font-size:.6rem;white-space:nowrap">✅ TP1 GÖRÜLDÜ · %{SPOT_OPPORTUNITY_TRAIL_PCT:.1f} TRAİLİNG</span>')
+        elif tp1_milestone and is_full_trail_sig and _tp1_confirmed:
             _tp1_hit_pct = sig.get("tp1_pct", tp1_pct)
             tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;'
                         f'font-size:.6rem;white-space:nowrap">✅ TRAİLİNG AKTİF (onaylı) +{_tp1_hit_pct:.2f}%</span>')
@@ -3311,7 +3347,7 @@ function toggleType(key, btn) {{
 <div class="section">
     <details data-id="open-pos" open>
     <summary>🔵 AÇIK POZİSYONLAR ({len(open_sigs)})</summary>
-    <p class="note">Legacy SMC: CHoCH+1tick limit buy → retest (48H) → fill sonrası SL | TP1 hit → ATR×0.6 trailing | PUMP: hard SL, hard TP, 6h expire.</p>
+    <p class="note">Spot adayları: TP1 → peak'ten %{SPOT_OPPORTUNITY_TRAIL_PCT:.1f} trailing (taban: giriş) | TP1 öncesi 24s ufuk ve yapısal stop. Legacy SMC: TP1 → ATR×0.6 trailing | PUMP: hard SL/TP, 6s expire.</p>
     <div class="table-wrap"><table><thead><tr>
         <th>Sembol</th><th>Tür</th><th>Giriş</th><th>Şu An</th><th>Peak</th><th>Dip</th>
         <th>Trail/Stop</th><th>TP1</th><th>TP2</th><th>Tarih</th><th>Süre</th><th>Analiz</th><th></th>
