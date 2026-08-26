@@ -66,6 +66,7 @@ BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
 MAX_POSITIONS  = 5              # trading_engine ile aynı değer
 OPEN_EXPIRE_H  = 24              # position_monitor.py'deki OPEN_EXPIRE_H ile aynı tutulmalı (sadece görüntüleme)
+SPOT_OPPORTUNITY_EXPIRE_H = 24   # Spot Scanner sanal inceleme ufku
 BOT_MISS_THRESHOLD = 2           # _sync_from_trading_bot: art arda kaç periyodik kontrolde
                                   # bot'ta bulunamazsa "open" kaydı kapatılır (tek blip'e güvenilmez)
 # Ana SMC kaynak listesi — "smc-v2" tek aktif SMC sinyali
@@ -668,6 +669,11 @@ def receive_signal():
         "low_price": float(data["entry"]), "low_pct": 0.0,
         "current_price": float(data["entry"]), "current_pct": 0.0,
         "tp1_hit": False, "tp1_time": None,
+        # Spot Scanner kayıtlarının Portfolio içinde sanal olarak
+        # TP1/stop/expire ile sonuçlandırıldığını gösterir. Eski kayıtlarda bu
+        # alan yoktur; ilk toplu temizlikte Telegram bildirimi yağmaması için
+        # yeni ve eski kayıtları ayırmakta da kullanılır.
+        "spot_tracking_v1": data.get("source") == "spot-scanner",
         # analyzer
         "analyzer_decision": None, "analyzer_time": None,
         "last_check": now.isoformat(), "checks": 0,
@@ -842,7 +848,39 @@ def check_open_positions():
                         close_status = "win_trail" if trail_ret > 0 else "loss"
             else:
                 is_pump = sig.get("sig_type") == "pump"
-                if is_pump:
+                is_spot_opportunity = (
+                    sig.get("source") == "spot-scanner"
+                    or sig.get("sig_type") == "spot_opportunity"
+                )
+                if is_spot_opportunity:
+                    # Spot Scanner Portfolio'da yalnızca SANAL işlem olarak
+                    # izlenir; hiçbir Binance emri veya gerçek satış işlemi yoktur.
+                    # Stop önceliği bilinçli olarak korunur: aynı kontrol
+                    # aralığında hem stop hem hedef görülürse iyimser sonuç
+                    # yazmamak için stop kabul edilir. Kaydedilmiş peak/low da
+                    # kullanılır; böylece bu entegrasyondan önce açık kalmış
+                    # eski adaylar ilk kontrolde doğru biçimde temizlenir.
+                    observed_low = min(low, float(sig.get("low_price", low)))
+                    observed_high = max(high, float(sig.get("peak_price", high)))
+                    if observed_low <= stop:
+                        close_reason = "stop"
+                        close_price = stop
+                        close_status = "loss"
+                    elif tp1 and observed_high >= tp1:
+                        sig["tp1_hit"] = True
+                        sig["tp1_time"] = sig.get("tp1_time") or now.isoformat()
+                        close_reason = "tp1"
+                        close_price = tp1
+                        close_status = "win_tp1"
+                    else:
+                        open_time = datetime.fromisoformat(sig["open_time"])
+                        if open_time.tzinfo is None:
+                            open_time = open_time.replace(tzinfo=TR_TZ)
+                        if (now - open_time).total_seconds() / 3600 >= SPOT_OPPORTUNITY_EXPIRE_H:
+                            close_reason = "expired"
+                            close_price = close
+                            close_status = "expired"
+                elif is_pump:
                     # PUMP: hard SL, hard TP, 6h expire — trailing yok
                     if tp1 and high >= tp1 and not sig.get("tp1_hit"):
                         with _lock:
@@ -867,15 +905,23 @@ def check_open_positions():
                     sig["close_reason"] = close_reason
                     sig["close_pct"]   = round((close_price - entry) / entry * 100, 2)
                 closed_count += 1; need_save = True
-                emoji = {"tp2": "🟢", "trailing": ("💰" if sig["close_pct"] > 0 else "🔴"),
+                emoji = {"tp1": "🟢", "tp2": "🟢", "trailing": ("💰" if sig["close_pct"] > 0 else "🔴"),
                          "stop": "🔴", "expired": "⏰"}.get(close_reason, "⚪")
                 print(f"  {emoji} KAPANDI: {symbol} | {close_reason.upper()} | "
                       f"{sig['close_pct']:+.2f}% | Peak: {sig['peak_pct']:+.2f}%", flush=True)
-                _send_telegram_pt(
-                    f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
-                    f"Sebep: {close_reason.upper()} | P&L: {sig['close_pct']:+.2f}%\n"
-                    f"Giriş: {entry:.6g} | Çıkış: ~{close_price:.6g} | Peak: {sig['peak_pct']:+.2f}%"
+                # Bu sürümden önce biriken Spot Scanner adaylarını ilk kontrolde
+                # sonuçlandırırken onlarca eski Telegram mesajı gönderme. Yeni
+                # adaylar normal kapanış bildirimlerini almaya devam eder.
+                legacy_spot_backfill = (
+                    (sig.get("source") == "spot-scanner" or sig.get("sig_type") == "spot_opportunity")
+                    and not sig.get("spot_tracking_v1")
                 )
+                if not legacy_spot_backfill:
+                    _send_telegram_pt(
+                        f"{emoji} <b>POZİSYON KAPANDI — {symbol}</b>\n"
+                        f"Sebep: {close_reason.upper()} | P&L: {sig['close_pct']:+.2f}%\n"
+                        f"Giriş: {entry:.6g} | Çıkış: ~{close_price:.6g} | Peak: {sig['peak_pct']:+.2f}%"
+                    )
                 try:
                     _update_archive_outcome(sig.get("id", ""), close_reason,
                                             sig["close_pct"], sig["peak_pct"], sig["open_time"])
@@ -1211,6 +1257,18 @@ def calc_performance():
             type_key = f"SMC {phase_label}"
         elif sig_type == "tp":
             type_key = f"TP-{sub.capitalize()}" if sub else "TP"
+        elif source == "spot-scanner" or sig_type == "spot_opportunity":
+            # Spot Scanner kurulumlarını tek başlıkta eritme; hangi fiyat
+            # davranışının gerçekten daha başarılı olduğu ayrı görülebilsin.
+            _spot_sub = str(sub or "").casefold().replace("\u0307", "").replace("ı", "i")
+            if "erken_dönüş" in _spot_sub:
+                type_key = "SPOT_OPPORTUNITY ERKEN DÖNÜŞ İZLEME"
+            elif "sikişma" in _spot_sub:
+                type_key = "SPOT_OPPORTUNITY SIKIŞMA SONRASI DEVAM"
+            elif "destek_tepki" in _spot_sub:
+                type_key = "SPOT_OPPORTUNITY DESTEK TEPKİSİ"
+            else:
+                type_key = "SPOT_OPPORTUNITY DİĞER"
         else:
             type_key = sig_type.upper()
 
