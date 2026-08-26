@@ -621,7 +621,12 @@ def receive_signal():
             if s.get("symbol") != data["symbol"] or s.get("source") != incoming_source:
                 continue
             if s.get("status") == "open":
-                # Açık pozisyon varsa kesinlikle reddet
+                # Spot Scanner kayıtları gerçek pozisyon değil, birbirinden
+                # bağımsız sanal fırsat örnekleridir. Aynı coin daha önceki
+                # kaydın trailing takibindeyken yeni ve farklı bir kurulum
+                # üretebilir; bunu reddetmek performans örneklemini eksiltir.
+                if incoming_source == "spot-scanner":
+                    continue
                 print(f"[SİNYAL] REDDEDILDI: {data['symbol']} zaten açık pozisyonda", flush=True)
                 return jsonify({"error": "already open", "symbol": data["symbol"]}), 409
             if s.get("status") == "pending_retest":
@@ -2862,7 +2867,7 @@ def dashboard():
         peak_c, peak_s = pct_color(sig.get("peak_pct"))
         low_c, low_s = pct_color(sig.get("low_pct"))
         sym = sig["symbol"].replace("/USDT", "")
-        tp1_pct = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig["entry"] > 0 else 0
+        tp1_pct = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 2) if sig["entry"] > 0 else 0
         tp2_val = sig.get("tp2")
         tp2_pct_open = round((tp2_val - sig["entry"]) / sig["entry"] * 100, 1) if tp2_val and sig["entry"] > 0 else 0
 
@@ -2923,9 +2928,9 @@ def dashboard():
                         f'font-size:.6rem;white-space:nowrap" title="Portfolio fiyattan gördü ama bot henüz '
                         f'Binance emrini değiştirmediğini onaylamadı">⚠️ TP1 GEÇİLDİ (onay bekleniyor) +{_tp1_hit_pct:.2f}%</span>')
         elif tp1_milestone:
-            tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;font-size:.6rem;white-space:nowrap">✅ +{tp1_pct}% milestone</span>')
+            tp1_cell = (f'<span style="background:#2ecc7133;color:#2ecc71;padding:1px 5px;border-radius:3px;font-size:.6rem;white-space:nowrap">✅ +{tp1_pct:.2f}% milestone</span>')
         else:
-            tp1_cell = f"{fmt_price(sig['tp1'])} (+{tp1_pct}%)"
+            tp1_cell = f"{fmt_price(sig['tp1'])} (+{tp1_pct:.2f}%)"
         open_rows += f"""<tr>
             <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
             <td>{fmt_price(sig['entry'])}</td>
@@ -2951,8 +2956,8 @@ def dashboard():
         # asla "TP1 Hit" olarak, gerçekten o yüzdede vurulmuş gibi basılmaz —
         # sadece ayrı, açıkça "Orijinal Hedef" etiketli bir referans olarak
         # gösterilir.
-        orig_tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
-        _orig_line = f'<br><span style="color:#5a6a7a;font-size:.55rem">Orijinal Hedef: +{orig_tp1_pct_v}%</span>' if orig_tp1_pct_v else ''
+        orig_tp1_pct_v = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 2) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
+        _orig_line = f'<br><span style="color:#5a6a7a;font-size:.55rem">Orijinal Hedef: +{orig_tp1_pct_v:.2f}%</span>' if orig_tp1_pct_v else ''
         if sig.get("tp1_hit") and _cr == "trailing":
             _fin_p = sig.get("close_pct", 0)
             tp1_badge = (f'<span style="color:#3498db;font-size:.58rem">'
@@ -2960,7 +2965,7 @@ def dashboard():
         elif sig.get("tp1_hit"):
             tp1_badge = f'<span style="color:#2ecc71;font-size:.58rem">✓TP1 Hit</span>{_orig_line}'
         else:
-            tp1_badge = f'<span style="color:#3a4a5a;font-size:.58rem">Orijinal Hedef: +{orig_tp1_pct_v}%</span>' if orig_tp1_pct_v else '—'
+            tp1_badge = f'<span style="color:#3a4a5a;font-size:.58rem">Orijinal Hedef: +{orig_tp1_pct_v:.2f}%</span>' if orig_tp1_pct_v else '—'
 
         return f"""<tr>
             <td style="color:#ecf0f1">{sym_cell(sym)}</td><td>{type_badge(sig)}</td>
@@ -3061,7 +3066,7 @@ def dashboard():
         sym = sig["symbol"].replace("/USDT", "")
         lp  = sig.get("limit_price")
         lp_str = fmt_price(lp) if lp else "—"
-        tp1_pct = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 1) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
+        tp1_pct = round((sig["tp1"] - sig["entry"]) / sig["entry"] * 100, 2) if sig.get("entry", 0) > 0 and sig.get("tp1") else 0
         try:
             ot = datetime.fromisoformat(sig["open_time"])
             if ot.tzinfo is None: ot = ot.replace(tzinfo=TR_TZ)
@@ -3130,7 +3135,7 @@ def dashboard():
             <td>{_cur_cell}</td>
             <td>{_choch_entry_cell}</td>
             <td>{fmt_price(sig['stop'])}</td>
-            <td>{fmt_price(sig['tp1'])} (+{tp1_pct}%)</td>
+            <td>{fmt_price(sig['tp1'])} (+{tp1_pct:.2f}%)</td>
             <td style="color:#7f8c8d;font-size:.7rem">{elapsed_str}</td>
             <td style="color:{rem_color};font-size:.7rem;font-weight:bold">{remaining_str}</td>
             <td>{analyzer_badge(sig)}</td></tr>"""
