@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import shutil
 import time
 import threading
 from datetime import datetime, timedelta, timezone
@@ -36,6 +37,11 @@ from liquidity_radar import get_radar, radar_ui_lines
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 SIGNALS_FILE = os.path.join(DATA_DIR, "portfolio_signals.json")
+HISTORY_CORRECTION_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "portfolio_history_correction_20260827.json",
+)
+HISTORY_CORRECTION_BACKUP = SIGNALS_FILE + ".before_chronology_fix_20260827.bak"
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
 AUTH_TOKEN              = os.getenv("PORTFOLIO_AUTH_TOKEN", "")
 DASHBOARD_USER          = os.getenv("DASHBOARD_USER", "")
@@ -242,6 +248,7 @@ def load_signals():
                 signals_db = json.load(f)
             print(f"[DB] {len(signals_db)} sinyal yüklendi.", flush=True)
             _migrate_signals()
+            _apply_spot_history_correction_20260827()
         else:
             signals_db = []
     except Exception as e:
@@ -433,6 +440,75 @@ def save_signals():
     except Exception as e:
         print(f"[DB] Kayıt hatası: {e}", flush=True)
 
+
+def _apply_spot_history_correction_20260827():
+    """Binance kronolojisiyle doğrulanmış eski Spot Scanner kayıtlarını onarır.
+
+    Düzeltme yalnız kapalı ``spot-scanner`` kayıtlarına ve sabit kayıt
+    kimliklerine uygulanır. Giriş/hedef/stop değerlerinden biri denetimdeki
+    değerle uyuşmazsa o kayıt güvenlik amacıyla atlanır. İlk gerçek değişiklik
+    öncesinde mevcut portfolio_signals.json tek seferlik yedeklenir.
+    """
+    if not os.path.exists(HISTORY_CORRECTION_FILE):
+        return
+    try:
+        with open(HISTORY_CORRECTION_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        records = payload.get("records") or {}
+        if len(records) != 49:
+            print(f"[KRONOLOJİ] Güvenlik: 49 yerine {len(records)} düzeltme var; uygulanmadı.", flush=True)
+            return
+
+        def same_number(actual, expected):
+            try:
+                actual = float(actual); expected = float(expected)
+                return abs(actual - expected) <= max(1e-12, abs(expected) * 1e-8)
+            except (TypeError, ValueError):
+                return False
+
+        pending = []
+        skipped = []
+        for sig in signals_db:
+            correction = records.get(sig.get("id"))
+            if not correction:
+                continue
+            if sig.get("source") != "spot-scanner" or sig.get("status") == "open":
+                skipped.append(f"{sig.get('id')}: kaynak/durum")
+                continue
+            if not all((
+                same_number(sig.get("entry"), correction.get("expected_entry")),
+                same_number(sig.get("tp1"), correction.get("expected_tp1")),
+                same_number(sig.get("stop"), correction.get("expected_stop")),
+            )):
+                skipped.append(f"{sig.get('id')}: fiyat doğrulaması")
+                continue
+            fields = {
+                "status": correction["status"],
+                "close_reason": correction["close_reason"],
+                "close_price": correction["close_price"],
+                "close_pct": correction["close_pct"],
+                "close_time": correction["close_time"],
+                "tp1_hit": correction["tp1_hit"],
+                "tp1_time": correction["tp1_time"],
+                "chronology_audit": payload.get("audit_version"),
+            }
+            if any(sig.get(key) != value for key, value in fields.items()):
+                pending.append((sig, fields))
+
+        if not pending:
+            print("[KRONOLOJİ] Geçmiş Spot Scanner kayıtları zaten güncel.", flush=True)
+            return
+        if not os.path.exists(HISTORY_CORRECTION_BACKUP):
+            shutil.copy2(SIGNALS_FILE, HISTORY_CORRECTION_BACKUP)
+            print(f"[KRONOLOJİ] Yedek oluşturuldu: {HISTORY_CORRECTION_BACKUP}", flush=True)
+        for sig, fields in pending:
+            sig.update(fields)
+        save_signals()
+        print(f"[KRONOLOJİ] {len(pending)} kayıt düzeltildi; atlanan={len(skipped)}.", flush=True)
+        for item in skipped:
+            print(f"[KRONOLOJİ] Atlandı: {item}", flush=True)
+    except Exception as e:
+        print(f"[KRONOLOJİ] Düzeltme uygulanamadı: {e}", flush=True)
 def tr_now():
     return datetime.now(timezone.utc).astimezone(TR_TZ)
 
