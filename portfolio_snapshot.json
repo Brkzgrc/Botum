@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-08-27 05:34:03",
+  "updated_at": "2026-08-27 05:49:23",
   "performance": {
     "total": 57,
     "open": 8,
     "closed": 49,
-    "wins": 18,
+    "wins": 22,
     "win_tp2": 0,
-    "losses": 31,
-    "expired": 12,
-    "tp1_hits": 18,
-    "win_pnl": 55.5,
-    "loss_pnl": -192.71,
-    "expired_win": 0,
-    "expired_loss": 12,
-    "total_pnl": -137.21,
-    "win_loss_pnl": -71.08,
-    "expired_pnl": -66.13,
+    "losses": 27,
+    "expired": 17,
+    "tp1_hits": 20,
+    "win_pnl": 66.41,
+    "loss_pnl": -134.42,
+    "expired_win": 2,
+    "expired_loss": 15,
+    "total_pnl": -68.01,
+    "win_loss_pnl": -10.9,
+    "expired_pnl": -57.11,
     "avg_peak": 8.17,
-    "win_rate": 36.7,
-    "real_win_rate": 36.7,
+    "win_rate": 44.9,
+    "real_win_rate": 44.9,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -46,19 +46,19 @@
       "SIKIŞMA SONRASI DEVAM": {
         "total": 37,
         "open": 6,
-        "wins": 11,
-        "losses": 20,
-        "expired": 10,
-        "tp1_hits": 11,
-        "total_pnl": -109.55,
+        "wins": 14,
+        "losses": 17,
+        "expired": 13,
+        "tp1_hits": 12,
+        "total_pnl": -56.86,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 35.5,
+        "win_rate": 45.2,
         "avg_peak": 10.19,
         "tp2_rate": 0,
-        "expired_pnl": -62.34,
-        "win_loss_pnl": -47.21
+        "expired_pnl": -49.16,
+        "win_loss_pnl": -7.7
       },
       "ERKEN DÖNÜŞ İZLEME": {
         "total": 10,
@@ -67,32 +67,32 @@
         "losses": 4,
         "expired": 2,
         "tp1_hits": 5,
-        "total_pnl": 1.97,
+        "total_pnl": 1.94,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
         "win_rate": 55.6,
         "avg_peak": 3.43,
         "tp2_rate": 0,
-        "expired_pnl": -3.79,
-        "win_loss_pnl": 5.76
+        "expired_pnl": -3.81,
+        "win_loss_pnl": 5.75
       },
       "DESTEK TEPKİSİ": {
         "total": 10,
         "open": 1,
-        "wins": 2,
-        "losses": 7,
-        "expired": 0,
-        "tp1_hits": 2,
-        "total_pnl": -29.63,
+        "wins": 3,
+        "losses": 6,
+        "expired": 2,
+        "tp1_hits": 3,
+        "total_pnl": -13.09,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 22.2,
+        "win_rate": 33.3,
         "avg_peak": 5.97,
         "tp2_rate": 0,
-        "expired_pnl": 0.0,
-        "win_loss_pnl": -29.63
+        "expired_pnl": -4.13,
+        "win_loss_pnl": -8.96
       }
     },
     "daily": {
@@ -104,49 +104,49 @@
       },
       "2026-08-26": {
         "trades": 10,
-        "pnl": -7.609999999999999,
+        "pnl": -7.611699999999999,
         "wins": 4,
         "losses": 3
       },
       "2026-08-25": {
         "trades": 25,
-        "pnl": -88.14999999999999,
-        "wins": 6,
-        "losses": 19
+        "pnl": -40.8843,
+        "wins": 10,
+        "losses": 15
       },
       "2026-08-24": {
         "trades": 7,
-        "pnl": -2.5600000000000005,
-        "wins": 4,
-        "losses": 3
+        "pnl": 7.897499999999998,
+        "wins": 5,
+        "losses": 2
       },
       "2026-08-23": {
         "trades": 10,
-        "pnl": -38.89,
-        "wins": 4,
-        "losses": 6
+        "pnl": -27.407700000000002,
+        "wins": 3,
+        "losses": 7
       }
     },
     "weekly": {
       "2026-W34": {
         "trades": 47,
-        "pnl": -98.32,
-        "wins": 14,
-        "losses": 25
+        "pnl": -40.5985,
+        "wins": 19,
+        "losses": 20
       },
       "2026-W33": {
         "trades": 10,
-        "pnl": -38.89,
-        "wins": 4,
-        "losses": 6
+        "pnl": -27.407700000000002,
+        "wins": 3,
+        "losses": 7
       }
     },
     "monthly": {
       "2026-08": {
         "trades": 57,
-        "pnl": -137.20999999999998,
-        "wins": 18,
-        "losses": 31
+        "pnl": -68.0062,
+        "wins": 22,
+        "losses": 27
       }
     }
   },
@@ -175,17 +175,17 @@
       "close_pct": null,
       "peak_price": 0.059,
       "peak_pct": 0.0,
-      "low_price": 0.0579,
-      "low_pct": -1.86,
-      "current_price": 0.0579,
-      "current_pct": -1.86,
+      "low_price": 0.0577,
+      "low_pct": -2.2,
+      "current_price": 0.058,
+      "current_pct": -1.69,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 30,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 1,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -342,17 +342,17 @@
       "close_pct": null,
       "peak_price": 0.001497,
       "peak_pct": 0.0,
-      "low_price": 0.001472,
-      "low_pct": -1.67,
-      "current_price": 0.001474,
-      "current_pct": -1.54,
+      "low_price": 0.001478,
+      "low_pct": -1.27,
+      "current_price": 0.001478,
+      "current_pct": -1.27,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 30,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 1,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -512,19 +512,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.2047,
-      "peak_pct": 0.05,
-      "low_price": 0.1993,
-      "low_pct": -2.59,
-      "current_price": 0.1994,
-      "current_pct": -2.54,
+      "peak_price": 0.2046,
+      "peak_pct": 0.0,
+      "low_price": 0.1996,
+      "low_pct": -2.44,
+      "current_price": 0.1998,
+      "current_pct": -2.35,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 30,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 1,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -686,15 +686,15 @@
       "peak_pct": 0.0,
       "low_price": 0.0082,
       "low_pct": -3.53,
-      "current_price": 0.0083,
-      "current_pct": -2.35,
+      "current_price": 0.0082,
+      "current_pct": -3.53,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 42,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 13,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -851,8 +851,8 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.455,
-      "peak_pct": 1.79,
+      "peak_price": 0.454,
+      "peak_pct": 1.57,
       "low_price": 0.444,
       "low_pct": -0.67,
       "current_price": 0.453,
@@ -862,8 +862,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 54,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 25,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -1026,14 +1026,14 @@
       "peak_pct": 2.96,
       "low_price": 0.001727,
       "low_pct": -1.71,
-      "current_price": 0.001791,
-      "current_pct": 1.94,
+      "current_price": 0.001782,
+      "current_pct": 1.42,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 114,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 85,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -1184,14 +1184,14 @@
       "peak_pct": 5.11,
       "low_price": 94.95,
       "low_pct": -2.6,
-      "current_price": 101.17,
-      "current_pct": 3.79,
+      "current_price": 101.33,
+      "current_pct": 3.95,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 159,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 130,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -1350,14 +1350,14 @@
       "peak_pct": 0.0,
       "low_price": 0.05152,
       "low_pct": -6.53,
-      "current_price": 0.05328,
-      "current_pct": -3.34,
+      "current_price": 0.05289,
+      "current_pct": -4.05,
       "tp1_hit": false,
       "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-27T05:31:03.623098+03:00",
-      "checks": 215,
+      "last_check": "2026-08-27T05:48:23.433495+03:00",
+      "checks": 186,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -1511,10 +1511,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-26T19:02:42.667793+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.36572635,
+      "close_time": "2026-08-26T19:34:00+03:00",
+      "close_price": 1.36572656,
       "close_reason": "tp1",
-      "close_pct": 1.77,
+      "close_pct": 1.768,
       "peak_price": 1.369,
       "peak_pct": 2.01,
       "low_price": 1.342,
@@ -1522,7 +1522,7 @@
       "current_price": 1.369,
       "current_pct": 2.01,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-26T19:34:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -1652,7 +1652,8 @@
         },
         "last_high_1h": 1.36,
         "last_low_1h": 1.334
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ATOM_USDT_1787742157",
@@ -1672,10 +1673,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-26T14:02:37.836466+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.50321618,
+      "close_time": "2026-08-26T18:02:00+03:00",
+      "close_price": 1.50321693,
       "close_reason": "stop",
-      "close_pct": -3.95,
+      "close_pct": -3.9478,
       "peak_price": 1.566,
       "peak_pct": 0.06,
       "low_price": 1.5,
@@ -1816,7 +1817,8 @@
         },
         "last_high_1h": 1.566,
         "last_low_1h": 1.529
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "GLMR_USDT_1787720557",
@@ -1836,10 +1838,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-26T08:02:37.544448+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00737295,
+      "close_time": "2026-08-26T09:29:00+03:00",
+      "close_price": 0.007372955304,
       "close_reason": "tp1",
-      "close_pct": 3.49,
+      "close_pct": 3.4946,
       "peak_price": 0.0079,
       "peak_pct": 10.89,
       "low_price": 0.007065,
@@ -1847,7 +1849,7 @@
       "current_price": 0.007208,
       "current_pct": 1.18,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-26T09:29:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -1976,7 +1978,8 @@
         },
         "last_high_1h": 0.007459,
         "last_low_1h": 0.00712
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "PROM_USDT_1787709758",
@@ -1996,10 +1999,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-26T05:02:38.636345+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 3.86138588,
+      "close_time": "2026-08-26T06:02:00+03:00",
+      "close_price": 3.861384176,
       "close_reason": "stop",
-      "close_pct": -13.65,
+      "close_pct": -13.6542,
       "peak_price": 4.685,
       "peak_pct": 4.76,
       "low_price": 3.728,
@@ -2143,7 +2146,8 @@
         },
         "last_high_1h": 4.53,
         "last_low_1h": 4.216
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "NIGHT_USDT_1787695359",
@@ -2163,10 +2167,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-26T01:02:39.446771+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.0198752,
+      "close_time": "2026-08-26T14:00:00+03:00",
+      "close_price": 0.01987519776,
       "close_reason": "tp1",
-      "close_pct": 2.56,
+      "close_pct": 2.5552,
       "peak_price": 0.0199,
       "peak_pct": 2.68,
       "low_price": 0.01885,
@@ -2174,7 +2178,7 @@
       "current_price": 0.01894,
       "current_pct": -2.27,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-26T14:00:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -2304,7 +2308,8 @@
         },
         "last_high_1h": 0.01944,
         "last_low_1h": 0.01909
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "PUMP_USDT_1787695359",
@@ -2324,10 +2329,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-26T01:02:39.217742+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00491752,
+      "close_time": "2026-08-26T09:06:00+03:00",
+      "close_price": 0.004917521383,
       "close_reason": "tp1",
-      "close_pct": 5.1,
+      "close_pct": 5.0977,
       "peak_price": 0.00492,
       "peak_pct": 5.15,
       "low_price": 0.004434,
@@ -2335,7 +2340,7 @@
       "current_price": 0.004669,
       "current_pct": -0.21,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-26T09:06:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -2475,7 +2480,8 @@
         },
         "last_high_1h": 0.004699,
         "last_low_1h": 0.004353
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ARB_USDT_1787691758",
@@ -2495,10 +2501,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-26T00:02:38.999559+03:00",
-      "close_time": "2026-08-27T00:03:13.695953+03:00",
-      "close_price": 0.0896,
-      "close_reason": "expired",
-      "close_pct": -2.93,
+      "close_time": "2026-08-27T00:02:38.999000+03:00",
+      "close_price": 0.0896000404,
+      "close_reason": "expired_24h",
+      "close_pct": -2.9252,
       "peak_price": 0.0941,
       "peak_pct": 1.95,
       "low_price": 0.0882,
@@ -2636,7 +2642,8 @@
         },
         "last_high_1h": 0.0941,
         "last_low_1h": 0.0923
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "TRX_USDT_1787688158",
@@ -2656,10 +2663,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T23:02:38.180000+03:00",
-      "close_time": "2026-08-26T23:02:50.598610+03:00",
-      "close_price": 0.3356,
-      "close_reason": "expired",
-      "close_pct": -0.86,
+      "close_time": "2026-08-26T23:02:38.999000+03:00",
+      "close_price": 0.3354998745,
+      "close_reason": "expired_24h",
+      "close_pct": -0.8863,
       "peak_price": 0.3392,
       "peak_pct": 0.21,
       "low_price": 0.3343,
@@ -2793,7 +2800,8 @@
         },
         "last_high_1h": 0.3401,
         "last_low_1h": 0.3384
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "STRK_USDT_1787688158",
@@ -2813,10 +2821,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T23:02:38.013717+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.02500247,
+      "close_time": "2026-08-26T17:48:00+03:00",
+      "close_price": 0.02500247232,
       "close_reason": "stop",
-      "close_pct": -4.42,
+      "close_pct": -4.4248,
       "peak_price": 0.02618,
       "peak_pct": 0.08,
       "low_price": 0.02477,
@@ -2952,7 +2960,8 @@
         },
         "last_high_1h": 0.02637,
         "last_low_1h": 0.02604
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "CRV_USDT_1787688157",
@@ -2972,10 +2981,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-25T23:02:37.709799+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.32102376,
+      "close_time": "2026-08-26T05:13:00+03:00",
+      "close_price": 0.321023631,
       "close_reason": "tp1",
-      "close_pct": 1.53,
+      "close_pct": 1.5255,
       "peak_price": 0.3239,
       "peak_pct": 2.44,
       "low_price": 0.3058,
@@ -2983,7 +2992,7 @@
       "current_price": 0.3062,
       "current_pct": -3.16,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-26T05:13:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -3108,7 +3117,8 @@
         },
         "last_high_1h": 0.3196,
         "last_low_1h": 0.3139
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "FF_USDT_1787634164",
@@ -3128,10 +3138,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-25T08:02:44.905441+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.09493833,
+      "close_time": "2026-08-25T17:11:00+03:00",
+      "close_price": 0.094938306,
       "close_reason": "tp1",
-      "close_pct": 2.08,
+      "close_pct": 2.0842,
       "peak_price": 0.10618,
       "peak_pct": 14.17,
       "low_price": 0.08385,
@@ -3139,7 +3149,7 @@
       "current_price": 0.0958,
       "current_pct": 3.01,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-25T17:11:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -3277,7 +3287,8 @@
         },
         "last_high_1h": 0.09356,
         "last_low_1h": 0.09003
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "SHIB_USDT_1787626962",
@@ -3297,10 +3308,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T06:02:42.528221+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 5.16e-06,
-      "close_reason": "expired",
-      "close_pct": -8.02,
+      "close_time": "2026-08-26T06:02:42.999000+03:00",
+      "close_price": 5.360002e-06,
+      "close_reason": "expired_24h",
+      "close_pct": -4.4563,
       "peak_price": 5.74e-06,
       "peak_pct": 2.32,
       "low_price": 5.12e-06,
@@ -3444,7 +3455,8 @@
         },
         "last_high_1h": 5.67e-06,
         "last_low_1h": 5.51e-06
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "LUNC_USDT_1787626962",
@@ -3464,8 +3476,8 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T06:02:42.332969+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 5.309e-05,
+      "close_time": "2026-08-25T23:31:00+03:00",
+      "close_price": 5.3086e-05,
       "close_reason": "stop",
       "close_pct": -5.0,
       "peak_price": 5.599e-05,
@@ -3609,7 +3621,8 @@
         },
         "last_high_1h": 5.625e-05,
         "last_low_1h": 5.503e-05
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "XRP_USDT_1787619776",
@@ -3627,20 +3640,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "win_tp1",
       "open_time": "2026-08-25T04:02:56.827587+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.41043895,
-      "close_reason": "stop",
-      "close_pct": -6.43,
+      "close_time": "2026-08-25T05:28:00+03:00",
+      "close_price": 1.5367918318,
+      "close_reason": "tp1",
+      "close_pct": 1.9566,
       "peak_price": 1.5505,
       "peak_pct": 2.87,
       "low_price": 1.3574,
       "low_pct": -9.94,
       "current_price": 1.3761,
       "current_pct": -8.7,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-25T05:28:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -3776,7 +3789,8 @@
         },
         "last_high_1h": 1.5163,
         "last_low_1h": 1.4749
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "XLM_USDT_1787619771",
@@ -3796,10 +3810,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T04:02:51.733624+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.1788,
-      "close_reason": "expired",
-      "close_pct": -9.19,
+      "close_time": "2026-08-26T04:02:51.999000+03:00",
+      "close_price": 0.1832999201,
+      "close_reason": "expired_24h",
+      "close_pct": -6.9071,
       "peak_price": 0.2003,
       "peak_pct": 1.73,
       "low_price": 0.1781,
@@ -3946,7 +3960,8 @@
         },
         "last_high_1h": 0.1972,
         "last_low_1h": 0.1929
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "WIF_USDT_1787619771",
@@ -3964,20 +3979,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "win_tp1",
       "open_time": "2026-08-25T04:02:51.664335+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.19316166,
-      "close_reason": "stop",
-      "close_pct": -6.46,
+      "close_time": "2026-08-25T05:36:00+03:00",
+      "close_price": 0.2239858005,
+      "close_reason": "tp1",
+      "close_pct": 8.4677,
       "peak_price": 0.232,
       "peak_pct": 12.35,
       "low_price": 0.1899,
       "low_pct": -8.04,
       "current_price": 0.1968,
       "current_pct": -4.7,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-25T05:36:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -4112,7 +4127,8 @@
         },
         "last_high_1h": 0.2068,
         "last_low_1h": 0.2008
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "VET_USDT_1787619771",
@@ -4132,10 +4148,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-25T04:02:51.585136+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00584237,
+      "close_time": "2026-08-25T05:42:00+03:00",
+      "close_price": 0.00584237016,
       "close_reason": "tp1",
-      "close_pct": 1.75,
+      "close_pct": 1.748,
       "peak_price": 0.005985,
       "peak_pct": 4.23,
       "low_price": 0.005533,
@@ -4143,7 +4159,7 @@
       "current_price": 0.005742,
       "current_pct": 0.0,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-25T05:42:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -4278,7 +4294,8 @@
         },
         "last_high_1h": 0.00575,
         "last_low_1h": 0.005651
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "TIA_USDT_1787619771",
@@ -4298,10 +4315,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T04:02:51.519410+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.3459,
-      "close_reason": "expired",
-      "close_pct": -8.73,
+      "close_time": "2026-08-26T04:02:51.999000+03:00",
+      "close_price": 0.352900165,
+      "close_reason": "expired_24h",
+      "close_pct": -6.8865,
       "peak_price": 0.3853,
       "peak_pct": 1.66,
       "low_price": 0.339,
@@ -4449,7 +4466,8 @@
         },
         "last_high_1h": 0.3794,
         "last_low_1h": 0.37
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "STX_USDT_1787619771",
@@ -4469,10 +4487,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-25T04:02:51.451693+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.25742168,
+      "close_time": "2026-08-25T07:54:00+03:00",
+      "close_price": 0.2574216976,
       "close_reason": "tp1",
-      "close_pct": 7.98,
+      "close_pct": 7.9789,
       "peak_price": 0.29,
       "peak_pct": 21.64,
       "low_price": 0.2349,
@@ -4480,7 +4498,7 @@
       "current_price": 0.2768,
       "current_pct": 16.11,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-25T07:54:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -4618,7 +4636,8 @@
         },
         "last_high_1h": 0.239,
         "last_low_1h": 0.2306
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "RUNE_USDT_1787619766",
@@ -4638,10 +4657,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T04:02:46.361347+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.476,
-      "close_reason": "expired",
-      "close_pct": -1.65,
+      "close_time": "2026-08-26T04:02:46.999000+03:00",
+      "close_price": 0.485999888,
+      "close_reason": "expired_24h",
+      "close_pct": 0.4132,
       "peak_price": 0.506,
       "peak_pct": 4.55,
       "low_price": 0.475,
@@ -4785,7 +4804,8 @@
         },
         "last_high_1h": 0.485,
         "last_low_1h": 0.478
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "RAY_USDT_1787619766",
@@ -4805,10 +4825,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-25T04:02:46.293962+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.84973823,
+      "close_time": "2026-08-25T04:28:00+03:00",
+      "close_price": 0.8497381799,
       "close_reason": "tp1",
-      "close_pct": 3.36,
+      "close_pct": 3.3619,
       "peak_price": 0.8518,
       "peak_pct": 3.61,
       "low_price": 0.75,
@@ -4816,7 +4836,7 @@
       "current_price": 0.7557,
       "current_pct": -8.08,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-25T04:28:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -4954,7 +4974,8 @@
         },
         "last_high_1h": 0.829,
         "last_low_1h": 0.7649
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "PYTH_USDT_1787619766",
@@ -4972,20 +4993,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "win_tp1",
+      "status": "expired",
       "open_time": "2026-08-25T04:02:46.223499+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.05370505,
-      "close_reason": "tp1",
-      "close_pct": 4.46,
+      "close_time": "2026-08-26T04:02:46.999000+03:00",
+      "close_price": 0.05084001733,
+      "close_reason": "expired_24h",
+      "close_pct": -1.1087,
       "peak_price": 0.05747,
       "peak_pct": 11.79,
       "low_price": 0.04882,
       "low_pct": -5.04,
       "current_price": 0.04899,
       "current_pct": -4.71,
-      "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_hit": false,
+      "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -5125,7 +5146,8 @@
         },
         "last_high_1h": 0.05149,
         "last_low_1h": 0.0496
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "MET_USDT_1787619766",
@@ -5145,10 +5167,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T04:02:46.142204+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.2053,
-      "close_reason": "expired",
-      "close_pct": -13.81,
+      "close_time": "2026-08-26T04:02:46.999000+03:00",
+      "close_price": 0.2162000862,
+      "close_reason": "expired_24h",
+      "close_pct": -9.2359,
       "peak_price": 0.2395,
       "peak_pct": 0.55,
       "low_price": 0.2051,
@@ -5296,7 +5318,8 @@
         },
         "last_high_1h": 0.24,
         "last_low_1h": 0.226
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "COW_USDT_1787619766",
@@ -5314,20 +5337,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "win_tp1",
       "open_time": "2026-08-25T04:02:46.073742+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.11581405,
-      "close_reason": "stop",
-      "close_pct": -4.68,
+      "close_time": "2026-08-25T14:00:00+03:00",
+      "close_price": 0.1260493245,
+      "close_reason": "tp1",
+      "close_pct": 3.7443,
       "peak_price": 0.1342,
       "peak_pct": 10.45,
       "low_price": 0.1149,
       "low_pct": -5.43,
       "current_price": 0.1177,
       "current_pct": -3.13,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-25T14:00:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -5463,7 +5486,8 @@
         },
         "last_high_1h": 0.1218,
         "last_low_1h": 0.1186
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "BONK_USDT_1787619760",
@@ -5483,10 +5507,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T04:02:40.978370+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 3.03e-06,
+      "close_time": "2026-08-25T23:44:00+03:00",
+      "close_price": 3.032199e-06,
       "close_reason": "stop",
-      "close_pct": -8.67,
+      "close_pct": -8.6687,
       "peak_price": 3.43e-06,
       "peak_pct": 3.31,
       "low_price": 2.87e-06,
@@ -5630,7 +5654,8 @@
         },
         "last_high_1h": 3.33e-06,
         "last_low_1h": 3.2e-06
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "BNB_USDT_1787619760",
@@ -5650,10 +5675,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-25T04:02:40.905545+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 697.01,
-      "close_reason": "expired",
-      "close_pct": -1.84,
+      "close_time": "2026-08-26T04:02:40.999000+03:00",
+      "close_price": 694.65982356,
+      "close_reason": "expired_24h",
+      "close_pct": -2.1661,
       "peak_price": 719.08,
       "peak_pct": 1.27,
       "low_price": 688.0,
@@ -5795,7 +5820,8 @@
         },
         "last_high_1h": 711.28,
         "last_low_1h": 703.62
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ADA_USDT_1787619760",
@@ -5815,10 +5841,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T04:02:40.827548+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.21165504,
+      "close_time": "2026-08-25T16:51:00+03:00",
+      "close_price": 0.2116551208,
       "close_reason": "stop",
-      "close_pct": -6.01,
+      "close_pct": -6.0146,
       "peak_price": 0.2289,
       "peak_pct": 1.64,
       "low_price": 0.2026,
@@ -5962,7 +5988,8 @@
         },
         "last_high_1h": 0.2255,
         "last_low_1h": 0.2208
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ZRO_USDT_1787619760",
@@ -5982,8 +6009,8 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T04:02:40.746835+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.05111008,
+      "close_time": "2026-08-25T11:58:00+03:00",
+      "close_price": 1.0511102,
       "close_reason": "stop",
       "close_pct": -5.22,
       "peak_price": 1.344,
@@ -6130,7 +6157,8 @@
         },
         "last_high_1h": 1.109,
         "last_low_1h": 1.079
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "PEOPLE_USDT_1787619760",
@@ -6150,10 +6178,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T04:02:40.674742+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00968702,
+      "close_time": "2026-08-25T04:53:00+03:00",
+      "close_price": 0.0096870211,
       "close_reason": "stop",
-      "close_pct": -4.09,
+      "close_pct": -4.0889,
       "peak_price": 0.01012,
       "peak_pct": 0.2,
       "low_price": 0.00756,
@@ -6294,7 +6322,8 @@
         },
         "last_high_1h": 0.01015,
         "last_low_1h": 0.00987
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "LTC_USDT_1787619760",
@@ -6314,10 +6343,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T04:02:40.503959+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 49.9425649,
+      "close_time": "2026-08-25T23:48:00+03:00",
+      "close_price": 49.9425597,
       "close_reason": "stop",
-      "close_pct": -4.21,
+      "close_pct": -4.2145,
       "peak_price": 52.99,
       "peak_pct": 1.63,
       "low_price": 49.27,
@@ -6463,7 +6492,8 @@
         },
         "last_high_1h": 52.18,
         "last_low_1h": 51.42
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ORDI_USDT_1787616163",
@@ -6483,10 +6513,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-25T03:02:43.045838+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 3.99891648,
+      "close_time": "2026-08-26T00:08:00+03:00",
+      "close_price": 3.998917845,
       "close_reason": "stop",
-      "close_pct": -5.17,
+      "close_pct": -5.1715,
       "peak_price": 4.349,
       "peak_pct": 3.13,
       "low_price": 3.957,
@@ -6632,7 +6662,8 @@
         },
         "last_high_1h": 4.223,
         "last_low_1h": 4.14
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "EUL_USDT_1787605363",
@@ -6650,20 +6681,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "win_tp1",
       "open_time": "2026-08-25T00:02:43.712237+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.31503378,
-      "close_reason": "stop",
-      "close_pct": -4.85,
+      "close_time": "2026-08-25T07:24:00+03:00",
+      "close_price": 1.413582846,
+      "close_reason": "tp1",
+      "close_pct": 2.2853,
       "peak_price": 1.522,
       "peak_pct": 10.13,
       "low_price": 1.279,
       "low_pct": -7.45,
       "current_price": 1.401,
       "current_pct": 1.37,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-25T07:24:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -6797,7 +6828,8 @@
         },
         "last_high_1h": 1.384,
         "last_low_1h": 1.356
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "TURBO_USDT_1787572962",
@@ -6817,10 +6849,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-24T15:02:42.261970+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.0010669,
+      "close_time": "2026-08-24T19:01:00+03:00",
+      "close_price": 0.001066895016,
       "close_reason": "tp1",
-      "close_pct": 3.38,
+      "close_pct": 3.3813,
       "peak_price": 0.001092,
       "peak_pct": 5.81,
       "low_price": 0.000958,
@@ -6828,7 +6860,7 @@
       "current_price": 0.000962,
       "current_pct": -6.78,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-24T19:01:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -6966,7 +6998,8 @@
         },
         "last_high_1h": 0.00104,
         "last_low_1h": 0.001005
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "FET_USDT_1787572962",
@@ -6986,10 +7019,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-24T15:02:42.135911+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.16,
-      "close_reason": "expired",
-      "close_pct": -5.94,
+      "close_time": "2026-08-25T15:02:42.999000+03:00",
+      "close_price": 0.1702000188,
+      "close_reason": "expired_24h",
+      "close_pct": 0.0588,
       "peak_price": 0.18,
       "peak_pct": 5.82,
       "low_price": 0.1578,
@@ -7136,7 +7169,8 @@
         },
         "last_high_1h": 0.1703,
         "last_low_1h": 0.1627
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "CAKE_USDT_1787572962",
@@ -7156,10 +7190,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-24T15:02:42.016657+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 1.708,
-      "close_reason": "expired",
-      "close_pct": -3.01,
+      "close_time": "2026-08-25T15:02:42.999000+03:00",
+      "close_price": 1.743000819,
+      "close_reason": "expired_24h",
+      "close_pct": -1.0221,
       "peak_price": 1.804,
       "peak_pct": 2.44,
       "low_price": 1.692,
@@ -7303,7 +7337,8 @@
         },
         "last_high_1h": 1.765,
         "last_low_1h": 1.731
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "VIRTUAL_USDT_1787565756",
@@ -7323,10 +7358,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-24T13:02:36.832319+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.76719849,
+      "close_time": "2026-08-24T13:07:00+03:00",
+      "close_price": 0.7671982845,
       "close_reason": "tp1",
-      "close_pct": 2.17,
+      "close_pct": 2.1705,
       "peak_price": 0.833,
       "peak_pct": 10.93,
       "low_price": 0.718,
@@ -7334,7 +7369,7 @@
       "current_price": 0.7199,
       "current_pct": -4.13,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-24T13:07:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -7473,7 +7508,8 @@
         },
         "last_high_1h": 0.7518,
         "last_low_1h": 0.7047
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "YB_USDT_1787544156",
@@ -7493,10 +7529,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-24T07:02:36.343629+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.09411947,
+      "close_time": "2026-08-24T10:32:00+03:00",
+      "close_price": 0.0941194476,
       "close_reason": "tp1",
-      "close_pct": 3.88,
+      "close_pct": 3.8846,
       "peak_price": 0.099,
       "peak_pct": 9.27,
       "low_price": 0.089,
@@ -7504,7 +7540,7 @@
       "current_price": 0.0924,
       "current_pct": 1.99,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-24T10:32:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -7632,7 +7668,8 @@
         },
         "last_high_1h": 0.0913,
         "last_low_1h": 0.0901
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "AT_USDT_1787540556",
@@ -7650,12 +7687,12 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "expired",
       "open_time": "2026-08-24T06:02:36.892541+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.13401027,
-      "close_reason": "stop",
-      "close_pct": -5.63,
+      "close_time": "2026-08-25T06:02:36.999000+03:00",
+      "close_price": 0.13750002,
+      "close_reason": "expired_24h",
+      "close_pct": -3.169,
       "peak_price": 0.1453,
       "peak_pct": 2.32,
       "low_price": 0.1321,
@@ -7799,7 +7836,8 @@
         },
         "last_high_1h": 0.1441,
         "last_low_1h": 0.137
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "ONG_USDT_1787533357",
@@ -7819,10 +7857,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-24T04:02:37.633135+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.076309,
+      "close_time": "2026-08-24T12:41:00+03:00",
+      "close_price": 0.07630897092,
       "close_reason": "tp1",
-      "close_pct": 2.59,
+      "close_pct": 2.5934,
       "peak_price": 0.19347,
       "peak_pct": 160.11,
       "low_price": 0.06939,
@@ -7830,7 +7868,7 @@
       "current_price": 0.17684,
       "current_pct": 137.75,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-24T12:41:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -7966,7 +8004,8 @@
         },
         "last_high_1h": 0.0757,
         "last_low_1h": 0.0705
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "GPS_USDT_1787515357",
@@ -7984,20 +8023,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "win_tp1",
       "open_time": "2026-08-23T23:02:37.345376+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.01074416,
-      "close_reason": "stop",
-      "close_pct": -7.3,
+      "close_time": "2026-08-24T02:42:00+03:00",
+      "close_price": 0.01186337333,
+      "close_reason": "tp1",
+      "close_pct": 2.3587,
       "peak_price": 0.01249,
       "peak_pct": 7.77,
       "low_price": 0.00934,
       "low_pct": -19.41,
       "current_price": 0.00954,
       "current_pct": -17.69,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-24T02:42:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -8132,7 +8171,8 @@
         },
         "last_high_1h": 0.01163,
         "last_low_1h": 0.01138
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "JST_USDT_1787500956",
@@ -8152,10 +8192,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-23T19:02:36.201467+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.09995042,
+      "close_time": "2026-08-24T10:10:00+03:00",
+      "close_price": 0.0999503981,
       "close_reason": "stop",
-      "close_pct": -3.05,
+      "close_pct": -3.0549,
       "peak_price": 0.10446,
       "peak_pct": 1.32,
       "low_price": 0.09863,
@@ -8291,7 +8331,8 @@
         },
         "last_high_1h": 0.10354,
         "last_low_1h": 0.10294
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "SYN_USDT_1787493757",
@@ -8311,10 +8352,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-23T17:02:37.174592+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.10864,
-      "close_reason": "expired",
-      "close_pct": -2.82,
+      "close_time": "2026-08-24T17:02:37.999000+03:00",
+      "close_price": 0.10976000539,
+      "close_reason": "expired_24h",
+      "close_pct": -1.8159,
       "peak_price": 0.11398,
       "peak_pct": 1.96,
       "low_price": 0.10709,
@@ -8459,7 +8500,8 @@
         },
         "last_high_1h": 0.11253,
         "last_low_1h": 0.10912
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "CHIP_USDT_1787493757",
@@ -8479,10 +8521,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-23T17:02:37.058667+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.03271957,
+      "close_time": "2026-08-23T19:32:00+03:00",
+      "close_price": 0.03271959005,
       "close_reason": "tp1",
-      "close_pct": 3.71,
+      "close_pct": 3.7071,
       "peak_price": 0.0347,
       "peak_pct": 9.98,
       "low_price": 0.03083,
@@ -8490,7 +8532,7 @@
       "current_price": 0.03344,
       "current_pct": 5.99,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-23T19:32:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -8628,7 +8670,8 @@
         },
         "last_high_1h": 0.03177,
         "last_low_1h": 0.03069
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "BANK_USDT_1787493756",
@@ -8646,20 +8689,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "win_tp1",
+      "status": "expired",
       "open_time": "2026-08-23T17:02:36.862741+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.03688698,
-      "close_reason": "tp1",
-      "close_pct": 2.18,
+      "close_time": "2026-08-24T17:02:36.999000+03:00",
+      "close_price": 0.0348999999,
+      "close_reason": "expired_24h",
+      "close_pct": -3.3241,
       "peak_price": 0.0369,
       "peak_pct": 2.22,
       "low_price": 0.0342,
       "low_pct": -5.26,
       "current_price": 0.0352,
       "current_pct": -2.49,
-      "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_hit": false,
+      "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -8795,7 +8838,8 @@
         },
         "last_high_1h": 0.0363,
         "last_low_1h": 0.0355
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "PLUME_USDT_1787486557",
@@ -8815,10 +8859,10 @@
       "funding_neg": false,
       "status": "win_tp1",
       "open_time": "2026-08-23T15:02:37.176671+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.01359712,
+      "close_time": "2026-08-23T16:43:00+03:00",
+      "close_price": 0.01359711328,
       "close_reason": "tp1",
-      "close_pct": 1.77,
+      "close_pct": 1.7748,
       "peak_price": 0.01427,
       "peak_pct": 6.81,
       "low_price": 0.01294,
@@ -8826,7 +8870,7 @@
       "current_price": 0.01343,
       "current_pct": 0.52,
       "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_time": "2026-08-23T16:43:00+03:00",
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -8965,7 +9009,8 @@
         },
         "last_high_1h": 0.01338,
         "last_low_1h": 0.0131
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "BIO_USDT_1787486556",
@@ -8985,10 +9030,10 @@
       "funding_neg": false,
       "status": "expired",
       "open_time": "2026-08-23T15:02:36.912811+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.02783,
-      "close_reason": "expired",
-      "close_pct": -7.33,
+      "close_time": "2026-08-24T15:02:36.999000+03:00",
+      "close_price": 0.02917000086,
+      "close_reason": "expired_24h",
+      "close_pct": -2.8638,
       "peak_price": 0.03101,
       "peak_pct": 3.26,
       "low_price": 0.02772,
@@ -9134,7 +9179,8 @@
         },
         "last_high_1h": 0.03011,
         "last_low_1h": 0.02926
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "SC_USDT_1787482958",
@@ -9152,12 +9198,12 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "loss",
+      "status": "expired",
       "open_time": "2026-08-23T14:02:38.006550+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00062563,
-      "close_reason": "stop",
-      "close_pct": -14.41,
+      "close_time": "2026-08-24T14:02:38.999000+03:00",
+      "close_price": 0.000659000155,
+      "close_reason": "expired_24h",
+      "close_pct": -9.8495,
       "peak_price": 0.000732,
       "peak_pct": 0.14,
       "low_price": 0.000622,
@@ -9301,7 +9347,8 @@
         },
         "last_high_1h": 0.000751,
         "last_low_1h": 0.000651
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "MOVE_USDT_1787447000",
@@ -9321,10 +9368,10 @@
       "funding_neg": false,
       "status": "loss",
       "open_time": "2026-08-23T04:03:20.263613+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 0.00796945,
+      "close_time": "2026-08-23T04:42:00+03:00",
+      "close_price": 0.007969454,
       "close_reason": "stop",
-      "close_pct": -13.38,
+      "close_pct": -13.3755,
       "peak_price": 0.0095,
       "peak_pct": 3.26,
       "low_price": 0.0074,
@@ -9472,7 +9519,8 @@
         },
         "last_high_1h": 0.0094,
         "last_low_1h": 0.0078
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     },
     {
       "id": "BCH_USDT_1787446999",
@@ -9490,20 +9538,20 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "win_tp1",
+      "status": "expired",
       "open_time": "2026-08-23T04:03:19.829590+03:00",
-      "close_time": "2026-08-26T19:34:02.851437+03:00",
-      "close_price": 284.77125997,
-      "close_reason": "tp1",
-      "close_pct": 1.74,
+      "close_time": "2026-08-24T04:03:19.999000+03:00",
+      "close_price": 277.2000846,
+      "close_reason": "expired_24h",
+      "close_pct": -0.9646,
       "peak_price": 286.0,
       "peak_pct": 2.18,
       "low_price": 259.4,
       "low_pct": -7.32,
       "current_price": 259.9,
       "current_pct": -7.15,
-      "tp1_hit": true,
-      "tp1_time": "2026-08-26T19:34:02.851437+03:00",
+      "tp1_hit": false,
+      "tp1_time": null,
       "analyzer_decision": null,
       "analyzer_time": null,
       "last_check": "2026-08-26T19:34:02.851437+03:00",
@@ -9638,7 +9686,8 @@
         },
         "last_high_1h": 280.1,
         "last_low_1h": 273.3
-      }
+      },
+      "chronology_audit": "spot-scanner-chronology-20260827-v1"
     }
   ]
 }
