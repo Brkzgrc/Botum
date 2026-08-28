@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-08-28 12:23:27",
+  "updated_at": "2026-08-28 12:53:32",
   "performance": {
     "total": 75,
-    "open": 5,
-    "closed": 70,
-    "wins": 33,
+    "open": 4,
+    "closed": 71,
+    "wins": 34,
     "win_tp2": 0,
     "losses": 37,
     "expired": 27,
-    "tp1_hits": 30,
-    "win_pnl": 96.46,
+    "tp1_hits": 31,
+    "win_pnl": 97.63,
     "loss_pnl": -171.61,
     "expired_win": 3,
     "expired_loss": 24,
-    "total_pnl": -75.15,
-    "win_loss_pnl": 12.23,
+    "total_pnl": -73.98,
+    "win_loss_pnl": 13.4,
     "expired_pnl": -87.38,
-    "avg_peak": 6.78,
-    "win_rate": 47.1,
-    "real_win_rate": 47.1,
+    "avg_peak": 6.74,
+    "win_rate": 47.9,
+    "real_win_rate": 47.9,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,20 +45,20 @@
     "by_type": {
       "ERKEN DÖNÜŞ İZLEME": {
         "total": 15,
-        "open": 3,
-        "wins": 8,
+        "open": 2,
+        "wins": 9,
         "losses": 4,
         "expired": 2,
-        "tp1_hits": 8,
-        "total_pnl": 7.46,
+        "tp1_hits": 9,
+        "total_pnl": 8.63,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 66.7,
-        "avg_peak": 3.68,
+        "win_rate": 69.2,
+        "avg_peak": 3.69,
         "tp2_rate": 0,
         "expired_pnl": -3.81,
-        "win_loss_pnl": 11.27
+        "win_loss_pnl": 12.44
       },
       "SIKIŞMA SONRASI DEVAM": {
         "total": 49,
@@ -98,8 +98,8 @@
     "daily": {
       "2026-08-28": {
         "trades": 4,
-        "pnl": -6.24,
-        "wins": 1,
+        "pnl": -5.07,
+        "wins": 2,
         "losses": 1
       },
       "2026-08-27": {
@@ -136,8 +136,8 @@
     "weekly": {
       "2026-W34": {
         "trades": 65,
-        "pnl": -47.7385,
-        "wins": 30,
+        "pnl": -46.5685,
+        "wins": 31,
         "losses": 30
       },
       "2026-W33": {
@@ -150,8 +150,8 @@
     "monthly": {
       "2026-08": {
         "trades": 75,
-        "pnl": -75.14620000000001,
-        "wins": 33,
+        "pnl": -73.9762,
+        "wins": 34,
         "losses": 37
       }
     }
@@ -183,15 +183,15 @@
       "peak_pct": 0.08,
       "low_price": 0.1254,
       "low_pct": -1.03,
-      "current_price": 0.1265,
-      "current_pct": -0.16,
+      "current_price": 0.126,
+      "current_pct": -0.55,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-28T12:18:38.512355+03:00",
-      "checks": 4,
+      "last_check": "2026-08-28T12:48:51.168433+03:00",
+      "checks": 10,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -318,166 +318,6 @@
       }
     },
     {
-      "id": "EUL_USDT_1787893353",
-      "symbol": "EUL/USDT",
-      "entry": 1.382,
-      "stop": 1.3161874289,
-      "tp1": 1.4112639938,
-      "tp2": 1.4280950247,
-      "tp3": null,
-      "limit_price": 1.382,
-      "signal_price": 1.382,
-      "sig_type": "spot_opportunity",
-      "sub_type": "erken_dönüş_i̇zleme",
-      "source": "spot-scanner",
-      "phase": "manual_review",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-08-28T08:02:33.722547+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 1.434,
-      "peak_pct": 3.76,
-      "low_price": 1.378,
-      "low_pct": -0.29,
-      "current_price": 1.412,
-      "current_pct": 2.17,
-      "tp1_hit": true,
-      "tp1_time": "2026-08-28T10:42:22.721703+03:00",
-      "spot_tracking_v1": true,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-08-28T12:18:38.512355+03:00",
-      "checks": 51,
-      "extra": {
-        "tp3": null,
-        "observed_setups": [
-          "Saatlik ilerleme: destekte derinleşen yeni gösterge sıkışması; erken inceleme; mutlak doğrulama: anlamlı düşüş sonrası desteğin dibinde erken sıkışma",
-          "Destek bölgesinde göstergeler yakın dönem diplerine sıkışıyor; fiyat dönüşü henüz teyitsiz"
-        ],
-        "movement_summary": {
-          "1H": "Fiyat yapısı: henüz tamamlanmış yeni fiyat olayı yok; RSI aşağı_dönüş; MACD histogram düşüyor; MACD negatif; Stoch RSI negatif; OBV aşağı_dönüş; EMA20 negatif",
-          "4H": "RSI düşüyor; MACD histogram düşüyor; MACD negatif; Stoch RSI negatif; OBV düşüyor",
-          "Akış": "Para akışı teyidi zayıf; kısa tepki yine mümkün"
-        },
-        "entry_zone": [
-          1.377027957,
-          1.3837402151
-        ],
-        "support_zone": [
-          1.3499358245,
-          1.3717368902
-        ],
-        "resistance_zone": [
-          1.4112639938,
-          1.4280950247
-        ],
-        "target_pct": 2.12,
-        "stop_pct": 4.76,
-        "rr": 0.44,
-        "tf_summary": {
-          "1H": "göstergelerin çoğu aşağı yönlü veya güç kaybediyor",
-          "4H": "göstergelerin çoğu aşağı yönlü veya güç kaybediyor",
-          "1D": "birden fazla göstergede yukarı yön değişimi oluşuyor",
-          "1W": "yeterli geçmiş veri yok"
-        },
-        "positives": [
-          "Destek çakışması: 1D+1H+4H"
-        ],
-        "risks": [
-          "4H göstergelerinin çoğu aşağı yönlü veya güç kaybediyor",
-          "İlk hedef mesafesi yapısal stop mesafesinden küçük",
-          "1H göstergelerinin çoğunda aşağı yön veya güç kaybı sürüyor"
-        ],
-        "historical_notes": [],
-        "support_strength": 21.8,
-        "support_timeframes": [
-          "1D",
-          "1H",
-          "4H"
-        ],
-        "resistance_strength": 11.7,
-        "support_distance_pct": 0.743,
-        "support_zone_width_pct": 1.578,
-        "support_timeframe_count": 3,
-        "coin_1h_pct": -0.576,
-        "coin_6h_pct": -3.153,
-        "relative_low_count": 5,
-        "h1_fresh_turn_count": 0,
-        "confirmation_families": [],
-        "confirmation_family_count": 0,
-        "h1_upward_count": 0,
-        "h1_weakening_count": 5,
-        "h4_upward_count": 0,
-        "candle_confirmation": false,
-        "support_role_state": "active_support",
-        "support_wick_breach_without_close": false,
-        "support_closed_beyond_count": 0,
-        "resistance_role_state": "active_resistance",
-        "resistance_wick_breach_without_close": false,
-        "resistance_closed_beyond_count": 0,
-        "btc_1h_pct": -0.21,
-        "btc_6h_pct": -0.82,
-        "rsi_1h": 38.8,
-        "rsi_4h": 49.7,
-        "vol_ratio_1h": 0.92,
-        "taker_buy_ratio_1h": 0.412,
-        "ema20_distance_atr_1h": -1.44,
-        "price_structure_1h": {
-          "key": "none",
-          "text": "henüz tamamlanmış yeni fiyat olayı yok",
-          "event_id": "",
-          "impulse_up_atr": 3.91,
-          "pullback_atr": 4.743,
-          "pullback_ratio": 1.213,
-          "recent_range_atr": 3.367,
-          "prior_range_atr": 1.195,
-          "down_move_atr": 4.743,
-          "range_contracting": false,
-          "last_up": false,
-          "reclaimed_prev_high": false,
-          "breakout_displacement_atr": 0.0,
-          "close_progress_atr": 0.0,
-          "trigger_body_atr": -0.253,
-          "trigger_close_location": 0.444,
-          "support_test": true,
-          "watch_keys": [
-            "reversal"
-          ]
-        },
-        "indicator_phases_1h": {
-          "rsi": "aşağı_dönüş",
-          "willr": "aşağı_dönüş",
-          "macd_hist": "düşüyor",
-          "macd_cross": "negatif",
-          "stoch_rsi": "düşüyor",
-          "stoch_rsi_cross": "negatif",
-          "kdj": "düşüyor",
-          "obv": "aşağı_dönüş",
-          "ema20_relation": "negatif",
-          "ema20_slope": "düşüyor"
-        },
-        "indicator_phases_4h": {
-          "rsi": "düşüyor",
-          "willr": "düşüyor",
-          "macd_hist": "düşüyor",
-          "macd_cross": "negatif",
-          "stoch_rsi": "düşüyor",
-          "stoch_rsi_cross": "negatif",
-          "kdj": "düşüyor",
-          "obv": "düşüyor",
-          "ema20_relation": "aşağı_kesti",
-          "ema20_slope": "aşağı_dönüş"
-        },
-        "last_high_1h": 1.392,
-        "last_low_1h": 1.374
-      },
-      "tp1_pct": 2.12
-    },
-    {
       "id": "VIRTUAL_USDT_1787850151",
       "symbol": "VIRTUAL/USDT",
       "entry": 0.7355,
@@ -503,15 +343,15 @@
       "peak_pct": 1.4,
       "low_price": 0.7064,
       "low_pct": -3.96,
-      "current_price": 0.7129,
-      "current_pct": -3.07,
+      "current_price": 0.7102,
+      "current_pct": -3.44,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-28T12:18:38.512355+03:00",
-      "checks": 193,
+      "last_check": "2026-08-28T12:48:51.168433+03:00",
+      "checks": 199,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -663,15 +503,15 @@
       "peak_pct": 1.39,
       "low_price": 0.04188,
       "low_pct": -4.54,
-      "current_price": 0.04307,
-      "current_pct": -1.82,
+      "current_price": 0.04276,
+      "current_pct": -2.53,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-28T12:18:38.512355+03:00",
-      "checks": 216,
+      "last_check": "2026-08-28T12:48:51.168433+03:00",
+      "checks": 222,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -831,15 +671,15 @@
       "peak_pct": 1.22,
       "low_price": 0.135,
       "low_pct": -2.74,
-      "current_price": 0.1366,
-      "current_pct": -1.59,
+      "current_price": 0.136,
+      "current_pct": -2.02,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-28T12:18:38.512355+03:00",
-      "checks": 239,
+      "last_check": "2026-08-28T12:48:51.168433+03:00",
+      "checks": 245,
       "extra": {
         "tp3": null,
         "observed_setups": [
