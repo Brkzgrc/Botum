@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-31 06:31:53",
+  "updated_at": "2026-08-31 07:01:57",
   "performance": {
     "total": 120,
     "open": 2,
@@ -220,19 +220,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.001486,
-      "peak_pct": 1.23,
+      "peak_price": 0.001492,
+      "peak_pct": 1.63,
       "low_price": 0.001465,
       "low_pct": -0.2,
-      "current_price": 0.001485,
-      "current_pct": 1.16,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 0.001491,
+      "current_pct": 1.57,
+      "tp1_hit": true,
+      "tp1_time": "2026-08-31T06:59:18.133941+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-31T06:29:12.423862+03:00",
-      "checks": 6,
+      "last_check": "2026-08-31T06:59:18.133941+03:00",
+      "checks": 12,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -355,7 +355,8 @@
         },
         "last_high_1h": 0.001487,
         "last_low_1h": 0.001466
-      }
+      },
+      "tp1_pct": 1.54
     },
     {
       "id": "GIGGLE_USDT_1788116546",
@@ -383,15 +384,15 @@
       "peak_pct": 0.79,
       "low_price": 37.5,
       "low_pct": -7.64,
-      "current_price": 38.11,
-      "current_pct": -6.13,
+      "current_price": 38.34,
+      "current_pct": -5.57,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-08-31T06:29:12.423862+03:00",
-      "checks": 101,
+      "last_check": "2026-08-31T06:59:18.133941+03:00",
+      "checks": 107,
       "extra": {
         "tp3": null,
         "observed_setups": [
