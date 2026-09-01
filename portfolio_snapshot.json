@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-01 17:36:42",
+  "updated_at": "2026-09-01 18:06:46",
   "performance": {
     "total": 131,
     "open": 4,
@@ -236,15 +236,15 @@
       "peak_pct": 0.14,
       "low_price": 7.2,
       "low_pct": -2.44,
-      "current_price": 7.31,
-      "current_pct": -0.95,
+      "current_price": 7.27,
+      "current_pct": -1.49,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-01T17:33:43.981848+03:00",
-      "checks": 102,
+      "last_check": "2026-09-01T18:03:55.112742+03:00",
+      "checks": 108,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -410,8 +410,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-01T17:33:43.981848+03:00",
-      "checks": 126,
+      "last_check": "2026-09-01T18:03:55.112742+03:00",
+      "checks": 132,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -566,15 +566,15 @@
       "peak_pct": 0.98,
       "low_price": 0.1751,
       "low_pct": -4.84,
-      "current_price": 0.1775,
-      "current_pct": -3.53,
+      "current_price": 0.1765,
+      "current_pct": -4.08,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-01T17:33:43.981848+03:00",
-      "checks": 149,
+      "last_check": "2026-09-01T18:03:55.112742+03:00",
+      "checks": 155,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -737,15 +737,15 @@
       "peak_pct": 0.0,
       "low_price": 0.1339,
       "low_pct": -2.9,
-      "current_price": 0.1349,
-      "current_pct": -2.18,
+      "current_price": 0.1353,
+      "current_pct": -1.89,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-01T17:33:43.981848+03:00",
-      "checks": 268,
+      "last_check": "2026-09-01T18:03:55.112742+03:00",
+      "checks": 274,
       "extra": {
         "tp3": null,
         "observed_setups": [
