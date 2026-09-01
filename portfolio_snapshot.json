@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-02 01:37:55",
+  "updated_at": "2026-09-02 02:07:59",
   "performance": {
     "total": 132,
     "open": 4,
@@ -236,15 +236,15 @@
       "peak_pct": 0.06,
       "low_price": 675.14,
       "low_pct": -1.14,
-      "current_price": 679.77,
-      "current_pct": -0.47,
+      "current_price": 681.08,
+      "current_pct": -0.27,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-02T01:36:29.147759+03:00",
-      "checks": 55,
+      "last_check": "2026-09-02T02:06:39.500068+03:00",
+      "checks": 61,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -394,8 +394,8 @@
       "close_pct": null,
       "peak_price": 7.39,
       "peak_pct": 0.14,
-      "low_price": 7.2,
-      "low_pct": -2.44,
+      "low_price": 7.19,
+      "low_pct": -2.57,
       "current_price": 7.2,
       "current_pct": -2.44,
       "tp1_hit": false,
@@ -403,8 +403,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-02T01:36:29.147759+03:00",
-      "checks": 198,
+      "last_check": "2026-09-02T02:06:39.500068+03:00",
+      "checks": 204,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -561,17 +561,17 @@
       "close_pct": null,
       "peak_price": 1.512,
       "peak_pct": 1.61,
-      "low_price": 1.455,
-      "low_pct": -2.22,
-      "current_price": 1.456,
-      "current_pct": -2.15,
+      "low_price": 1.453,
+      "low_pct": -2.35,
+      "current_price": 1.457,
+      "current_pct": -2.08,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-02T01:36:29.147759+03:00",
-      "checks": 222,
+      "last_check": "2026-09-02T02:06:39.500068+03:00",
+      "checks": 228,
       "extra": {
         "tp3": null,
         "observed_setups": [
@@ -733,8 +733,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-02T01:36:29.147759+03:00",
-      "checks": 245,
+      "last_check": "2026-09-02T02:06:39.500068+03:00",
+      "checks": 251,
       "extra": {
         "tp3": null,
         "observed_setups": [
