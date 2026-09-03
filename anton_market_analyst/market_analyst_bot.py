@@ -12,14 +12,14 @@ Design goals:
 
 Environment:
   ANTHROPIC_API_KEY           required
-  TELEGRAM_BOT_TOKEN          required for bot mode
-  TELEGRAM_ALLOWED_CHAT_IDS   required for bot mode; comma-separated integers
+  TELEGRAM_BOT_TOKEN          required for standalone bot mode
+  TELEGRAM_ALLOWED_CHAT_IDS   required for standalone bot mode
   MARKET_ANALYST_MODEL        optional, default: claude-sonnet-5
   MARKET_ANALYST_MAX_TOKENS   optional, default: 7000
 
-Usage:
-  python market_analyst_bot.py --symbol ZEC    # one-shot terminal test
-  python market_analyst_bot.py                 # Telegram long-polling bot
+Production Anton entegrasyonu standalone poller kullanmaz; ayni mevcut poller
+`COIN GPT` komutunu anton_integration.py uzerinden bu modulun
+`analyze_symbol()` fonksiyonuna yonlendirir.
 """
 from __future__ import annotations
 
@@ -227,7 +227,7 @@ def _kdj(candles: Sequence[Candle], period: int = 9):
         if i < period - 1:
             continue
         w = candles[i - period + 1 : i + 1]
-        hh, ll = max(c.high for c in w), min(c.low for c in w)
+        hh, ll = max(c.high for c in w), min(x.low for x in w)
         rsv = 50.0 if hh == ll else 100.0 * (candles[i].close - ll) / (hh - ll)
         prev_k = (2.0 / 3.0) * prev_k + (1.0 / 3.0) * rsv
         prev_d = (2.0 / 3.0) * prev_d + (1.0 / 3.0) * prev_k
@@ -328,35 +328,33 @@ def _recent_swings(candles: Sequence[Candle], lookback: int = 60, wing: int = 2)
         if c.low == min(x.low for x in subset[i - wing : i + wing + 1]):
             lows.append(c.low)
     last = candles[-1].close
-    resistance = min((h for h in highs if h > last), default=max(c.high for c in subset))
-    support = max((l for l in lows if l < last), default=min(c.low for c in subset))
+    below = [x for x in lows if x <= last]
+    above = [x for x in highs if x >= last]
+    support = max(below) if below else min(c.low for c in subset)
+    resistance = min(above) if above else max(c.high for c in subset)
     return support, resistance
 
 
 def build_timeframe_snapshot(candles: Sequence[Candle]) -> dict:
     closes = [c.close for c in candles]
-    volumes = [c.volume for c in candles]
+    vols = [c.volume for c in candles]
     rsi = _rsi(closes, 14)
     stoch, stoch_ma = _stoch_rsi(rsi, 14, 3)
     macd, macd_signal, macd_hist = _macd(closes)
     k, d, j = _kdj(candles)
     will = _williams_r(candles)
     obv = _obv(candles)
-    atr = _atr(candles)
     ema20, ema50, ema200 = _ema(closes, 20), _ema(closes, 50), _ema(closes, 200)
-    sma20 = _sma([float(x) for x in closes], 20)
-    std20: List[Optional[float]] = [None] * len(closes)
-    for i in range(19, len(closes)):
-        std20[i] = statistics.pstdev(closes[i - 19 : i + 1])
-    bb_mid = _last_non_none(sma20)
-    bb_std = _last_non_none(std20)
-    bb_upper = bb_mid + 2 * bb_std if bb_mid is not None and bb_std is not None else None
-    bb_lower = bb_mid - 2 * bb_std if bb_mid is not None and bb_std is not None else None
+    atr = _atr(candles, 14)
 
     last, prev = candles[-1], candles[-2]
-    avgv20 = sum(volumes[-20:]) / min(20, len(volumes))
-    atr_last = _last_non_none(atr)
     support, resistance = _recent_swings(candles)
+    atr_last = _last_non_none(atr)
+    bb_window = closes[-20:]
+    bb_mid = statistics.mean(bb_window)
+    bb_std = statistics.pstdev(bb_window)
+    bb_upper, bb_lower = bb_mid + 2 * bb_std, bb_mid - 2 * bb_std
+    avgv20 = statistics.mean(vols[-21:-1]) if len(vols) >= 21 else statistics.mean(vols[-20:])
 
     body = abs(last.close - last.open)
     rng = max(last.high - last.low, 1e-12)
@@ -366,7 +364,7 @@ def build_timeframe_snapshot(candles: Sequence[Candle]) -> dict:
     obv_now, obv_5 = obv[-1], obv[-6] if len(obv) >= 6 else obv[0]
     closes_3 = closes[-4:]
     price_3bar = _pct(closes_3[-1], closes_3[0]) if len(closes_3) == 4 else None
-    range3 = (max(c.high for c in candles[-3:]) - min(c.low for c in candles[-3:]))
+    range3 = max(c.high for c in candles[-3:]) - min(c.low for c in candles[-3:])
     sideways_ratio = (range3 / atr_last) if atr_last not in (None, 0) else None
 
     return {
@@ -484,6 +482,11 @@ def analyze_with_claude(snapshot: dict) -> str:
     return "\n\n".join(chunks).strip()
 
 
+def analyze_symbol(symbol: str) -> str:
+    """Tek sembol icin snapshot olustur ve Sonnet analizini dondur."""
+    return analyze_with_claude(build_market_snapshot(symbol))
+
+
 def split_telegram(text: str, max_chars: int = TELEGRAM_SAFE_CHARS) -> List[str]:
     text = text.strip()
     if len(text) <= max_chars:
@@ -521,9 +524,12 @@ def telegram_request(token: str, method: str, **payload):
     return data.get("result")
 
 
-def send_analysis(token: str, chat_id: int, text: str):
+def send_analysis(token: str, chat_id: int, text: str, thread_id: int | None = None):
     for part in split_telegram(text):
-        telegram_request(token, "sendMessage", chat_id=chat_id, text=part, disable_web_page_preview=True)
+        payload = {"chat_id": chat_id, "text": part, "disable_web_page_preview": True}
+        if thread_id is not None:
+            payload["message_thread_id"] = thread_id
+        telegram_request(token, "sendMessage", **payload)
 
 
 def parse_allowed_chat_ids() -> set[int]:
@@ -585,8 +591,7 @@ def run_bot():
                     continue
                 telegram_request(token, "sendChatAction", chat_id=chat_id, action="typing")
                 try:
-                    snap = build_market_snapshot(symbol)
-                    analysis = analyze_with_claude(snap)
+                    analysis = analyze_symbol(symbol)
                     header = f"{symbol}/USDT — Çoklu Zaman Dilimi Analizi\n\n"
                     send_analysis(token, chat_id, header + analysis)
                 except Exception as exc:
