@@ -18,11 +18,7 @@ from typing import Optional
 
 import requests
 
-from anton_market_analyst.market_analyst_bot import (
-    analyze_with_claude,
-    build_market_snapshot,
-    split_telegram,
-)
+from anton_market_analyst.market_analyst_bot import analyze_symbol, split_telegram
 
 _GPT_INFLIGHT: set[str] = set()
 _GPT_INFLIGHT_LOCK = threading.Lock()
@@ -70,8 +66,7 @@ def _run_gpt_analysis(pair: str, token: str, chat_id: str | int, thread_id: int 
         _GPT_INFLIGHT.add(pair)
     try:
         base = pair[:-4] if pair.endswith("USDT") else pair
-        snapshot = build_market_snapshot(base)
-        analysis = analyze_with_claude(snapshot)
+        analysis = analyze_symbol(base)
         full = f"{base}/USDT — GPT Çoklu Zaman Dilimi Analizi\n\n{analysis}"
         for part in split_telegram(full):
             _send(token, chat_id, thread_id, part)
