@@ -1,70 +1,43 @@
-# Anton MTF Telegram Analyst
+# Anton Çoklu Zaman Dilimi Market Analyst
 
-Existing Anton production code is intentionally untouched. This is a standalone,
-additive analyst that turns a Telegram symbol such as `ZEC` into a 1D + 4H + 1H
-market interpretation.
+Bu modül Anton'un mevcut manuel Telegram analizini bozmadan yeni bir niteliksel analiz yolu ekler.
 
-## What it reads
+## Telegram kullanımı
 
-For the requested Binance Spot USDT pair, and BTC as market context, it uses only
-fully closed candles and computes:
+- `ZEC` → mevcut Anton manuel analizi aynen devam eder.
+- `ZEC GPT` → yeni Sonnet tabanlı 1D + 4H + 1H analizini çalıştırır.
+- `zec gpt`, `ZECUSDT GPT`, `ZEC/USDT GPT` de kabul edilir.
+- Yanıt mevcut Anton Telegram topic/thread'ine gönderilir.
+- Aynı Telegram bot token'i için ikinci bir `getUpdates` poller başlatılmaz.
 
-- RSI(14)
-- StochRSI(14) + 3-period MA-StochRSI
-- MACD(12,26,9)
-- KDJ(9,3,3-style smoothing)
-- Williams %R(14)
-- OBV
-- EMA20 / EMA50 / EMA200
-- ATR(14)
-- Bollinger(20,2)
-- volume vs 20-bar average
-- recent swing support / resistance
-- compact candle body/wick and 3-bar price-behavior context
+## Yeni GPT analizinin verileri
 
-Claude Sonnet receives the structured snapshot and is instructed to reason in
-1D -> 4H -> 1H order. It is specifically asked to distinguish momentum cooling
-through price decline from cooling through sideways consolidation.
+Binance Spot kapanmış mumlarından 1D, 4H ve 1H için RSI(14), StochRSI + MA-StochRSI, MACD(12,26,9), KDJ, Williams %R, OBV, EMA20/50/200, ATR14, Bollinger(20,2), hacim, yakın swing destek/direnç ve son mum davranışı hesaplanır. Altcoinlerde BTC'nin aynı üç zaman dilimindeki bağlamı da eklenir.
 
-## No-truncation behavior
+Sonnet'e ham eşik puanlaması yaptırılmaz. Prompt özellikle şu ilişkiyi kurdurur: 1D ana yapı/reset → 4H dönüş/trigger → 1H timing/soğuma/yeniden tetik. Momentumun fiyat düşerek mi yoksa fiyat yatay kalırken mi boşaldığı ayrıca değerlendirilir.
 
-The model is called with a generous output budget. If Anthropic returns
-`stop_reason=max_tokens`, the bot automatically requests a continuation and
-stitches it to the first response. Telegram's per-message size limit is handled
-separately by splitting the completed analysis at paragraph/sentence boundaries.
-So a long analysis is delivered as `(1/N)`, `(2/N)`, etc., instead of being cut.
+## Model
 
-## Required environment variables
+Varsayılan model `claude-sonnet-5`'tir. `MARKET_ANALYST_MODEL` ile değiştirilebilir. API anahtarı mevcut `ANTHROPIC_API_KEY` değişkeninden okunur.
 
-- `ANTHROPIC_API_KEY`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_ALLOWED_CHAT_IDS` — comma-separated Telegram chat IDs. The bot refuses
-  to start without this allow-list to avoid exposing paid AI calls publicly.
+## Uzun yanıtlar
 
-Optional:
+Model `max_tokens` nedeniyle kesilirse continuation çağrıları otomatik yapılır. Tam metin birleştirildikten sonra Telegram sınırına göre bölünür. Tüm parçalar aynı `message_thread_id` ile gönderilir.
 
-- `MARKET_ANALYST_MODEL` (default `claude-sonnet-5`)
-- `MARKET_ANALYST_MAX_TOKENS` (default `7000`)
+## Production entegrasyonu
 
-## Test before Telegram
+`anton_integration.py`, mevcut manuel poller'ın config/yetkilendirme değerlerini kullanır. `sitecustomize.py` yalnızca target adı tam olarak `_manual_analyzer_poll_loop` olan thread'i GPT-aware eşdeğeriyle sarar. Entegrasyon import edilemezse fail-open davranır ve eski Anton poller'ı aynen çalışır.
+
+Bu tasarımın amacı büyük ve aktif `portfolio_tracker.py` dosyasını yeniden yazmadan, küçük ve geri alınabilir bir entegrasyon sağlamaktır.
+
+## Test
+
+Yerel test komutu:
 
 ```bash
-pip install -r requirements.txt
-python market_analyst_bot.py --symbol ZEC --snapshot-only
-python market_analyst_bot.py --symbol ZEC
+PYTHONPATH=. python -m unittest -v \
+  anton_market_analyst.test_market_analyst_bot \
+  anton_market_analyst.test_anton_integration
 ```
 
-## Telegram mode
-
-```bash
-python market_analyst_bot.py
-```
-
-Send `ZEC` (or `/analiz ZEC`) to the bot.
-
-## Deployment isolation
-
-Deploy this directory as a separate Render Background Worker. Do not point the
-existing Anton web service at this file. This keeps the current Anton engine,
-web app, database and history behavior unchanged and makes rollback simply a
-matter of stopping/removing the separate worker.
+Testler sembol parsing, Telegram parçalara bölme bütünlüğü, snapshot şeması, `COIN GPT` routing ayrımı ve `message_thread_id` korunmasını doğrular.
