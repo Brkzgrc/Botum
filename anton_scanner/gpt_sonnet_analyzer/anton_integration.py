@@ -1,15 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Anton manuel Telegram thread'i için GPT Sonnet Analyzer entegrasyonu.
-
-Bu modül mevcut portfolio_tracker.py dosyasını değiştirmeden aynı getUpdates
-consumer'i içinde iki yolu ayırır:
-- `ZEC`     -> mevcut Anton manuel analyzer
-- `ZEC GPT` -> GPT Sonnet Analyzer (1D/4H/1H)
-
-Aynı Telegram bot token'i için ikinci bir poller başlatılmaz.
-"""
+"""Anton manuel Telegram thread'i için GPT Sonnet Analyzer entegrasyonu."""
 from __future__ import annotations
 
+import html
 import json
 import re
 import threading
@@ -19,8 +12,6 @@ from typing import Optional
 
 import requests
 
-# Modülü nesne olarak import ediyoruz: production entegrasyonuna özel karar/timing
-# talimatını tek yerde ekleyip standalone veri/indikatör motoruna dokunmuyoruz.
 from anton_scanner.gpt_sonnet_analyzer import market_analyst_bot as _market
 
 _GPT_PRODUCTION_PROMPT = r"""
@@ -40,9 +31,24 @@ ANTON GPT PRODUCTION KARAR KURALLARI:
   biçimde pahalılaşabilir.
 - "Şu An Ne Yapardım?" kısmında önce tek satırda net aksiyon yaz, sonra gerekçeyi
   ve aksiyonun hangi koşulda değişeceğini anlat.
+- Pozisyonun giriş fiyatı verilmediyse "mevcut pozisyon tutulur/satılır" gibi
+  koşulsuz bir karar verme. Bunun yerine mevcut pozisyon kararının giriş fiyatı,
+  kâr marjı ve yapısal seviyeye bağlı olduğunu açıkça belirt.
+- Yeniden tetik için RSI'nin mutlaka 50-60 gibi sabit bir banda inmesini şart koşma.
+  Güçlü trendde RSI daha yüksek seviyede resetlenip yeniden yukarı dönebilir.
+  StochRSI/MA, RSI, MACD ve fiyat davranışını bağlama göre birlikte değerlendir.
+- Yakın 1H timing bozulması, 1H yapısal bozulma ve 4H ana kırılım bozulmasını aynı
+  seviyede anlatma. BOZULMA / TEYİT bölümünde mümkünse bunları kademelendir.
+- Mevcut fiyattan yaklaşık %%10 veya daha uzaktaki 4H/1D desteklerini "sığ/yakın
+  düzeltme" diye adlandırma; bunlar derin alternatif düzeltme/yapı testi olarak
+  ele alınmalı. Yüzdeyi snapshot'taki gerçek seviyelere göre bağlamsal değerlendir.
+- 1H yeniden tetikte yalnızca indikatör kesişimlerine bakma: momentum boşalırken
+  fiyatın ne kadar geri verdiği, satıcının fiyatı aşağı itip itemediği ve kısa
+  vadeli fiyat yapısının tekrar yukarı dönmesi öncelikli kanıttır.
 
 TELEGRAM ÇIKTI KURALI:
-- Markdown #/## işaretleri kullanma; başlıkları düz metin ve uygun emojiyle yaz.
+- Markdown #/## işaretleri veya ** kalın işaretleri kullanma; başlıkları düz metin
+  ve uygun emojiyle yaz. Telegram kalın biçimlendirmesini entegrasyon katmanı yapar.
 - İlk bölüm şu sırada olsun: "🔍 Tek Bakışta Sonuç", "📅 1D — SETUP",
   "🕓 4H — TRIGGER", "🕐 1H — TIMING", "🔗 Birlikte Okuma".
 - "🌌 ŞU AN NE YAPARDIM?" başlığı MUTLAKA ayrı aksiyon bölümünün başlangıcı olsun.
@@ -60,6 +66,18 @@ split_telegram = _market.split_telegram
 _GPT_INFLIGHT: set[str] = set()
 _GPT_INFLIGHT_LOCK = threading.Lock()
 TR_TZ = timezone(timedelta(hours=3))
+
+_BOLD_HEADINGS = (
+    re.compile(r"^🧠\s+#?[A-Z0-9]+\s+GPT SONNET ANALİZİ$", re.IGNORECASE),
+    re.compile(r"^🔍\s+Tek Bakışta Sonuç$", re.IGNORECASE),
+    re.compile(r"^📅\s+1D\s+—\s+SETUP$", re.IGNORECASE),
+    re.compile(r"^🕓\s+4H\s+—\s+TRIGGER$", re.IGNORECASE),
+    re.compile(r"^🕐\s+1H\s+—\s+TIMING$", re.IGNORECASE),
+    re.compile(r"^🔗\s+Birlikte Okuma$", re.IGNORECASE),
+    re.compile(r"^🌌\s+ŞU AN NE YAPARDIM\?$", re.IGNORECASE),
+    re.compile(r"^🎯\s+ALIM ADAYI NE ZAMAN\?$", re.IGNORECASE),
+    re.compile(r"^⚠️\s+BOZULMA / TEYİT$", re.IGNORECASE),
+)
 
 
 def parse_gpt_symbol(text: str) -> Optional[str]:
@@ -80,12 +98,14 @@ def parse_gpt_symbol(text: str) -> Optional[str]:
     return base + "USDT"
 
 
-def _send(token: str, chat_id: str | int, thread_id: int | None, text: str) -> None:
+def _send(token: str, chat_id: str | int, thread_id: int | None, text: str, *, html_mode: bool = False) -> None:
     payload = {
         "chat_id": chat_id,
         "text": text,
         "disable_web_page_preview": True,
     }
+    if html_mode:
+        payload["parse_mode"] = "HTML"
     if thread_id is not None:
         payload["message_thread_id"] = thread_id
     r = requests.post(
@@ -95,6 +115,19 @@ def _send(token: str, chat_id: str | int, thread_id: int | None, text: str) -> N
     )
     if not r.ok:
         raise RuntimeError(f"Telegram sendMessage HTTP {r.status_code}: {r.text[:160]}")
+
+
+def _format_telegram_html(text: str) -> str:
+    """Model metnini güvenle escape eder; yalnızca tanımlı bölüm başlıklarını kalın yapar."""
+    out = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        escaped = html.escape(raw_line, quote=False)
+        if line and any(pattern.fullmatch(line) for pattern in _BOLD_HEADINGS):
+            out.append(f"<b>{html.escape(line, quote=False)}</b>")
+        else:
+            out.append(escaped)
+    return "\n".join(out)
 
 
 def _find_action_start(text: str) -> int:
@@ -124,14 +157,10 @@ def _gpt_messages(base: str, analysis: str) -> list[str]:
     if action_at >= 0:
         analysis_part = clean[:action_at].strip()
         action_part = clean[action_at:].strip()
-        first = header + analysis_part
-        first_parts = split_telegram(first)
+        first_parts = split_telegram(header + analysis_part)
         action_parts = split_telegram(action_part)
-        # Prompt ilk kısmı kısa tutacak şekilde ayarlı. Olağan dışı uzunlukta veri
-        # kaybetmek yerine güvenli Telegram parçalama davranışını koruyoruz.
         return first_parts + action_parts
 
-    # Model başlığı beklenmedik biçimde atladıysa içerik kaybolmasın.
     return split_telegram(header + clean)
 
 
@@ -144,7 +173,7 @@ def _run_gpt_analysis(pair: str, token: str, chat_id: str | int, thread_id: int 
         base = pair[:-4] if pair.endswith("USDT") else pair
         analysis = analyze_symbol(base)
         for part in _gpt_messages(base, analysis):
-            _send(token, chat_id, thread_id, part)
+            _send(token, chat_id, thread_id, _format_telegram_html(part), html_mode=True)
     except Exception as exc:
         base = pair[:-4] if pair.endswith("USDT") else pair
         try:
@@ -163,12 +192,7 @@ def _run_gpt_analysis(pair: str, token: str, chat_id: str | int, thread_id: int 
 
 
 def gpt_aware_manual_poll_loop(g: dict) -> None:
-    """portfolio_tracker manuel poller'inin GPT-aware eşdeğeri.
-
-    `g`, orijinal `_manual_analyzer_poll_loop.__globals__` sözlüğüdür. Bu sayede
-    mevcut env/config, yetkilendirme ve eski `_run_manual_analyzer` yolu aynen
-    kullanılır; yalnızca `COIN GPT` komutu ek bir route olarak ayrılır.
-    """
+    """portfolio_tracker manuel poller'inin GPT-aware eşdeğeri."""
     enabled = bool(g.get("MANUAL_ANALYZER_ENABLED"))
     if not enabled:
         print("[MANUEL ANALYZER] Devre dışı.", flush=True)
