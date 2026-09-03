@@ -22,6 +22,14 @@ def install_anton_gpt_hook() -> None:
     if _INSTALLED:
         return
 
+    # GPT route kurulurken Anthropic usage/cost telemetrisini de yukle. Telemetri
+    # basarisiz olursa ana entegrasyonu engellemez.
+    try:
+        from anton_scanner.gpt_sonnet_analyzer.anthropic_usage import install_usage_tracking
+        install_usage_tracking()
+    except Exception as exc:
+        print(f"[SONNET USAGE] Telemetri yuklenemedi; analiz devam edecek: {exc}", flush=True)
+
     _ORIGINAL_THREAD_INIT = threading.Thread.__init__
 
     def _anton_thread_init(self, *args, **kwargs):
