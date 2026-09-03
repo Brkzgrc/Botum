@@ -32,12 +32,4 @@ Bu nedenle merge sonrası normal portfolio-tracker servisi yeniden deploy olduğ
 
 ## Test
 
-Yerel test komutu:
-
-```bash
-PYTHONPATH=. python -m unittest -v \
-  anton_market_analyst.test_market_analyst_bot \
-  anton_market_analyst.test_anton_integration
-```
-
-Testler sembol parsing, Telegram parçalara bölme bütünlüğü, snapshot şeması, `COIN GPT` routing ayrımı ve `message_thread_id` korunmasını doğrular.
+Yerel testler şu davranışları kapsar: normal sembol ile GPT route ayrımı, büyük/küçük harf varyasyonları, Telegram thread ID korunması, uzun yanıt bölme bütünlüğü, indikatör snapshot şeması ve tek-sembol Sonnet helper'ı.
