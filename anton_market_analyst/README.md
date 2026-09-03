@@ -28,7 +28,7 @@ Model `max_tokens` nedeniyle kesilirse continuation çağrıları otomatik yapı
 
 `anton_integration.py`, mevcut manuel poller'ın config/yetkilendirme değerlerini kullanır. `sitecustomize.py` yalnızca target adı tam olarak `_manual_analyzer_poll_loop` olan thread'i GPT-aware eşdeğeriyle sarar. Entegrasyon import edilemezse fail-open davranır ve eski Anton poller'ı aynen çalışır.
 
-Bu tasarımın amacı büyük ve aktif `portfolio_tracker.py` dosyasını yeniden yazmadan, küçük ve geri alınabilir bir entegrasyon sağlamaktır.
+Bu nedenle merge sonrası normal portfolio-tracker servisi yeniden deploy olduğunda ek bir Render worker gerekmeksizin `COIN GPT` yolu aktif olur. Mevcut `COIN` yolu korunur.
 
 ## Test
 
