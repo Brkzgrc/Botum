@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from market_analyst_bot import (
+from anton_scanner.gpt_sonnet_analyzer.market_analyst_bot import (
     Candle,
     build_timeframe_snapshot,
     extract_symbol,
@@ -38,8 +38,8 @@ class AnalystTests(unittest.TestCase):
         self.assertIn("short_behavior", snap)
         self.assertIn("stochrsi", snap["momentum"])
 
-    @patch("market_analyst_bot.analyze_with_claude", return_value="ok")
-    @patch("market_analyst_bot.build_market_snapshot", return_value={"symbol": "ZEC"})
+    @patch("anton_scanner.gpt_sonnet_analyzer.market_analyst_bot.analyze_with_claude", return_value="ok")
+    @patch("anton_scanner.gpt_sonnet_analyzer.market_analyst_bot.build_market_snapshot", return_value={"symbol": "ZEC"})
     def test_analyze_symbol(self, build, analyze):
         self.assertEqual(analyze_symbol("ZEC"), "ok")
         build.assert_called_once_with("ZEC")
