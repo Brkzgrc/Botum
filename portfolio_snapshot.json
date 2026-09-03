@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-09-03 20:43:10",
+  "updated_at": "2026-09-03 20:55:59",
   "performance": {
-    "total": 1,
-    "open": 0,
+    "total": 2,
+    "open": 1,
     "closed": 1,
     "wins": 0,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "DİĞER": {
-        "total": 1,
-        "open": 0,
+        "total": 2,
+        "open": 1,
         "wins": 0,
         "losses": 1,
         "expired": 0,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-09-03": {
-        "trades": 1,
+        "trades": 2,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
@@ -71,7 +71,7 @@
     },
     "weekly": {
       "2026-W35": {
-        "trades": 1,
+        "trades": 2,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
@@ -79,14 +79,103 @@
     },
     "monthly": {
       "2026-09": {
-        "trades": 1,
+        "trades": 2,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
       }
     }
   },
-  "open": [],
+  "open": [
+    {
+      "id": "MEGA_USDT_1788457621",
+      "symbol": "MEGA/USDT",
+      "entry": 0.03976,
+      "stop": 0.0395763535,
+      "tp1": 0.0403950828,
+      "tp2": 0.0405449172,
+      "tp3": null,
+      "limit_price": 0.03976,
+      "signal_price": 0.03976,
+      "sig_type": "spot_opportunity",
+      "sub_type": "15m_breakout_+_15m_retest_+_15m_pullback",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-09-03T20:47:01.661618+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.03976,
+      "peak_pct": 0.0,
+      "low_price": 0.0397,
+      "low_pct": -0.15,
+      "current_price": 0.0397,
+      "current_pct": -0.15,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-03T20:54:59.859928+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null,
+        "entry_zone": [
+          0.03974012,
+          0.03976497
+        ],
+        "support_zone": [
+          0.0391450828,
+          0.0392949172
+        ],
+        "resistance_zone": [
+          0.0403950828,
+          0.0405449172
+        ],
+        "target_pct": 1.6,
+        "stop_pct": 0.46,
+        "rr": 3.46,
+        "position_size": 4000.0,
+        "risk_dollars": 125.0,
+        "setup": "15M BREAKOUT + 15M RETEST + 15M PULLBACK",
+        "positives": [
+          "15M yerel tepe hacimle kirildi",
+          "15M kirilim seviyesi korunuyor",
+          "15M yukari trendde kontrollu pullback",
+          "15M destekten yapisal tepki",
+          "15M HH/HL yapi",
+          "Son 1 saatte BTC'den guclu",
+          "1H yapi 15M hareketi destekliyor",
+          "1H EMA baglami pozitif"
+        ],
+        "risks": [
+          "24H likidite dusuk",
+          "BTC YELLOW"
+        ],
+        "bar_id": 1788456600,
+        "m15_structure": "HH_HL",
+        "volume_ratio_15m": 1.27,
+        "taker_buy_ratio_15m": 0.463,
+        "rsi_15m": 67.3,
+        "ema20_distance_atr_15m": 2.3,
+        "relative_strength_1h_from15m": 1.354,
+        "m15_score": 65.0,
+        "final_score": 71.0,
+        "h1_trend": "BULL",
+        "h1_structure": "HH_HL",
+        "rsi_1h": 63.4,
+        "relative_strength_1h": 0.415,
+        "relative_strength_4h": -1.558,
+        "btc_ret_15m": 0.1,
+        "btc_ret_1h": -0.47,
+        "btc_ret_4h": 2.95
+      }
+    }
+  ],
   "closed": [
     {
       "id": "HOME_USDT_1788456715",
