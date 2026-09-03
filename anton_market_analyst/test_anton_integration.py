@@ -8,12 +8,16 @@ class AntonIntegrationTests(unittest.TestCase):
     def test_gpt_parser_accepts_expected_forms(self):
         self.assertEqual(parse_gpt_symbol("ZEC GPT"), "ZECUSDT")
         self.assertEqual(parse_gpt_symbol("zec gpt"), "ZECUSDT")
+        self.assertEqual(parse_gpt_symbol("Zec GpT"), "ZECUSDT")
         self.assertEqual(parse_gpt_symbol("ZECUSDT GPT"), "ZECUSDT")
         self.assertEqual(parse_gpt_symbol("ZEC/USDT GPT"), "ZECUSDT")
+        self.assertEqual(parse_gpt_symbol("#ZEC GPT"), "ZECUSDT")
 
     def test_plain_symbol_does_not_match_gpt_route(self):
         self.assertIsNone(parse_gpt_symbol("ZEC"))
         self.assertIsNone(parse_gpt_symbol("ZECUSDT"))
+        self.assertIsNone(parse_gpt_symbol("GPT"))
+        self.assertIsNone(parse_gpt_symbol("ZEC GPT NOW"))
 
     @patch("anton_market_analyst.anton_integration.requests.post")
     def test_send_preserves_message_thread_id(self, post):
