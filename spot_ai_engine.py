@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""AI spot discovery engine: Python -> Gemini Flash-Lite -> Sonnet final.
+"""AI spot discovery engine: Binance -> Python -> Gemini -> Sonnet.
 
-No orders are placed here. Only closed Binance spot candles are used for decisions.
-The production service wrapper lives in spot_opportunity_scanner.py.
+Spot only. Closed candles only. No order placement. The production service wrapper
+is spot_opportunity_scanner.py. Anthropic is called through HTTPS directly so the
+scanner has no dependency on the anthropic Python SDK.
 """
 from __future__ import annotations
 
@@ -22,9 +23,11 @@ import requests
 
 BINANCE = "https://api.binance.com"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "Botum-AISpotScanner/1.0"})
+HTTP.headers.update({"User-Agent": "Botum-AISpotScanner/1.1"})
 
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_SCANNER_MODEL", "gemini-3.5-flash-lite").strip()
@@ -127,44 +130,44 @@ def indicators(d: pd.DataFrame) -> pd.DataFrame:
     x = d.copy()
     x["ema20"] = x.close.ewm(span=20, adjust=False).mean(); x["ema50"] = x.close.ewm(span=50, adjust=False).mean(); x["ema200"] = x.close.ewm(span=200, adjust=False).mean()
     x["rsi"] = _rsi(x.close)
-    lo = x.rsi.rolling(14).min(); hi = x.rsi.rolling(14).max(); raw = 100*(x.rsi-lo)/(hi-lo).replace(0, np.nan)
+    lo = x.rsi.rolling(14).min(); hi = x.rsi.rolling(14).max(); raw = 100*(x.rsi-lo)/(hi-lo).replace(0,np.nan)
     x["stoch_k"] = raw.rolling(3).mean().fillna(50); x["stoch_d"] = x.stoch_k.rolling(3).mean().fillna(50)
     e12 = x.close.ewm(span=12, adjust=False).mean(); e26 = x.close.ewm(span=26, adjust=False).mean(); x["macd"] = e12-e26
     x["macd_signal"] = x.macd.ewm(span=9, adjust=False).mean(); x["macd_hist"] = x.macd-x.macd_signal
-    pc = x.close.shift(1); tr = pd.concat([x.high-x.low,(x.high-pc).abs(),(x.low-pc).abs()], axis=1).max(axis=1)
-    x["atr"] = tr.ewm(alpha=1/14, adjust=False, min_periods=14).mean(); x["vol_ratio"] = x.volume/x.volume.rolling(20).mean().replace(0,np.nan)
+    pc=x.close.shift(1); tr=pd.concat([x.high-x.low,(x.high-pc).abs(),(x.low-pc).abs()],axis=1).max(axis=1)
+    x["atr"] = tr.ewm(alpha=1/14,adjust=False,min_periods=14).mean(); x["vol_ratio"] = x.volume/x.volume.rolling(20).mean().replace(0,np.nan)
     x["obv"] = (np.sign(x.close.diff()).fillna(0)*x.volume).cumsum()
-    mid = x.close.rolling(20).mean(); std = x.close.rolling(20).std(ddof=0); x["bb_mid"] = mid; x["bb_upper"] = mid+2*std; x["bb_lower"] = mid-2*std
+    mid=x.close.rolling(20).mean(); std=x.close.rolling(20).std(ddof=0); x["bb_mid"]=mid; x["bb_upper"]=mid+2*std; x["bb_lower"]=mid-2*std
     return x
 
 
-def _swings(d: pd.DataFrame, wing: int = 2, lookback: int = 80) -> tuple[list[float], list[float]]:
-    x = d.tail(lookback).reset_index(drop=True); highs: list[float] = []; lows: list[float] = []
-    for i in range(wing, len(x)-wing):
-        w = x.iloc[i-wing:i+wing+1]
+def _swings(d: pd.DataFrame, wing: int = 2, lookback: int = 80) -> tuple[list[float],list[float]]:
+    x=d.tail(lookback).reset_index(drop=True); highs=[]; lows=[]
+    for i in range(wing,len(x)-wing):
+        w=x.iloc[i-wing:i+wing+1]
         if x.high.iloc[i] >= w.high.max(): highs.append(float(x.high.iloc[i]))
         if x.low.iloc[i] <= w.low.min(): lows.append(float(x.low.iloc[i]))
-    return highs[-5:], lows[-5:]
+    return highs[-5:],lows[-5:]
 
 
-def tf_snapshot(d: pd.DataFrame, label: str) -> dict[str, Any]:
-    x = indicators(d); a = x.iloc[-1]; b = x.iloc[-2]; p = sf(a.close); highs, lows = _swings(x)
-    supports = sorted([v for v in lows if v < p], reverse=True)[:3]; resistances = sorted([v for v in highs if v > p])[:3]
-    atr = sf(a.atr); rng = max(sf(a.high)-sf(a.low), 1e-12); body = abs(sf(a.close)-sf(a.open))
+def tf_snapshot(d: pd.DataFrame, label: str) -> dict[str,Any]:
+    x=indicators(d); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close); highs,lows=_swings(x)
+    supports=sorted([v for v in lows if v<p],reverse=True)[:3]; resistances=sorted([v for v in highs if v>p])[:3]
+    atr=sf(a.atr); rng=max(sf(a.high)-sf(a.low),1e-12); body=abs(sf(a.close)-sf(a.open))
     return {
-        "tf": label, "closed_at": str(a.close_time), "price": p, "bar_id": int(pd.Timestamp(a.open_time).timestamp()),
-        "returns_pct": {"3bars": round(pct(p,sf(x.close.iloc[-4])),3), "6bars": round(pct(p,sf(x.close.iloc[-7])),3), "24bars": round(pct(p,sf(x.close.iloc[-25])),3)},
-        "ema": {"20": round(sf(a.ema20),10), "50": round(sf(a.ema50),10), "200": round(sf(a.ema200),10), "price_vs_20_pct": round(pct(p,sf(a.ema20)),3), "price_vs_50_pct": round(pct(p,sf(a.ema50)),3), "price_vs_200_pct": round(pct(p,sf(a.ema200)),3)},
-        "momentum": {"rsi": round(sf(a.rsi),2), "rsi_prev": round(sf(b.rsi),2), "stoch_k": round(sf(a.stoch_k),2), "stoch_d": round(sf(a.stoch_d),2), "stoch_k_prev": round(sf(b.stoch_k),2), "macd_hist": round(sf(a.macd_hist),10), "macd_hist_prev": round(sf(b.macd_hist),10)},
-        "volume": {"ratio_20": round(sf(a.vol_ratio,1),3), "obv_5bar_direction": "up" if sf(a.obv)>=sf(x.obv.iloc[-6]) else "down"},
-        "volatility": {"atr": round(atr,10), "atr_pct": round(100*atr/p,3) if p else 0, "bb_upper": round(sf(a.bb_upper),10), "bb_mid": round(sf(a.bb_mid),10), "bb_lower": round(sf(a.bb_lower),10)},
-        "candle": {"change_pct": round(pct(sf(a.close),sf(a.open)),3), "body_ratio": round(body/rng,3), "lower_wick_ratio": round((min(sf(a.open),sf(a.close))-sf(a.low))/rng,3), "upper_wick_ratio": round((sf(a.high)-max(sf(a.open),sf(a.close)))/rng,3)},
-        "levels": {"supports": [round(v,10) for v in supports], "resistances": [round(v,10) for v in resistances], "high_20": round(sf(x.high.tail(20).max()),10), "low_20": round(sf(x.low.tail(20).min()),10)},
+        "tf":label,"closed_at":str(a.close_time),"price":p,"bar_id":int(pd.Timestamp(a.open_time).timestamp()),
+        "returns_pct":{"3bars":round(pct(p,sf(x.close.iloc[-4])),3),"6bars":round(pct(p,sf(x.close.iloc[-7])),3),"24bars":round(pct(p,sf(x.close.iloc[-25])),3)},
+        "ema":{"20":round(sf(a.ema20),10),"50":round(sf(a.ema50),10),"200":round(sf(a.ema200),10),"price_vs_20_pct":round(pct(p,sf(a.ema20)),3),"price_vs_50_pct":round(pct(p,sf(a.ema50)),3),"price_vs_200_pct":round(pct(p,sf(a.ema200)),3)},
+        "momentum":{"rsi":round(sf(a.rsi),2),"rsi_prev":round(sf(b.rsi),2),"stoch_k":round(sf(a.stoch_k),2),"stoch_d":round(sf(a.stoch_d),2),"stoch_k_prev":round(sf(b.stoch_k),2),"macd_hist":round(sf(a.macd_hist),10),"macd_hist_prev":round(sf(b.macd_hist),10)},
+        "volume":{"ratio_20":round(sf(a.vol_ratio,1),3),"obv_5bar_direction":"up" if sf(a.obv)>=sf(x.obv.iloc[-6]) else "down"},
+        "volatility":{"atr":round(atr,10),"atr_pct":round(100*atr/p,3) if p else 0,"bb_upper":round(sf(a.bb_upper),10),"bb_mid":round(sf(a.bb_mid),10),"bb_lower":round(sf(a.bb_lower),10)},
+        "candle":{"change_pct":round(pct(sf(a.close),sf(a.open)),3),"body_ratio":round(body/rng,3),"lower_wick_ratio":round((min(sf(a.open),sf(a.close))-sf(a.low))/rng,3),"upper_wick_ratio":round((sf(a.high)-max(sf(a.open),sf(a.close)))/rng,3)},
+        "levels":{"supports":[round(v,10) for v in supports],"resistances":[round(v,10) for v in resistances],"high_20":round(sf(x.high.tail(20).max()),10),"low_20":round(sf(x.low.tail(20).min()),10)},
     }
 
 
 def universe() -> list[tuple[str,float]]:
-    ex = _get("/api/v3/exchangeInfo"); ticks = _get("/api/v3/ticker/24hr"); tm = {x.get("symbol"):x for x in ticks if isinstance(x,dict)}; out=[]
+    ex=_get("/api/v3/exchangeInfo"); ticks=_get("/api/v3/ticker/24hr"); tm={x.get("symbol"):x for x in ticks if isinstance(x,dict)}; out=[]
     for it in ex.get("symbols",[]):
         sym=it.get("symbol",""); base=it.get("baseAsset","")
         if it.get("quoteAsset")!="USDT" or it.get("status")!="TRADING" or it.get("isSpotTradingAllowed") is False: continue
@@ -194,7 +197,8 @@ def _prefilter(symbol: str, qv: float) -> Optional[Candidate]:
         one={"price":p,"rsi":r,"stoch_k":sk,"stoch_d":sd,"macd_hist":mh,"macd_hist_prev":mh0,"vol_ratio":vr,"ret3h":round(ret3,3),"ret6h":round(ret6,3),"ret24h":round(ret24,3),"bar_id":int(pd.Timestamp(a.open_time).timestamp())}
         return Candidate(symbol,symbol[:-4],qv,round(score,2),setup,one)
     except Exception as exc:
-        print(f"[PYTHON] {symbol}: {exc}",flush=True); return None
+        if "insufficient candles" not in str(exc): print(f"[PYTHON] {symbol}: {exc}",flush=True)
+        return None
 
 
 def python_candidates() -> tuple[list[Candidate],int]:
@@ -205,7 +209,7 @@ def python_candidates() -> tuple[list[Candidate],int]:
             c=f.result()
             if c: out.append(c)
     out.sort(key=lambda c:c.rank_score,reverse=True)
-    return out[:PYTHON_TOP_N], len(uni)
+    return out[:PYTHON_TOP_N],len(uni)
 
 
 def enrich(c: Candidate) -> Candidate:
@@ -274,10 +278,20 @@ def _opt(v: Any) -> Optional[float]:
 
 def sonnet(c: Candidate, btc: dict[str,Any]) -> dict[str,Any]:
     if not ANTHROPIC_API_KEY: raise RuntimeError("ANTHROPIC_API_KEY missing")
-    from anthropic import Anthropic
-    started=time.time(); client=Anthropic(api_key=ANTHROPIC_API_KEY)
-    resp=client.messages.create(model=SONNET_MODEL,max_tokens=SONNET_MAX_TOKENS,system=SONNET_SYSTEM,messages=[{"role":"user","content":json.dumps({"candidate":c.snapshot,"gemini_filter":c.gemini,"btc_context":btc},ensure_ascii=False,separators=(",",":"))}])
-    text="".join(b.text for b in resp.content if getattr(b,"type",None)=="text").strip(); usage=getattr(resp,"usage",None); inp=int(getattr(usage,"input_tokens",0) or 0); out=int(getattr(usage,"output_tokens",0) or 0)
+    started=time.time()
+    payload={
+        "model":SONNET_MODEL,
+        "max_tokens":SONNET_MAX_TOKENS,
+        "system":SONNET_SYSTEM,
+        "messages":[{"role":"user","content":json.dumps({"candidate":c.snapshot,"gemini_filter":c.gemini,"btc_context":btc},ensure_ascii=False,separators=(",",":"))}],
+    }
+    headers={"x-api-key":ANTHROPIC_API_KEY,"anthropic-version":ANTHROPIC_VERSION,"content-type":"application/json"}
+    r=HTTP.post(ANTHROPIC_MESSAGES_URL,headers=headers,json=payload,timeout=90)
+    if not r.ok: raise RuntimeError(f"Anthropic HTTP {r.status_code}: {r.text[:300]}")
+    resp=r.json(); blocks=resp.get("content") or []
+    text="".join(str(b.get("text","")) for b in blocks if isinstance(b,dict) and b.get("type")=="text").strip()
+    if not text: raise RuntimeError("Anthropic returned no text")
+    usage=resp.get("usage") or {}; inp=int(usage.get("input_tokens",0) or 0); out=int(usage.get("output_tokens",0) or 0)
     cost=inp/1_000_000*SONNET_INPUT_USD_PER_M+out/1_000_000*SONNET_OUTPUT_USD_PER_M; duration=time.time()-started
     print(f"[SONNET SCANNER USAGE] {c.symbol} model={SONNET_MODEL} input={inp} output={out} total={inp+out} cost=${cost:.5f} duration={duration:.1f}s",flush=True)
     d=_extract_json(text)
@@ -304,7 +318,8 @@ def discover() -> tuple[list[tuple[Candidate,dict[str,Any]]],dict[str,Any]]:
         fs={ex.submit(enrich,c):c for c in pre}
         for f in as_completed(fs):
             try: enriched.append(f.result())
-            except Exception as exc: print(f"[SNAPSHOT] {fs[f].symbol}: {exc}",flush=True)
+            except Exception as exc:
+                if "insufficient candles" not in str(exc): print(f"[SNAPSHOT] {fs[f].symbol}: {exc}",flush=True)
     enriched.sort(key=lambda c:c.rank_score,reverse=True)
     g=gemini_filter(enriched,btc)
     finalists=[c for c in g if sf(c.gemini.get("quality"))>=SONNET_MIN_GEMINI_QUALITY and c.gemini.get("state") in {"RETRIGGER","BREAKOUT_EARLY","REVERSAL","WARMING","COOLING"}]
