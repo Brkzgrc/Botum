@@ -14,14 +14,52 @@ import json
 import re
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
 
-from anton_scanner.gpt_sonnet_analyzer.market_analyst_bot import analyze_symbol, split_telegram
+# Modülü nesne olarak import ediyoruz: production entegrasyonuna özel karar/timing
+# talimatını tek yerde ekleyip standalone veri/indikatör motoruna dokunmuyoruz.
+from anton_scanner.gpt_sonnet_analyzer import market_analyst_bot as _market
+
+_GPT_PRODUCTION_PROMPT = r"""
+
+ANTON GPT PRODUCTION KARAR KURALLARI:
+- Analizin asıl avantajı 1D setup -> 4H trigger -> 1H timing zinciridir. Son aksiyon
+  bölümünde klasik "desteğe gelsin" yaklaşımına geri dönme.
+- Yeni alım için BİRİNCİ ve tercih edilen senaryo: 1H momentum soğurken fiyatın
+  anlamlı ölçüde düşmemesi (yatay/zaman düzeltmesi) ve ardından 1H momentumun
+  yeniden yukarı dönmesi. Bunu "YENİDEN TETİK -> ALIM ADAYI" olarak değerlendir.
+- İKİNCİ senaryo: yakın bir fiyat düzeltmesi sonrası 1H yeniden tetik.
+- Derin 4H/1D destekleri ilk alım beklentisi değildir; alternatif düzeltme ve
+  bozulma haritasıdır. Fiyat güçlü kalıyorsa sırf bu desteklere inmedi diye fırsatı
+  yok sayma.
+- Eski tepe/direnç üzeri kapanışı "breakout/devam teyidi" olarak ayrı değerlendir;
+  bunu 1H yeniden-tetik girişinin zorunlu şartı yapma. Aksi halde giriş gereksiz
+  biçimde pahalılaşabilir.
+- "Şu An Ne Yapardım?" kısmında önce tek satırda net aksiyon yaz, sonra gerekçeyi
+  ve aksiyonun hangi koşulda değişeceğini anlat.
+
+TELEGRAM ÇIKTI KURALI:
+- Markdown #/## işaretleri kullanma; başlıkları düz metin ve uygun emojiyle yaz.
+- İlk bölüm şu sırada olsun: "🔍 Tek Bakışta Sonuç", "📅 1D — SETUP",
+  "🕓 4H — TRIGGER", "🕐 1H — TIMING", "🔗 Birlikte Okuma".
+- "🌌 ŞU AN NE YAPARDIM?" başlığı MUTLAKA ayrı aksiyon bölümünün başlangıcı olsun.
+- Ardından "🎯 ALIM ADAYI NE ZAMAN?" ve "⚠️ BOZULMA / TEYİT" başlıklarını kullan.
+- "🌌 ŞU AN NE YAPARDIM?" öncesindeki analiz mümkün olduğunca öz ve yaklaşık
+  3000 karakteri geçmeyecek biçimde yaz; ayrıntıyı aksiyon bölümüne taşıma.
+""".strip()
+
+if _GPT_PRODUCTION_PROMPT not in _market.SYSTEM_PROMPT:
+    _market.SYSTEM_PROMPT = _market.SYSTEM_PROMPT + "\n\n" + _GPT_PRODUCTION_PROMPT
+
+analyze_symbol = _market.analyze_symbol
+split_telegram = _market.split_telegram
 
 _GPT_INFLIGHT: set[str] = set()
 _GPT_INFLIGHT_LOCK = threading.Lock()
+TR_TZ = timezone(timedelta(hours=3))
 
 
 def parse_gpt_symbol(text: str) -> Optional[str]:
@@ -59,6 +97,44 @@ def _send(token: str, chat_id: str | int, thread_id: int | None, text: str) -> N
         raise RuntimeError(f"Telegram sendMessage HTTP {r.status_code}: {r.text[:160]}")
 
 
+def _find_action_start(text: str) -> int:
+    """Sonnet'in aksiyon bölümünü, ufak başlık varyasyonlarına toleransla bul."""
+    patterns = (
+        r"(?im)^\s*🌌\s*ŞU AN NE YAPARDIM\??\s*$",
+        r"(?im)^\s*#{0,3}\s*Şu [Aa]n [Nn]e [Yy]apardım\??\s*$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text)
+        if m:
+            return m.start()
+    return -1
+
+
+def _gpt_messages(base: str, analysis: str) -> list[str]:
+    """Telegram sunumu: 1. mesaj analiz, 2. mesaj mutlaka aksiyonla başlar."""
+    stamp = datetime.now(timezone.utc).astimezone(TR_TZ).strftime("%d/%m/%Y %H:%M")
+    header = (
+        f"🧠 #{base} GPT SONNET ANALİZİ\n"
+        f"🕐 {stamp}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
+    clean = (analysis or "").strip()
+    action_at = _find_action_start(clean)
+
+    if action_at >= 0:
+        analysis_part = clean[:action_at].strip()
+        action_part = clean[action_at:].strip()
+        first = header + analysis_part
+        first_parts = split_telegram(first)
+        action_parts = split_telegram(action_part)
+        # Prompt ilk kısmı kısa tutacak şekilde ayarlı. Olağan dışı uzunlukta veri
+        # kaybetmek yerine güvenli Telegram parçalama davranışını koruyoruz.
+        return first_parts + action_parts
+
+    # Model başlığı beklenmedik biçimde atladıysa içerik kaybolmasın.
+    return split_telegram(header + clean)
+
+
 def _run_gpt_analysis(pair: str, token: str, chat_id: str | int, thread_id: int | None) -> None:
     with _GPT_INFLIGHT_LOCK:
         if pair in _GPT_INFLIGHT:
@@ -67,8 +143,7 @@ def _run_gpt_analysis(pair: str, token: str, chat_id: str | int, thread_id: int 
     try:
         base = pair[:-4] if pair.endswith("USDT") else pair
         analysis = analyze_symbol(base)
-        full = f"{base}/USDT — GPT Sonnet Analyzer\n\n{analysis}"
-        for part in split_telegram(full):
+        for part in _gpt_messages(base, analysis):
             _send(token, chat_id, thread_id, part)
     except Exception as exc:
         base = pair[:-4] if pair.endswith("USDT") else pair
