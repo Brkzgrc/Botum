@@ -27,7 +27,7 @@ ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "Botum-AISpotScanner/1.1"})
+HTTP.headers.update({"User-Agent": "Botum-AISpotScanner/1.2"})
 
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_SCANNER_MODEL", "gemini-3.5-flash-lite").strip()
@@ -44,6 +44,8 @@ GEMINI_MIN_QUALITY = float(os.getenv("AI_GEMINI_MIN_QUALITY", "72"))
 SONNET_MIN_GEMINI_QUALITY = float(os.getenv("AI_SONNET_MIN_GEMINI_QUALITY", "82"))
 SONNET_MAX_FINALISTS = max(1, min(5, int(os.getenv("AI_SONNET_MAX_FINALISTS", "2"))))
 SONNET_MIN_CONFIDENCE = float(os.getenv("AI_SONNET_MIN_CONFIDENCE", "72"))
+SONNET_DEDUPE_FILE = os.getenv("AI_SONNET_DEDUPE_FILE", "/tmp/spot_ai_sonnet_dedupe_v1.json").strip()
+SONNET_DEDUPE_KEEP_HOURS = max(6.0, float(os.getenv("AI_SONNET_DEDUPE_KEEP_HOURS", "48")))
 
 IGNORED_BASES = {
     "USDT","USDC","BUSD","TUSD","DAI","PAX","HUSD","USDP","GUSD","FDUSD","EUR","TRY","GBP","USD",
@@ -107,7 +109,6 @@ def ohlcv(symbol: str, interval: str, limit: int = 240) -> pd.DataFrame:
     rows = _get("/api/v3/klines", {"symbol": symbol, "interval": interval, "limit": limit})
     if not isinstance(rows, list) or len(rows) < 80:
         raise ValueError(f"insufficient candles {symbol} {interval}")
-    cols = ["open_time","open","high","low","close_time","close","volume","quote_volume","trades","taker_base","taker_quote","ignore"]
     cols = ["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
     d = pd.DataFrame(rows, columns=cols)
     for c in ("open","high","low","close","volume","quote_volume","taker_quote"):
@@ -277,6 +278,37 @@ def _opt(v: Any) -> Optional[float]:
     x=sf(v,float("nan")); return x if math.isfinite(x) and x>0 else None
 
 
+def _load_sonnet_dedupe() -> dict[str, float]:
+    try:
+        with open(SONNET_DEDUPE_FILE, "r", encoding="utf-8") as f:
+            raw=json.load(f)
+        if not isinstance(raw,dict): return {}
+        cutoff=time.time()-SONNET_DEDUPE_KEEP_HOURS*3600
+        return {str(k):sf(v) for k,v in raw.items() if sf(v)>=cutoff}
+    except Exception:
+        return {}
+
+
+def _save_sonnet_dedupe(cache: dict[str, float]) -> None:
+    try:
+        parent=os.path.dirname(SONNET_DEDUPE_FILE)
+        if parent: os.makedirs(parent,exist_ok=True)
+        tmp=SONNET_DEDUPE_FILE+".tmp"
+        with open(tmp,"w",encoding="utf-8") as f: json.dump(cache,f,separators=(",",":"))
+        os.replace(tmp,SONNET_DEDUPE_FILE)
+    except Exception as exc:
+        print(f"[SONNET DEDUPE] state save failed: {exc}",flush=True)
+
+
+def _sonnet_fingerprint(c: Candidate) -> str:
+    one=(c.snapshot.get("timeframes") or {}).get("1h") or {}
+    bar_id=int(sf(one.get("bar_id") or c.one_h.get("bar_id")))
+    state=str(c.gemini.get("state","PREP")).upper()
+    verdict=str(c.gemini.get("verdict","REJECT")).upper()
+    quality_bucket=int(sf(c.gemini.get("quality"))//5)*5
+    return f"{c.symbol}|{bar_id}|{state}|{verdict}|q{quality_bucket}"
+
+
 def sonnet(c: Candidate, btc: dict[str,Any]) -> dict[str,Any]:
     if not ANTHROPIC_API_KEY: raise RuntimeError("ANTHROPIC_API_KEY missing")
     started=time.time()
@@ -325,12 +357,21 @@ def discover() -> tuple[list[tuple[Candidate,dict[str,Any]]],dict[str,Any]]:
     g=gemini_filter(enriched,btc)
     finalists=[c for c in g if sf(c.gemini.get("quality"))>=SONNET_MIN_GEMINI_QUALITY and c.gemini.get("state") in {"RETRIGGER","BREAKOUT_EARLY","REVERSAL","WARMING","COOLING"}]
     finalists.sort(key=lambda c:(c.gemini.get("verdict")=="PASS",sf(c.gemini.get("quality")),c.rank_score),reverse=True)
-    finals=[]
-    for c in finalists[:SONNET_MAX_FINALISTS]:
+    cache=_load_sonnet_dedupe(); now=time.time(); finals=[]; attempted=0; skipped=0
+    for c in finalists:
+        if attempted>=SONNET_MAX_FINALISTS: break
+        fp=_sonnet_fingerprint(c)
+        if fp in cache:
+            skipped+=1
+            print(f"[SONNET DEDUPE] {c.symbol} skipped same 1H/state ({fp})",flush=True)
+            continue
+        attempted+=1
         try:
             d=sonnet(c,btc)
+            cache[fp]=now
+            _save_sonnet_dedupe(cache)
             if d["decision"]=="ALIM_ADAYI" and d["confidence"]>=SONNET_MIN_CONFIDENCE: finals.append((c,d))
-            else: print(f"[SONNET] {c.symbol} -> {d['decision']} %{d['confidence']:.0f}",flush=True)
+            else: print(f"[SONNET] {c.symbol} -> {d['decision']} %{d['confidence']:.0f} | Gemini={c.gemini.get('verdict')} %{sf(c.gemini.get('quality')):.0f} {c.gemini.get('state')} | {c.gemini.get('reason','')}",flush=True)
         except Exception as exc: print(f"[SONNET] {c.symbol}: {type(exc).__name__}: {exc}",flush=True)
-    stats={"universe":total,"python":len(pre),"gemini":len(g),"sonnet":min(len(finalists),SONNET_MAX_FINALISTS),"signals":len(finals),"btc_regime":btc["regime"],"duration_s":round(time.time()-started,1)}
+    stats={"universe":total,"python":len(pre),"gemini":len(g),"sonnet":attempted,"sonnet_dedupe_skipped":skipped,"signals":len(finals),"btc_regime":btc["regime"],"duration_s":round(time.time()-started,1)}
     return finals,stats
