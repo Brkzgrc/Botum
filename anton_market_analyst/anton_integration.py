@@ -11,7 +11,6 @@ Ayni Telegram bot token'i icin ikinci bir poller baslatilmaz.
 from __future__ import annotations
 
 import json
-import os
 import re
 import threading
 import time
@@ -40,8 +39,6 @@ def parse_gpt_symbol(text: str) -> Optional[str]:
     if not m:
         return None
     base = m.group(1).upper()
-    # Regex'in ilk grubu greedy oldugu icin `ZECUSDT GPT` durumunu burada da
-    # normalize et. Duz `ZEC GPT` ise oldugu gibi kalir.
     if base.endswith("USDT"):
         base = base[:-4]
     if not re.fullmatch(r"[A-Z0-9]{2,15}", base):
