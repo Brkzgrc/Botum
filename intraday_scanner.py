@@ -12,6 +12,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
+# portfolio_tracker.py bu modülü, manuel Telegram poller thread'ini başlatmadan
+# önce import eder. GPT Sonnet Analyzer kancasını burada açıkça kuruyoruz;
+# Python'un startup sırasında `sitecustomize.py` bulmasına güvenmiyoruz.
+from anton_scanner.gpt_sonnet_analyzer.runtime_hook import install_anton_gpt_hook
+install_anton_gpt_hook()
+
 from market_watch import fetch_binance_ohlcv
 from market_analyzer import _calc_fbb, _calc_ssl, _calc_tma, _fbb_text, _ssl_text, _tma_text
 from claude_analyzer import _fear_greed, _dominance, _dom_str, _rsi, _ema, _tr_now, send_decision, ANTHROPIC_API_KEY
