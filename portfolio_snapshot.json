@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-03 20:18:50",
+  "updated_at": "2026-09-03 20:43:10",
   "performance": {
-    "total": 0,
+    "total": 1,
     "open": 0,
-    "closed": 0,
+    "closed": 1,
     "wins": 0,
     "win_tp2": 0,
-    "losses": 0,
+    "losses": 1,
     "expired": 0,
     "tp1_hits": 0,
     "win_pnl": 0.0,
-    "loss_pnl": 0.0,
+    "loss_pnl": -0.39,
     "expired_win": 0,
     "expired_loss": 0,
-    "total_pnl": 0.0,
-    "win_loss_pnl": 0.0,
+    "total_pnl": -0.39,
+    "win_loss_pnl": -0.39,
     "expired_pnl": 0.0,
     "avg_peak": 0.0,
     "win_rate": 0.0,
-    "real_win_rate": 0,
+    "real_win_rate": 0.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -42,11 +42,136 @@
         "wr": 0
       }
     },
-    "by_type": {},
-    "daily": {},
-    "weekly": {},
-    "monthly": {}
+    "by_type": {
+      "DİĞER": {
+        "total": 1,
+        "open": 0,
+        "wins": 0,
+        "losses": 1,
+        "expired": 0,
+        "tp1_hits": 0,
+        "total_pnl": -0.39,
+        "tp2_hits": 0,
+        "tp2_total": 0,
+        "tp2_extra_pnl": 0.0,
+        "win_rate": 0.0,
+        "avg_peak": 0.0,
+        "tp2_rate": 0,
+        "expired_pnl": 0.0,
+        "win_loss_pnl": -0.39
+      }
+    },
+    "daily": {
+      "2026-09-03": {
+        "trades": 1,
+        "pnl": -0.39,
+        "wins": 0,
+        "losses": 1
+      }
+    },
+    "weekly": {
+      "2026-W35": {
+        "trades": 1,
+        "pnl": -0.39,
+        "wins": 0,
+        "losses": 1
+      }
+    },
+    "monthly": {
+      "2026-09": {
+        "trades": 1,
+        "pnl": -0.39,
+        "wins": 0,
+        "losses": 1
+      }
+    }
   },
   "open": [],
-  "closed": []
+  "closed": [
+    {
+      "id": "HOME_USDT_1788456715",
+      "symbol": "HOME/USDT",
+      "entry": 0.00619,
+      "stop": 0.0061658354,
+      "tp1": 0.0064486683,
+      "tp2": 0.0064713317,
+      "tp3": null,
+      "limit_price": 0.00619,
+      "signal_price": 0.00619,
+      "sig_type": "spot_opportunity",
+      "sub_type": "15m_breakout_+_15m_pullback_+_15m_destek-donus",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "loss",
+      "open_time": "2026-09-03T20:31:55.254096+03:00",
+      "close_time": "2026-09-03T20:42:10.390043+03:00",
+      "close_price": 0.00616584,
+      "close_reason": "stop",
+      "close_pct": -0.39,
+      "peak_price": 0.00619,
+      "peak_pct": 0.0,
+      "low_price": 0.00614,
+      "low_pct": -0.81,
+      "current_price": 0.00615,
+      "current_pct": -0.65,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-03T20:42:10.390043+03:00",
+      "checks": 1,
+      "extra": {
+        "tp3": null,
+        "entry_zone": [
+          0.006186905,
+          0.0061907738
+        ],
+        "support_zone": [
+          0.0060886683,
+          0.0061113317
+        ],
+        "resistance_zone": [
+          0.0064486683,
+          0.0064713317
+        ],
+        "target_pct": 4.18,
+        "stop_pct": 0.39,
+        "rr": 10.7,
+        "position_size": 4000.0,
+        "risk_dollars": 125.0,
+        "setup": "15M BREAKOUT + 15M PULLBACK + 15M DESTEK-DONUS",
+        "positives": [
+          "15M yerel tepe hacimle kirildi",
+          "15M yukari trendde kontrollu pullback",
+          "15M destekten yapisal tepki",
+          "Son 1 saatte BTC'den guclu",
+          "1H yapi 15M hareketi destekliyor",
+          "1H EMA baglami pozitif"
+        ],
+        "risks": [
+          "BTC YELLOW"
+        ],
+        "bar_id": 1788455700,
+        "m15_structure": "MIXED",
+        "volume_ratio_15m": 1.94,
+        "taker_buy_ratio_15m": 0.649,
+        "rsi_15m": 64.8,
+        "ema20_distance_atr_15m": 1.58,
+        "relative_strength_1h_from15m": 1.609,
+        "m15_score": 69.0,
+        "final_score": 75.0,
+        "h1_trend": "BULL",
+        "h1_structure": "HH_HL",
+        "rsi_1h": 63.9,
+        "relative_strength_1h": 0.465,
+        "relative_strength_4h": -2.291,
+        "btc_ret_15m": -0.14,
+        "btc_ret_1h": -0.47,
+        "btc_ret_4h": 2.95
+      }
+    }
+  ]
 }
