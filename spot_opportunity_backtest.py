@@ -1,342 +1,140 @@
 # -*- coding: utf-8 -*-
-"""INTRADAY SPOT SCANNER icin walk-forward hesap simulasyonu.
+"""15M-primary + 1H-confirmation scanner icin walk-forward backtest.
 
-Yeni scanner ile ayni strateji fonksiyonlarini kullanir:
-- 1H watchlist / confirmation
-- 15M execution
-- kapanmis mum disinda veri gostermez
-- sinyalden sonraki 15M mum acilisinda pozisyona girer
-- komisyon + slippage + dinamik sermaye + max acik pozisyon hesaba katilir
-
-Canli scanner'i degistirmez ve dis servislere gonderim yapmaz.
+Canli scanner ile ayni akisi izler:
+  tum secili semboller 15M'de taranir -> sadece 15M adaylar 1H teyide gider.
+Sinyal kapanmis mumdan uretilir; giris sonraki 15M mum acilisidir.
 """
 from __future__ import annotations
-
-import argparse
-import json
-import statistics
-import time
+import argparse, json, statistics, time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
 import pandas as pd
-
 import spot_opportunity_scanner as scanner
 
-INTERVAL_MS = {"15m": 900_000, "1h": 3_600_000}
-FRAME_LIMITS = {"15m": 260, "1h": 260}
-
-def utc_ms(dt: datetime) -> int:
-    return int(dt.timestamp() * 1000)
-
-def closed_quarter() -> datetime:
-    now = datetime.now(timezone.utc)
-    minute = (now.minute // 15) * 15
-    return now.replace(minute=minute, second=0, microsecond=0)
-
-def raw_to_df(rows: list[list]) -> pd.DataFrame:
-    df = pd.DataFrame(rows, columns=[
-        "open_time", "open", "high", "low", "close", "volume", "close_time",
-        "quote_volume", "trades", "taker_base", "taker_quote", "ignore",
-    ])
-    for col in ("open", "high", "low", "close", "volume", "quote_volume", "taker_quote"):
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
-    df["close_time"] = pd.to_datetime(df["close_time"], unit="ms", utc=True)
-    return df.dropna(subset=["open", "high", "low", "close", "volume"]).reset_index(drop=True)
-
-def fetch_range(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame:
-    rows: list[list] = []
-    cursor = utc_ms(start)
-    end_ms = utc_ms(end)
-    while cursor < end_ms:
-        batch = scanner.api_get("/api/v3/klines", {
-            "symbol": symbol, "interval": interval, "startTime": cursor,
-            "endTime": end_ms - 1, "limit": 1000,
-        })
-        if not batch:
-            break
-        rows.extend(batch)
-        next_cursor = int(batch[-1][6]) + 1
-        if next_cursor <= cursor:
-            break
-        cursor = next_cursor
-        if len(batch) == 1000:
-            time.sleep(0.03)
-    if not rows:
-        raise ValueError(f"Veri yok: {symbol} {interval}")
-    unique = {int(row[0]): row for row in rows}
-    return raw_to_df([unique[k] for k in sorted(unique)])
-
-def frame_at(df: pd.DataFrame, cutoff: datetime, limit: int) -> pd.DataFrame:
-    sliced = df[df["close_time"] < cutoff].tail(limit).copy()
-    if len(sliced) < 60:
-        raise ValueError("Yetersiz kapanmis mum")
-    return sliced.reset_index(drop=True)
-
-def historical_quote_volume(h1: pd.DataFrame, cutoff: datetime) -> float:
-    d = h1[h1["close_time"] < cutoff].tail(24)
-    return float(d["quote_volume"].sum()) if not d.empty else 0.0
-
-def download_symbol(symbol: str, first_cutoff: datetime, final_end: datetime) -> dict[str, pd.DataFrame]:
-    data: dict[str, pd.DataFrame] = {}
-    for interval, limit in FRAME_LIMITS.items():
-        warmup = timedelta(milliseconds=INTERVAL_MS[interval] * (limit + 20))
-        data[interval] = fetch_range(symbol, interval, first_cutoff - warmup, final_end)
-    return data
-
+INTERVAL_MS={"15m":900_000,"1h":3_600_000}; FRAME_LIMITS={"15m":260,"1h":260}
+def utc_ms(dt): return int(dt.timestamp()*1000)
+def closed_quarter():
+    now=datetime.now(timezone.utc); m=(now.minute//15)*15; return now.replace(minute=m,second=0,microsecond=0)
+def raw_to_df(rows):
+    df=pd.DataFrame(rows,columns=["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"])
+    for c in ("open","high","low","close","volume","quote_volume","taker_quote"):df[c]=pd.to_numeric(df[c],errors="coerce")
+    df["open_time"]=pd.to_datetime(df.open_time,unit="ms",utc=True); df["close_time"]=pd.to_datetime(df.close_time,unit="ms",utc=True)
+    return df.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
+def fetch_range(symbol,interval,start,end):
+    rows=[]; cur=utc_ms(start); endms=utc_ms(end)
+    while cur<endms:
+        b=scanner.api_get("/api/v3/klines",{"symbol":symbol,"interval":interval,"startTime":cur,"endTime":endms-1,"limit":1000})
+        if not b:break
+        rows.extend(b); nxt=int(b[-1][6])+1
+        if nxt<=cur:break
+        cur=nxt
+        if len(b)==1000:time.sleep(.03)
+    if not rows:raise ValueError(f"Veri yok {symbol} {interval}")
+    u={int(r[0]):r for r in rows}; return raw_to_df([u[k] for k in sorted(u)])
+def frame_at(df,cutoff,limit):
+    s=df[df.close_time<cutoff].tail(limit).copy()
+    if len(s)<60:raise ValueError("Yetersiz kapanmis mum")
+    return s.reset_index(drop=True)
+def download_symbol(symbol,first,end):
+    out={}
+    for interval,limit in FRAME_LIMITS.items():
+        warm=timedelta(milliseconds=INTERVAL_MS[interval]*(limit+20)); out[interval]=fetch_range(symbol,interval,first-warm,end)
+    return out
 @contextmanager
-def historical_fetch(all_data: dict[str, dict[str, pd.DataFrame]], cutoff: datetime):
-    original = scanner.fetch_ohlcv
-    def replacement(symbol: str, interval: str, limit: int = 260) -> pd.DataFrame:
-        if symbol not in all_data or interval not in all_data[symbol]:
-            raise ValueError(f"Backtest verisi yok: {symbol} {interval}")
-        return frame_at(all_data[symbol][interval], cutoff, limit)
-    scanner.fetch_ohlcv = replacement
-    try:
-        yield
-    finally:
-        scanner.fetch_ohlcv = original
-
-def current_symbols(limit: int) -> list[str]:
-    universe = scanner.get_spot_universe()
-    symbols = [symbol for symbol, _ in universe]
-    return symbols if limit <= 0 else symbols[:limit]
-
-def mark_to_market(open_positions: dict[str, dict], data: dict[str, dict[str, pd.DataFrame]], cutoff: datetime) -> float:
-    value = 0.0
-    for symbol, pos in open_positions.items():
-        d = data[symbol]["15m"]
-        rows = d[d["close_time"] < cutoff]
-        price = float(rows["close"].iloc[-1]) if not rows.empty else pos["entry"]
-        value += pos["qty"] * price
-    return value
-
-def close_trade(symbol: str, pos: dict, exit_price: float, reason: str, cutoff: datetime,
-                cash: float, fee_rate: float, slippage: float, records: list[dict]) -> float:
-    effective_exit = exit_price * (1 - slippage)
-    gross = pos["qty"] * effective_exit
-    exit_fee = gross * fee_rate
-    cash += gross - exit_fee
-    net_pnl = (effective_exit - pos["effective_entry"]) * pos["qty"] - pos["entry_fee"] - exit_fee
-    net_pct = net_pnl / pos["capital_used"] * 100 if pos["capital_used"] else 0.0
-    records.append({
-        "symbol": symbol, "entry_time": pos["entry_time"].isoformat(), "exit_time": cutoff.isoformat(),
-        "signal_price": round(pos["signal_price"], 10), "entry": round(pos["entry"], 10),
-        "exit": round(exit_price, 10), "stop": round(pos["stop"], 10),
-        "target": round(pos["target"], 10), "reason": reason, "net_pnl": round(net_pnl, 2),
-        "net_pct": round(net_pct, 3), "entry_score": pos["entry_score"], "setup": pos["setup"],
-        "btc_regime": pos["btc_regime"], "stop_pct": pos["stop_pct"], "target_pct": pos["target_pct"],
-    })
+def historical_fetch(all_data,cutoff):
+    orig=scanner.fetch_ohlcv
+    def repl(symbol,interval,limit=260):
+        if symbol not in all_data or interval not in all_data[symbol]:raise ValueError(f"Backtest verisi yok {symbol} {interval}")
+        return frame_at(all_data[symbol][interval],cutoff,limit)
+    scanner.fetch_ohlcv=repl
+    try:yield
+    finally:scanner.fetch_ohlcv=orig
+def current_symbols(limit):
+    syms=[s for s,_ in scanner.get_spot_universe()]; return syms if limit<=0 else syms[:limit]
+def historical_quote_volume(h1,cutoff):
+    d=h1[h1.close_time<cutoff].tail(24); return float(d.quote_volume.sum()) if not d.empty else 0.0
+def next_bar_open(data,symbol,cutoff):
+    r=data[symbol]["15m"]; row=r[r.open_time==cutoff]
+    if row.empty:return None
+    x=float(row.iloc[0].open); return x if x>0 else None
+def mark_to_market(pos,data,cutoff):
+    v=0.0
+    for s,p in pos.items():
+        r=data[s]["15m"]; z=r[r.close_time<cutoff]; price=float(z.close.iloc[-1]) if not z.empty else p["entry"]; v+=p["qty"]*price
+    return v
+def close_trade(symbol,pos,exit_price,reason,cutoff,cash,fee,slip,records):
+    eff=exit_price*(1-slip); gross=pos["qty"]*eff; ef=gross*fee; cash+=gross-ef; pnl=(eff-pos["effective_entry"])*pos["qty"]-pos["entry_fee"]-ef; pct=pnl/pos["capital_used"]*100 if pos["capital_used"] else 0
+    records.append({"symbol":symbol,"entry_time":pos["entry_time"].isoformat(),"exit_time":cutoff.isoformat(),"signal_price":round(pos["signal_price"],10),"entry":round(pos["entry"],10),"exit":round(exit_price,10),"stop":round(pos["stop"],10),"target":round(pos["target"],10),"reason":reason,"net_pnl":round(pnl,2),"net_pct":round(pct,3),"entry_score":pos["entry_score"],"m15_score":pos["m15_score"],"setup":pos["setup"],"btc_regime":pos["btc_regime"],"stop_pct":pos["stop_pct"],"target_pct":pos["target_pct"],"rr":pos["rr"]})
     return cash
-
-def update_open_positions(positions: dict[str, dict], all_data: dict[str, dict[str, pd.DataFrame]],
-                          cutoff: datetime, cash: float, fee_rate: float, slippage: float,
-                          records: list[dict]) -> float:
-    to_close: list[tuple[str, float, str]] = []
-    bar_open = cutoff - timedelta(minutes=15)
-    for symbol, pos in positions.items():
-        d = all_data[symbol]["15m"]
-        row = d[d["open_time"] == bar_open]
-        if row.empty:
-            continue
-        r = row.iloc[-1]
-        hit_stop = float(r["low"]) <= pos["stop"]
-        hit_target = float(r["high"]) >= pos["target"]
-        if hit_stop and hit_target:
-            to_close.append((symbol, pos["stop"], "STOP_AMBIGUOUS"))
-        elif hit_stop:
-            to_close.append((symbol, pos["stop"], "STOP"))
-        elif hit_target:
-            to_close.append((symbol, pos["target"], "TARGET"))
-    for symbol, price, reason in to_close:
-        pos = positions.pop(symbol)
-        cash = close_trade(symbol, pos, price, reason, cutoff, cash, fee_rate, slippage, records)
+def update_open_positions(pos,data,cutoff,cash,fee,slip,records):
+    bar_open=cutoff-timedelta(minutes=15); closing=[]
+    for s,p in pos.items():
+        r=data[s]["15m"]; row=r[r.open_time==bar_open]
+        if row.empty:continue
+        x=row.iloc[-1]; hs=float(x.low)<=p["stop"]; ht=float(x.high)>=p["target"]
+        if hs and ht:closing.append((s,p["stop"],"STOP_AMBIGUOUS"))
+        elif hs:closing.append((s,p["stop"],"STOP"))
+        elif ht:closing.append((s,p["target"],"TARGET"))
+    for s,price,reason in closing:cash=close_trade(s,pos.pop(s),price,reason,cutoff,cash,fee,slip,records)
     return cash
-
-def next_bar_open(data: dict[str, dict[str, pd.DataFrame]], symbol: str, cutoff: datetime) -> float | None:
-    d = data[symbol]["15m"]
-    row = d[d["open_time"] == cutoff]
-    if row.empty:
-        return None
-    value = float(row.iloc[0]["open"])
-    return value if value > 0 else None
-
-def summarize(records: list[dict], equity_curve: list[dict], start_equity: float) -> dict[str, Any]:
-    wins = [r for r in records if r["net_pnl"] > 0]
-    losses = [r for r in records if r["net_pnl"] <= 0]
-    end_equity = equity_curve[-1]["equity"] if equity_curve else start_equity
-    peak = start_equity
-    max_dd = 0.0
-    for point in equity_curve:
-        eq = point["equity"]
-        peak = max(peak, eq)
-        dd = (eq / peak - 1) * 100 if peak else 0.0
-        max_dd = min(max_dd, dd)
-    gross_win = sum(r["net_pnl"] for r in wins)
-    gross_loss = abs(sum(r["net_pnl"] for r in losses))
-    return {
-        "start_equity": round(start_equity, 2), "end_equity": round(end_equity, 2),
-        "net_pnl": round(end_equity - start_equity, 2),
-        "return_pct": round((end_equity / start_equity - 1) * 100, 2),
-        "closed_trades": len(records), "wins": len(wins), "losses": len(losses),
-        "win_rate_pct": round(100 * len(wins) / len(records), 2) if records else 0.0,
-        "avg_win": round(statistics.fmean([r["net_pnl"] for r in wins]), 2) if wins else 0.0,
-        "avg_loss": round(statistics.fmean([r["net_pnl"] for r in losses]), 2) if losses else 0.0,
-        "profit_factor": round(gross_win / gross_loss, 3) if gross_loss else None,
-        "max_drawdown_pct": round(max_dd, 2),
-    }
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="15M execution + 1H confirmation walk-forward backtest")
-    parser.add_argument("--days", type=int, default=30)
-    parser.add_argument("--symbols", type=int, default=40)
-    parser.add_argument("--only-symbol", default="")
-    parser.add_argument("--account", type=float, default=10000.0)
-    parser.add_argument("--risk-pct", type=float, default=1.25)
-    parser.add_argument("--max-position-pct", type=float, default=40.0)
-    parser.add_argument("--max-open", type=int, default=4)
-    parser.add_argument("--fee-pct", type=float, default=0.10, help="Tek yon komisyon yuzdesi")
-    parser.add_argument("--slippage-pct", type=float, default=0.05, help="Tek yon varsayilan slippage")
-    parser.add_argument("--output", default="/tmp/spot_intraday_backtest.json")
-    args = parser.parse_args()
-    if args.days < 3 or args.account <= 0 or args.max_open < 1:
-        raise SystemExit("days>=3, account>0 ve max-open>=1 olmali")
-    final_end = closed_quarter()
-    first_cutoff = final_end - timedelta(days=args.days)
-    if args.only_symbol:
-        symbol = args.only_symbol.upper().replace("/", "")
-        symbols = [symbol if symbol.endswith("USDT") else symbol + "USDT"]
-    else:
-        symbols = current_symbols(args.symbols)
-    print(f"[TEST] {len(symbols)} sembol | {args.days} gun | 15M karar / 1H watchlist")
-    all_data: dict[str, dict[str, pd.DataFrame]] = {}
-    for i, symbol in enumerate(["BTCUSDT", *symbols], start=1):
-        if symbol in all_data:
-            continue
-        try:
-            all_data[symbol] = download_symbol(symbol, first_cutoff, final_end)
-            print(f"[DATA] {i}/{len(symbols)+1} {symbol}")
-        except Exception as exc:
-            print(f"[DATA] {symbol} atlandi: {exc}")
-    symbols = [s for s in symbols if s in all_data]
-    if "BTCUSDT" not in all_data or not symbols:
-        raise SystemExit("Yeterli veri indirilemedi")
-    scanner.ACCOUNT_SIZE = args.account
-    scanner.RISK_PER_TRADE_PCT = args.risk_pct
-    scanner.MAX_POSITION_PCT = args.max_position_pct
-    fee_rate = args.fee_pct / 100
-    slippage = args.slippage_pct / 100
-    cash = args.account
-    positions: dict[str, dict] = {}
-    records: list[dict] = []
-    equity_curve: list[dict] = []
-    watchlist: list[Any] = []
-    last_watch_hour: datetime | None = None
-    cutoffs = pd.date_range(first_cutoff, final_end, freq="15min").to_pydatetime()
-    for n, cutoff in enumerate(cutoffs, start=1):
-        cash = update_open_positions(positions, all_data, cutoff, cash, fee_rate, slippage, records)
-        with historical_fetch(all_data, cutoff):
-            try:
-                btc = scanner.btc_context()
-            except Exception:
-                continue
-            hour_key = cutoff.replace(minute=0, second=0, microsecond=0)
-            if last_watch_hour != hour_key:
-                last_watch_hour = hour_key
-                watch_candidates = []
-                for symbol in symbols:
+def summarize(records,curve,start):
+    wins=[r for r in records if r["net_pnl"]>0]; losses=[r for r in records if r["net_pnl"]<=0]; end=curve[-1]["equity"] if curve else start; peak=start; dd=0
+    for p in curve:peak=max(peak,p["equity"]); dd=min(dd,(p["equity"]/peak-1)*100 if peak else 0)
+    gw=sum(r["net_pnl"] for r in wins); gl=abs(sum(r["net_pnl"] for r in losses))
+    return {"start_equity":round(start,2),"end_equity":round(end,2),"net_pnl":round(end-start,2),"return_pct":round((end/start-1)*100,2),"closed_trades":len(records),"wins":len(wins),"losses":len(losses),"win_rate_pct":round(100*len(wins)/len(records),2) if records else 0,"avg_win":round(statistics.fmean([r["net_pnl"] for r in wins]),2) if wins else 0,"avg_loss":round(statistics.fmean([r["net_pnl"] for r in losses]),2) if losses else 0,"profit_factor":round(gw/gl,3) if gl else None,"max_drawdown_pct":round(dd,2)}
+def main():
+    ap=argparse.ArgumentParser(); ap.add_argument("--days",type=int,default=14); ap.add_argument("--symbols",type=int,default=20); ap.add_argument("--account",type=float,default=10000); ap.add_argument("--risk-pct",type=float,default=1.25); ap.add_argument("--max-position-pct",type=float,default=40); ap.add_argument("--max-open",type=int,default=4); ap.add_argument("--fee-pct",type=float,default=.10); ap.add_argument("--slippage-pct",type=float,default=.05); ap.add_argument("--output",default="/tmp/spot_15m_primary_backtest.json"); args=ap.parse_args()
+    if args.days<3:raise SystemExit("days>=3 olmali")
+    end=closed_quarter(); first=end-timedelta(days=args.days); symbols=current_symbols(args.symbols); print(f"[TEST] {len(symbols)} sembol | {args.days} gun | 15M ANA TARAMA -> 1H TEYIT")
+    data={}
+    for i,s in enumerate(["BTCUSDT",*symbols],1):
+        if s in data:continue
+        try:data[s]=download_symbol(s,first,end); print(f"[DATA] {i}/{len(symbols)+1} {s}")
+        except Exception as e:print(f"[DATA] {s} atlandi: {e}")
+    symbols=[s for s in symbols if s in data]
+    if "BTCUSDT" not in data or not symbols:raise SystemExit("Yeterli veri yok")
+    scanner.ACCOUNT_SIZE=args.account; scanner.RISK_PER_TRADE_PCT=args.risk_pct; scanner.MAX_POSITION_PCT=args.max_position_pct
+    fee=args.fee_pct/100; slip=args.slippage_pct/100; cash=args.account; pos={}; records=[]; curve=[]; funnel={"m15_candidates":0,"h1_rejected":0,"confirmed":0,"next_open_rejected":0,"capacity":0,"entered":0}
+    cutoffs=pd.date_range(first,end,freq="15min").to_pydatetime()
+    for n,cutoff in enumerate(cutoffs,1):
+        cash=update_open_positions(pos,data,cutoff,cash,fee,slip,records)
+        with historical_fetch(data,cutoff):
+            try:btc=scanner.btc_context()
+            except Exception:continue
+            pres=[]
+            if btc["regime"]!="RED":
+                for s in symbols:
+                    if s in pos:continue
                     try:
-                        quote_vol = historical_quote_volume(all_data[symbol]["1h"], cutoff)
-                        item = scanner.score_watch(symbol, quote_vol, btc)
-                        if item:
-                            watch_candidates.append(item)
-                    except Exception:
-                        continue
-                watch_candidates.sort(
-                    key=lambda x: (x.watch_score, x.relative_strength_4h, x.quote_volume_24h), reverse=True
-                )
-                watchlist = watch_candidates[:scanner.WATCHLIST_MAX]
-            signals = []
-            if btc["regime"] != "RED":
-                for item in watchlist:
-                    if item.symbol in positions:
-                        continue
-                    try:
-                        candidate = scanner.detect_execution(item, btc)
-                        if candidate:
-                            signals.append(candidate)
-                    except Exception:
-                        continue
-            signals.sort(key=lambda c: (c.entry_score, c.metrics["relative_strength_4h"]), reverse=True)
-        for candidate in signals:
-            if len(positions) >= args.max_open or candidate.symbol in positions:
-                continue
-            entry_price = next_bar_open(all_data, candidate.symbol, cutoff)
-            if entry_price is None:
-                continue
-            if candidate.stop >= entry_price or candidate.target1 <= entry_price:
-                continue
-            actual_stop_pct = (entry_price - candidate.stop) / entry_price * 100
-            actual_target_pct = (candidate.target1 / entry_price - 1) * 100
-            if actual_stop_pct <= 0 or actual_stop_pct > scanner.MAX_STOP_PCT:
-                continue
-            if actual_target_pct < scanner.MIN_TARGET_PCT:
-                continue
-            equity = cash + mark_to_market(positions, all_data, cutoff)
-            risk_dollars = equity * (args.risk_pct / 100)
-            raw_position = risk_dollars / (actual_stop_pct / 100)
-            max_position = equity * (args.max_position_pct / 100)
-            capital = min(raw_position, max_position, cash / (1 + fee_rate))
-            if capital < 50:
-                continue
-            effective_entry = entry_price * (1 + slippage)
-            qty = capital / effective_entry
-            entry_fee = capital * fee_rate
-            total_cost = capital + entry_fee
-            if total_cost > cash:
-                continue
-            cash -= total_cost
-            positions[candidate.symbol] = {
-                "entry_time": cutoff, "signal_price": candidate.price, "entry": entry_price,
-                "effective_entry": effective_entry, "qty": qty, "capital_used": capital,
-                "entry_fee": entry_fee, "stop": candidate.stop, "target": candidate.target1,
-                "entry_score": candidate.entry_score, "setup": candidate.setup,
-                "btc_regime": candidate.btc_regime, "stop_pct": round(actual_stop_pct, 3),
-                "target_pct": round(actual_target_pct, 3),
-            }
-        equity = cash + mark_to_market(positions, all_data, cutoff)
-        equity_curve.append({"time": cutoff.isoformat(), "equity": round(equity, 2), "open": len(positions)})
-        if n % 96 == 0:
-            print(f"[PROGRESS] {n}/{len(cutoffs)} | equity=${equity:,.0f} | open={len(positions)} | trades={len(records)}")
-    for symbol in list(positions):
-        pos = positions.pop(symbol)
-        d = all_data[symbol]["15m"]
-        rows = d[d["close_time"] < final_end]
-        price = float(rows["close"].iloc[-1])
-        cash = close_trade(symbol, pos, price, "END", final_end, cash, fee_rate, slippage, records)
-    equity_curve.append({"time": final_end.isoformat(), "equity": round(cash, 2), "open": 0})
-    summary = summarize(records, equity_curve, args.account)
-    result = {
-        "config": vars(args), "period": {"start": first_cutoff.isoformat(), "end": final_end.isoformat()},
-        "summary": summary, "trades": records, "equity_curve": equity_curve,
-    }
-    Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("\n" + "=" * 72)
-    print("INTRADAY WALK-FORWARD SONUC")
-    print("=" * 72)
-    print(f"Baslangic:      ${summary['start_equity']:,.2f}")
-    print(f"Bitis:          ${summary['end_equity']:,.2f}")
-    print(f"Net PnL:        ${summary['net_pnl']:,.2f} ({summary['return_pct']:+.2f}%)")
-    print(f"Trade:          {summary['closed_trades']}")
-    print(f"Win rate:       %{summary['win_rate_pct']:.2f}")
-    print(f"Ort. kazanc:    ${summary['avg_win']:,.2f}")
-    print(f"Ort. kayip:     ${summary['avg_loss']:,.2f}")
-    print(f"Profit factor:  {summary['profit_factor']}")
-    print(f"Max drawdown:   %{summary['max_drawdown_pct']:.2f}")
-    print(f"JSON:           {args.output}")
-
-if __name__ == "__main__":
-    main()
+                        q=historical_quote_volume(data[s]["1h"],cutoff); pre=scanner.scan_15m_symbol(s,q,btc)
+                        if pre: pres.append(pre); funnel["m15_candidates"]+=1
+                    except Exception:continue
+            pres.sort(key=lambda x:(x.m15_score,x.rr),reverse=True); signals=[]
+            for pre in pres:
+                try:
+                    c=scanner.confirm_1h(pre,btc)
+                    if c:signals.append(c); funnel["confirmed"]+=1
+                    else:funnel["h1_rejected"]+=1
+                except Exception:funnel["h1_rejected"]+=1
+            signals.sort(key=lambda c:(c.entry_score,c.metrics.get("m15_score",0),c.rr),reverse=True)
+        for c in signals:
+            if len(pos)>=args.max_open or c.symbol in pos:funnel["capacity"]+=1; continue
+            entry=next_bar_open(data,c.symbol,cutoff)
+            if entry is None or c.stop>=entry or c.target1<=entry:funnel["next_open_rejected"]+=1; continue
+            sp=(entry-c.stop)/entry*100; tp=(c.target1/entry-1)*100
+            if sp<=0 or sp>scanner.MAX_STOP_PCT or tp<scanner.MIN_TARGET_PCT:funnel["next_open_rejected"]+=1; continue
+            rr=tp/sp; eq=cash+mark_to_market(pos,data,cutoff); risk=eq*(args.risk_pct/100); raw=risk/(sp/100); maxp=eq*(args.max_position_pct/100); capital=min(raw,maxp,cash/(1+fee))
+            if capital<50:funnel["capacity"]+=1;continue
+            eff=entry*(1+slip); qty=capital/eff; ef=capital*fee
+            if capital+ef>cash:funnel["capacity"]+=1;continue
+            cash-=capital+ef; pos[c.symbol]={"entry_time":cutoff,"signal_price":c.price,"entry":entry,"effective_entry":eff,"qty":qty,"capital_used":capital,"entry_fee":ef,"stop":c.stop,"target":c.target1,"entry_score":round(c.entry_score,2),"m15_score":round(c.metrics.get("m15_score",0),2),"setup":c.setup,"btc_regime":c.btc_regime,"stop_pct":round(sp,3),"target_pct":round(tp,3),"rr":round(rr,3)}; funnel["entered"]+=1
+        eq=cash+mark_to_market(pos,data,cutoff); curve.append({"time":cutoff.isoformat(),"equity":round(eq,2),"open":len(pos)})
+        if n%192==0:print(f"[PROGRESS] {n}/{len(cutoffs)} | equity=${eq:,.0f} | open={len(pos)} | trades={len(records)} | 15M={funnel['m15_candidates']} | confirmed={funnel['confirmed']}")
+    for s in list(pos):
+        p=pos.pop(s); r=data[s]["15m"]; z=r[r.close_time<end]; cash=close_trade(s,p,float(z.close.iloc[-1]),"END",end,cash,fee,slip,records)
+    curve.append({"time":end.isoformat(),"equity":round(cash,2),"open":0}); summary=summarize(records,curve,args.account); result={"strategy":"15M primary + 1H confirmation","config":vars(args),"period":{"start":first.isoformat(),"end":end.isoformat()},"summary":summary,"funnel":funnel,"trades":records,"equity_curve":curve}; Path(args.output).write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+    print("\n"+"="*72);print("15M PRIMARY + 1H CONFIRMATION SONUC");print("="*72);print(f"Baslangic:      ${summary['start_equity']:,.2f}");print(f"Bitis:          ${summary['end_equity']:,.2f}");print(f"Net PnL:        ${summary['net_pnl']:,.2f} ({summary['return_pct']:+.2f}%)");print(f"Trade:          {summary['closed_trades']}");print(f"Win rate:       %{summary['win_rate_pct']:.2f}");print(f"Ort. kazanc:    ${summary['avg_win']:,.2f}");print(f"Ort. kayip:     ${summary['avg_loss']:,.2f}");print(f"Profit factor:  {summary['profit_factor']}");print(f"Max drawdown:   %{summary['max_drawdown_pct']:.2f}");print(f"Funnel:         {funnel}");print(f"JSON:           {args.output}")
+if __name__=="__main__":main()
