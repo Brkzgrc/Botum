@@ -22,7 +22,7 @@ def _anton_thread_init(self, *args, **kwargs):
 
     if getattr(target, "__name__", "") == "_manual_analyzer_poll_loop":
         try:
-            from anton_market_analyst.anton_integration import gpt_aware_manual_poll_loop
+            from anton_scanner.gpt_sonnet_analyzer.anton_integration import gpt_aware_manual_poll_loop
 
             target_globals = target.__globals__
 
@@ -37,7 +37,7 @@ def _anton_thread_init(self, *args, **kwargs):
                 args = tuple(args)
         except Exception as exc:
             print(
-                f"[ANTON GPT HOOK] entegrasyon yüklenemedi, eski poller korunuyor: {exc}",
+                f"[GPT SONNET ANALYZER HOOK] entegrasyon yüklenemedi, eski poller korunuyor: {exc}",
                 flush=True,
             )
 

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from anton_market_analyst.anton_integration import parse_gpt_symbol, _send
+from anton_scanner.gpt_sonnet_analyzer.anton_integration import parse_gpt_symbol, _send
 
 
 class AntonIntegrationTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class AntonIntegrationTests(unittest.TestCase):
         self.assertIsNone(parse_gpt_symbol("GPT"))
         self.assertIsNone(parse_gpt_symbol("ZEC GPT NOW"))
 
-    @patch("anton_market_analyst.anton_integration.requests.post")
+    @patch("anton_scanner.gpt_sonnet_analyzer.anton_integration.requests.post")
     def test_send_preserves_message_thread_id(self, post):
         post.return_value.ok = True
         _send("token", "-1001", 38, "test")
