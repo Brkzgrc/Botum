@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-09-03 20:55:59",
+  "updated_at": "2026-09-03 21:26:03",
   "performance": {
-    "total": 2,
-    "open": 1,
+    "total": 4,
+    "open": 3,
     "closed": 1,
     "wins": 0,
     "win_tp2": 0,
@@ -44,8 +44,8 @@
     },
     "by_type": {
       "DİĞER": {
-        "total": 2,
-        "open": 1,
+        "total": 4,
+        "open": 3,
         "wins": 0,
         "losses": 1,
         "expired": 0,
@@ -63,7 +63,7 @@
     },
     "daily": {
       "2026-09-03": {
-        "trades": 2,
+        "trades": 4,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
@@ -71,7 +71,7 @@
     },
     "weekly": {
       "2026-W35": {
-        "trades": 2,
+        "trades": 4,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
@@ -79,7 +79,7 @@
     },
     "monthly": {
       "2026-09": {
-        "trades": 2,
+        "trades": 4,
         "pnl": -0.39,
         "wins": 0,
         "losses": 1
@@ -87,6 +87,177 @@
     }
   },
   "open": [
+    {
+      "id": "BAND_USDT_1788459421",
+      "symbol": "BAND/USDT",
+      "entry": 0.1836,
+      "stop": 0.1829163964,
+      "tp1": 0.1871989191,
+      "tp2": 0.1876010809,
+      "tp3": null,
+      "limit_price": 0.1836,
+      "signal_price": 0.1836,
+      "sig_type": "spot_opportunity",
+      "sub_type": "15m_pullback_+_15m_destek-donus",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-09-03T21:17:01.050966+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.1836,
+      "peak_pct": 0.0,
+      "low_price": 0.1834,
+      "low_pct": -0.11,
+      "current_price": 0.1834,
+      "current_pct": -0.11,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-03T21:25:06.844737+03:00",
+      "checks": 2,
+      "extra": {
+        "tp3": null,
+        "entry_zone": [
+          0.1835082,
+          0.18362295
+        ],
+        "support_zone": [
+          0.1827655858,
+          0.1831677475
+        ],
+        "resistance_zone": [
+          0.1871989191,
+          0.1876010809
+        ],
+        "target_pct": 1.96,
+        "stop_pct": 0.37,
+        "rr": 5.26,
+        "position_size": 4000.0,
+        "risk_dollars": 125.0,
+        "setup": "15M PULLBACK + 15M DESTEK-DONUS",
+        "positives": [
+          "15M yukari trendde kontrollu pullback",
+          "15M destekten yapisal tepki",
+          "15M HH/HL yapi",
+          "15M hacim 2.4x",
+          "1H EMA baglami pozitif"
+        ],
+        "risks": [
+          "Belirgin ek risk yok; manuel grafik kontrolu gerekli"
+        ],
+        "bar_id": 1788458400,
+        "m15_structure": "HH_HL",
+        "volume_ratio_15m": 2.35,
+        "taker_buy_ratio_15m": 0.145,
+        "rsi_15m": 64.3,
+        "ema20_distance_atr_15m": 1.89,
+        "relative_strength_1h_from15m": 0.348,
+        "m15_score": 66.0,
+        "final_score": 76.0,
+        "h1_trend": "BULL",
+        "h1_structure": "HH_BUILDING",
+        "rsi_1h": 60.9,
+        "relative_strength_1h": 0.129,
+        "relative_strength_4h": -0.732,
+        "btc_ret_15m": 0.27,
+        "btc_ret_1h": 0.09,
+        "btc_ret_4h": 2.79
+      }
+    },
+    {
+      "id": "BLUR_USDT_1788458522",
+      "symbol": "BLUR/USDT",
+      "entry": 0.01665,
+      "stop": 0.0165440739,
+      "tp1": 0.0170712591,
+      "tp2": 0.0171287409,
+      "tp3": null,
+      "limit_price": 0.01665,
+      "signal_price": 0.01665,
+      "sig_type": "spot_opportunity",
+      "sub_type": "15m_breakout_+_15m_retest_+_15m_pullback",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "open",
+      "open_time": "2026-09-03T21:02:02.964933+03:00",
+      "close_time": null,
+      "close_price": null,
+      "close_reason": null,
+      "close_pct": null,
+      "peak_price": 0.01672,
+      "peak_pct": 0.42,
+      "low_price": 0.01662,
+      "low_pct": -0.18,
+      "current_price": 0.01664,
+      "current_pct": -0.06,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-03T21:25:06.844737+03:00",
+      "checks": 5,
+      "extra": {
+        "tp3": null,
+        "entry_zone": [
+          0.016641675,
+          0.0166520813
+        ],
+        "support_zone": [
+          0.0163962591,
+          0.0164537409
+        ],
+        "resistance_zone": [
+          0.0170712591,
+          0.0171287409
+        ],
+        "target_pct": 2.53,
+        "stop_pct": 0.64,
+        "rr": 3.98,
+        "position_size": 4000.0,
+        "risk_dollars": 125.0,
+        "setup": "15M BREAKOUT + 15M RETEST + 15M PULLBACK",
+        "positives": [
+          "15M yerel tepe hacimle kirildi",
+          "15M kirilim seviyesi korunuyor",
+          "15M yukari trendde kontrollu pullback",
+          "15M destekten yapisal tepki",
+          "15M HH/HL yapi",
+          "15M hacim 9.3x",
+          "Son 1 saatte BTC'den guclu",
+          "1H EMA baglami pozitif"
+        ],
+        "risks": [
+          "Belirgin ek risk yok; manuel grafik kontrolu gerekli"
+        ],
+        "bar_id": 1788457500,
+        "m15_structure": "HH_HL",
+        "volume_ratio_15m": 9.34,
+        "taker_buy_ratio_15m": 0.413,
+        "rsi_15m": 68.4,
+        "ema20_distance_atr_15m": 2.4,
+        "relative_strength_1h_from15m": 0.819,
+        "m15_score": 79.0,
+        "final_score": 94.0,
+        "h1_trend": "BULL",
+        "h1_structure": "HH_BUILDING",
+        "rsi_1h": 66.8,
+        "relative_strength_1h": 0.819,
+        "relative_strength_4h": 1.4,
+        "btc_ret_15m": -0.05,
+        "btc_ret_1h": 0.09,
+        "btc_ret_4h": 2.79
+      }
+    },
     {
       "id": "MEGA_USDT_1788457621",
       "symbol": "MEGA/USDT",
@@ -109,19 +280,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.03976,
-      "peak_pct": 0.0,
+      "peak_price": 0.04004,
+      "peak_pct": 0.7,
       "low_price": 0.0397,
       "low_pct": -0.15,
-      "current_price": 0.0397,
-      "current_pct": -0.15,
+      "current_price": 0.03991,
+      "current_pct": 0.38,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-03T20:54:59.859928+03:00",
-      "checks": 1,
+      "last_check": "2026-09-03T21:25:06.844737+03:00",
+      "checks": 7,
       "extra": {
         "tp3": null,
         "entry_zone": [
