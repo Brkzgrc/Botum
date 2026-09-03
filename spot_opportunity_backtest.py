@@ -1,48 +1,39 @@
 # -*- coding: utf-8 -*-
-"""SPOT Opportunity Scanner için geçmişe dönük walk-forward doğrulama.
+"""INTRADAY SPOT SCANNER icin walk-forward hesap simulasyonu.
 
-Canlı tarayıcıyı değiştirmez ve emir üretmez. Karar anında yalnızca kapanmış
-mumları gösterir; sonraki 1H mumlarla hedef/stop sonucunu ölçer.
+Yeni scanner ile ayni strateji fonksiyonlarini kullanir:
+- 1H watchlist / confirmation
+- 15M execution
+- kapanmis mum disinda veri gostermez
+- komisyon + slippage + dinamik sermaye + max acik pozisyon hesaba katilir
+
+Canli scanner'i degistirmez ve dis servislere gonderim yapmaz.
 """
-
 from __future__ import annotations
 
 import argparse
-import gc
 import json
 import statistics
 import time
-from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from threading import Lock
+from typing import Any
 
 import pandas as pd
 
 import spot_opportunity_scanner as scanner
 
-
-INTERVAL_MS = {
-    "1h": 3_600_000,
-    "4h": 14_400_000,
-    "1d": 86_400_000,
-    "1w": 604_800_000,
-}
-FRAME_LIMITS = {"1h": 260, "4h": 260, "1d": 260, "1w": 160}
-FRAME_LABELS = {"1h": "1H", "4h": "4H", "1d": "1D", "1w": "1W"}
-FETCH_LOCK = Lock()
-
+INTERVAL_MS = {"15m": 900_000, "1h": 3_600_000}
+FRAME_LIMITS = {"15m": 260, "1h": 260}
 
 def utc_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
-
-def closed_hour() -> datetime:
+def closed_quarter() -> datetime:
     now = datetime.now(timezone.utc)
-    return now.replace(minute=0, second=0, microsecond=0)
-
+    minute = (now.minute // 15) * 15
+    return now.replace(minute=minute, second=0, microsecond=0)
 
 def raw_to_df(rows: list[list]) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=[
@@ -53,8 +44,7 @@ def raw_to_df(rows: list[list]) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     df["close_time"] = pd.to_datetime(df["close_time"], unit="ms", utc=True)
-    return df.dropna(subset=["open", "high", "low", "close", "volume"])
-
+    return df.dropna(subset=["open", "high", "low", "close", "volume"]).reset_index(drop=True)
 
 def fetch_range(symbol: str, interval: str, start: datetime, end: datetime) -> pd.DataFrame:
     rows: list[list] = []
@@ -62,11 +52,8 @@ def fetch_range(symbol: str, interval: str, start: datetime, end: datetime) -> p
     end_ms = utc_ms(end)
     while cursor < end_ms:
         batch = scanner.api_get("/api/v3/klines", {
-            "symbol": symbol,
-            "interval": interval,
-            "startTime": cursor,
-            "endTime": end_ms - 1,
-            "limit": 1000,
+            "symbol": symbol, "interval": interval, "startTime": cursor,
+            "endTime": end_ms - 1, "limit": 1000,
         })
         if not batch:
             break
@@ -76,398 +63,258 @@ def fetch_range(symbol: str, interval: str, start: datetime, end: datetime) -> p
             break
         cursor = next_cursor
         if len(batch) == 1000:
-            time.sleep(0.04)
+            time.sleep(0.03)
     if not rows:
         raise ValueError(f"Veri yok: {symbol} {interval}")
     unique = {int(row[0]): row for row in rows}
     return raw_to_df([unique[k] for k in sorted(unique)])
 
-
-def current_crypto_symbols(limit: int) -> list[str]:
-    universe = scanner.get_spot_universe()
-    symbols = [symbol for symbol, _ in universe]
-    return symbols if limit <= 0 else symbols[:limit]
-
-
-def download_symbol(symbol: str, first_cutoff: datetime, final_end: datetime) -> tuple[str, dict[str, pd.DataFrame]]:
-    data: dict[str, pd.DataFrame] = {}
-    for interval, history_limit in FRAME_LIMITS.items():
-        warmup = timedelta(milliseconds=INTERVAL_MS[interval] * (history_limit + 8))
-        data[interval] = fetch_range(symbol, interval, first_cutoff - warmup, final_end)
-    return symbol, data
-
-
 def frame_at(df: pd.DataFrame, cutoff: datetime, limit: int) -> pd.DataFrame:
     sliced = df[df["close_time"] < cutoff].tail(limit).copy()
-    if len(sliced) < 50:
-        raise ValueError("Yetersiz kapanmış mum")
-    return sliced
+    if len(sliced) < 60:
+        raise ValueError("Yetersiz kapanmis mum")
+    return sliced.reset_index(drop=True)
 
+def historical_quote_volume(h1: pd.DataFrame, cutoff: datetime) -> float:
+    d = h1[h1["close_time"] < cutoff].tail(24)
+    return float(d["quote_volume"].sum()) if not d.empty else 0.0
 
-def btc_at(data: dict[str, pd.DataFrame], cutoff: datetime) -> dict[str, float]:
-    # frame_at ortak olarak en az 50 kapanmış mum doğrular. BTC getirileri daha
-    # az mum kullansa da yeterli geçmiş bulunduğunu aynı kuralla teyit ederiz.
-    h1 = frame_at(data["1h"], cutoff, 50)
-    h4 = frame_at(data["4h"], cutoff, 50)
-    return {
-        "ret_1h": (h1["close"].iloc[-1] / h1["close"].iloc[-2] - 1) * 100,
-        "ret_6h": (h1["close"].iloc[-1] / h1["close"].iloc[-7] - 1) * 100,
-        "ret_24h": (h1["close"].iloc[-1] / h1["close"].iloc[-25] - 1) * 100,
-        "ret_4h": (h4["close"].iloc[-1] / h4["close"].iloc[-2] - 1) * 100,
-    }
-
+def download_symbol(symbol: str, first_cutoff: datetime, final_end: datetime) -> dict[str, pd.DataFrame]:
+    data: dict[str, pd.DataFrame] = {}
+    for interval, limit in FRAME_LIMITS.items():
+        warmup = timedelta(milliseconds=INTERVAL_MS[interval] * (limit + 20))
+        data[interval] = fetch_range(symbol, interval, first_cutoff - warmup, final_end)
+    return data
 
 @contextmanager
-def historical_fetch(data: dict[str, pd.DataFrame], cutoff: datetime):
+def historical_fetch(all_data: dict[str, dict[str, pd.DataFrame]], cutoff: datetime):
     original = scanner.fetch_ohlcv
-
-    def replacement(symbol: str, interval: str, limit: int) -> pd.DataFrame:
-        del symbol
-        return frame_at(data[interval], cutoff, limit)
-
+    def replacement(symbol: str, interval: str, limit: int = 260) -> pd.DataFrame:
+        if symbol not in all_data or interval not in all_data[symbol]:
+            raise ValueError(f"Backtest verisi yok: {symbol} {interval}")
+        return frame_at(all_data[symbol][interval], cutoff, limit)
     scanner.fetch_ohlcv = replacement
     try:
         yield
     finally:
         scanner.fetch_ohlcv = original
 
+def current_symbols(limit: int) -> list[str]:
+    universe = scanner.get_spot_universe()
+    symbols = [symbol for symbol, _ in universe]
+    return symbols if limit <= 0 else symbols[:limit]
 
-def outcome(candidate, h1: pd.DataFrame, cutoff: datetime, horizon: int) -> dict:
-    future = h1[h1["open_time"] >= cutoff].head(horizon)
-    result = "OPEN"
-    hours = None
-    for i, row in enumerate(future.itertuples(), start=1):
-        hit_stop = row.low <= candidate.stop
-        hit_target = row.high >= candidate.target_low
+def mark_to_market(open_positions: dict[str, dict], data: dict[str, dict[str, pd.DataFrame]], cutoff: datetime) -> float:
+    value = 0.0
+    for symbol, pos in open_positions.items():
+        d = data[symbol]["15m"]
+        rows = d[d["close_time"] < cutoff]
+        price = float(rows["close"].iloc[-1]) if not rows.empty else pos["entry"]
+        value += pos["qty"] * price
+    return value
+
+def close_trade(symbol: str, pos: dict, exit_price: float, reason: str, cutoff: datetime,
+                cash: float, fee_rate: float, slippage: float, records: list[dict]) -> float:
+    effective_exit = exit_price * (1 - slippage)
+    gross = pos["qty"] * effective_exit
+    exit_fee = gross * fee_rate
+    cash += gross - exit_fee
+    net_pnl = (effective_exit - pos["effective_entry"]) * pos["qty"] - pos["entry_fee"] - exit_fee
+    net_pct = net_pnl / pos["capital_used"] * 100 if pos["capital_used"] else 0.0
+    records.append({
+        "symbol": symbol, "entry_time": pos["entry_time"].isoformat(), "exit_time": cutoff.isoformat(),
+        "entry": round(pos["entry"], 10), "exit": round(exit_price, 10), "stop": round(pos["stop"], 10),
+        "target": round(pos["target"], 10), "reason": reason, "net_pnl": round(net_pnl, 2),
+        "net_pct": round(net_pct, 3), "entry_score": pos["entry_score"], "setup": pos["setup"],
+        "btc_regime": pos["btc_regime"], "stop_pct": pos["stop_pct"], "target_pct": pos["target_pct"],
+    })
+    return cash
+
+def update_open_positions(positions: dict[str, dict], all_data: dict[str, dict[str, pd.DataFrame]],
+                          cutoff: datetime, cash: float, fee_rate: float, slippage: float,
+                          records: list[dict]) -> float:
+    to_close: list[tuple[str, float, str]] = []
+    bar_open = cutoff - timedelta(minutes=15)
+    for symbol, pos in positions.items():
+        d = all_data[symbol]["15m"]
+        row = d[d["open_time"] == bar_open]
+        if row.empty:
+            continue
+        r = row.iloc[-1]
+        hit_stop = float(r["low"]) <= pos["stop"]
+        hit_target = float(r["high"]) >= pos["target"]
         if hit_stop and hit_target:
-            result, hours = "STOP_AMBIGUOUS", i
-            break
-        if hit_stop:
-            result, hours = "STOP", i
-            break
-        if hit_target:
-            result, hours = "TARGET", i
-            break
-    if future.empty:
-        return {"result": "NO_DATA", "hours": None, "mfe": 0, "mae": 0, "close_return": 0}
-    mfe = (future["high"].max() / candidate.price - 1) * 100
-    mae = (future["low"].min() / candidate.price - 1) * 100
-    close_return = (future["close"].iloc[-1] / candidate.price - 1) * 100
+            to_close.append((symbol, pos["stop"], "STOP_AMBIGUOUS"))
+        elif hit_stop:
+            to_close.append((symbol, pos["stop"], "STOP"))
+        elif hit_target:
+            to_close.append((symbol, pos["target"], "TARGET"))
+    for symbol, price, reason in to_close:
+        pos = positions.pop(symbol)
+        cash = close_trade(symbol, pos, price, reason, cutoff, cash, fee_rate, slippage, records)
+    return cash
+
+def summarize(records: list[dict], equity_curve: list[dict], start_equity: float) -> dict[str, Any]:
+    wins = [r for r in records if r["net_pnl"] > 0]
+    losses = [r for r in records if r["net_pnl"] <= 0]
+    end_equity = equity_curve[-1]["equity"] if equity_curve else start_equity
+    peak = start_equity
+    max_dd = 0.0
+    for point in equity_curve:
+        eq = point["equity"]
+        peak = max(peak, eq)
+        dd = (eq / peak - 1) * 100 if peak else 0.0
+        max_dd = min(max_dd, dd)
+    gross_win = sum(r["net_pnl"] for r in wins)
+    gross_loss = abs(sum(r["net_pnl"] for r in losses))
     return {
-        "result": result, "hours": hours,
-        "mfe": round(float(mfe), 3), "mae": round(float(mae), 3),
-        "close_return": round(float(close_return), 3),
+        "start_equity": round(start_equity, 2), "end_equity": round(end_equity, 2),
+        "net_pnl": round(end_equity - start_equity, 2),
+        "return_pct": round((end_equity / start_equity - 1) * 100, 2),
+        "closed_trades": len(records), "wins": len(wins), "losses": len(losses),
+        "win_rate_pct": round(100 * len(wins) / len(records), 2) if records else 0.0,
+        "avg_win": round(statistics.fmean([r["net_pnl"] for r in wins]), 2) if wins else 0.0,
+        "avg_loss": round(statistics.fmean([r["net_pnl"] for r in losses]), 2) if losses else 0.0,
+        "profit_factor": round(gross_win / gross_loss, 3) if gross_loss else None,
+        "max_drawdown_pct": round(max_dd, 2),
     }
-
-
-def safe_mean(values: list[float]) -> float:
-    return round(statistics.fmean(values), 3) if values else 0.0
-
-
-def summarize(records: list[dict]) -> dict:
-    counts = Counter(r["result"] for r in records)
-    decided = counts["TARGET"] + counts["STOP"] + counts["STOP_AMBIGUOUS"]
-    target_rate = 100 * counts["TARGET"] / decided if decided else 0
-    by_setup: dict[str, dict] = {}
-    for setup in sorted({r["setup"] for r in records}):
-        group = [r for r in records if r["setup"] == setup]
-        c = Counter(r["result"] for r in group)
-        d = c["TARGET"] + c["STOP"] + c["STOP_AMBIGUOUS"]
-        by_setup[setup] = {
-            "n": len(group), "target_first_pct": round(100 * c["TARGET"] / d, 2) if d else 0,
-            "avg_mfe_pct": safe_mean([r["mfe"] for r in group]),
-            "avg_mae_pct": safe_mean([r["mae"] for r in group]),
-        }
-    return {
-        "signals": len(records), "outcomes": dict(counts),
-        "target_first_pct": round(target_rate, 2),
-        "avg_mfe_pct": safe_mean([r["mfe"] for r in records]),
-        "avg_mae_pct": safe_mean([r["mae"] for r in records]),
-        "avg_horizon_close_pct": safe_mean([r["close_return"] for r in records]),
-        "by_setup": by_setup,
-    }
-
-
-def print_summary(summary: dict) -> None:
-    print("\n" + "=" * 72)
-    print("WALK-FORWARD SONUÇ")
-    print("=" * 72)
-    print(f"Sinyal: {summary['signals']}")
-    print(f"Sonuçlar: {summary['outcomes']}")
-    print(f"Karar verilenlerde hedef önce: %{summary['target_first_pct']:.2f}")
-    print(f"Ortalama MFE: %{summary['avg_mfe_pct']:.3f}")
-    print(f"Ortalama MAE: %{summary['avg_mae_pct']:.3f}")
-    print(f"Ufuk sonu ortalama getiri: %{summary['avg_horizon_close_pct']:.3f}")
-    print("\nKurulum türleri:")
-    for name, row in summary["by_setup"].items():
-        print(f"  {name}: n={row['n']} hedef-önce=%{row['target_first_pct']:.1f} "
-              f"MFE=%{row['avg_mfe_pct']:.2f} MAE=%{row['avg_mae_pct']:.2f}")
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Spot Opportunity Scanner geçmiş testi")
-    parser.add_argument("--days", type=int, default=90, help="Test dönemi; varsayılan 90 gün")
-    parser.add_argument("--symbols", type=int, default=40, help="Likidite sırasıyla sembol sayısı; 0=tümü")
-    parser.add_argument("--only-symbol", default="", help="Yalnız tek sembol; örn. ZECUSDT")
-    parser.add_argument("--step-hours", type=int, default=6, help="Karar noktaları arası saat")
-    parser.add_argument("--horizon-hours", type=int, default=24, help="Her adayın takip süresi")
-    parser.add_argument("--workers", type=int, default=3, help="Veri indirme işçisi")
-    parser.add_argument(
-        "--batch-size", type=int, default=15,
-        help="RAM kullanımını sınırlamak için aynı anda tutulacak sembol sayısı",
-    )
-    parser.add_argument(
-        "--trace-hours", type=int, default=0,
-        help="Son N karar saatinde aday/geçiş teşhisini yazdır; 0=kapalı",
-    )
-    parser.add_argument("--output", default="/tmp/spot_opportunity_backtest.json")
+    parser = argparse.ArgumentParser(description="15M execution + 1H confirmation walk-forward backtest")
+    parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--symbols", type=int, default=40)
+    parser.add_argument("--only-symbol", default="")
+    parser.add_argument("--account", type=float, default=10000.0)
+    parser.add_argument("--risk-pct", type=float, default=1.25)
+    parser.add_argument("--max-position-pct", type=float, default=40.0)
+    parser.add_argument("--max-open", type=int, default=4)
+    parser.add_argument("--fee-pct", type=float, default=0.10, help="Tek yon komisyon yuzdesi")
+    parser.add_argument("--slippage-pct", type=float, default=0.05, help="Tek yon varsayilan slippage")
+    parser.add_argument("--output", default="/tmp/spot_intraday_backtest.json")
     args = parser.parse_args()
-
-    minimum_days = 2 if args.only_symbol else 3
-    if args.days < minimum_days or args.step_hours < 1 or args.horizon_hours < 1:
-        raise SystemExit(f"days>={minimum_days}, step-hours>=1 ve horizon-hours>=1 olmalı")
-
-    final_end = closed_hour()
-    last_cutoff = final_end - timedelta(hours=args.horizon_hours)
-    first_cutoff = last_cutoff - timedelta(days=args.days)
-    cutoffs = list(pd.date_range(first_cutoff, last_cutoff, freq=f"{args.step_hours}h", tz="UTC").to_pydatetime())
+    if args.days < 3 or args.account <= 0 or args.max_open < 1:
+        raise SystemExit("days>=3, account>0 ve max-open>=1 olmali")
+    final_end = closed_quarter()
+    first_cutoff = final_end - timedelta(days=args.days)
     if args.only_symbol:
         symbol = args.only_symbol.upper().replace("/", "")
-        symbol = symbol if symbol.endswith("USDT") else symbol + "USDT"
-        symbols = [symbol]
+        symbols = [symbol if symbol.endswith("USDT") else symbol + "USDT"]
     else:
-        symbols = current_crypto_symbols(args.symbols)
-    print(f"[TEST] {len(symbols)} sembol | {args.days} gün | {len(cutoffs)} karar noktası")
-    print("[TEST] Veriler indiriliyor; canlı tarayıcı ve dış servisler kullanılmaz.")
-
-    # BTC bağlamı bütün gruplarda ortaktır; yalnız bir kez bellekte tutulur.
-    try:
-        _, btc_data = download_symbol("BTCUSDT", first_cutoff, final_end)
-        print("[DATA] BTCUSDT hazır")
-    except Exception as exc:
-        raise SystemExit(f"BTC bağlam verisi indirilemedi: {exc}")
-
-    batch_size = max(1, min(25, args.batch_size))
-    batches = [
-        symbols[i:i + batch_size]
-        for i in range(0, len(symbols), batch_size)
-    ]
+        symbols = current_symbols(args.symbols)
+    print(f"[TEST] {len(symbols)} sembol | {args.days} gun | 15M karar / 1H watchlist")
+    all_data: dict[str, dict[str, pd.DataFrame]] = {}
+    for i, symbol in enumerate(["BTCUSDT", *symbols], start=1):
+        if symbol in all_data:
+            continue
+        try:
+            all_data[symbol] = download_symbol(symbol, first_cutoff, final_end)
+            print(f"[DATA] {i}/{len(symbols)+1} {symbol}")
+        except Exception as exc:
+            print(f"[DATA] {symbol} atlandi: {exc}")
+    symbols = [s for s in symbols if s in all_data]
+    if "BTCUSDT" not in all_data or not symbols:
+        raise SystemExit("Yeterli veri indirilemedi")
+    scanner.ACCOUNT_SIZE = args.account
+    scanner.RISK_PER_TRADE_PCT = args.risk_pct
+    scanner.MAX_POSITION_PCT = args.max_position_pct
+    fee_rate = args.fee_pct / 100
+    slippage = args.slippage_pct / 100
+    cash = args.account
+    positions: dict[str, dict] = {}
     records: list[dict] = []
-    downloaded_count = 0
-
-    for batch_no, batch_symbols in enumerate(batches, start=1):
-        print(
-            f"\n[BATCH] {batch_no}/{len(batches)} | "
-            f"{len(batch_symbols)} sembol yükleniyor"
-        )
-        all_data: dict[str, dict[str, pd.DataFrame]] = {"BTCUSDT": btc_data}
-        to_download = [symbol for symbol in batch_symbols if symbol != "BTCUSDT"]
-        with ThreadPoolExecutor(max_workers=max(1, min(4, args.workers))) as pool:
-            jobs = {
-                pool.submit(download_symbol, symbol, first_cutoff, final_end): symbol
-                for symbol in to_download
-            }
-            for future in as_completed(jobs):
-                symbol = jobs[future]
-                try:
-                    key, data = future.result()
-                    all_data[key] = data
-                    downloaded_count += 1
-                    print(f"[DATA] {key} hazır")
-                except Exception as exc:
-                    print(f"[DATA] {symbol} atlandı: {exc}")
-        if "BTCUSDT" in batch_symbols:
-            downloaded_count += 1
-
-        # Durum yaşam döngüsü her sembol için bağımsızdır. Seçici artık
-        # çapraz-sembol yüzdelik sıralaması kullanmadığından gruplama sonucu
-        # değiştirmez; yalnız RAM tüketimini sınırlar.
-        market_states: dict[str, dict] = {}
-        last_cycle_at: dict[str, datetime] = {}
-
-        for number, cutoff in enumerate(cutoffs, start=1):
-            btc = btc_at(btc_data, cutoff)
-            h1_states: list[tuple[str, dict]] = []
-            for symbol in batch_symbols:
-                data = all_data.get(symbol)
-                if not data:
-                    continue
-                try:
-                    h1_raw = frame_at(data["1h"], cutoff, 260)
-                    quote_volume = float(h1_raw.tail(24)["quote_volume"].sum())
-                    if quote_volume < scanner.MIN_QUOTE_VOLUME:
+    equity_curve: list[dict] = []
+    watchlist: list[Any] = []
+    last_watch_hour: datetime | None = None
+    cutoffs = pd.date_range(first_cutoff, final_end, freq="15min", tz="UTC").to_pydatetime()
+    for n, cutoff in enumerate(cutoffs, start=1):
+        cash = update_open_positions(positions, all_data, cutoff, cash, fee_rate, slippage, records)
+        with historical_fetch(all_data, cutoff):
+            try:
+                btc = scanner.btc_context()
+            except Exception:
+                continue
+            hour_key = cutoff.replace(minute=0, second=0, microsecond=0)
+            if last_watch_hour != hour_key:
+                last_watch_hour = hour_key
+                watch_candidates = []
+                for symbol in symbols:
+                    try:
+                        quote_vol = historical_quote_volume(all_data[symbol]["1h"], cutoff)
+                        item = scanner.score_watch(symbol, quote_vol, btc)
+                        if item:
+                            watch_candidates.append(item)
+                    except Exception:
                         continue
-                    h1_state = scanner.timeframe_state(h1_raw, "1H")
-                    h1_states.append((symbol, h1_state))
-                except Exception:
-                    continue
-
-            candidates = []
-            # Context monkeypatch global olduğu için değerlendirme sıralıdır.
-            for symbol, h1_state in h1_states:
-                try:
-                    with FETCH_LOCK, historical_fetch(all_data[symbol], cutoff):
-                        candidate = scanner.evaluate_symbol(symbol, h1_state, btc)
-                    if candidate:
-                        candidates.append(candidate)
-                except Exception:
-                    continue
-
-            candidates.sort(key=lambda candidate: (candidate.setup, candidate.symbol))
-            candidate_debug: dict[str, dict] = {}
-            h1_map = {symbol: state for symbol, state in h1_states}
-            next_states = {
-                symbol: {
-                    "market": scanner.compact_market_state(h1_state),
-                    "candidate_stage": "",
-                    "last_event_id": market_states.get(symbol, {}).get("last_event_id", ""),
-                }
-                for symbol, h1_state in h1_states
+                watch_candidates.sort(
+                    key=lambda x: (x.watch_score, x.relative_strength_4h, x.quote_volume_24h), reverse=True
+                )
+                watchlist = watch_candidates[:scanner.WATCHLIST_MAX]
+            signals = []
+            if btc["regime"] != "RED":
+                for item in watchlist:
+                    if item.symbol in positions:
+                        continue
+                    try:
+                        candidate = scanner.detect_execution(item, btc)
+                        if candidate:
+                            signals.append(candidate)
+                    except Exception:
+                        continue
+            signals.sort(key=lambda c: (c.entry_score, c.metrics["relative_strength_4h"]), reverse=True)
+        for candidate in signals:
+            if len(positions) >= args.max_open or candidate.symbol in positions:
+                continue
+            equity = cash + mark_to_market(positions, all_data, cutoff)
+            risk_dollars = equity * (args.risk_pct / 100)
+            raw_position = risk_dollars / (candidate.stop_pct / 100)
+            max_position = equity * (args.max_position_pct / 100)
+            capital = min(raw_position, max_position, cash / (1 + fee_rate))
+            if capital < 50:
+                continue
+            effective_entry = candidate.price * (1 + slippage)
+            qty = capital / effective_entry
+            entry_fee = capital * fee_rate
+            total_cost = capital + entry_fee
+            if total_cost > cash:
+                continue
+            cash -= total_cost
+            positions[candidate.symbol] = {
+                "entry_time": cutoff, "entry": candidate.price, "effective_entry": effective_entry,
+                "qty": qty, "capital_used": capital, "entry_fee": entry_fee,
+                "stop": candidate.stop, "target": candidate.target1, "entry_score": candidate.entry_score,
+                "setup": candidate.setup, "btc_regime": candidate.btc_regime,
+                "stop_pct": round(candidate.stop_pct, 3), "target_pct": round(candidate.target_pct, 3),
             }
-            event_pool: list[tuple] = []
-
-            for candidate in candidates:
-                previous = market_states.get(candidate.symbol, {})
-                current = next_states[candidate.symbol]["market"]
-                ready, transition_reasons = scanner.transition_ready(
-                    previous, candidate, current
-                )
-                next_states[candidate.symbol]["candidate_stage"] = candidate.stage
-                last_time = last_cycle_at.get(candidate.symbol)
-                rearmed = (
-                    last_time is None or
-                    (cutoff - last_time).total_seconds() >=
-                    scanner.EVENT_REARM_HOURS * 3600
-                )
-                candidate_debug[candidate.symbol] = {
-                    "setup": candidate.setup,
-                    "stage": candidate.stage,
-                    "ready": ready,
-                    "rearmed": rearmed,
-                    "selected": False,
-                    "reasons": transition_reasons,
-                    "previous_stage": previous.get("candidate_stage", ""),
-                    "selector_gates": {
-                        "support_role": candidate.metrics.get("support_role_state"),
-                        "support_width": candidate.metrics.get("support_zone_width_pct"),
-                        "support_tf": candidate.metrics.get("support_timeframe_count"),
-                        "support_strength": candidate.metrics.get("support_strength"),
-                        "support_distance": candidate.metrics.get("support_distance_pct"),
-                        "target_pct": candidate.target_pct,
-                        "family_count": candidate.metrics.get("confirmation_family_count"),
-                        "families": candidate.metrics.get("confirmation_families", []),
-                        "metric_fresh": candidate.metrics.get("h1_fresh_turn_count"),
-                        "metric_up": candidate.metrics.get("h1_upward_count"),
-                        "metric_weak": candidate.metrics.get("h1_weakening_count"),
-                    },
-                }
-                if not market_states or not ready or not rearmed:
-                    continue
-                event_pool.append((candidate, transition_reasons))
-
-            selected_events = scanner.select_distinct_events(event_pool, h1_map)
-            for candidate, transition_reasons in selected_events:
-                candidate_debug[candidate.symbol]["selected"] = True
-                last_cycle_at[candidate.symbol] = cutoff
-                next_states[candidate.symbol]["last_event_id"] = (
-                    next_states[candidate.symbol]["market"].get(
-                        "structure_event_id", ""
-                    )
-                )
-                candidate.observed_setups.insert(
-                    0, "Saatlik ilerleme: " + "; ".join(transition_reasons)
-                )
-                measured = outcome(
-                    candidate, all_data[candidate.symbol]["1h"],
-                    cutoff, args.horizon_hours
-                )
-                records.append({
-                    "time": cutoff.isoformat(), "symbol": candidate.symbol,
-                    "setup": candidate.setup,
-                    "stage": candidate.stage,
-                    "event_key": candidate.event_key,
-                    "observed_setups": candidate.observed_setups,
-                    "entry": candidate.price, "stop": candidate.stop,
-                    "target": candidate.target_low,
-                    "target_pct": round(candidate.target_pct, 3),
-                    "stop_pct": round(candidate.stop_pct, 3),
-                    "rr": round(candidate.rr, 3),
-                    "tf_summary": candidate.tf_summary,
-                    "positives": candidate.positives,
-                    "risks": candidate.risks,
-                    "historical_notes": candidate.historical_notes,
-                    "metrics": candidate.metrics,
-                    "transition_reasons": transition_reasons,
-                    **measured,
-                })
-
-            if (
-                args.trace_hours > 0 and
-                cutoff >= last_cutoff - timedelta(hours=args.trace_hours)
-            ):
-                tr_time = cutoff.astimezone(scanner.TR_TZ).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-                for symbol, current_state in next_states.items():
-                    market = current_state["market"]
-                    debug = candidate_debug.get(symbol)
-                    if debug:
-                        print(
-                            f"[TRACE] {tr_time} {symbol} | "
-                            f"aday={debug['setup']} stage={debug['stage']} "
-                            f"prev={debug['previous_stage'] or '-'} "
-                            f"ready={debug['ready']} rearm={debug['rearmed']} "
-                            f"selected={debug['selected']} "
-                            f"up={market['upward_count']} "
-                            f"fresh={market['fresh_count']} "
-                            f"weak={market['weakening_count']} "
-                            f"low={market['relative_low_count']} "
-                            f"price={market['price']:.8g} | "
-                            f"neden={debug['reasons'] or '-'} | "
-                            f"seçim_kapıları={debug['selector_gates']}"
-                        )
-                    else:
-                        print(
-                            f"[TRACE] {tr_time} {symbol} | ADAY_YOK "
-                            f"up={market['upward_count']} "
-                            f"fresh={market['fresh_count']} "
-                            f"weak={market['weakening_count']} "
-                            f"low={market['relative_low_count']} "
-                            f"price={market['price']:.8g}"
-                        )
-
-            market_states = next_states
-            if number % 20 == 0 or number == len(cutoffs):
-                print(
-                    f"[REPLAY B{batch_no}] {number}/{len(cutoffs)} | "
-                    f"toplam sinyal={len(records)}"
-                )
-
-        # Bu grubun veri çerçevelerini sonraki gruptan önce serbest bırak.
-        del all_data, market_states, last_cycle_at
-        gc.collect()
-        print(
-            f"[BATCH] {batch_no}/{len(batches)} tamamlandı | "
-            f"toplam sinyal={len(records)}"
-        )
-
-    summary = summarize(records)
-    payload = {
-        "config": vars(args), "first_cutoff": first_cutoff.isoformat(),
-        "last_cutoff": last_cutoff.isoformat(), "symbols_requested": len(symbols),
-        "symbols_downloaded": downloaded_count,
-        "limitations": [
-            "Sembol evreni bugünkü Binance liste durumuna göre kurulur (survivorship bias).",
-            "Aynı 1H mumda hedef ve stop görülürse STOP_AMBIGUOUS kabul edilir.",
-            "Komisyon ve spread net getiriye uygulanmaz; hedef/stop sırası ölçülür.",
-        ],
-        "summary": summary, "records": records,
+        equity = cash + mark_to_market(positions, all_data, cutoff)
+        equity_curve.append({"time": cutoff.isoformat(), "equity": round(equity, 2), "open": len(positions)})
+        if n % 96 == 0:
+            print(f"[PROGRESS] {n}/{len(cutoffs)} | equity=${equity:,.0f} | open={len(positions)} | trades={len(records)}")
+    for symbol in list(positions):
+        pos = positions.pop(symbol)
+        d = all_data[symbol]["15m"]
+        rows = d[d["close_time"] < final_end]
+        price = float(rows["close"].iloc[-1])
+        cash = close_trade(symbol, pos, price, "END", final_end, cash, fee_rate, slippage, records)
+    equity_curve.append({"time": final_end.isoformat(), "equity": round(cash, 2), "open": 0})
+    summary = summarize(records, equity_curve, args.account)
+    result = {
+        "config": vars(args), "period": {"start": first_cutoff.isoformat(), "end": final_end.isoformat()},
+        "summary": summary, "trades": records, "equity_curve": equity_curve,
     }
-    output = Path(args.output)
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print_summary(summary)
-    print(f"\nHam sonuç: {output}")
-
+    Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("\n" + "=" * 72)
+    print("INTRADAY WALK-FORWARD SONUC")
+    print("=" * 72)
+    print(f"Baslangic:      ${summary['start_equity']:,.2f}")
+    print(f"Bitis:          ${summary['end_equity']:,.2f}")
+    print(f"Net PnL:        ${summary['net_pnl']:,.2f} ({summary['return_pct']:+.2f}%)")
+    print(f"Trade:          {summary['closed_trades']}")
+    print(f"Win rate:       %{summary['win_rate_pct']:.2f}")
+    print(f"Ort. kazanc:    ${summary['avg_win']:,.2f}")
+    print(f"Ort. kayip:     ${summary['avg_loss']:,.2f}")
+    print(f"Profit factor:  {summary['profit_factor']}")
+    print(f"Max drawdown:   %{summary['max_drawdown_pct']:.2f}")
+    print(f"JSON:           {args.output}")
 
 if __name__ == "__main__":
     main()
