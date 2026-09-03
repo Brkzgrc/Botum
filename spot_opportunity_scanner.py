@@ -45,7 +45,7 @@ PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_TOKEN", "")
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").lower() == "true"
 MAX_WORKERS = max(1, min(8, int(os.getenv("MAX_WORKERS", "4"))))
-MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "1000000"))
+MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "0"))
 PREFERRED_QUOTE_VOLUME = float(os.getenv("PREFERRED_QUOTE_VOLUME", "15000000"))
 LOW_LIQ_VOLUME_RATIO = float(os.getenv("LOW_LIQ_VOLUME_RATIO", "2.5"))
 WATCHLIST_MAX = max(5, min(50, int(os.getenv("WATCHLIST_MAX", "30"))))
@@ -405,7 +405,7 @@ def get_spot_universe() -> list[tuple[str, float]]:
         if base == "BTC" or base in IGNORED_BASES or is_leveraged or is_bstock:
             continue
         quote_volume = safe_float(ticker_map.get(symbol, {}).get("quoteVolume"))
-        if quote_volume < MIN_QUOTE_VOLUME:
+        if MIN_QUOTE_VOLUME > 0 and quote_volume < MIN_QUOTE_VOLUME:
             continue
         result.append((symbol, quote_volume))
     return sorted(result, key=lambda x: x[1], reverse=True)
@@ -785,6 +785,7 @@ def deserialize_watch(data: dict[str, Any]) -> WatchItem:
         volume_ratio_1h=safe_float(data.get("volume_ratio_1h"), 1.0),
         reasons=list(data.get("reasons", [])), risks=list(data.get("risks", [])),
     )
+
 def refresh_watchlist() -> tuple[dict[str, Any], list[WatchItem]]:
     runtime.update({"status": "SCANNING_1H", "last_error": None})
     started = time.time()
