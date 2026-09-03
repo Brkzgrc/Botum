@@ -5,6 +5,7 @@ Yeni scanner ile ayni strateji fonksiyonlarini kullanir:
 - 1H watchlist / confirmation
 - 15M execution
 - kapanmis mum disinda veri gostermez
+- sinyalden sonraki 15M mum acilisinda pozisyona girer
 - komisyon + slippage + dinamik sermaye + max acik pozisyon hesaba katilir
 
 Canli scanner'i degistirmez ve dis servislere gonderim yapmaz.
@@ -123,7 +124,8 @@ def close_trade(symbol: str, pos: dict, exit_price: float, reason: str, cutoff: 
     net_pct = net_pnl / pos["capital_used"] * 100 if pos["capital_used"] else 0.0
     records.append({
         "symbol": symbol, "entry_time": pos["entry_time"].isoformat(), "exit_time": cutoff.isoformat(),
-        "entry": round(pos["entry"], 10), "exit": round(exit_price, 10), "stop": round(pos["stop"], 10),
+        "signal_price": round(pos["signal_price"], 10), "entry": round(pos["entry"], 10),
+        "exit": round(exit_price, 10), "stop": round(pos["stop"], 10),
         "target": round(pos["target"], 10), "reason": reason, "net_pnl": round(net_pnl, 2),
         "net_pct": round(net_pct, 3), "entry_score": pos["entry_score"], "setup": pos["setup"],
         "btc_regime": pos["btc_regime"], "stop_pct": pos["stop_pct"], "target_pct": pos["target_pct"],
@@ -153,6 +155,14 @@ def update_open_positions(positions: dict[str, dict], all_data: dict[str, dict[s
         pos = positions.pop(symbol)
         cash = close_trade(symbol, pos, price, reason, cutoff, cash, fee_rate, slippage, records)
     return cash
+
+def next_bar_open(data: dict[str, dict[str, pd.DataFrame]], symbol: str, cutoff: datetime) -> float | None:
+    d = data[symbol]["15m"]
+    row = d[d["open_time"] == cutoff]
+    if row.empty:
+        return None
+    value = float(row.iloc[0]["open"])
+    return value if value > 0 else None
 
 def summarize(records: list[dict], equity_curve: list[dict], start_equity: float) -> dict[str, Any]:
     wins = [r for r in records if r["net_pnl"] > 0]
@@ -225,7 +235,7 @@ def main() -> None:
     equity_curve: list[dict] = []
     watchlist: list[Any] = []
     last_watch_hour: datetime | None = None
-    cutoffs = pd.date_range(first_cutoff, final_end, freq="15min", tz="UTC").to_pydatetime()
+    cutoffs = pd.date_range(first_cutoff, final_end, freq="15min").to_pydatetime()
     for n, cutoff in enumerate(cutoffs, start=1):
         cash = update_open_positions(positions, all_data, cutoff, cash, fee_rate, slippage, records)
         with historical_fetch(all_data, cutoff):
@@ -264,14 +274,25 @@ def main() -> None:
         for candidate in signals:
             if len(positions) >= args.max_open or candidate.symbol in positions:
                 continue
+            entry_price = next_bar_open(all_data, candidate.symbol, cutoff)
+            if entry_price is None:
+                continue
+            if candidate.stop >= entry_price or candidate.target1 <= entry_price:
+                continue
+            actual_stop_pct = (entry_price - candidate.stop) / entry_price * 100
+            actual_target_pct = (candidate.target1 / entry_price - 1) * 100
+            if actual_stop_pct <= 0 or actual_stop_pct > scanner.MAX_STOP_PCT:
+                continue
+            if actual_target_pct < scanner.MIN_TARGET_PCT:
+                continue
             equity = cash + mark_to_market(positions, all_data, cutoff)
             risk_dollars = equity * (args.risk_pct / 100)
-            raw_position = risk_dollars / (candidate.stop_pct / 100)
+            raw_position = risk_dollars / (actual_stop_pct / 100)
             max_position = equity * (args.max_position_pct / 100)
             capital = min(raw_position, max_position, cash / (1 + fee_rate))
             if capital < 50:
                 continue
-            effective_entry = candidate.price * (1 + slippage)
+            effective_entry = entry_price * (1 + slippage)
             qty = capital / effective_entry
             entry_fee = capital * fee_rate
             total_cost = capital + entry_fee
@@ -279,11 +300,12 @@ def main() -> None:
                 continue
             cash -= total_cost
             positions[candidate.symbol] = {
-                "entry_time": cutoff, "entry": candidate.price, "effective_entry": effective_entry,
-                "qty": qty, "capital_used": capital, "entry_fee": entry_fee,
-                "stop": candidate.stop, "target": candidate.target1, "entry_score": candidate.entry_score,
-                "setup": candidate.setup, "btc_regime": candidate.btc_regime,
-                "stop_pct": round(candidate.stop_pct, 3), "target_pct": round(candidate.target_pct, 3),
+                "entry_time": cutoff, "signal_price": candidate.price, "entry": entry_price,
+                "effective_entry": effective_entry, "qty": qty, "capital_used": capital,
+                "entry_fee": entry_fee, "stop": candidate.stop, "target": candidate.target1,
+                "entry_score": candidate.entry_score, "setup": candidate.setup,
+                "btc_regime": candidate.btc_regime, "stop_pct": round(actual_stop_pct, 3),
+                "target_pct": round(actual_target_pct, 3),
             }
         equity = cash + mark_to_market(positions, all_data, cutoff)
         equity_curve.append({"time": cutoff.isoformat(), "equity": round(equity, 2), "open": len(positions)})
