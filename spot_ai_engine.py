@@ -33,7 +33,7 @@ GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or 
 GEMINI_MODEL = os.getenv("GEMINI_SCANNER_MODEL", "gemini-3.5-flash-lite").strip()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 SONNET_MODEL = os.getenv("SCANNER_SONNET_MODEL", "claude-sonnet-5").strip()
-SONNET_MAX_TOKENS = max(600, int(os.getenv("AI_SONNET_MAX_TOKENS", "1800")))
+SONNET_MAX_TOKENS = max(600, int(os.getenv("AI_SONNET_MAX_TOKENS", "3000")))
 SONNET_INPUT_USD_PER_M = float(os.getenv("SONNET_INPUT_USD_PER_M", "2"))
 SONNET_OUTPUT_USD_PER_M = float(os.getenv("SONNET_OUTPUT_USD_PER_M", "10"))
 MAX_WORKERS = max(1, min(10, int(os.getenv("MAX_WORKERS", "5"))))
@@ -107,6 +107,7 @@ def ohlcv(symbol: str, interval: str, limit: int = 240) -> pd.DataFrame:
     rows = _get("/api/v3/klines", {"symbol": symbol, "interval": interval, "limit": limit})
     if not isinstance(rows, list) or len(rows) < 80:
         raise ValueError(f"insufficient candles {symbol} {interval}")
+    cols = ["open_time","open","high","low","close_time","close","volume","quote_volume","trades","taker_base","taker_quote","ignore"]
     cols = ["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
     d = pd.DataFrame(rows, columns=cols)
     for c in ("open","high","low","close","volume","quote_volume","taker_quote"):
