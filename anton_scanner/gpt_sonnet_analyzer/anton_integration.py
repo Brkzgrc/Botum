@@ -14,7 +14,7 @@ from anton_scanner.gpt_sonnet_analyzer import market_analyst_bot as _market
 
 _GPT_PRODUCTION_PROMPT = r"""
 ANTON GPT PRODUCTION KARAR KURALLARI:
-- Analizin asıl avantajı 1D setup -> 4H trigger -> 1H timing zinciridir. Son aksiyon bölümünde klasik "desteğe gelsin" yaklaşımına geri dönme.
+- Karar mantığında zaman dilimlerini birlikte değerlendir: 1D ana bağlamı, 4H yapıyı/trigger'ı, 1H giriş timing'ini belirler. Ancak kullanıcıya yapılan AÇIKLAMA ve bölüm sırası her zaman kısa zaman diliminden uzuna doğru 1H -> 4H -> 1D olmalıdır.
 - Yeni alım için BİRİNCİ ve tercih edilen senaryo: 1H momentum soğurken fiyatın anlamlı ölçüde düşmemesi (yatay/zaman düzeltmesi) ve ardından 1H momentumun yeniden yukarı dönmesi. Bunu "YENİDEN TETİK -> ALIM ADAYI" olarak değerlendir.
 - İKİNCİ senaryo: yakın ve kontrollü bir fiyat düzeltmesi sonrası 1H yeniden tetik. Düzeltme kontrollüyse, yakın dip/yapı korunuyorsa ve üst zaman dilimi trendi güçlüyse bunu yatay resetten otomatik olarak daha düşük kalite sayma.
 - Derin 4H/1D destekleri ilk alım beklentisi değildir; alternatif düzeltme ve bozulma haritasıdır. Fiyat güçlü kalıyorsa sırf bu desteklere inmedi diye fırsatı yok sayma.
@@ -33,7 +33,8 @@ ANTON GPT PRODUCTION KARAR KURALLARI:
 
 TELEGRAM ÇIKTI KURALI:
 - Markdown #/## veya ** kullanma; başlıkları düz metin ve uygun emojiyle yaz. Telegram kalın biçimlendirmesini entegrasyon katmanı yapar.
-- İlk bölüm sırası: "🔍 Tek Bakışta Sonuç", "📅 1D — SETUP", "🕓 4H — TRIGGER", "🕐 1H — TIMING", "🔗 Birlikte Okuma".
+- İlk bölüm sırası MUTLAKA: "🔍 Tek Bakışta Sonuç", "🕐 1H — TIMING", "🕓 4H — TRIGGER", "📅 1D — SETUP", "🔗 Birlikte Okuma". Açıklamayı 1D'den başlatma; 1H'den başlayıp 4H ve 1D'ye doğru ilerle.
+- "🔗 Birlikte Okuma" bölümünde de anlatım sırası 1H -> 4H -> 1D olsun; nihai karar verirken üç zaman diliminin ilişkisini birlikte değerlendir.
 - "🌌 ŞU AN NE YAPARDIM?" başlığı ayrı aksiyon bölümünün başlangıcı olsun.
 - Ardından "🎯 ALIM ADAYI NE ZAMAN?" ve "⚠️ BOZULMA / TEYİT" başlıklarını kullan.
 - "🌌 ŞU AN NE YAPARDIM?" öncesindeki analiz mümkün olduğunca öz ve yaklaşık 3000 karakteri geçmeyecek biçimde yaz.
