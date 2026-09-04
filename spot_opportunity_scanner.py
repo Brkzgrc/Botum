@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""SPOT_SCANNER — deterministic Binance Spot opportunity scanner.
+"""SPOT_SCANNER — Binance Spot opportunity scanner.
 
-Purpose:
-  Find the same kind of opportunity a manual chart review would look for:
-  1D context -> 4H structure/trigger -> 1H entry timing.
+Goal: reproduce the useful manual review pattern that caught ZEC correctly:
+strong higher-timeframe context -> oscillator cooling/reset -> lower-timeframe
+re-acceleration. The scanner watches first and only emits after timing improves.
 
-No paid AI veto. No automatic orders. Existing Portfolio identity is preserved.
+Spot only. No paid AI veto. No automatic orders. Portfolio identity preserved.
 """
 from __future__ import annotations
 
@@ -29,16 +29,15 @@ from flask import Flask, jsonify
 BINANCE = "https://api.binance.com"
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/4.0"})
+HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/5.0"})
 
 MAX_WORKERS = max(2, min(10, int(os.getenv("MAX_WORKERS", "6"))))
-# Keep old Render env names compatible; they are configuration only, not service identity.
-PYTHON_TOP_N = max(24, min(72, int(os.getenv("VISUAL_TOP_N", "48"))))
+PYTHON_TOP_N = max(36, min(96, int(os.getenv("VISUAL_TOP_N", "72"))))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "0"))
-SIGNAL_SCORE = float(os.getenv("VISUAL_SIGNAL_SCORE", "68"))
-WATCH_SCORE = float(os.getenv("VISUAL_WATCH_SCORE", "58"))
 SCAN_INTERVAL_SECONDS = max(300, int(os.getenv("SCAN_INTERVAL_SECONDS", "900")))
-ALERT_COOLDOWN_HOURS = float(os.getenv("ALERT_COOLDOWN_HOURS", "4"))
+ALERT_COOLDOWN_HOURS = float(os.getenv("ALERT_COOLDOWN_HOURS", "6"))
+WATCH_TTL_HOURS = float(os.getenv("WATCH_TTL_HOURS", "18"))
+MAX_SIGNALS_PER_DAY = max(1, min(6, int(os.getenv("MAX_SIGNALS_PER_DAY", "3"))))
 DRY_RUN = os.getenv("DRY_RUN", "true").strip().lower() == "true"
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").strip().lower() == "true"
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state.json")
@@ -92,7 +91,7 @@ def _get(path: str, params: Optional[dict[str, Any]] = None, attempts: int = 4) 
                 time.sleep(1.5 * (2 ** i)); continue
             r.raise_for_status(); return r.json()
         except Exception as exc:
-            last = exc; time.sleep(.3 * (2 ** i))
+            last = exc; time.sleep(.35 * (2 ** i))
     raise RuntimeError(f"Binance API failed {path}: {last}")
 
 
@@ -106,7 +105,6 @@ def ohlcv(symbol: str, interval: str, limit: int = 240) -> pd.DataFrame:
         d[c] = pd.to_numeric(d[c], errors="coerce")
     d["open_time"] = pd.to_datetime(d.open_time, unit="ms", utc=True)
     d["close_time"] = pd.to_datetime(d.close_time, unit="ms", utc=True)
-    # Decisions use closed candles only.
     if rows and int(rows[-1][6]) >= int(time.time() * 1000):
         d = d.iloc[:-1].copy()
     return d.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
@@ -159,8 +157,9 @@ def tf_snapshot(d: pd.DataFrame, label: str) -> dict[str, Any]:
         "ret3":pct(p,sf(x.close.iloc[-4])),"ret6":pct(p,sf(x.close.iloc[-7])),"ret24":pct(p,sf(x.close.iloc[-25])),
         "ema20":sf(a.ema20),"ema50":sf(a.ema50),"ema200":sf(a.ema200),"ema20_slope":pct(sf(a.ema20),sf(x.ema20.iloc[-4])),
         "rsi":sf(a.rsi),"rsi_prev":sf(b.rsi),"stoch_k":sf(a.stoch_k),"stoch_d":sf(a.stoch_d),"stoch_k_prev":sf(b.stoch_k),
+        "stoch_min3":sf(x.stoch_k.tail(3).min()),"stoch_max3":sf(x.stoch_k.tail(3).max()),
         "macd_hist":sf(a.macd_hist),"macd_hist_prev":sf(b.macd_hist),"vol_ratio":sf(a.vol_ratio,1),
-        "obv_up":sf(a.obv)>=sf(x.obv.iloc[-6]),"atr_pct":100*atr/p if p else 0,
+        "obv_up":sf(a.obv)>=sf(x.obv.iloc[-6]),"obv_fast_up":sf(a.obv)>=sf(x.obv.iloc[-3]),"atr_pct":100*atr/p if p else 0,
         "lower_wick":(min(sf(a.open),sf(a.close))-sf(a.low))/rng,"upper_wick":(sf(a.high)-max(sf(a.open),sf(a.close)))/rng,
         "candle_pct":pct(sf(a.close),sf(a.open)),"high20":sf(x.high.tail(20).max()),"low20":sf(x.low.tail(20).min()),
         "supports":supports,"resistances":resistances,
@@ -172,7 +171,7 @@ class Candidate:
     symbol: str
     base: str
     quote_volume_24h: float
-    pre_score: float
+    rank: float
     snapshot: dict[str, Any]
     decision: dict[str, Any]
 
@@ -190,51 +189,26 @@ def universe() -> list[tuple[str,float]]:
     return out
 
 
-def _prefilter(symbol: str, qv: float) -> Optional[tuple[str,float,float,float]]:
-    """Return two ranks: continuation and early-reversal.
-
-    One ranking alone over-selects coins already running. Two pools keep both
-    healthy continuation and fresh reaction/retrigger candidates alive.
-    """
+def _prefilter(symbol: str, qv: float) -> Optional[tuple[str,float,float]]:
     try:
-        x=indicators(ohlcv(symbol,"1h",240)); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close)
-        r=sf(a.rsi); vr=sf(a.vol_ratio,1); mh=sf(a.macd_hist); mh0=sf(b.macd_hist)
-        sk=sf(a.stoch_k); sd=sf(a.stoch_d); sk0=sf(b.stoch_k)
-        e20=sf(a.ema20); e50=sf(a.ema50); e200=sf(a.ema200)
-        ret3=pct(p,sf(x.close.iloc[-4])); ret6=pct(p,sf(x.close.iloc[-7]))
-        high20=sf(x.high.tail(20).max()); low20=sf(x.low.tail(20).min())
-        near_high=max(0.0,-pct(p,high20)); above_low=max(0.0,pct(p,low20))
-        obv_up=sf(a.obv)>=sf(x.obv.iloc[-6])
-        stoch_up=sk>sd and sk>sk0
-        macd_up=mh>mh0
-
-        cont=0.0
-        cont += 18 if p>=e20 else 7 if p>=e50 else 0
-        cont += 10 if e20>=e50 else 3
-        cont += 7 if e50>=e200 else 0
-        cont += 12 if 42<=r<=78 else 5 if 78<r<=86 else 0
-        cont += 12 if macd_up else 0
-        cont += 10 if stoch_up else 5 if sk<35 else 0
-        cont += 8 if obv_up else 0
-        cont += 7 if vr>=.8 else 2
-        cont += 8 if near_high<=4 else 2 if near_high<=8 else 0
-        cont += 5 if -3.5<=ret3<=6 else 0
-
-        rev=0.0
-        rev += 18 if stoch_up else 9 if sk<30 else 0
-        rev += 18 if macd_up else 0
-        rev += 12 if 34<=r<=62 and r>=sf(b.rsi) else 5 if 30<=r<34 else 0
-        rev += 10 if obv_up else 0
-        rev += 8 if vr>=.8 else 3
-        rev += 10 if p>=e20 else 7 if p>=e50 else 0
-        rev += 8 if above_low<=8 else 3 if above_low<=14 else 0
-        rev += 6 if sf(a.close)>sf(a.open) else 0
-
-        # Vertical chasing is bad for both pools, but a controlled 3-6h move is allowed.
-        if ret3>8 or ret6>16: cont-=22; rev-=22
-        if r>90: cont-=18; rev-=25
-        if p<e50 and not macd_up and r<35: cont-=25; rev-=12
-        return symbol,qv,round(cont,2),round(rev,2)
+        x=indicators(ohlcv(symbol,"1h",220)); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close)
+        r=sf(a.rsi); sk=sf(a.stoch_k); sd=sf(a.stoch_d); sk0=sf(b.stoch_k)
+        mh=sf(a.macd_hist); mh0=sf(b.macd_hist); e20=sf(a.ema20); e50=sf(a.ema50)
+        vr=sf(a.vol_ratio,1); ret3=pct(p,sf(x.close.iloc[-4])); ret6=pct(p,sf(x.close.iloc[-7]))
+        obv_up=sf(a.obv)>=sf(x.obv.iloc[-6]); high20=sf(x.high.tail(20).max())
+        near_high=max(0.0,-pct(p,high20)); stoch_turn=sk>sd and sk>sk0; macd_up=mh>mh0
+        score=0.0
+        score += 16 if p>=e20 else 8 if p>=e50 else 0
+        score += 13 if 40<=r<=78 else 5 if 32<=r<40 or 78<r<=86 else 0
+        score += 14 if stoch_turn else 9 if sk<35 else 5 if sk>75 and sk<sk0 else 0
+        score += 13 if macd_up else 4 if mh>0 else 0
+        score += 10 if obv_up else 0
+        score += 8 if vr>=.8 else 3
+        score += 8 if near_high<=5 else 3 if near_high<=10 else 0
+        score += 6 if -4<=ret3<=6 else 0
+        if ret3>9 or ret6>18: score-=28
+        if r>90: score-=22
+        return symbol,qv,round(score,2)
     except Exception as exc:
         if "insufficient candles" not in str(exc): print(f"[PREFILTER] {symbol}: {exc}",flush=True)
         return None
@@ -247,121 +221,8 @@ def prefilter_candidates() -> tuple[list[tuple[str,float,float]],int]:
         for f in as_completed(fs):
             r=f.result()
             if r: rows.append(r)
-    # Half continuation, half reversal; merge duplicates and keep the better rank.
-    half=max(12,PYTHON_TOP_N//2)
-    cont=sorted(rows,key=lambda x:x[2],reverse=True)[:half]
-    rev=sorted(rows,key=lambda x:x[3],reverse=True)[:half]
-    merged: dict[str,tuple[str,float,float]]={}
-    for s,q,cs,rs in cont+rev:
-        merged[s]=(s,q,max(cs,rs))
-    out=sorted(merged.values(),key=lambda x:x[2],reverse=True)[:PYTHON_TOP_N]
-    return out,len(uni)
-
-
-def btc_regime() -> str:
-    try:
-        h=tf_snapshot(ohlcv("BTCUSDT","1h"),"1H"); f=tf_snapshot(ohlcv("BTCUSDT","4h"),"4H")
-        if h["ret3"]<=-2.2 or f["ret3"]<=-5 or (h["price"]<h["ema50"] and h["macd_hist"]<h["macd_hist_prev"] and h["rsi"]<40): return "RED"
-        if h["ret3"]<-.9 or f["macd_hist"]<f["macd_hist_prev"]: return "YELLOW"
-        return "GREEN"
-    except Exception: return "YELLOW"
-
-
-def _score_tf(t: dict[str,Any], kind: str) -> tuple[float,list[str],list[str]]:
-    p=t["price"]; r=t["rsi"]; good=[]; bad=[]; score=0.0
-    if p>=t["ema20"]: score+=16; good.append(f"{kind} fiyat EMA20 üstünde")
-    elif p>=t["ema50"]: score+=7; good.append(f"{kind} EMA50 üstünde reset")
-    else: bad.append(f"{kind} kısa trend zayıf")
-    if t["ema20"]>=t["ema50"]: score+=10; good.append(f"{kind} EMA20>EMA50")
-    if t["ema50"]>=t["ema200"]: score+=6
-    if t["ema20_slope"]>0: score+=7
-    if 45<=r<=76: score+=12; good.append(f"{kind} RSI sağlıklı {r:.0f}")
-    elif 38<=r<45 or 76<r<=84: score+=6
-    elif r>90: score-=10; bad.append(f"{kind} RSI aşırı uzamış")
-    if t["macd_hist"]>t["macd_hist_prev"]: score+=12; good.append(f"{kind} MACD ivmesi artıyor")
-    elif t["macd_hist"]>0: score+=5
-    else: bad.append(f"{kind} MACD ivmesi zayıf")
-    if t["stoch_k"]>t["stoch_d"] and t["stoch_k"]>t["stoch_k_prev"]: score+=12; good.append(f"{kind} Stoch RSI yukarı tetik")
-    elif t["stoch_k"]<35: score+=6; good.append(f"{kind} momentum reset")
-    if t["obv_up"]: score+=10; good.append(f"{kind} OBV yukarı")
-    else: bad.append(f"{kind} OBV desteklemiyor")
-    if t["vol_ratio"]>=1.1: score+=8; good.append(f"{kind} hacim destekli")
-    elif t["vol_ratio"]>=.7: score+=4
-    if t["lower_wick"]>=.22: score+=5; good.append(f"{kind} alt fitil alıcı savunması")
-    return clamp(score),good,bad
-
-
-def evaluate(symbol: str, qv: float, pre_score: float, regime: str) -> Candidate:
-    one=tf_snapshot(ohlcv(symbol,"1h"),"1H"); four=tf_snapshot(ohlcv(symbol,"4h"),"4H"); day=tf_snapshot(ohlcv(symbol,"1d"),"1D")
-    live=sf(_get("/api/v3/ticker/price",{"symbol":symbol}).get("price")) or one["price"]
-    s1,g1,b1=_score_tf(day,"1D"); s4,g4,b4=_score_tf(four,"4H"); sh,gh,bh=_score_tf(one,"1H")
-    score=.25*s1+.34*s4+.41*sh; positives=g1+g4+gh; risks=b1+b4+bh
-
-    near1=max(0.0,-pct(one["price"],one["high20"])); near4=max(0.0,-pct(four["price"],four["high20"]))
-    continuation=(day["price"]>=day["ema20"] and four["price"]>=four["ema20"] and one["price"]>=one["ema20"] and near1<=3 and near4<=5 and one["obv_up"])
-    retrigger=(one["stoch_k"]>one["stoch_d"] and one["stoch_k"]>one["stoch_k_prev"] and one["macd_hist"]>one["macd_hist_prev"] and one["price"]>=one["ema20"])
-    reaction=(one["stoch_k"]>one["stoch_d"] and one["macd_hist"]>one["macd_hist_prev"] and one["rsi"]>=one["rsi_prev"] and one["obv_up"] and one["price"]>=one["ema50"])
-    four_supportive=(four["price"]>=four["ema20"] or four["macd_hist"]>four["macd_hist_prev"] or (four["stoch_k"]>four["stoch_d"] and four["stoch_k"]>four["stoch_k_prev"]))
-
-    if continuation: score+=7; positives.append("1D/4H güçlü, 1H kontrollü devam ediyor")
-    if retrigger: score+=8; positives.append("1H soğuma sonrası yeniden tetik")
-    elif reaction: score+=6; positives.append("1H erken dönüş kanıtları birlikte güçleniyor")
-    if four_supportive: score+=4; positives.append("4H yapı/tetik alımı destekliyor")
-
-    late=(one["ret3"]>8 or one["ret6"]>16 or (one["rsi"]>88 and pct(one["price"],one["ema20"])>6))
-    broken=(day["price"]<day["ema50"] and day["macd_hist"]<day["macd_hist_prev"] and four["price"]<four["ema50"] and four["macd_hist"]<four["macd_hist_prev"])
-    if late: score-=20; risks.append("1H hareket fazla dik; geç kovalamaya dönüşmüş")
-    if broken: score-=30; risks.append("1D+4H yapı birlikte bozuk")
-    if regime=="RED": score-=12; risks.append("BTC kısa vadeli baskı altında")
-    elif regime=="YELLOW": score-=3
-
-    score=clamp(score)
-    trigger=retrigger or continuation or reaction
-    # BTC RED is no longer an automatic veto. A coin can still qualify, but only
-    # with a stronger score and an actual 4H confirmation.
-    required=SIGNAL_SCORE + (6 if regime=="RED" else 0)
-    if not broken and not late and four_supportive and trigger and score>=required:
-        decision="ALIM_ADAYI"
-    elif score>=WATCH_SCORE and not broken:
-        decision="TETIK_BEKLE"
-    else: decision="REDDET"
-
-    state="RETRIGGER" if retrigger else "CONTINUATION" if continuation else "REACTION" if reaction else "COOLING" if one["stoch_k"]<35 else "WARMING"
-    snapshot={"symbol":symbol,"live_price":live,"1d":day,"4h":four,"1h":one,"btc_regime":regime}
-    d={"decision":decision,"confidence":round(score,1),"state":state,
-       "thesis":"; ".join(positives[:4]) or "Çoklu zaman diliminde yeterli pozitif kanıt yok",
-       "why_now":"; ".join([x for x in positives if x.startswith("1H") or x.startswith("4H")][:3]) or "1H tetik henüz tam oluşmadı",
-       "risk_flags":risks[:4]}
-    return Candidate(symbol,symbol[:-4],qv,pre_score,snapshot,d)
-
-
-def levels(c: Candidate) -> dict[str,float]:
-    p=sf(c.snapshot["live_price"]); h=c.snapshot["1h"]; f=c.snapshot["4h"]
-    sups=[sf(x) for x in h["supports"] if 0<sf(x)<p]+[sf(x) for x in f["supports"] if 0<sf(x)<p]
-    ress=[sf(x) for x in h["resistances"] if sf(x)>p]+[sf(x) for x in f["resistances"] if sf(x)>p]
-    support=max(sups) if sups else min(h["ema20"],p*.96)
-    stop=support*.975
-    ress=sorted(set(ress))
-    # Ignore tiny resistance noise: first useful target must offer at least 1.5%.
-    tp1=next((r for r in ress if pct(r,p)>=1.5),p*1.025)
-    tp2=next((r for r in ress if r>tp1 and pct(r,p)>=3.0),max(tp1*1.02,p*1.045))
-    atrp=max(.15,h["atr_pct"])
-    entry_low=p*(1-min(.012,atrp/100*.35)); entry_high=p*(1+min(.006,atrp/100*.15))
-    return {"price":p,"entry_low":entry_low,"entry_high":entry_high,"support":support,"stop":stop,"tp1":tp1,"tp2":tp2}
-
-
-def discover() -> tuple[list[Candidate],dict[str,Any]]:
-    started=time.time(); pre,total=prefilter_candidates(); regime=btc_regime(); evaluated=[]
-    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS,6)) as ex:
-        fs={ex.submit(evaluate,s,q,sc,regime):(s,sc) for s,q,sc in pre}
-        for f in as_completed(fs):
-            try: evaluated.append(f.result())
-            except Exception as exc: print(f"[SCAN] {fs[f][0]}: {type(exc).__name__}: {exc}",flush=True)
-    evaluated.sort(key=lambda c:c.decision["confidence"],reverse=True)
-    finals=[c for c in evaluated if c.decision["decision"]=="ALIM_ADAYI"]
-    for c in evaluated:
-        d=c.decision; print(f"[SCAN] {c.symbol} -> {d['decision']} %{d['confidence']:.0f} {d['state']} | {d['thesis']}",flush=True)
-    return finals,{"universe":total,"prefilter":len(pre),"evaluated":len(evaluated),"signals":len(finals),"btc_regime":regime,"duration_s":round(time.time()-started,1)}
+    rows.sort(key=lambda x:x[2],reverse=True)
+    return rows[:PYTHON_TOP_N],len(uni)
 
 
 def _load_state() -> dict[str,Any]:
@@ -379,9 +240,128 @@ def _save_state(d: dict[str,Any]) -> None:
     except Exception as exc: print(f"[STATE] {exc}",flush=True)
 
 
+def _clean_watch(state: dict[str,Any]) -> None:
+    now=time.time(); watch=state.setdefault("watch",{})
+    dead=[s for s,r in watch.items() if now-sf((r or {}).get("updated_at",(r or {}).get("first_seen",0)))>WATCH_TTL_HOURS*3600]
+    for s in dead: watch.pop(s,None)
+
+
+def _daily_room(state: dict[str,Any]) -> int:
+    day=now_tr().strftime("%Y-%m-%d")
+    if state.get("signal_day")!=day:
+        state["signal_day"]=day; state["signal_count"]=0
+    return max(0,MAX_SIGNALS_PER_DAY-int(state.get("signal_count",0)))
+
+
 def _alert_due(symbol: str,state: dict[str,Any]) -> bool:
     rec=(state.setdefault("alerts",{}).get(symbol) or {})
     return time.time()-sf(rec.get("sent_at"))>=ALERT_COOLDOWN_HOURS*3600
+
+
+def btc_regime() -> str:
+    try:
+        h=tf_snapshot(ohlcv("BTCUSDT","1h"),"1H"); f=tf_snapshot(ohlcv("BTCUSDT","4h"),"4H")
+        if h["ret3"]<=-3.0 or f["ret3"]<=-6.0: return "RED"
+        if h["ret3"]<-.9 or f["macd_hist"]<f["macd_hist_prev"]: return "YELLOW"
+        return "GREEN"
+    except Exception: return "YELLOW"
+
+
+def evaluate(symbol: str, qv: float, pre_rank: float, regime: str, prior: Optional[dict[str,Any]]) -> Candidate:
+    day=tf_snapshot(ohlcv(symbol,"1d"),"1D")
+    four=tf_snapshot(ohlcv(symbol,"4h"),"4H")
+    one=tf_snapshot(ohlcv(symbol,"1h"),"1H")
+    fast=tf_snapshot(ohlcv(symbol,"15m"),"15M")
+    live=sf(_get("/api/v3/ticker/price",{"symbol":symbol}).get("price")) or one["price"]
+
+    day_trend=(day["price"]>=day["ema20"] and day["ema20_slope"]>=-1.0 and 50<=day["rsi"]<=84)
+    day_reset=(day["stoch_k"]<=35 or day["stoch_min3"]<=20)
+    day_ok=day_trend and (day_reset or day["macd_hist"]>0 or day["ret24"]>5)
+
+    four_stoch_turn=(four["stoch_k"]>four["stoch_d"] and four["stoch_k"]>four["stoch_k_prev"] and four["stoch_k"]<=75)
+    four_recover=(four["macd_hist"]>four["macd_hist_prev"] or four_stoch_turn)
+    four_ok=(four["price"]>=four["ema50"] and 40<=four["rsi"]<=76 and four_recover)
+
+    one_hot=(one["stoch_k"]>=72 and one["stoch_k"]<=one["stoch_k_prev"]+4)
+    one_reset=(one["stoch_k"]<=48 or one["stoch_min3"]<=28)
+    one_turn=(one["stoch_k"]>one["stoch_d"] and one["stoch_k"]>one["stoch_k_prev"])
+    one_healthy=(one["price"]>=one["ema50"] and 40<=one["rsi"]<=78)
+    one_momentum=(one["macd_hist"]>one["macd_hist_prev"] or one["obv_fast_up"])
+    fast_turn=(fast["stoch_k"]>fast["stoch_d"] and fast["stoch_k"]>fast["stoch_k_prev"] and fast["rsi"]>=42)
+    fast_confirm=(fast_turn and (fast["macd_hist"]>fast["macd_hist_prev"] or fast["obv_fast_up"]) and fast["price"]>=fast["ema20"])
+
+    setup=day_ok and four_ok and one_healthy
+    previously_waiting=bool(prior and prior.get("phase") in {"COOLING","RESET","ARMED"})
+    first_price=sf((prior or {}).get("first_price"),live)
+    chase_from_watch=pct(live,first_price) if first_price else 0
+
+    late=(one["ret3"]>9 or one["ret6"]>18 or pct(one["price"],one["ema20"])>10 or chase_from_watch>5.5)
+    broken=(day["price"]<day["ema50"] and four["price"]<four["ema50"] and one["price"]<one["ema50"])
+
+    phase="NONE"; decision="REDDET"; reasons=[]
+    quality=0.0
+    if day_trend: quality+=22; reasons.append("1D ana yapı güçlü")
+    if day_reset: quality+=14; reasons.append("1D momentum soğumuş/resetlenmiş")
+    if four_ok: quality+=24; reasons.append("4H yeniden güç toplamaya başlamış")
+    if one_healthy: quality+=12
+    if one_reset: quality+=8
+    if one_turn: quality+=8
+    if one_momentum: quality+=5
+    if fast_confirm: quality+=7
+    if regime=="RED": quality-=5
+
+    if setup and not late and not broken:
+        if one_hot and not fast_confirm:
+            phase="COOLING"; decision="TETIK_BEKLE"; reasons.append("1H kısa vadede sıcak; kovalamak yerine soğuma bekleniyor")
+        elif (one_reset or previously_waiting) and one_momentum and fast_confirm:
+            phase="ENTRY"; decision="ALIM_ADAYI"; reasons.append("1H soğuma sonrası alt zaman dilimi tekrar yukarı döndü")
+        elif one_turn and one_momentum and fast_confirm:
+            phase="ENTRY"; decision="ALIM_ADAYI"; reasons.append("1H + 15M yeniden tetik aynı yönde")
+        else:
+            phase="ARMED"; decision="TETIK_BEKLE"; reasons.append("Kurulum hazır; giriş zamanlaması henüz tamamlanmadı")
+    elif day_ok and four["price"]>=four["ema50"] and not broken:
+        phase="FORMING"; decision="TETIK_BEKLE"
+    if late:
+        decision="REDDET"; phase="LATE"; reasons.append("Hareket giriş için fazla uzamış")
+    if broken:
+        decision="REDDET"; phase="BROKEN"; reasons.append("Çoklu zaman dilimi yapı bozuk")
+
+    confidence=clamp(quality)
+    snapshot={"symbol":symbol,"live_price":live,"1d":day,"4h":four,"1h":one,"15m":fast,"btc_regime":regime}
+    d={"decision":decision,"confidence":round(confidence,1),"state":phase,
+       "thesis":"; ".join(reasons[:4]) or "Yeterli kurulum yok",
+       "why_now":reasons[-1] if reasons else "Giriş şartları oluşmadı",
+       "risk_flags":(["BTC sert baskı altında"] if regime=="RED" else []) + (["Geç giriş riski"] if late else [])}
+    rank=confidence + min(8.0,max(0.0,pre_rank-55.0)*.25)
+    return Candidate(symbol,symbol[:-4],qv,rank,snapshot,d)
+
+
+def levels(c: Candidate) -> dict[str,float]:
+    p=sf(c.snapshot["live_price"]); h=c.snapshot["1h"]; f=c.snapshot["4h"]
+    sups=[sf(x) for x in h["supports"] if 0<sf(x)<p]+[sf(x) for x in f["supports"] if 0<sf(x)<p]
+    ress=[sf(x) for x in h["resistances"] if sf(x)>p]+[sf(x) for x in f["resistances"] if sf(x)>p]
+    support=max(sups) if sups else min(h["ema20"],h["ema50"],p*.96)
+    stop=support*.975
+    ress=sorted(set(ress))
+    tp1=next((r for r in ress if pct(r,p)>=2.5),p*1.035)
+    tp2=next((r for r in ress if r>tp1 and pct(r,p)>=5.0),max(tp1*1.02,p*1.055))
+    atrp=max(.15,h["atr_pct"])
+    entry_low=p*(1-min(.010,atrp/100*.30)); entry_high=p*(1+min(.004,atrp/100*.10))
+    return {"price":p,"entry_low":entry_low,"entry_high":entry_high,"support":support,"stop":stop,"tp1":tp1,"tp2":tp2}
+
+
+def discover(state: dict[str,Any]) -> tuple[list[Candidate],list[Candidate],dict[str,Any]]:
+    started=time.time(); pre,total=prefilter_candidates(); regime=btc_regime(); evaluated=[]
+    watch=state.setdefault("watch",{})
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS,6)) as ex:
+        fs={ex.submit(evaluate,s,q,r,regime,watch.get(s)):(s,r) for s,q,r in pre}
+        for f in as_completed(fs):
+            try: evaluated.append(f.result())
+            except Exception as exc: print(f"[SCAN] {fs[f][0]}: {type(exc).__name__}: {exc}",flush=True)
+    evaluated.sort(key=lambda c:c.rank,reverse=True)
+    finals=[c for c in evaluated if c.decision["decision"]=="ALIM_ADAYI"]
+    waits=[c for c in evaluated if c.decision["decision"]=="TETIK_BEKLE"]
+    return finals,waits,{"universe":total,"prefilter":len(pre),"evaluated":len(evaluated),"signals":len(finals),"btc_regime":regime,"duration_s":round(time.time()-started,1)}
 
 
 def _fmt(v: float) -> str:
@@ -424,11 +404,11 @@ def _telegram_text(c: Candidate) -> str:
     d=c.decision; lv=levels(c); risks=d.get("risk_flags") or []
     risk_text="\n".join(f"• {html.escape(str(x))}" for x in risks[:3]) or "• Belirgin ek risk yok; yapısal stop izlenir."
     return (f"<b>🚨 #{c.base} SPOT ADAYI</b>\n🕐 {now_tr().strftime('%d/%m/%Y %H:%M')}\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<b>Karar:</b> {d['decision']} | <b>Skor:</b> %{sf(d['confidence']):.0f}\n<b>Durum:</b> {d['state']}\n<b>BTC:</b> {c.snapshot['btc_regime']}\n\n"
+            f"<b>Durum:</b> {d['state']} | <b>Kalite:</b> %{sf(d['confidence']):.0f}\n<b>BTC:</b> {c.snapshot['btc_regime']}\n\n"
             f"<b>Neden?</b>\n{html.escape(d['thesis'])}\n\n<b>Neden şimdi?</b>\n{html.escape(d['why_now'])}\n\n"
             f"<b>Fiyat:</b> {_fmt(lv['price'])}\n<b>Giriş:</b> {_fmt(lv['entry_low'])} – {_fmt(lv['entry_high'])}\n"
             f"<b>Destek:</b> {_fmt(lv['support'])}\n<b>Stop:</b> {_fmt(lv['stop'])}\n<b>TP1:</b> {_fmt(lv['tp1'])}\n<b>TP2:</b> {_fmt(lv['tp2'])}\n\n"
-            f"<b>Riskler</b>\n{risk_text}\n\n<i>Spot only • Otomatik emir yok • 1D/4H/1H</i>")
+            f"<b>Riskler</b>\n{risk_text}\n\n<i>Spot only • Otomatik emir yok • 1D/4H/1H + 15M timing</i>")
 
 
 def _send_telegram(c: Candidate) -> bool:
@@ -442,27 +422,33 @@ def _send_telegram(c: Candidate) -> bool:
     except Exception as exc: print(f"[TELEGRAM] {exc}",flush=True); return False
 
 
-runtime={"status":"BOOT","strategy":"Binance -> 1D setup -> 4H trigger -> 1H timing","dry_run":DRY_RUN,"telegram_enabled":TELEGRAM_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"signals":0,"btc_regime":None,"last_error":None}
+runtime={"status":"BOOT","strategy":"1D context -> 4H handoff -> 1H cooling -> 15M retrigger","dry_run":DRY_RUN,"telegram_enabled":TELEGRAM_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
 
 
 def scan_cycle() -> None:
-    runtime.update({"status":"SCANNING","last_error":None,"signals":0}); state=_load_state()
+    runtime.update({"status":"SCANNING","last_error":None,"signals":0}); state=_load_state(); _clean_watch(state)
     try:
-        finals,stats=discover(); sent=0
-        runtime.update({"symbols":stats["universe"],"evaluated":stats["evaluated"],"btc_regime":stats["btc_regime"]})
-        for c in finals:
-            if not _alert_due(c.symbol,state):
-                print(f"[COOLDOWN] {c.symbol} tekrar sinyali bastırıldı",flush=True); continue
+        finals,waits,stats=discover(state); watch=state.setdefault("watch",{}); now=time.time()
+        for c in waits[:30]:
+            rec=watch.get(c.symbol) or {"first_seen":now,"first_price":c.snapshot["live_price"]}
+            rec.update({"updated_at":now,"phase":c.decision["state"],"price":c.snapshot["live_price"],"score":c.decision["confidence"]})
+            watch[c.symbol]=rec
+        runtime.update({"symbols":stats["universe"],"evaluated":stats["evaluated"],"watching":len(watch),"btc_regime":stats["btc_regime"]})
+
+        room=_daily_room(state); sent=0
+        for c in finals[:room]:
+            if not _alert_due(c.symbol,state): continue
             lv=levels(c)
-            print(f"[SIGNAL] {c.symbol} score={c.decision['confidence']} entry={lv['price']} support={lv['support']} stop={lv['stop']} tp1={lv['tp1']}",flush=True)
+            print(f"[SIGNAL] {c.symbol} state={c.decision['state']} quality={c.decision['confidence']} entry={lv['price']} stop={lv['stop']} tp1={lv['tp1']} tp2={lv['tp2']}",flush=True)
             if DRY_RUN:
                 print(f"[DRY-RUN] {c.symbol} Portfolio/Telegram gönderilmedi",flush=True); emitted=True
             else:
                 pid=_send_portfolio(c); tg=_send_telegram(c); emitted=bool(pid or tg)
             if emitted:
-                state.setdefault("alerts",{})[c.symbol]={"sent_at":time.time(),"price":lv["price"],"stop":lv["stop"],"tp1":lv["tp1"],"score":c.decision["confidence"],"state":c.decision["state"]}; sent+=1
-        _save_state(state); runtime.update({"status":"RUNNING","last_scan":now_tr().isoformat(),"signals":sent})
-        print(f"[SCAN DONE] evren={stats['universe']} prefilter={stats['prefilter']} evaluated={stats['evaluated']} sinyal={sent} BTC={stats['btc_regime']} süre={stats['duration_s']}s",flush=True)
+                state.setdefault("alerts",{})[c.symbol]={"sent_at":now,"price":lv["price"],"stop":lv["stop"],"tp1":lv["tp1"],"tp2":lv["tp2"],"score":c.decision["confidence"],"state":c.decision["state"]}
+                watch.pop(c.symbol,None); state["signal_count"]=int(state.get("signal_count",0))+1; sent+=1
+        _save_state(state); runtime.update({"status":"RUNNING","last_scan":now_tr().isoformat(),"signals":sent,"watching":len(watch)})
+        print(f"[SCAN DONE] evren={stats['universe']} prefilter={stats['prefilter']} evaluated={stats['evaluated']} watch={len(watch)} sinyal={sent} BTC={stats['btc_regime']} süre={stats['duration_s']}s",flush=True)
     except Exception as exc:
         runtime.update({"status":"ERROR","last_error":f"{type(exc).__name__}: {exc}","last_scan":now_tr().isoformat()}); print(f"[SCAN ERROR] {type(exc).__name__}: {exc}",flush=True); _save_state(state)
 
@@ -482,9 +468,9 @@ def health(): return jsonify(runtime),200
 
 if __name__=="__main__":
     print("="*72,flush=True)
-    print("SPOT_SCANNER — 1D / 4H / 1H",flush=True)
-    print("Pipeline: Binance Spot -> continuation+reaction prefilter -> 1D -> 4H -> 1H",flush=True)
-    print(f"DRY_RUN={DRY_RUN} | TELEGRAM_ENABLED={TELEGRAM_ENABLED} | scan={SCAN_INTERVAL_SECONDS}s | top_n={PYTHON_TOP_N} | signal_score>={SIGNAL_SCORE:.0f}",flush=True)
+    print("SPOT_SCANNER — MANUAL-REVIEW PARITY v5",flush=True)
+    print("Pipeline: Binance Spot -> 1D context -> 4H handoff -> 1H cooling -> 15M retrigger",flush=True)
+    print(f"DRY_RUN={DRY_RUN} | TELEGRAM_ENABLED={TELEGRAM_ENABLED} | scan={SCAN_INTERVAL_SECONDS}s | top_n={PYTHON_TOP_N} | max_signals/day={MAX_SIGNALS_PER_DAY}",flush=True)
     print("Paid AI: OFF | Auto-order: OFF",flush=True)
     print("="*72,flush=True)
     threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start()
