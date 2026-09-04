@@ -3,7 +3,7 @@
 
 Yeni karar hattı:
   Binance Spot -> Python geniş ön tarama -> Gemini 3.5 Flash-Lite eleme
-  -> Claude Sonnet final karar -> Portfolio Tracker + Telegram.
+  -> Claude Haiku 4.5 final karar -> Portfolio Tracker + Telegram.
 
 Eski 15M score + 1H confirmation karar motoru kaldırıldı. Yalnız servis sözleşmesi,
 Portfolio Tracker bağlantısı, Telegram bildirimi, cooldown/state ve health endpoint'leri
@@ -36,17 +36,89 @@ from spot_ai_engine import (
     sf,
 )
 
-# Cost-control defaults for the production scanner.
-# Sonnet is a final referee, not a long-form analyst here: at most one fresh
-# finalist per cycle and a compact JSON answer. Explicit env values are still
-# allowed, but output is hard-capped to avoid another 3000-token runaway.
-_ai.SONNET_MAX_TOKENS = max(300, min(800, int(os.getenv("AI_SONNET_MAX_TOKENS", "450"))))
-_ai.SONNET_MAX_FINALISTS = max(1, min(2, int(os.getenv("AI_SONNET_MAX_FINALISTS", "1"))))
-_ai.SONNET_MIN_CONFIDENCE = float(os.getenv("AI_SONNET_MIN_CONFIDENCE", "60"))
+# Production cost-control: Haiku 4.5 is the short final referee.
+# Keep one paid finalist per cycle, compact JSON output and the corrected signal gate.
+_ai.SONNET_MODEL = os.getenv("SCANNER_HAIKU_MODEL", "claude-haiku-4-5-20251001").strip()
+_ai.SONNET_INPUT_USD_PER_M = float(os.getenv("HAIKU_INPUT_USD_PER_M", "1"))
+_ai.SONNET_OUTPUT_USD_PER_M = float(os.getenv("HAIKU_OUTPUT_USD_PER_M", "5"))
+_ai.SONNET_MAX_TOKENS = max(300, min(800, int(os.getenv("AI_HAIKU_MAX_TOKENS", "450"))))
+_ai.SONNET_MAX_FINALISTS = max(1, min(2, int(os.getenv("AI_HAIKU_MAX_FINALISTS", "1"))))
+_ai.SONNET_MIN_CONFIDENCE = float(os.getenv("AI_HAIKU_MIN_CONFIDENCE", "60"))
 _ai.SONNET_SYSTEM += (
     " Keep the JSON extremely compact: thesis and why_now max 12 words each; "
     "risk_flags max 2 short items. No prose, markdown, explanation, or text outside JSON."
 )
+SONNET_MODEL = _ai.SONNET_MODEL
+
+# Reduce paid input without changing the Python/Gemini stages or the full snapshot
+# retained for levels/Portfolio/Telegram. Haiku receives only decision-relevant fields.
+def _compact_tf(tf: dict[str, Any], *, with_levels: bool = True) -> dict[str, Any]:
+    ema = tf.get("ema") or {}
+    mom = tf.get("momentum") or {}
+    vol = tf.get("volume") or {}
+    candle = tf.get("candle") or {}
+    out: dict[str, Any] = {
+        "price": tf.get("price"),
+        "returns_pct": tf.get("returns_pct"),
+        "ema_rel_pct": {
+            "20": ema.get("price_vs_20_pct"),
+            "50": ema.get("price_vs_50_pct"),
+            "200": ema.get("price_vs_200_pct"),
+        },
+        "momentum": {
+            "rsi": mom.get("rsi"),
+            "rsi_prev": mom.get("rsi_prev"),
+            "stoch_k": mom.get("stoch_k"),
+            "stoch_d": mom.get("stoch_d"),
+            "stoch_k_prev": mom.get("stoch_k_prev"),
+            "macd_hist": mom.get("macd_hist"),
+            "macd_hist_prev": mom.get("macd_hist_prev"),
+        },
+        "volume": {"ratio_20": vol.get("ratio_20"), "obv_5bar_direction": vol.get("obv_5bar_direction")},
+        "atr_pct": (tf.get("volatility") or {}).get("atr_pct"),
+        "candle": {
+            "change_pct": candle.get("change_pct"),
+            "lower_wick_ratio": candle.get("lower_wick_ratio"),
+            "upper_wick_ratio": candle.get("upper_wick_ratio"),
+        },
+    }
+    if with_levels:
+        out["levels"] = tf.get("levels") or {}
+    return out
+
+
+def _compact_candidate_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    tfs = snapshot.get("timeframes") or {}
+    return {
+        "symbol": snapshot.get("symbol"),
+        "live_price": snapshot.get("live_price"),
+        "python_rank_score": snapshot.get("python_rank_score"),
+        "python_setup_hint": snapshot.get("python_setup_hint"),
+        "timeframes": {k: _compact_tf(tfs.get(k) or {}, with_levels=True) for k in ("1d", "4h", "1h")},
+    }
+
+
+def _compact_btc_context(btc: dict[str, Any]) -> dict[str, Any]:
+    tfs = btc.get("timeframes") or {}
+    return {
+        "regime": btc.get("regime"),
+        "timeframes": {k: _compact_tf(tfs.get(k) or {}, with_levels=False) for k in ("1d", "4h", "1h")},
+    }
+
+
+_original_paid_referee = _ai.sonnet
+
+
+def _haiku_referee(c: Candidate, btc: dict[str, Any]) -> dict[str, Any]:
+    full_snapshot = c.snapshot
+    c.snapshot = _compact_candidate_snapshot(full_snapshot)
+    try:
+        return _original_paid_referee(c, _compact_btc_context(btc))
+    finally:
+        c.snapshot = full_snapshot
+
+
+_ai.sonnet = _haiku_referee
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -66,7 +138,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 runtime: dict[str, Any] = {
     "status": "BOOT",
-    "strategy": "Python -> Gemini 3.5 Flash-Lite -> Sonnet 5 -> Portfolio Tracker",
+    "strategy": "Python -> Gemini 3.5 Flash-Lite -> Haiku 4.5 -> Portfolio Tracker",
     "dry_run": DRY_RUN,
     "last_scan": None,
     "symbols": 0,
@@ -134,7 +206,7 @@ def _portfolio_payload(c: Candidate, decision: dict[str, Any]) -> dict[str, Any]
         "setup": decision.get("state"),
         "positives": [decision.get("thesis", ""), decision.get("why_now", "")],
         "risks": decision.get("risk_flags", []),
-        "ai_pipeline": "python>gemini-3.5-flash-lite>sonnet",
+        "ai_pipeline": "python>gemini-3.5-flash-lite>haiku-4.5",
         "python_rank_score": c.rank_score,
         "python_setup_hint": c.setup_hint,
         "gemini_model": GEMINI_MODEL,
@@ -252,7 +324,7 @@ def scan_cycle() -> None:
                 continue
             lv = levels(c, decision)
             print(
-                f"[AI SIGNAL] {c.symbol} Gemini={c.gemini.get('quality')} Sonnet={decision.get('confidence')} "
+                f"[AI SIGNAL] {c.symbol} Gemini={c.gemini.get('quality')} Haiku={decision.get('confidence')} "
                 f"entry={lv['price']} stop={lv['stop']} tp1={lv['tp1']}",
                 flush=True,
             )
@@ -276,7 +348,7 @@ def scan_cycle() -> None:
         runtime.update({"status": "RUNNING", "last_scan": now_tr().isoformat(), "signals": sent})
         print(
             f"[SCAN DONE] evren={stats.get('universe')} python={stats.get('python')} gemini={stats.get('gemini')} "
-            f"sonnet={stats.get('sonnet')} sinyal={sent} BTC={stats.get('btc_regime')} süre={stats.get('duration_s')}s",
+            f"haiku={stats.get('sonnet')} sinyal={sent} BTC={stats.get('btc_regime')} süre={stats.get('duration_s')}s",
             flush=True,
         )
     except Exception as exc:
@@ -308,7 +380,8 @@ if __name__ == "__main__":
     print("SPOT_SCANNER — AI OPPORTUNITY DISCOVERY", flush=True)
     print(f"Pipeline: Python -> {GEMINI_MODEL} -> {SONNET_MODEL} -> Portfolio Tracker", flush=True)
     print(f"DRY_RUN={DRY_RUN} | scan={SCAN_INTERVAL_SECONDS}s", flush=True)
-    print(f"Sonnet cap={_ai.SONNET_MAX_TOKENS} tokens | finalists={_ai.SONNET_MAX_FINALISTS} | signal_conf>={_ai.SONNET_MIN_CONFIDENCE:.0f}", flush=True)
+    print(f"Haiku cap={_ai.SONNET_MAX_TOKENS} tokens | finalists={_ai.SONNET_MAX_FINALISTS} | signal_conf>={_ai.SONNET_MIN_CONFIDENCE:.0f}", flush=True)
+    print(f"Haiku pricing=${_ai.SONNET_INPUT_USD_PER_M:.2f}/M input + ${_ai.SONNET_OUTPUT_USD_PER_M:.2f}/M output", flush=True)
     print(f"Gemini key={'OK' if GEMINI_API_KEY else 'MISSING'} | Anthropic key={'OK' if ANTHROPIC_API_KEY else 'MISSING'}", flush=True)
     print("=" * 72, flush=True)
     threading.Thread(target=scan_loop, daemon=True, name="ai-spot-scanner").start()
