@@ -2866,6 +2866,7 @@ def type_badge(sig):
         "pump_orta":        "#ffcc00",
         "pump_uzun":        "#00cc66",
         "rocket":           "#00ccaa",
+        "spot_opportunity": "#00b4d8",
     }
     labels = {
         "pump":             "PUMP",
@@ -2874,6 +2875,7 @@ def type_badge(sig):
         "pump_orta":        "ORTA VADE (72s)",
         "pump_uzun":        "UZUN VADE (168s)",
         "rocket":           "ROCKET",
+        "spot_opportunity": "Spot Fırsatı",
     }
     c = colors.get(sig_type, "#8a9bb0")
     label = labels.get(sig_type, sig_type.upper()) + (f" {sub}" if sub else "")
