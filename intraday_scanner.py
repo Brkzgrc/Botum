@@ -12,12 +12,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-# portfolio_tracker.py bu modülü, manuel Telegram poller thread'ini başlatmadan
-# önce import eder. GPT Sonnet Analyzer kancasını burada açıkça kuruyoruz;
-# Python'un startup sırasında `sitecustomize.py` bulmasına güvenmiyoruz.
-from anton_scanner.gpt_sonnet_analyzer.runtime_hook import install_anton_gpt_hook
-install_anton_gpt_hook()
-
 from market_watch import fetch_binance_ohlcv
 from market_analyzer import _calc_fbb, _calc_ssl, _calc_tma, _fbb_text, _ssl_text, _tma_text
 from claude_analyzer import _fear_greed, _dominance, _dom_str, _rsi, _ema, _tr_now, send_decision, ANTHROPIC_API_KEY
@@ -25,59 +19,6 @@ from claude_analyzer import _fear_greed, _dominance, _dom_str, _rsi, _ema, _tr_n
 TR_TZ        = timezone(timedelta(hours=3))
 SCAN_HOURS_TR = {9, 15, 21}
 SCAN_MINUTE   = 15
-
-
-def _normalize_portfolio_spot_source():
-    """Portfolio'da yanlışlıkla eski source adıyla oluşmuş Spot Scanner kayıtlarını düzelt.
-
-    Deterministik SPOT_SCANNER kısa süre `spot-scanner-visual-v3` source adıyla
-    kayıt gönderdi. Portfolio'nun Spot'a özel butonları ve takip mantığı ise
-    canonical `spot-scanner` kimliğini kullanıyor. Yeni scanner artık canonical
-    source gönderiyor; bu fonksiyon yalnız o kısa dönemde oluşmuş kayıtları
-    geriye dönük normalize eder.
-    """
-    try:
-        import __main__ as main
-
-        db = getattr(main, "signals_db", None)
-        save = getattr(main, "save_signals", None)
-        lock = getattr(main, "_lock", None)
-        if not isinstance(db, list) or not callable(save):
-            return 0
-
-        changed = 0
-
-        def _apply():
-            nonlocal changed
-            for sig in db:
-                if not isinstance(sig, dict):
-                    continue
-                if sig.get("source") != "spot-scanner-visual-v3":
-                    continue
-                sig["source"] = "spot-scanner"
-                # Bunlar yeni Spot Scanner kayıtlarıdır; eski backfill değildir.
-                if sig.get("sig_type") == "spot_opportunity":
-                    sig["spot_tracking_v1"] = True
-                changed += 1
-            if changed:
-                save()
-
-        if lock is not None:
-            with lock:
-                _apply()
-        else:
-            _apply()
-
-        if changed:
-            print(
-                f"[PORTFOLIO MIGRATION] {changed} kayıt: "
-                "spot-scanner-visual-v3 → spot-scanner",
-                flush=True,
-            )
-        return changed
-    except Exception as e:
-        print(f"[PORTFOLIO MIGRATION] Spot source düzeltme hatası: {e}", flush=True)
-        return 0
 
 
 def _tf_summary_mw(tf_data, label):
@@ -238,17 +179,11 @@ FORMATLAMA: Yalnızca Telegram HTML — <b></b> ve <i></i> kullan. *, #, _, madd
 
 
 def start_intraday_scanner():
-    # portfolio_tracker.py load_signals() çağrısından sonra buraya gelir.
-    # Yanlış source adıyla birikmiş kayıtları deploy anında ve döngü sırasında
-    # canonical kimliğe çevir; böylece "Spot Açıklarını Kapat" hemen çalışır.
-    _normalize_portfolio_spot_source()
-
     def _loop():
         last_key = None
         print("[NABİZ] Başlatıldı — 09:15/15:15/21:15 TR", flush=True)
         while True:
             try:
-                _normalize_portfolio_spot_source()
                 now = datetime.now(TR_TZ)
                 if now.hour in SCAN_HOURS_TR and now.minute == SCAN_MINUTE:
                     key = f"{now.date()}_{now.hour}"
