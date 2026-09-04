@@ -1,0 +1,24 @@
+name: Temporary 54-case feature audit
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp_54_feature_audit.yml'
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python .github/tmp_54_audit.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sonnet-54-feature-audit
+          path: |
+            /tmp/audit_features.csv
+            /tmp/feature_comparison.csv
+            /tmp/threshold_rules.csv
+            /tmp/pair_rules.csv
+            /tmp/summary.txt
