@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-05 00:26:20",
+  "updated_at": "2026-09-05 00:56:29",
   "performance": {
     "total": 6,
     "open": 5,
@@ -120,8 +120,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-05T00:21:37.871199+03:00",
-      "checks": 56,
+      "last_check": "2026-09-05T00:51:50.712916+03:00",
+      "checks": 62,
       "extra": {
         "tp3": null,
         "entry_zone": [
@@ -168,15 +168,15 @@
       "peak_pct": 2.71,
       "low_price": 0.000951,
       "low_pct": -0.73,
-      "current_price": 0.000974,
-      "current_pct": 1.67,
+      "current_price": 0.000973,
+      "current_pct": 1.57,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-05T00:21:37.871199+03:00",
-      "checks": 56,
+      "last_check": "2026-09-05T00:51:50.712916+03:00",
+      "checks": 62,
       "extra": {
         "tp3": null,
         "entry_zone": [
@@ -223,15 +223,15 @@
       "peak_pct": 0.0,
       "low_price": 0.01508,
       "low_pct": -3.27,
-      "current_price": 0.01538,
-      "current_pct": -1.35,
+      "current_price": 0.01543,
+      "current_pct": -1.03,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-05T00:21:37.871199+03:00",
-      "checks": 64,
+      "last_check": "2026-09-05T00:51:50.712916+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null,
         "entry_zone": [
@@ -278,15 +278,15 @@
       "peak_pct": 2.53,
       "low_price": 0.0371,
       "low_pct": -3.08,
-      "current_price": 0.0387,
-      "current_pct": 1.1,
+      "current_price": 0.0388,
+      "current_pct": 1.36,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-05T00:21:37.871199+03:00",
-      "checks": 64,
+      "last_check": "2026-09-05T00:51:50.712916+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null,
         "entry_zone": [
@@ -340,8 +340,8 @@
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-05T00:21:37.871199+03:00",
-      "checks": 64,
+      "last_check": "2026-09-05T00:51:50.712916+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null,
         "entry_zone": [
