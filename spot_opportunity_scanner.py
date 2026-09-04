@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""SPOT_SCANNER v10 — stateful Binance Spot opportunity scanner.
+"""SPOT_SCANNER v11 — stateful Binance Spot opportunity scanner.
 
-Evidence-led model: strong 1D/4H trend is context, not an automatic overextension
-penalty. Entry timing comes from a controlled 1H reset and early 15M/1H retrigger.
-No first-scan entry. External outputs remain gated by FINAL_OUTPUT_ENABLED.
+Detection model validated on the 54-case audit: strong 1D/4H context plus a
+controlled 1H reset/rejection profile. 15M remains an entry-timing layer only.
+No first-scan entry. Existing output integrations are unchanged.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from flask import Flask, jsonify
 BINANCE = "https://api.binance.com"
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/10.0"})
+HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/11.0"})
 MAX_WORKERS = max(2, min(10, int(os.getenv("MAX_WORKERS", "6"))))
 PYTHON_TOP_N = max(64, min(120, int(os.getenv("VISUAL_TOP_N", "96"))))
 PREFILTER_CORE_N = max(48, min(PYTHON_TOP_N, int(os.getenv("PREFILTER_CORE_N", "72"))))
@@ -30,7 +30,7 @@ SCAN_INTERVAL_SECONDS = max(300, int(os.getenv("SCAN_INTERVAL_SECONDS", "900")))
 WATCH_TTL_HOURS = float(os.getenv("WATCH_TTL_HOURS", "18"))
 MAX_SIGNALS_PER_DAY = max(1, min(6, int(os.getenv("MAX_SIGNALS_PER_DAY", "3"))))
 FINAL_MIN_QUALITY = float(os.getenv("FINAL_MIN_QUALITY", "72"))
-STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state_v10.json")
+STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state_v11.json")
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").strip().lower() == "true"
 FINAL_OUTPUT_ENABLED = os.getenv("FINAL_OUTPUT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 PORTFOLIO_URL = os.getenv("PORTFOLIO_URL", "").rstrip("/")
@@ -48,55 +48,56 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 def now_tr(): return datetime.now(timezone.utc).astimezone(TR_TZ)
 def sf(v, default=0.0):
     try:
-        x = float(v); return x if math.isfinite(x) else default
+        x=float(v); return x if math.isfinite(x) else default
     except Exception: return default
-def pct(new, old): return (new / old - 1) * 100 if old else 0.0
-def clamp(v, lo=0.0, hi=100.0): return max(lo, min(hi, float(v)))
+def pct(new, old): return (new/old-1)*100 if old else 0.0
+def clamp(v, lo=0.0, hi=100.0): return max(lo,min(hi,float(v)))
 
 def _get(path, params=None, attempts=4):
-    last = None
+    last=None
     for i in range(attempts):
         try:
-            r = HTTP.get(BINANCE + path, params=params, timeout=15)
-            if r.status_code in (418, 429): time.sleep(1.5 * (2 ** i)); continue
+            r=HTTP.get(BINANCE+path,params=params,timeout=15)
+            if r.status_code in (418,429): time.sleep(1.5*(2**i)); continue
             r.raise_for_status(); return r.json()
         except Exception as exc:
-            last = exc; time.sleep(.35 * (2 ** i))
+            last=exc; time.sleep(.35*(2**i))
     raise RuntimeError(f"Binance API failed {path}: {last}")
 
 def ohlcv(symbol, interval, limit=240):
-    rows = _get("/api/v3/klines", {"symbol": symbol, "interval": interval, "limit": limit})
-    if not isinstance(rows, list) or len(rows) < 80: raise ValueError(f"insufficient candles {symbol} {interval}")
-    cols = ["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
-    d = pd.DataFrame(rows, columns=cols)
-    for c in ("open","high","low","close","volume","quote_volume","taker_quote"): d[c] = pd.to_numeric(d[c], errors="coerce")
-    d["open_time"] = pd.to_datetime(d.open_time, unit="ms", utc=True); d["close_time"] = pd.to_datetime(d.close_time, unit="ms", utc=True)
-    if rows and int(rows[-1][6]) >= int(time.time() * 1000): d = d.iloc[:-1].copy()
+    rows=_get("/api/v3/klines",{"symbol":symbol,"interval":interval,"limit":limit})
+    if not isinstance(rows,list) or len(rows)<80: raise ValueError(f"insufficient candles {symbol} {interval}")
+    cols=["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
+    d=pd.DataFrame(rows,columns=cols)
+    for c in ("open","high","low","close","volume","quote_volume","taker_quote"): d[c]=pd.to_numeric(d[c],errors="coerce")
+    d["open_time"]=pd.to_datetime(d.open_time,unit="ms",utc=True); d["close_time"]=pd.to_datetime(d.close_time,unit="ms",utc=True)
+    if rows and int(rows[-1][6])>=int(time.time()*1000): d=d.iloc[:-1].copy()
     return d.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
 
-def _rsi(s, n=14):
-    delta = s.diff(); gain = delta.clip(lower=0); loss = -delta.clip(upper=0)
-    ag = gain.ewm(alpha=1/n, adjust=False, min_periods=n).mean(); al = loss.ewm(alpha=1/n, adjust=False, min_periods=n).mean(); rs = ag / al.replace(0, np.nan)
-    return (100 - 100 / (1 + rs)).fillna(50)
+def _rsi(s,n=14):
+    delta=s.diff(); gain=delta.clip(lower=0); loss=-delta.clip(upper=0)
+    ag=gain.ewm(alpha=1/n,adjust=False,min_periods=n).mean(); al=loss.ewm(alpha=1/n,adjust=False,min_periods=n).mean(); rs=ag/al.replace(0,np.nan)
+    return (100-100/(1+rs)).fillna(50)
 
 def indicators(d):
-    x = d.copy(); x["ema20"] = x.close.ewm(span=20, adjust=False).mean(); x["ema50"] = x.close.ewm(span=50, adjust=False).mean(); x["ema200"] = x.close.ewm(span=200, adjust=False).mean(); x["rsi"] = _rsi(x.close)
-    lo = x.rsi.rolling(14).min(); hi = x.rsi.rolling(14).max(); raw = 100 * (x.rsi - lo) / (hi - lo).replace(0, np.nan); x["stoch_k"] = raw.rolling(3).mean().fillna(50); x["stoch_d"] = x.stoch_k.rolling(3).mean().fillna(50)
-    e12 = x.close.ewm(span=12, adjust=False).mean(); e26 = x.close.ewm(span=26, adjust=False).mean(); x["macd"] = e12 - e26; x["macd_signal"] = x.macd.ewm(span=9, adjust=False).mean(); x["macd_hist"] = x.macd - x.macd_signal
-    pc = x.close.shift(1); tr = pd.concat([x.high-x.low, (x.high-pc).abs(), (x.low-pc).abs()], axis=1).max(axis=1); x["atr"] = tr.ewm(alpha=1/14, adjust=False, min_periods=14).mean(); x["vol_ratio"] = x.volume / x.volume.rolling(20).mean().replace(0, np.nan); x["obv"] = (np.sign(x.close.diff()).fillna(0) * x.volume).cumsum(); x["taker_buy_ratio"] = (x.taker_quote / x.quote_volume.replace(0, np.nan)).clip(0,1).fillna(.5)
+    x=d.copy(); x["ema20"]=x.close.ewm(span=20,adjust=False).mean(); x["ema50"]=x.close.ewm(span=50,adjust=False).mean(); x["ema200"]=x.close.ewm(span=200,adjust=False).mean(); x["rsi"]=_rsi(x.close)
+    lo=x.rsi.rolling(14).min(); hi=x.rsi.rolling(14).max(); raw=100*(x.rsi-lo)/(hi-lo).replace(0,np.nan); x["stoch_k"]=raw.rolling(3).mean().fillna(50); x["stoch_d"]=x.stoch_k.rolling(3).mean().fillna(50)
+    e12=x.close.ewm(span=12,adjust=False).mean(); e26=x.close.ewm(span=26,adjust=False).mean(); x["macd"]=e12-e26; x["macd_signal"]=x.macd.ewm(span=9,adjust=False).mean(); x["macd_hist"]=x.macd-x.macd_signal
+    pc=x.close.shift(1); tr=pd.concat([x.high-x.low,(x.high-pc).abs(),(x.low-pc).abs()],axis=1).max(axis=1); x["atr"]=tr.ewm(alpha=1/14,adjust=False,min_periods=14).mean(); x["vol_ratio"]=x.volume/x.volume.rolling(20).mean().replace(0,np.nan); x["obv"]=(np.sign(x.close.diff()).fillna(0)*x.volume).cumsum(); x["taker_buy_ratio"]=(x.taker_quote/x.quote_volume.replace(0,np.nan)).clip(0,1).fillna(.5)
     return x
 
-def _swings(d, wing=2, lookback=80):
-    x = d.tail(lookback).reset_index(drop=True); highs=[]; lows=[]
-    for i in range(wing, len(x)-wing):
+def _swings(d,wing=2,lookback=80):
+    x=d.tail(lookback).reset_index(drop=True); highs=[]; lows=[]
+    for i in range(wing,len(x)-wing):
         w=x.iloc[i-wing:i+wing+1]
-        if x.high.iloc[i] >= w.high.max(): highs.append(float(x.high.iloc[i]))
-        if x.low.iloc[i] <= w.low.min(): lows.append(float(x.low.iloc[i]))
-    return highs[-8:], lows[-8:]
+        if x.high.iloc[i]>=w.high.max(): highs.append(float(x.high.iloc[i]))
+        if x.low.iloc[i]<=w.low.min(): lows.append(float(x.low.iloc[i]))
+    return highs[-8:],lows[-8:]
 
-def snap(d, label):
-    x=indicators(d); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close); highs,lows=_swings(x); atr=sf(a.atr); c6=x.close.tail(6).to_numpy(); l6=x.low.tail(6).to_numpy()
-    return {"tf":label,"price":p,"bar_id":int(pd.Timestamp(a.open_time).timestamp()),"ret3":pct(p,sf(x.close.iloc[-4])),"ret6":pct(p,sf(x.close.iloc[-7])),"ret24":pct(p,sf(x.close.iloc[-25])),"ema20":sf(a.ema20),"ema50":sf(a.ema50),"ema200":sf(a.ema200),"ema20_slope":pct(sf(a.ema20),sf(x.ema20.iloc[-4])),"ema50_slope":pct(sf(a.ema50),sf(x.ema50.iloc[-4])),"dist_ema20":pct(p,sf(a.ema20)),"dist_ema50":pct(p,sf(a.ema50)),"rsi":sf(a.rsi),"stoch_k":sf(a.stoch_k),"stoch_d":sf(a.stoch_d),"stoch_k_prev":sf(b.stoch_k),"stoch_min3":sf(x.stoch_k.tail(3).min()),"macd_hist":sf(a.macd_hist),"macd_hist_prev":sf(b.macd_hist),"vol_ratio":sf(a.vol_ratio,1),"obv_up":sf(a.obv)>=sf(x.obv.iloc[-6]),"obv_fast_up":sf(a.obv)>=sf(x.obv.iloc[-3]),"taker_buy_ratio":sf(x.taker_buy_ratio.tail(3).mean(),.5),"higher_closes6":int(sum(c6[i]>c6[i-1] for i in range(1,len(c6)))),"higher_lows6":int(sum(l6[i]>=l6[i-1] for i in range(1,len(l6)))),"near_high20_pct":max(0.0,-pct(p,sf(x.high.tail(20).max()))),"prev_high6":sf(x.high.iloc[-7:-1].max()),"atr_pct":100*atr/p if p else 0,"supports":sorted([v for v in lows if v<p],reverse=True)[:4],"resistances":sorted([v for v in highs if v>p])[:4]}
+def snap(d,label):
+    x=indicators(d); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close); highs,lows=_swings(x); atr=sf(a.atr); c6=x.close.tail(6).to_numpy(); l6=x.low.tail(6).to_numpy(); rg=max(0.0,sf(a.high)-sf(a.low))
+    upper=(sf(a.high)-max(sf(a.open),sf(a.close)))/rg if rg else 0.0; lower=(min(sf(a.open),sf(a.close))-sf(a.low))/rg if rg else 0.0
+    return {"tf":label,"price":p,"bar_id":int(pd.Timestamp(a.open_time).timestamp()),"ret3":pct(p,sf(x.close.iloc[-4])),"ret6":pct(p,sf(x.close.iloc[-7])),"ret24":pct(p,sf(x.close.iloc[-25])),"ema20":sf(a.ema20),"ema50":sf(a.ema50),"ema200":sf(a.ema200),"ema20_slope":pct(sf(a.ema20),sf(x.ema20.iloc[-4])),"ema50_slope":pct(sf(a.ema50),sf(x.ema50.iloc[-4])),"dist_ema20":pct(p,sf(a.ema20)),"dist_ema50":pct(p,sf(a.ema50)),"rsi":sf(a.rsi),"stoch_k":sf(a.stoch_k),"stoch_d":sf(a.stoch_d),"stoch_k_prev":sf(b.stoch_k),"stoch_min3":sf(x.stoch_k.tail(3).min()),"macd_hist":sf(a.macd_hist),"macd_hist_prev":sf(b.macd_hist),"vol_ratio":sf(a.vol_ratio,1),"obv_up":sf(a.obv)>=sf(x.obv.iloc[-6]),"obv_fast_up":sf(a.obv)>=sf(x.obv.iloc[-3]),"taker_buy_ratio":sf(x.taker_buy_ratio.tail(3).mean(),.5),"higher_closes6":int(sum(c6[i]>c6[i-1] for i in range(1,len(c6)))),"higher_lows6":int(sum(l6[i]>=l6[i-1] for i in range(1,len(l6)))),"near_high20_pct":max(0.0,-pct(p,sf(x.high.tail(20).max()))),"prev_high6":sf(x.high.iloc[-7:-1].max()),"atr_pct":100*atr/p if p else 0,"upper_wick":upper,"lower_wick":lower,"supports":sorted([v for v in lows if v<p],reverse=True)[:4],"resistances":sorted([v for v in highs if v>p])[:4]}
 
 @dataclass
 class Candidate:
@@ -115,13 +116,11 @@ def universe():
 def _prefilter(symbol,qv):
     try:
         x=indicators(ohlcv(symbol,"1h",220)); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close); r=sf(a.rsi); sk=sf(a.stoch_k); sd=sf(a.stoch_d); sk0=sf(b.stoch_k); mh=sf(a.macd_hist); mh0=sf(b.macd_hist); e20=sf(a.ema20); e50=sf(a.ema50); vr=sf(a.vol_ratio,1); ret3=pct(p,sf(x.close.iloc[-4])); ret6=pct(p,sf(x.close.iloc[-7])); obv=sf(a.obv)>=sf(x.obv.iloc[-6]); high20=sf(x.high.tail(20).max()); near=max(0,-pct(p,high20)); taker=sf(x.taker_buy_ratio.tail(3).mean(),.5); c=x.close.tail(6).to_numpy(); l=x.low.tail(6).to_numpy(); hc=sum(c[i]>c[i-1] for i in range(1,len(c))); hl=sum(l[i]>=l[i-1] for i in range(1,len(l)))
-        reset = sk<=50 or min(sf(x.stoch_k.tail(3).min()),sk)<=30
-        turn = sk>sd and sk>sk0
-        score=(18 if p>=e50 else 0)+(12 if p>=e20 else 5)+(12 if 45<=r<=88 else 5 if 38<=r<=92 else 0)+(15 if reset else 10 if turn else 0)+(10 if mh>mh0 else 5 if mh>0 else 0)+(10 if obv else 0)+(7 if vr>=.8 else 3)+(7 if near<=7 else 3 if near<=12 else 0)+(5 if taker>=.50 else 0)+(4 if ret6>3 else 0)
+        reset=sk<=75 or sf(x.stoch_k.tail(3).min())<=30; turn=sk>sd and sk>sk0
+        score=(18 if p>=e50 else 0)+(12 if p>=e20 else 5)+(12 if 45<=r<=88 else 5 if 38<=r<=92 else 0)+(13 if reset else 8 if turn else 0)+(10 if mh>mh0 else 5 if mh>0 else 0)+(10 if obv else 0)+(7 if vr>=.8 else 3)+(7 if near<=7 else 3 if near<=12 else 0)+(5 if taker>=.50 else 0)+(4 if ret6>3 else 0)
         retrigger_seed=p>=e50 and 38<=r<=90 and (reset or turn) and -7<=ret3<=10
         pressure_seed=p>=e20 and 45<=r<=88 and hc>=3 and hl>=3 and near<=6 and -1<=ret3<=9 and (taker>=.50 or obv)
         seed="RETRIGGER" if retrigger_seed else "PRESSURE" if pressure_seed else ""
-        # Strong prior movement is no longer an automatic penalty; only extreme 1H blow-off is.
         if ret3>14 and sk>85 and pct(p,e20)>15: score-=18
         return symbol,qv,round(score,2),seed
     except Exception: return None
@@ -173,51 +172,56 @@ def evaluate(symbol,qv,pre_rank,regime,prior):
     day=snap(ohlcv(symbol,"1d"),"1D"); four=snap(ohlcv(symbol,"4h"),"4H"); one=snap(ohlcv(symbol,"1h"),"1H"); fast=snap(ohlcv(symbol,"15m"),"15M"); live=sf(_get("/api/v3/ticker/price",{"symbol":symbol}).get("price")) or one["price"]
     prior_phase=(prior or {}).get("phase"); prior_bar=int(sf((prior or {}).get("last_bar_15m"),0))
 
-    # 54-case audit: upper-timeframe strength is positive context, not a reason to reject.
     day_trend=day["price"]>=day["ema20"] and day["ema20_slope"]>=-.8 and day["rsi"]>=50
-    day_strong=day_trend and (day["price"]>=day["ema50"]) and (day["ema20_slope"]>0 or day["macd_hist"]>0 or day["ret24"]>4)
     four_trend=four["price"]>=four["ema50"] and four["ema50_slope"]>=-.2 and four["rsi"]>=45
-    four_strong=four_trend and (four["ema20_slope"]>0 or four["ret6"]>3 or four["macd_hist"]>0) and (four["obv_up"] or four["ret6"]>5 or four["vol_ratio"]>=.8)
-    htf_strong=day_strong and four_strong
-
-    # 1H is timing: cooling/reset inside intact 1D/4H strength is desirable.
-    one_reset=one["stoch_k"]<=55 or one["stoch_min3"]<=30
-    one_turn=one["stoch_k"]>one["stoch_d"] and one["stoch_k"]>one["stoch_k_prev"]
     one_structure=one["price"]>=one["ema50"] and one["rsi"]>=38
-    one_mom_improving=one["macd_hist"]>one["macd_hist_prev"] or one["obv_fast_up"] or one_turn
-    controlled_reset=one_structure and one_reset and one["ret3"]>=-7
+    one_reset=one["stoch_k"]<=75 or one["stoch_min3"]<=30
+    one_turn=one["stoch_k"]>one["stoch_d"] and one["stoch_k"]>one["stoch_k_prev"]
+    one_mom=one["macd_hist"]>one["macd_hist_prev"] or one["obv_fast_up"] or one_turn
+
+    # Six broad, rounded audit features. 5/6 was materially more selective than v10
+    # while keeping useful coverage in both halves of the 54-case sample.
+    audit_score=sum((
+        four["dist_ema50"]>=6.0,
+        four["ema20_slope"]>=1.0,
+        one["dist_ema50"]>=2.0,
+        one["upper_wick"]>=0.22,
+        one["stoch_k"]<=75.0,
+        day["rsi"]>=62.0,
+    ))
+    audit_balanced=day_trend and four_trend and one_structure and audit_score>=5
+    audit_strict=day_trend and four_trend and four["dist_ema50"]>=6.0 and one["dist_ema50"]>=2.0 and one["upper_wick"]>=0.22 and one["stoch_k"]<=75.0
 
     fast_turn=fast["stoch_k"]>fast["stoch_d"] and fast["stoch_k"]>fast["stoch_k_prev"] and fast["rsi"]>=40
     fast_confirm=fast_turn and (fast["macd_hist"]>fast["macd_hist_prev"] or fast["obv_fast_up"]) and fast["price"]>=fast["ema20"]*.995
 
-    # Keep pressure/breakout path so momentum continuation is not lost.
-    pressure=day_trend and four_trend and one["price"]>=one["ema20"] and one["ema20_slope"]>0 and one["rsi"]>=50 and one["higher_closes6"]>=3 and one["higher_lows6"]>=3 and one["near_high20_pct"]<=4.5
+    pressure=day_trend and four_trend and audit_score>=4 and one["price"]>=one["ema20"] and one["ema20_slope"]>0 and one["rsi"]>=50 and one["higher_closes6"]>=3 and one["higher_lows6"]>=3 and one["near_high20_pct"]<=4.5
     fast_break=fast["price"]>=fast["prev_high6"]*.998 and fast["rsi"]>=48 and (fast["macd_hist"]>fast["macd_hist_prev"] or fast["obv_fast_up"])
+    retrigger=audit_balanced and one_reset
 
-    retrigger=htf_strong and controlled_reset
     first_price=sf((prior or {}).get("first_price"),live); chase=pct(live,first_price) if first_price else 0
     structural_break=(day["price"]<day["ema50"] and four["price"]<four["ema50"]) or (four["price"]<four["ema50"] and one["price"]<one["ema50"] and four["ema50_slope"]<0)
     blowoff=one["ret3"]>14 and one["stoch_k"]>85 and one["dist_ema20"]>15
     chased=chase>8 and not one_reset
 
-    q=(20 if day_strong else 10 if day_trend else 0)+(24 if four_strong else 12 if four_trend else 0)+(14 if controlled_reset else 0)+(8 if one_turn else 0)+(7 if one_mom_improving else 0)+(8 if fast_confirm else 0)+(6 if four["ret6"]>5 else 0)+(5 if day["rsi"]>=65 else 0)
-    pq=(18 if day_trend else 0)+(20 if four_trend else 0)+(24 if pressure else 0)+(16 if fast_break else 0)+(7 if one["obv_up"] else 0)+(5 if one["taker_buy_ratio"]>=.52 else 0)
+    q=32+audit_score*8+(8 if one_turn else 0)+(7 if one_mom else 0)+(8 if fast_confirm else 0)+(8 if audit_strict else 0)
+    pq=24+audit_score*8+(20 if pressure else 0)+(16 if fast_break else 0)+(5 if one["taker_buy_ratio"]>=.52 else 0)
     if regime=="RED": q-=5; pq-=5
-    quality=clamp(max(q,pq)); decision="REDDET"; phase="NONE"; kind="NONE"; why="Yeterli kurulum yok"
+    quality=clamp(max(q if retrigger else 0,pq if pressure else 0)); decision="REDDET"; phase="NONE"; kind="NONE"; why="Yeterli kurulum yok"
 
     if not structural_break and not blowoff and not chased:
         if pressure:
-            decision="TETIK_BEKLE"; phase="PRESSURE"; kind="PRESSURE"; why="Üst zaman yapısı güçlü; momentum devam tetiği izleniyor"
+            decision="TETIK_BEKLE"; phase="PRESSURE"; kind="PRESSURE"; why="Güçlü üst zaman yapısı; momentum devam tetiği izleniyor"
         if retrigger:
-            decision="TETIK_BEKLE"; phase="COOLING" if not one_turn else "ARMED"; kind="RETRIGGER"; why="Güçlü 1D/4H içinde 1H kontrollü reset; yeniden tetik izleniyor"
+            decision="TETIK_BEKLE"; phase="COOLING" if not one_turn else "ARMED"; kind="RETRIGGER"; why="Güçlü 1D/4H yapı + ölçülmüş 1H reset/rejection; yeniden tetik izleniyor"
         observed_new_bar=bool(prior and fast["bar_id"]>prior_bar)
         eligible_history=bool(prior and observed_new_bar and prior_phase in {"COOLING","ARMED","PRESSURE","FORMING"})
-        retrigger_ready=retrigger and one_mom_improving and fast_confirm
+        retrigger_ready=retrigger and one_mom and fast_confirm
         pressure_ready=pressure and fast_break
         if eligible_history and quality>=FINAL_MIN_QUALITY and (retrigger_ready or pressure_ready):
             decision="ALIM_ADAYI"; phase="ENTRY"; kind="RETRIGGER" if retrigger_ready and q>=pq else "PRESSURE"; why="İzleme sonrası yeni kapalı 15M mumda giriş tetiği doğrulandı"
-        elif decision=="REDDET" and (day_trend or four_trend):
-            decision="TETIK_BEKLE"; phase="FORMING"; kind="FORMING"; why="Üst zaman yapısı korunuyor; 1H reset/tetik oluşumu bekleniyor"
+        elif decision=="REDDET" and day_trend and four_trend and audit_score>=3:
+            decision="TETIK_BEKLE"; phase="FORMING"; kind="FORMING"; why="Üst zaman yapısı var; yeterli 1H kalite puanı oluşması bekleniyor"
     if structural_break: decision="REDDET"; phase="BROKEN"; kind="NONE"; why="Üst zaman yapısı bozulmuş"
     if blowoff or chased: decision="REDDET"; phase="LATE"; kind="NONE"; why="1H hareketi gerçek blow-off/chase bölgesinde"
 
@@ -254,7 +258,7 @@ def _send_telegram(c):
     try: return HTTP.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",json=payload,timeout=15).ok
     except Exception: return False
 
-runtime={"status":"BOOT","version":"v10","outputs_enabled":FINAL_OUTPUT_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
+runtime={"status":"BOOT","version":"v11","outputs_enabled":FINAL_OUTPUT_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
 def scan_cycle():
     runtime.update({"status":"SCANNING","signals":0,"last_error":None}); state=_load_state(); _clean_watch(state)
     try:
@@ -281,4 +285,4 @@ def index(): return jsonify({"service":"SPOT_SCANNER",**runtime})
 @app.route("/health")
 def health(): return jsonify(runtime),200
 if __name__=="__main__":
-    print("SPOT_SCANNER v10 — HTF STRENGTH + 1H RESET/RETRIGGER",flush=True); print(f"FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED} | top_n={PYTHON_TOP_N} | core={PREFILTER_CORE_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
+    print("SPOT_SCANNER v11 — VALIDATED HTF + 1H RESET/REJECTION",flush=True); print(f"FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED} | top_n={PYTHON_TOP_N} | core={PREFILTER_CORE_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
