@@ -1,0 +1,29 @@
+name: tmp scanner validation9
+on:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    if: contains(github.event.head_commit.message, 'run regime aware validation')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy scikit-learn
+      - run: python .github/tmp_scanner_validation9.py
+      - run: |
+          cp /tmp/v9_summary.csv .github/tmp_validation9_summary.csv
+          cp /tmp/v9_regimes.csv .github/tmp_validation9_regimes.csv
+          cp /tmp/v9_cal_grid.csv .github/tmp_validation9_cal_grid.csv
+          cp /tmp/v9_trades.csv .github/tmp_validation9_trades.csv
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .github/tmp_validation9_*.csv
+          git commit -m 'test: save regime aware validation results' || exit 0
+          git pull --rebase
+          git push
