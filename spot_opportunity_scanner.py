@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""SPOT_SCANNER v7 — stateful Binance Spot opportunity scanner.
+"""SPOT_SCANNER v8 — stateful Binance Spot opportunity scanner.
 
-Design target: reproduce the useful manual ZEC review pattern and catch the
-second pressure/breakout archetype without allowing first-scan entries.
-Development outputs stay closed until FINAL_OUTPUT_ENABLED=true.
+Design target: reproduce the useful manual ZEC review pattern, preserve
+pressure/breakout winners such as SIGN/XPL in candidate discovery, and never
+allow a first-scan entry. Development outputs stay closed until
+FINAL_OUTPUT_ENABLED=true.
 """
 from __future__ import annotations
 
@@ -21,15 +22,16 @@ from flask import Flask, jsonify
 BINANCE = "https://api.binance.com"
 TR_TZ = timezone(timedelta(hours=3))
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/7.0"})
+HTTP.headers.update({"User-Agent": "Botum-SPOT-SCANNER/8.0"})
 MAX_WORKERS = max(2, min(10, int(os.getenv("MAX_WORKERS", "6"))))
-PYTHON_TOP_N = max(48, min(120, int(os.getenv("VISUAL_TOP_N", "84"))))
+PYTHON_TOP_N = max(64, min(120, int(os.getenv("VISUAL_TOP_N", "96"))))
+PREFILTER_CORE_N = max(48, min(PYTHON_TOP_N, int(os.getenv("PREFILTER_CORE_N", "72"))))
 MIN_QUOTE_VOLUME = float(os.getenv("MIN_QUOTE_VOLUME", "0"))
 SCAN_INTERVAL_SECONDS = max(300, int(os.getenv("SCAN_INTERVAL_SECONDS", "900")))
 WATCH_TTL_HOURS = float(os.getenv("WATCH_TTL_HOURS", "18"))
 MAX_SIGNALS_PER_DAY = max(1, min(6, int(os.getenv("MAX_SIGNALS_PER_DAY", "3"))))
 FINAL_MIN_QUALITY = float(os.getenv("FINAL_MIN_QUALITY", "72"))
-STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state_v7.json")
+STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state_v8.json")
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").strip().lower() == "true"
 FINAL_OUTPUT_ENABLED = os.getenv("FINAL_OUTPUT_ENABLED", "false").strip().lower() in {"1","true","yes","on"}
 PORTFOLIO_URL = os.getenv("PORTFOLIO_URL", "").rstrip("/")
@@ -103,9 +105,12 @@ def _prefilter(symbol,qv):
     try:
         x=indicators(ohlcv(symbol,"1h",220)); a=x.iloc[-1]; b=x.iloc[-2]; p=sf(a.close); r=sf(a.rsi); sk=sf(a.stoch_k); sd=sf(a.stoch_d); sk0=sf(b.stoch_k); mh=sf(a.macd_hist); mh0=sf(b.macd_hist); e20=sf(a.ema20); e50=sf(a.ema50); vr=sf(a.vol_ratio,1); ret3=pct(p,sf(x.close.iloc[-4])); ret6=pct(p,sf(x.close.iloc[-7])); obv=sf(a.obv)>=sf(x.obv.iloc[-6]); high20=sf(x.high.tail(20).max()); near=max(0,-pct(p,high20)); taker=sf(x.taker_buy_ratio.tail(3).mean(),.5); c=x.close.tail(6).to_numpy(); l=x.low.tail(6).to_numpy(); hc=sum(c[i]>c[i-1] for i in range(1,len(c))); hl=sum(l[i]>=l[i-1] for i in range(1,len(l)))
         score=(16 if p>=e20 else 8 if p>=e50 else 0)+(13 if 40<=r<=78 else 5 if 32<=r<=86 else 0)+(14 if sk>sd and sk>sk0 else 9 if sk<35 else 4 if sk>75 and sk<sk0 else 0)+(13 if mh>mh0 else 4 if mh>0 else 0)+(10 if obv else 0)+(8 if vr>=.8 else 3)+(8 if near<=5 else 3 if near<=10 else 0)+(8 if hc>=3 and hl>=3 else 3 if hc>=3 else 0)+(5 if taker>=.52 else 2 if taker>=.49 else 0)+(6 if -4<=ret3<=6 else 0)
+        retrigger_seed=p>=e50 and 38<=r<=82 and (sk<35 or (sk>sd and sk>sk0)) and (mh>mh0 or obv) and -4<=ret3<=7 and ret6<=14
+        pressure_seed=p>=e20 and 45<=r<=82 and hc>=3 and hl>=3 and near<=5 and 0<=ret3<=7 and (taker>=.50 or obv)
+        seed="RETRIGGER" if retrigger_seed else "PRESSURE" if pressure_seed else ""
         if ret3>9 or ret6>18: score-=28
         if r>90: score-=22
-        return symbol,qv,round(score,2)
+        return symbol,qv,round(score,2),seed
     except Exception: return None
 def prefilter_candidates():
     uni=universe(); rows=[]
@@ -114,7 +119,16 @@ def prefilter_candidates():
         for f in as_completed(fs):
             r=f.result();
             if r: rows.append(r)
-    rows.sort(key=lambda z:z[2],reverse=True); return rows[:PYTHON_TOP_N],len(uni)
+    rows.sort(key=lambda z:z[2],reverse=True)
+    selected=list(rows[:PREFILTER_CORE_N]); seen={r[0] for r in selected}
+    for r in rows[PREFILTER_CORE_N:]:
+        if len(selected)>=PYTHON_TOP_N: break
+        if r[3] and r[0] not in seen: selected.append(r); seen.add(r[0])
+    if len(selected)<PYTHON_TOP_N:
+        for r in rows[PREFILTER_CORE_N:]:
+            if len(selected)>=PYTHON_TOP_N: break
+            if r[0] not in seen: selected.append(r); seen.add(r[0])
+    return [(s,q,score) for s,q,score,_ in selected],len(uni)
 def _load_state():
     try:
         with open(STATE_FILE,encoding="utf-8") as f: d=json.load(f); return d if isinstance(d,dict) else {}
@@ -184,7 +198,7 @@ def _send_telegram(c):
     if TELEGRAM_THREAD_ID: payload["message_thread_id"]=TELEGRAM_THREAD_ID
     try: return HTTP.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",json=payload,timeout=15).ok
     except Exception: return False
-runtime={"status":"BOOT","version":"v7","outputs_enabled":FINAL_OUTPUT_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
+runtime={"status":"BOOT","version":"v8","outputs_enabled":FINAL_OUTPUT_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
 def scan_cycle():
     runtime.update({"status":"SCANNING","signals":0,"last_error":None}); state=_load_state(); _clean_watch(state)
     try:
@@ -210,4 +224,4 @@ def index(): return jsonify({"service":"SPOT_SCANNER",**runtime})
 @app.route("/health")
 def health(): return jsonify(runtime),200
 if __name__=="__main__":
-    print("SPOT_SCANNER v7 — WATCH FIRST / CLOSED 15M RETRIGGER",flush=True); print(f"FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED} | top_n={PYTHON_TOP_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
+    print("SPOT_SCANNER v8 — WATCH FIRST / ARCHETYPE-PROTECTED PREFILTER",flush=True); print(f"FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED} | top_n={PYTHON_TOP_N} | core={PREFILTER_CORE_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
