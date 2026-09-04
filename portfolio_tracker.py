@@ -16,6 +16,7 @@ import re
 import shutil
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
@@ -2513,7 +2514,6 @@ def market_dashboard():
 <head>
 <meta charset="UTF-8"><title>Piyasa</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="120">
 <style>
 :root{{--bg:#0a0e14;--card:#0f1319;--border:#1a2030;--text:#c0cdd8;--dim:#5a6a7a;--accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#e67e22;--yellow:#f1c40f}}
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2563,9 +2563,10 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       <a href="/alsat" class="tab">Al-Sat Bot</a>
     </div>
   </div>
-  <span class="time">{now} | v3.1 &nbsp;<button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button></span>
+  <span class="time"><span id="last-refresh-time">{now}</span> | v3.1 &nbsp;<button class="btn-refresh" onclick="refreshLive()">🔄 Yenile</button></span>
 </div>
 
+<div id="live-region">
 <div class="groups-row">
   <div class="group">
     <div class="group-title">₿ Bitcoin</div>
@@ -2680,6 +2681,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
     </div>
   </div>
 </div>
+</div><!-- /live-region -->
 
 <div class="card" style="padding:10px">
   <div style="height:370px;overflow:hidden;border-radius:6px">
@@ -2695,6 +2697,31 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 </div>
 
 
+<script>
+// Yenile: TAM sayfa reload yerine sadece #live-region'ı (gösterge/kart
+// verileri) tazeler — ETF iframe'i ve TradingView widget'ı DOKUNULMADAN
+// kalır (reload'da ikisi de sıfırlanıp baştan yükleniyordu). 120sn'de bir
+// otomatik da çalışır (eski <meta refresh> yerine).
+var _liveRefreshBusy = false;
+function refreshLive(){{
+  if(_liveRefreshBusy) return;
+  _liveRefreshBusy = true;
+  fetch(location.pathname + location.search)
+    .then(function(r){{ return r.text(); }})
+    .then(function(html){{
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('live-region');
+      var live  = document.getElementById('live-region');
+      if(fresh && live) live.innerHTML = fresh.innerHTML;
+      var freshTime = doc.getElementById('last-refresh-time');
+      var liveTime  = document.getElementById('last-refresh-time');
+      if(freshTime && liveTime) liveTime.textContent = freshTime.textContent;
+    }})
+    .catch(function(){{}})
+    .finally(function(){{ _liveRefreshBusy = false; }});
+}}
+setInterval(refreshLive, 120000);
+</script>
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
 var _coinParam = new URLSearchParams(location.search).get('coin');
@@ -3121,7 +3148,15 @@ def dashboard():
     _smc_eski_section = ""
 
     # ── Retest Bekleyenler ──────────────────────────────────────────────────────
-    _pending_price_cache = {s["symbol"]: get_current_price_hl(s["symbol"]) for s in pending_sigs}
+    # Binance fiyat çekimi paralel yapılır — sıralı olsaydı N sinyal × 10sn timeout'a
+    # kadar sürebilirdi (her sayfa yüklemesinde), tek bir yavaş/timeout'a giren
+    # sembol tüm sayfayı bloke ederdi.
+    _pending_price_cache = {}
+    if pending_sigs:
+        with ThreadPoolExecutor(max_workers=min(20, len(pending_sigs))) as _px:
+            _pending_futs = {_px.submit(get_current_price_hl, s["symbol"]): s["symbol"] for s in pending_sigs}
+            for _pf in _pending_futs:
+                _pending_price_cache[_pending_futs[_pf]] = _pf.result()
 
     def _retest_proximity(sig):
         lp = sig.get("limit_price")
@@ -3231,7 +3266,6 @@ def dashboard():
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Portföy Takip</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60">
 <meta property="og:title" content="Portfolio Tracker">
 <meta property="og:description" content="Kripto sinyal takip sistemi">
 <meta property="og:image" content="https://raw.githubusercontent.com/Brkzgrc/Botum/main/portfolio_logo.jpg">
@@ -3298,22 +3332,22 @@ tr:hover td{{background:var(--card);}}
 .sym-wrap{{display:inline-flex;align-items:center;white-space:nowrap;cursor:default}}
 </style>
 <script>
-// Details state persistence — runs before body paint to avoid flash
-(function(){{
+// Details state persistence — runs before body paint to avoid flash.
+// Named (not IIFE) so it can be re-run after a soft (AJAX) refresh swaps in
+// fresh <details> nodes that need their open/closed state + listener reattached.
+function restoreDetailsState(){{
   var P='det_';
-  function restore(){{
-    document.querySelectorAll('details[data-id]').forEach(function(el){{
-      var saved=localStorage.getItem(P+el.dataset.id);
-      if(saved==='open') el.open=true;
-      else if(saved==='closed') el.open=false;
-      el.addEventListener('toggle',function(){{
-        localStorage.setItem(P+el.dataset.id, el.open?'open':'closed');
-      }});
+  document.querySelectorAll('details[data-id]').forEach(function(el){{
+    var saved=localStorage.getItem(P+el.dataset.id);
+    if(saved==='open') el.open=true;
+    else if(saved==='closed') el.open=false;
+    el.addEventListener('toggle',function(){{
+      localStorage.setItem(P+el.dataset.id, el.open?'open':'closed');
     }});
-  }}
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',restore);
-  else restore();
-}})();
+  }});
+}}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',restoreDetailsState);
+else restoreDetailsState();
 </script>
 </head><body>
 
@@ -3327,13 +3361,13 @@ tr:hover td{{background:var(--card);}}
         </div>
     </div>
     <span class="time">
-        {now}
-        <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+        <span id="last-refresh-time">{now}</span>
+        <button class="btn-refresh" onclick="refreshLive()">🔄 Yenile</button>
         <button class="btn-clear"
-            onclick="if(confirm('Yalnızca Spot Scanner kaynaklı açık kayıtlar topluca kapatılacak.\\nDiğer açık kayıtlara ve öğrenme arşivine dokunulmayacak.\\nEmin misiniz?')){{fetch('/api/signals/close-spot-scanner',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Kapatılan Spot Scanner kaydı: '+d.closed);location.reload()}})}}"
+            onclick="if(confirm('Yalnızca Spot Scanner kaynaklı açık kayıtlar topluca kapatılacak.\\nDiğer açık kayıtlara ve öğrenme arşivine dokunulmayacak.\\nEmin misiniz?')){{fetch('/api/signals/close-spot-scanner',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Kapatılan Spot Scanner kaydı: '+d.closed);refreshLive()}})}}"
         >⛔ Spot Açıklarını Kapat</button>
         <button class="btn-clear"
-            onclick="if(confirm('Kapanmış geçmiş ve retest bekleyen kayıtlar temizlenecek.\\nAçık pozisyonlara DOKUNULMAZ.\\nÖğrenme arşivi korunur.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt ('+d.kept+' açık kayıt korundu)');location.reload()}})}}"
+            onclick="if(confirm('Kapanmış geçmiş ve retest bekleyen kayıtlar temizlenecek.\\nAçık pozisyonlara DOKUNULMAZ.\\nÖğrenme arşivi korunur.\\nEmin misiniz?')){{fetch('/api/signals/clear-history',{{method:'POST'}}).then(r=>r.json()).then(d=>{{alert('Temizlendi: '+d.removed+' kayıt ('+d.kept+' açık kayıt korundu)');refreshLive()}})}}"
         >🧹 Geçmişi Temizle</button>
     </span>
 </div>
@@ -3386,6 +3420,7 @@ function toggleType(key, btn) {{
   {' '.join(f'<button class="filter-btn active" data-key="{k}" onclick="toggleType(this.dataset.key,this)">{k}</button>' for k in sorted(perf.get('by_type', {})))}
 </div>
 
+<div id="live-region">
 <div class="cards">
     <div class="card"><span class="val" id="c-total">{perf.get('total',0)}</span><span class="lbl">Toplam</span></div>
     <div class="card"><span class="val" style="color:var(--orange)" id="c-pending">{len(pending_sigs)}</span><span class="lbl">Beklemede</span></div>
@@ -3470,6 +3505,7 @@ function toggleType(key, btn) {{
     </tbody></table></div>
     </details>
 </div>
+</div><!-- /live-region -->
 
 <div class="footer">
     Legacy SMC: CHoCH+1tick limit → retest 48H → fill sonrası SL | TP1 → ATR×0.6 trailing | PUMP: hard SL/TP, 6h expire |
@@ -3482,10 +3518,35 @@ function closeSignal(id,btn){{
   btn.disabled=true;btn.textContent='...';
   fetch('/api/signal/'+id+'/close',{{method:'POST'}})
     .then(r=>r.json()).then(d=>{{
-      if(d.ok){{btn.closest('tr').style.opacity='0.4';btn.textContent='Kapandı';setTimeout(()=>location.reload(),800);}}
+      if(d.ok){{btn.closest('tr').style.opacity='0.4';btn.textContent='Kapandı';setTimeout(refreshLive,800);}}
       else{{btn.textContent='Hata';btn.disabled=false;}}
     }}).catch(()=>{{btn.textContent='Hata';btn.disabled=false;}});
 }}
+
+// Yenile: TAM sayfa reload yerine sadece #live-region'ı (kart/tablo verileri)
+// tazeler — scroll pozisyonu, açık <details> durumu ve (varsa) TradingView
+// widget'ı bozulmadan kalır. 60sn'de bir otomatik da çalışır (eski
+// <meta refresh> yerine).
+var _liveRefreshBusy = false;
+function refreshLive(){{
+  if(_liveRefreshBusy) return;
+  _liveRefreshBusy = true;
+  fetch(location.pathname + location.search)
+    .then(function(r){{ return r.text(); }})
+    .then(function(html){{
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('live-region');
+      var live  = document.getElementById('live-region');
+      if(fresh && live) live.innerHTML = fresh.innerHTML;
+      var freshTime = doc.getElementById('last-refresh-time');
+      var liveTime  = document.getElementById('last-refresh-time');
+      if(freshTime && liveTime) liveTime.textContent = freshTime.textContent;
+      restoreDetailsState();
+    }})
+    .catch(function(){{}})
+    .finally(function(){{ _liveRefreshBusy = false; }});
+}}
+setInterval(refreshLive, 60000);
 </script>
 {_SYM_POPUP_HTML}
 {_PRICE_TT_HTML}
@@ -3627,7 +3688,6 @@ def alsat_page():
 <html lang="tr"><head>
 <meta charset="UTF-8"><title>Al-Sat Bot</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="30">
 <style>
 :root{{--bg:#0a0e14;--card:#0f1319;--border:#1e2a3a;--text:#c9d1d9;--text-dim:#7f8c8d;
   --accent:#00b4d8;--green:#2ecc71;--red:#e74c3c;--orange:#f39c12;}}
@@ -3666,11 +3726,12 @@ tr:hover td{{background:#0f151d;}}
       <a href="/alsat" class="nav-tab active">Al-Sat Bot</a>
     </div>
   </div>
-  <span class="time">{now}
-    <button class="btn-refresh" onclick="location.reload()">🔄 Yenile</button>
+  <span class="time"><span id="last-refresh-time">{now}</span>
+    <button class="btn-refresh" onclick="refreshLive()">🔄 Yenile</button>
   </span>
 </div>
 
+<div id="live-region">
 {error_banner}
 
 <div class="cards">
@@ -3691,6 +3752,7 @@ tr:hover td{{background:#0f151d;}}
 </tr></thead><tbody>
   {rows}
 </tbody></table></div>
+</div><!-- /live-region -->
 
 <script>
 function deleteTrade(sym,btn){{
@@ -3702,6 +3764,29 @@ function deleteTrade(sym,btn){{
       else{{btn.textContent='Hata';btn.style.color='#e74c3c';}}
     }}).catch(()=>{{btn.textContent='Hata';}});
 }}
+
+// Yenile: TAM sayfa reload yerine sadece #live-region'ı (kart/tablo
+// verileri) tazeler — scroll pozisyonu bozulmadan kalır. 30sn'de bir
+// otomatik da çalışır (eski <meta refresh> yerine).
+var _liveRefreshBusy = false;
+function refreshLive(){{
+  if(_liveRefreshBusy) return;
+  _liveRefreshBusy = true;
+  fetch(location.pathname + location.search)
+    .then(function(r){{ return r.text(); }})
+    .then(function(html){{
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.getElementById('live-region');
+      var live  = document.getElementById('live-region');
+      if(fresh && live) live.innerHTML = fresh.innerHTML;
+      var freshTime = doc.getElementById('last-refresh-time');
+      var liveTime  = document.getElementById('last-refresh-time');
+      if(freshTime && liveTime) liveTime.textContent = freshTime.textContent;
+    }})
+    .catch(function(){{}})
+    .finally(function(){{ _liveRefreshBusy = false; }});
+}}
+setInterval(refreshLive, 30000);
 </script>
 </body></html>"""
 
