@@ -1,0 +1,27 @@
+name: tmp scanner validation3
+on:
+  push:
+    paths:
+      - '.github/tmp_scanner_validation3.py'
+      - '.github/workflows/tmp_scanner_validation3.yml'
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy scikit-learn
+      - run: python .github/tmp_scanner_validation3.py
+      - run: |
+          cp /tmp/v3_summary.csv .github/tmp_validation3_summary.csv
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/tmp_validation3_summary.csv
+          git commit -m 'test: save paginated 90d scanner validation results' || exit 0
+          git pull --rebase
+          git push
