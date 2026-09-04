@@ -1,19 +1,47 @@
 # -*- coding: utf-8 -*-
-"""Compatibility startup hooks shared by repo services."""
+"""Dar kapsamlı Anton Telegram entegrasyon kancası.
+
+Python `site` modülü varsa bu dosyayı startup'ta otomatik import eder. Buradaki
+tek değişiklik, adı tam olarak `_manual_analyzer_poll_loop` olan thread target'ini
+GPT-aware eşdeğeriyle sarmalamaktır. Diğer servis/thread'ler değişmez.
+
+Aynı Telegram token'i için ikinci getUpdates consumer'i açılmaz. Entegrasyon
+import edilemezse fail-open davranılır ve eski Anton poller'i aynen korunur.
+"""
 from __future__ import annotations
 
-import os
-import sys
+import threading
 
-_process = os.path.basename(sys.argv[0] or "").lower()
+_ORIGINAL_THREAD_INIT = threading.Thread.__init__
 
-# Only affect the SPOT_SCANNER process. Other services and the manual ZEC GPT
-# analyzer keep their existing Telegram configuration untouched.
-if _process == "spot_opportunity_scanner.py":
-    telegram_enabled = os.getenv("TELEGRAM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-    if not telegram_enabled:
-        os.environ["TELEGRAM_TOKEN"] = ""
 
-from anton_scanner.gpt_sonnet_analyzer.runtime_hook import install_anton_gpt_hook
+def _anton_thread_init(self, *args, **kwargs):
+    target = kwargs.get("target")
+    if target is None and len(args) >= 2:
+        target = args[1]
 
-install_anton_gpt_hook()
+    if getattr(target, "__name__", "") == "_manual_analyzer_poll_loop":
+        try:
+            from anton_scanner.gpt_sonnet_analyzer.anton_integration import gpt_aware_manual_poll_loop
+
+            target_globals = target.__globals__
+
+            def wrapped():
+                return gpt_aware_manual_poll_loop(target_globals)
+
+            if "target" in kwargs:
+                kwargs["target"] = wrapped
+            elif len(args) >= 2:
+                args = list(args)
+                args[1] = wrapped
+                args = tuple(args)
+        except Exception as exc:
+            print(
+                f"[GPT SONNET ANALYZER HOOK] entegrasyon yüklenemedi, eski poller korunuyor: {exc}",
+                flush=True,
+            )
+
+    return _ORIGINAL_THREAD_INIT(self, *args, **kwargs)
+
+
+threading.Thread.__init__ = _anton_thread_init
