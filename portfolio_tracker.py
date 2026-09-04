@@ -75,7 +75,6 @@ GITHUB_FILE  = "portfolio_snapshot.json"
 BINANCE_KLINE_URL = "https://api.binance.com/api/v3/klines"
 # PUMP sinyalleri: hard SL + sabit expire (trailing yok)
 BOT_EXPIRE_H   = {"pump": 6}   # PUMP için 6h expire
-MAX_POSITIONS  = 5              # trading_engine ile aynı değer
 OPEN_EXPIRE_H  = 24              # position_monitor.py'deki OPEN_EXPIRE_H ile aynı tutulmalı (sadece görüntüleme)
 SPOT_OPPORTUNITY_EXPIRE_H = 24   # Spot Scanner sanal inceleme ufku
 SPOT_OPPORTUNITY_TRAIL_PCT = 2.5 # TP1 sonrası peak'ten sabit takip mesafesi
@@ -1059,8 +1058,7 @@ def check_pending_retests():
     Bot servisi suspend iken de çalışır — Binance emir durumu yerine fiyat kullanır."""
     now = tr_now()
     with _lock:
-        pending   = [s for s in signals_db if s.get("status") == "pending_retest"]
-        open_count = len([s for s in signals_db if s.get("status") == "open"])
+        pending = [s for s in signals_db if s.get("status") == "pending_retest"]
     if not pending:
         return
 
@@ -1104,12 +1102,7 @@ def check_pending_retests():
             entry = float(lp)
             stop  = float(sig.get("stop", 0))
             tp1   = float(sig.get("tp1", 0))
-            # Kontrol + güncelleme atomik: aynı lock içinde yap (race condition önleme)
             with _lock:
-                open_count = len([s for s in signals_db if s.get("status") == "open"])
-                if open_count >= MAX_POSITIONS:
-                    print(f"[PENDING] {symbol} fill atlandı: {open_count}/{MAX_POSITIONS} pozisyon dolu", flush=True)
-                    continue
                 sig["status"]        = "open"
                 sig["entry"]         = entry
                 sig["open_time"]     = now.isoformat()
