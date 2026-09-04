@@ -1,0 +1,27 @@
+name: tmp scanner validation2
+on:
+  push:
+    paths:
+      - '.github/tmp_scanner_validation2.py'
+      - '.github/workflows/tmp_scanner_validation2.yml'
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python .github/tmp_scanner_validation2.py
+      - run: |
+          cp /tmp/v2_summary.csv .github/tmp_validation2_summary.csv
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/tmp_validation2_summary.csv
+          git commit -m 'test: save second scanner validation results' || exit 0
+          git pull --rebase
+          git push
