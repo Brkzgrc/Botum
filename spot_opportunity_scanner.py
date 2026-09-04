@@ -389,7 +389,7 @@ def _portfolio_payload(c: Candidate) -> dict[str,Any]:
     return {
         "symbol":c.symbol.replace("USDT","/USDT"),"entry":round(p,10),"limit_price":round(p,10),"signal_price":round(p,10),
         "stop":round(lv["stop"],10),"tp1":round(lv["tp1"],10),"tp2":round(lv["tp2"],10),"tp3":None,
-        "sig_type":"spot_opportunity","sub_type":f"visual_{d['state'].lower()}","source":"spot-scanner-visual-v3","phase":"manual_review",
+        "sig_type":"spot_opportunity","sub_type":f"visual_{d['state'].lower()}","source":"spot-scanner","phase":"manual_review",
         "entry_zone":[round(lv["entry_low"],10),round(lv["entry_high"],10)],"target_pct":round(target_pct,2),"stop_pct":round(stop_pct,2),"rr":round(rr,2),
         "setup":d["state"],"positives":[d["thesis"],d["why_now"]],"risks":d["risk_flags"],"ai_pipeline":"none-deterministic-1d4h1h",
         "visual_score":d["confidence"],"btc_regime":c.snapshot["btc_regime"],
