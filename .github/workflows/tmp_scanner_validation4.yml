@@ -1,0 +1,24 @@
+name: tmp scanner validation4
+on: [push]
+jobs:
+  validate:
+    if: contains(github.event.head_commit.message, 'run risk-aware scanner validation')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy scikit-learn
+      - run: python .github/tmp_scanner_validation4.py
+      - run: |
+          cp /tmp/v4_summary.csv .github/tmp_validation4_summary.csv
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add .github/tmp_validation4_summary.csv
+          git commit -m 'test: save risk-aware validation results'
+          git pull --rebase
+          git push
