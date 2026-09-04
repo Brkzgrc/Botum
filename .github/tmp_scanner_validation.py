@@ -14,7 +14,7 @@ def fetch(sym,tf,limit=1000,end=None):
     for n in range(6):
         try:
             with urllib.request.urlopen(u,timeout=30) as r:return json.loads(r.read())
-        except Exception as e:
+        except Exception:
             if n==5: raise
             time.sleep(1.5*(n+1))
 
@@ -51,7 +51,6 @@ def classify(day,four,one):
     one_reset=one['stoch_k']<=55
     one_structure=one['dist_ema50']>=0 and one['rsi']>=38
     v10=day_strong and four_strong and one_structure and one_reset and one['ret3']>=-7
-    # Audit-derived variants. Rounded thresholds are intentional to reduce sample-fit precision.
     strict=day_trend and four_trend and four['dist_ema50']>=6 and one['dist_ema50']>=2 and one['upper_wick']>=.22 and one['stoch_k']<=75
     balanced=day_trend and four_trend and sum([four['dist_ema50']>=6,four['ema20_slope']>=1,one['dist_ema50']>=2,one['upper_wick']>=.22,one['stoch_k']<=75,day['rsi']>=62])>=5
     broad=day_trend and four_trend and sum([four['dist_ema50']>=5,four['ema20_slope']>=.8,one['dist_ema50']>=1.5,one['upper_wick']>=.18,one['stoch_k']<=78,day['rsi']>=60])>=4
@@ -84,3 +83,4 @@ for period,dd in [('ALL',out),('FIRST_HALF',out[out.ts<START+pd.Timedelta(days=1
 s=pd.DataFrame(summary);s.to_csv('/tmp/validation_summary.csv',index=False)
 print('\nSUMMARY\n',s.to_string(index=False),flush=True)
 print('\nBASELINE',len(out),'hit15',out.hit15.mean(),'clean',out.clean15.mean(),'hit3',out.hit3.mean(),flush=True)
+# trigger marker 2026-09-04
