@@ -22,6 +22,7 @@ from typing import Any
 import requests
 from flask import Flask, jsonify
 
+import spot_ai_engine as _ai
 from spot_ai_engine import (
     GEMINI_API_KEY,
     GEMINI_MODEL,
@@ -33,6 +34,18 @@ from spot_ai_engine import (
     now_tr,
     pct,
     sf,
+)
+
+# Cost-control defaults for the production scanner.
+# Sonnet is a final referee, not a long-form analyst here: at most one fresh
+# finalist per cycle and a compact JSON answer. Explicit env values are still
+# allowed, but output is hard-capped to avoid another 3000-token runaway.
+_ai.SONNET_MAX_TOKENS = max(300, min(800, int(os.getenv("AI_SONNET_MAX_TOKENS", "450"))))
+_ai.SONNET_MAX_FINALISTS = max(1, min(2, int(os.getenv("AI_SONNET_MAX_FINALISTS", "1"))))
+_ai.SONNET_MIN_CONFIDENCE = float(os.getenv("AI_SONNET_MIN_CONFIDENCE", "60"))
+_ai.SONNET_SYSTEM += (
+    " Keep the JSON extremely compact: thesis and why_now max 12 words each; "
+    "risk_flags max 2 short items. No prose, markdown, explanation, or text outside JSON."
 )
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
@@ -295,6 +308,7 @@ if __name__ == "__main__":
     print("SPOT_SCANNER — AI OPPORTUNITY DISCOVERY", flush=True)
     print(f"Pipeline: Python -> {GEMINI_MODEL} -> {SONNET_MODEL} -> Portfolio Tracker", flush=True)
     print(f"DRY_RUN={DRY_RUN} | scan={SCAN_INTERVAL_SECONDS}s", flush=True)
+    print(f"Sonnet cap={_ai.SONNET_MAX_TOKENS} tokens | finalists={_ai.SONNET_MAX_FINALISTS} | signal_conf>={_ai.SONNET_MIN_CONFIDENCE:.0f}", flush=True)
     print(f"Gemini key={'OK' if GEMINI_API_KEY else 'MISSING'} | Anthropic key={'OK' if ANTHROPIC_API_KEY else 'MISSING'}", flush=True)
     print("=" * 72, flush=True)
     threading.Thread(target=scan_loop, daemon=True, name="ai-spot-scanner").start()
