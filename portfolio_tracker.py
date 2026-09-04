@@ -34,6 +34,10 @@ from claude_analyzer import (process_and_send as _analyzer_process,
                              ANTHROPIC_API_KEY as _manual_anthropic_key)
 from intraday_scanner import start_intraday_scanner
 from liquidity_radar import get_radar, radar_ui_lines
+from anton_scanner.gpt_sonnet_analyzer.anton_integration import (
+    parse_gpt_symbol as _parse_gpt_analyzer_symbol,
+    _run_gpt_analysis as _run_gpt_analyzer,
+)
 
 TR_TZ = timezone(timedelta(hours=3))
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
@@ -619,7 +623,7 @@ def _manual_analyzer_poll_loop():
     key_ready = bool(_manual_gemini_key) if _manual_analyzer_mode == "v2" else bool(_manual_anthropic_key)
     print(
         f"[MANUEL ANALYZER CONFIG] mod={_manual_analyzer_mode} | sağlayıcı={provider} | "
-        f"API anahtarı={'hazır' if key_ready else 'eksik'}",
+        f"API anahtarı={'hazır' if key_ready else 'eksik'} | GPT route=GPT Sonnet Analyzer",
         flush=True,
     )
     if not ANALYZER_TELEGRAM_TOKEN or not ANALYZER_CHAT_ID:
@@ -636,7 +640,10 @@ def _manual_analyzer_poll_loop():
     except Exception as e:
         print(f"[MANUEL ANALYZER] Başlangıç offset hatası: {e}", flush=True)
 
-    print(f"[MANUEL ANALYZER] Thread {ANALYZER_THREAD_ID} dinleniyor; otomatik analiz kapalı.", flush=True)
+    print(
+        f"[MANUEL ANALYZER] Thread {ANALYZER_THREAD_ID} dinleniyor | normal=mevcut Anton | `COIN GPT`=GPT Sonnet Analyzer.",
+        flush=True,
+    )
     while True:
         try:
             params = {"timeout": 25, "limit": 50, "allowed_updates": json.dumps(["message"])}
@@ -661,7 +668,18 @@ def _manual_analyzer_poll_loop():
                 if ANALYZER_ALLOWED_USER_ID and sender_id != str(ANALYZER_ALLOWED_USER_ID):
                     print(f"[MANUEL ANALYZER] Yetkisiz kullanıcı yok sayıldı: {sender_id}", flush=True)
                     continue
-                pair = _parse_manual_analyzer_symbol(msg.get("text", ""))
+                text = msg.get("text", "")
+                gpt_pair = _parse_gpt_analyzer_symbol(text)
+                if gpt_pair:
+                    threading.Thread(
+                        target=_run_gpt_analyzer,
+                        args=(gpt_pair, ANALYZER_TELEGRAM_TOKEN, chat_id, thread_id),
+                        daemon=True,
+                        name=f"gpt-sonnet-{gpt_pair}",
+                    ).start()
+                    continue
+
+                pair = _parse_manual_analyzer_symbol(text)
                 if not pair:
                     continue
                 threading.Thread(
