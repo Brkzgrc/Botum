@@ -16,14 +16,28 @@ jobs:
           python-version: '3.11'
       - run: pip install pandas numpy scikit-learn
       - run: python .github/tmp_scanner_validation9.py
-      - run: |
+      - name: Persist validation results
+        run: |
+          set -euxo pipefail
           cp /tmp/v9_summary.csv .github/tmp_validation9_summary.csv
           cp /tmp/v9_regimes.csv .github/tmp_validation9_regimes.csv
           cp /tmp/v9_cal_grid.csv .github/tmp_validation9_cal_grid.csv
           cp /tmp/v9_trades.csv .github/tmp_validation9_trades.csv
+          ls -lh .github/tmp_validation9_*.csv
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add .github/tmp_validation9_*.csv
-          git commit -m 'test: save regime aware validation results' || exit 0
+          git add -f .github/tmp_validation9_summary.csv .github/tmp_validation9_regimes.csv .github/tmp_validation9_cal_grid.csv .github/tmp_validation9_trades.csv
+          git status --short
+          git commit -m 'test: save regime aware validation results'
           git pull --rebase
           git push
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-validation9-results
+          path: |
+            /tmp/v9_summary.csv
+            /tmp/v9_regimes.csv
+            /tmp/v9_cal_grid.csv
+            /tmp/v9_trades.csv
