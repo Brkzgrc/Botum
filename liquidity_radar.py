@@ -7,10 +7,6 @@ Long/Short oranına göre likidite tasfiye riskini değerlendirir.
 5 dakikalık cache, hata durumunda sessizce None döner.
 """
 
-# Bu yorum işlevsel kodu değiştirmez. Portfolio Tracker'ın mevcut Render
-# Included Paths filtresinden kontrollü redeploy tetiklemek için eklenmiştir;
-# GPT Sonnet Analyzer runtime entegrasyonu repoda zaten mevcut durumdadır.
-
 import time
 import requests
 
