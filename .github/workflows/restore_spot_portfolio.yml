@@ -1,0 +1,28 @@
+name: restore spot portfolio
+on:
+  push:
+    branches: [main]
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore direct output
+        run: |
+          sed -i '/^FINAL_OUTPUT_ENABLED = /d' spot_opportunity_scanner.py
+          sed -i 's/if not FINAL_OUTPUT_ENABLED or not PORTFOLIO_URL:/if not PORTFOLIO_URL:/' spot_opportunity_scanner.py
+          sed -i 's/if not FINAL_OUTPUT_ENABLED or not TELEGRAM_ENABLED/if not TELEGRAM_ENABLED/' spot_opportunity_scanner.py
+          sed -i 's/"outputs_enabled":FINAL_OUTPUT_ENABLED/"outputs_enabled":bool(PORTFOLIO_URL)/' spot_opportunity_scanner.py
+          sed -i 's/            if FINAL_OUTPUT_ENABLED:/            if True:/' spot_opportunity_scanner.py
+          sed -i 's/FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED}/PORTFOLIO_OUTPUT={bool(PORTFOLIO_URL)}/' spot_opportunity_scanner.py
+          python -m py_compile spot_opportunity_scanner.py
+      - name: Commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add spot_opportunity_scanner.py
+          git commit -m 'fix: remove SPOT_SCANNER final output gate'
+          git pull --rebase
+          git push
