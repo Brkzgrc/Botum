@@ -32,7 +32,6 @@ MAX_SIGNALS_PER_DAY = max(1, min(6, int(os.getenv("MAX_SIGNALS_PER_DAY", "3"))))
 FINAL_MIN_QUALITY = float(os.getenv("FINAL_MIN_QUALITY", "72"))
 STATE_FILE = os.getenv("SCANNER_STATE_FILE", "/tmp/spot_scanner_state_v11.json")
 SCAN_ON_START = os.getenv("SCAN_ON_START", "true").strip().lower() == "true"
-FINAL_OUTPUT_ENABLED = os.getenv("FINAL_OUTPUT_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 PORTFOLIO_URL = os.getenv("PORTFOLIO_URL", "").rstrip("/")
 PORTFOLIO_TOKEN = os.getenv("PORTFOLIO_TOKEN", "")
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -244,7 +243,7 @@ def _payload(c):
     return {"symbol":c.symbol.replace("USDT","/USDT"),"entry":round(p,10),"limit_price":round(p,10),"signal_price":round(p,10),"stop":round(lv["stop"],10),"tp1":round(lv["tp1"],10),"tp2":round(lv["tp2"],10),"tp3":None,"sig_type":"spot_opportunity","sub_type":"","source":"spot-scanner","phase":"manual_review","target_pct":round(target_pct,2),"stop_pct":round(stop_pct,2),"rr":round(rr,2),"setup":c.decision["state"],"setup_kind":c.decision["setup_kind"],"score":c.decision["confidence"],"btc_regime":c.snapshot["btc_regime"]}
 
 def _send_portfolio(c):
-    if not FINAL_OUTPUT_ENABLED or not PORTFOLIO_URL: return ""
+    if not PORTFOLIO_URL: return ""
     h={"Content-Type":"application/json"}
     if PORTFOLIO_TOKEN: h["Authorization"]=f"Bearer {PORTFOLIO_TOKEN}"
     try:
@@ -252,13 +251,13 @@ def _send_portfolio(c):
     except Exception: return ""
 
 def _send_telegram(c):
-    if not FINAL_OUTPUT_ENABLED or not TELEGRAM_ENABLED or not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return False
+    if not TELEGRAM_ENABLED or not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return False
     lv=levels(c); text=f"#{c.base} SPOT ADAYI\nFiyat: {lv['price']}\nStop: {lv['stop']}\nTP1: {lv['tp1']}\nTP2: {lv['tp2']}\nKalite: %{c.decision['confidence']:.0f}"; payload={"chat_id":TELEGRAM_CHAT_ID,"text":text}
     if TELEGRAM_THREAD_ID: payload["message_thread_id"]=TELEGRAM_THREAD_ID
     try: return HTTP.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",json=payload,timeout=15).ok
     except Exception: return False
 
-runtime={"status":"BOOT","version":"v11","outputs_enabled":FINAL_OUTPUT_ENABLED,"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
+runtime={"status":"BOOT","version":"v11","outputs_enabled":bool(PORTFOLIO_URL),"last_scan":None,"symbols":0,"evaluated":0,"watching":0,"signals":0,"btc_regime":None,"last_error":None}
 def scan_cycle():
     runtime.update({"status":"SCANNING","signals":0,"last_error":None}); state=_load_state(); _clean_watch(state)
     try:
@@ -270,7 +269,7 @@ def scan_cycle():
         room=_daily_room(state); selected=finals[:room]; emitted=0
         for c in selected:
             lv=levels(c); print(f"[FINAL CANDIDATE] {c.symbol} {c.decision['setup_kind']} q={c.decision['confidence']} entry={lv['price']} stop={lv['stop']} tp1={lv['tp1']} tp2={lv['tp2']}",flush=True)
-            if FINAL_OUTPUT_ENABLED:
+            if True:
                 portfolio_ok=bool(_send_portfolio(c)); telegram_ok=bool(_send_telegram(c)); ok=portfolio_ok or telegram_ok
                 if ok: state["signal_count"]=int(state.get("signal_count",0))+1; watch.pop(c.symbol,None); emitted+=1
         _save_state(state); runtime.update({"status":"RUNNING","last_scan":now_tr().isoformat(),"symbols":stats["universe"],"evaluated":stats["evaluated"],"watching":len(watch),"signals":emitted,"btc_regime":stats["btc_regime"]}); print(f"[SCAN DONE] evren={stats['universe']} evaluated={stats['evaluated']} watch={len(watch)} final={len(selected)} sent={emitted} BTC={stats['btc_regime']}",flush=True)
@@ -285,4 +284,4 @@ def index(): return jsonify({"service":"SPOT_SCANNER",**runtime})
 @app.route("/health")
 def health(): return jsonify(runtime),200
 if __name__=="__main__":
-    print("SPOT_SCANNER v11 — VALIDATED HTF + 1H RESET/REJECTION",flush=True); print(f"FINAL_OUTPUT_ENABLED={FINAL_OUTPUT_ENABLED} | top_n={PYTHON_TOP_N} | core={PREFILTER_CORE_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
+    print("SPOT_SCANNER v11 — VALIDATED HTF + 1H RESET/REJECTION",flush=True); print(f"PORTFOLIO_OUTPUT={bool(PORTFOLIO_URL)} | top_n={PYTHON_TOP_N} | core={PREFILTER_CORE_N} | max/day={MAX_SIGNALS_PER_DAY}",flush=True); threading.Thread(target=scan_loop,daemon=True,name="spot-scanner").start(); app.run(host="0.0.0.0",port=int(os.getenv("PORT","10000")),threaded=True)
