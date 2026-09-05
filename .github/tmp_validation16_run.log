@@ -79,11 +79,47 @@ FETCH 40 40 ENJUSDT
 15M 39 40 ACHUSDT
 15M 40 40 ENJUSDT
 V16 PATH 1 40 BTCUSDT
-Traceback (most recent call last):
-  File "/home/runner/work/Botum/Botum/.github/tmp_scanner_validation16.py", line 22, in <module>
-    for idx,r in z[(z.symbol==s)&(z.p10>=TH)].iterrows():
-                                  ^^^^^
-  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/generic.py", line 6194, in __getattr__
-    return object.__getattribute__(self, name)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'DataFrame' object has no attribute 'p10'. Did you mean: 'f10'?
+V16 PATH 2 40 ETHUSDT
+V16 PATH 3 40 BNBUSDT
+V16 PATH 4 40 SOLUSDT
+V16 PATH 5 40 XRPUSDT
+V16 PATH 6 40 DOGEUSDT
+V16 PATH 7 40 ADAUSDT
+V16 PATH 8 40 AVAXUSDT
+V16 PATH 9 40 LINKUSDT
+V16 PATH 10 40 TRXUSDT
+V16 PATH 11 40 DOTUSDT
+V16 PATH 12 40 LTCUSDT
+V16 PATH 13 40 BCHUSDT
+V16 PATH 14 40 HBARUSDT
+V16 PATH 15 40 XLMUSDT
+V16 PATH 16 40 ETCUSDT
+V16 PATH 17 40 NEARUSDT
+V16 PATH 18 40 APTUSDT
+V16 PATH 19 40 ARBUSDT
+V16 PATH 20 40 OPUSDT
+V16 PATH 21 40 INJUSDT
+V16 PATH 22 40 ATOMUSDT
+V16 PATH 23 40 FILUSDT
+V16 PATH 24 40 RENDERUSDT
+V16 PATH 25 40 SEIUSDT
+V16 PATH 26 40 TIAUSDT
+V16 PATH 27 40 WLDUSDT
+V16 PATH 28 40 UNIUSDT
+V16 PATH 29 40 AAVEUSDT
+V16 PATH 30 40 PENDLEUSDT
+V16 PATH 31 40 RAYUSDT
+V16 PATH 32 40 ZECUSDT
+V16 PATH 33 40 DASHUSDT
+V16 PATH 34 40 ZENUSDT
+V16 PATH 35 40 ARKUSDT
+V16 PATH 36 40 EDUUSDT
+V16 PATH 37 40 ZROUSDT
+V16 PATH 38 40 FORMUSDT
+V16 PATH 39 40 ACHUSDT
+V16 PATH 40 40 ENJUSDT
+TH 0.4 BEST (2.0, -1.0, 1.0, 2.0)
+ trades  wins  losses          end  return_pct      maxdd  avg_hold_h period  threshold  check_h  fail_close  fail_peak  hard_stop
+     93    63      30 11387.789380  355.511575  -7.104124    0.123729  TRAIN        0.4      2.0        -1.0        1.0        2.0
+     25    12      13  2684.775302    7.391012  -6.926565    0.121288    CAL        0.4      2.0        -1.0        1.0        2.0
+     49    26      23  3156.881897   26.275276 -14.055984    0.115528   TEST        0.4      2.0        -1.0        1.0        2.0
