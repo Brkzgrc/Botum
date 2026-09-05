@@ -12,6 +12,9 @@ for th in np.arange(.40,.91,.02):
  prec=float(dec.b42.mean());cov=len(q)/max(1,len(cal10));obj=prec+.12*cov+.02*float(q.mfe15.mean())+.03*float(q.mae15.mean())
  if bt is None or obj>bt[0]:bt=(obj,float(th))
 TH=bt[1] if bt else .42
+# p10 is assigned to the chronological split copies, not to their source z frame.
+# Recombine those copies so the exact same V10-qualified rows keep p10 available.
+v10_rows=pd.concat([tr10,cal10,te10],axis=0)
 
 # Exact 15m paths for V10-qualified candidates.
 paths={}
@@ -19,7 +22,7 @@ for i,s in enumerate(SYMS,1):
  print('V16 PATH',i,len(SYMS),s,flush=True)
  try:h15=fetch15(s,START-pd.Timedelta(days=4),NOW+pd.Timedelta(hours=14))
  except Exception as e:print('PATH SKIP',s,e,flush=True);continue
- for idx,r in z[(z.symbol==s)&(z.p10>=TH)].iterrows():
+ for idx,r in v10_rows[(v10_rows.symbol==s)&(v10_rows.p10>=TH)].iterrows():
   fut=h15[(h15.open_time>=r.entry_ts)&(h15.open_time<r.entry_ts+pd.Timedelta(hours=12))].copy()
   if len(fut)<40:continue
   entry=float(r.entry15); seq=[]
