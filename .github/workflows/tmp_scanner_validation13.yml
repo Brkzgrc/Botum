@@ -1,0 +1,33 @@
+name: tmp scanner validation13
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/tmp_scanner_validation13.py'
+      - '.github/workflows/tmp_scanner_validation13.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy scikit-learn
+      - run: python .github/tmp_scanner_validation13.py
+      - name: Save results
+        run: |
+          cp /tmp/v13_summary.csv .github/tmp_validation13_summary.csv
+          cp /tmp/v13_cal_grid.csv .github/tmp_validation13_cal_grid.csv
+          cp /tmp/v13_test_robust.csv .github/tmp_validation13_test_robust.csv
+          cp /tmp/v13_trades.csv .github/tmp_validation13_trades.csv
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -f .github/tmp_validation13_*.csv
+          git commit -m 'test: save V13 post-entry management results'
+          git pull --rebase
+          git push
