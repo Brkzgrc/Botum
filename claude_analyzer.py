@@ -2646,7 +2646,7 @@ def _hybrid_decision_plan(snapshot: dict, zones: dict, api_key: str, model_name:
     tokens, facts = _hybrid_prose_context(snapshot, zones)
     prompt = """Türkçe, kısa ama gerekçeli bir gün içi SPOT coin analizi yaz.
 Bu bir etiket seçme görevi değildir: kullanıcıya gösterilecek özgün yorumları sen yazacaksın.
-Başlıkları kod ekleyecek; hazır örnek cümleleri taklit etme. Toplam 220–330 kelimeyi aşma.
+Başlıkları kod ekleyecek; hazır örnek cümleleri taklit etme. Türkçe imlaya dikkat et, kelimeleri birleştirme. Toplam 220–330 kelimeyi aşma.
 
 Zaman dilimlerini birlikte oku: 1D bağlam, 4H hareketin rolü, 1H esas zamanlama, 15M yardımcı teyit.
 StochRSI/ortalaması, KDJ, MACD, OBV, fiyat ve hacmi birlikte değerlendir.
