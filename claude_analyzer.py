@@ -2931,7 +2931,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     elif action == "no_buy":
         opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
     else:
-        opening = "Ben olsam mevcut fiyattan almaz, TETİK_BEKLE konumunda kalırdım."
+        opening = "Ben olsam mevcut fiyattan almaz, uygun giriş koşulu için tetikte beklerdim."
 
     if entry == "support_reaction" and zones.get("near_support"):
         trigger = "Yakın destekte satışın durması ve saatlik momentumun yeniden yukarı dönmesi giriş koşulum olurdu."
