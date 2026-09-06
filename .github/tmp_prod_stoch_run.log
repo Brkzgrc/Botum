@@ -1,0 +1,26 @@
+[STOCH] 1/18
+[STOCH] 2/18
+[STOCH] 3/18
+[STOCH] 4/18
+[STOCH] 5/18
+[STOCH] 6/18
+[STOCH] 7/18
+[STOCH] 8/18
+[STOCH] 9/18
+[STOCH] 10/18
+[STOCH] 11/18
+[STOCH] 12/18
+[STOCH] 13/18
+[STOCH] 14/18
+[STOCH] 15/18
+[STOCH] 16/18
+[STOCH] 17/18
+[STOCH] 18/18
+                     variant  trades  end_capital  return_pct  wins  losses
+                     CURRENT       6  2677.072058    7.082882     3       3
+        RETRIGGER_DEEP_RESET       6  2472.980133   -1.080795     4       2
+               NO_LATE_STOCH       5  2934.288317   17.371533     3       2
+DEEP_RETRIGGER_PLUS_PRESSURE       5  2330.328967   -6.786841     2       3
+outcome  count     avg_k  avg_min3  avg_slope   avg_net
+   LOSS     10 61.121228 50.084677   6.232816 -3.922924
+    WIN     11 64.428045 52.273660   6.055756  4.577011
