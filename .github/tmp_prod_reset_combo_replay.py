@@ -38,6 +38,24 @@ class Added:
     snapshot:dict
     decision:dict
 
+class FastSnapCache(base.SnapCache):
+    """Reuse full-frame indicators; the original cache recomputed them for every 15m step."""
+    def __init__(self,data):
+        super().__init__(data); self.ind={}
+    def zslice(self,symbol,interval,ts,limit=240):
+        key=(symbol,interval)
+        if key not in self.ind: self.ind[key]=prod.indicators(self.data[interval][symbol])
+        z=self.ind[key]; i=int(z.close_time.searchsorted(ts,side="right"))
+        if i<80: raise ValueError("no closed history")
+        return z.iloc[max(0,i-limit):i].reset_index(drop=True)
+    def get(self,symbol,interval,ts,label):
+        x=self.zslice(symbol,interval,ts,240); a=x.iloc[-1]; b=x.iloc[-2]
+        p=prod.sf(a.close); highs,lows=prod._swings(x); atr=prod.sf(a.atr)
+        c=x.close.tail(6).to_numpy(); l=x.low.tail(6).to_numpy(); rg=max(0.,prod.sf(a.high)-prod.sf(a.low))
+        upper=(prod.sf(a.high)-max(prod.sf(a.open),prod.sf(a.close)))/rg if rg else 0.
+        lower=(min(prod.sf(a.open),prod.sf(a.close))-prod.sf(a.low))/rg if rg else 0.
+        return {"tf":label,"price":p,"bar_id":int(pd.Timestamp(a.open_time).timestamp()),"ret3":prod.pct(p,prod.sf(x.close.iloc[-4])),"ret6":prod.pct(p,prod.sf(x.close.iloc[-7])),"ret24":prod.pct(p,prod.sf(x.close.iloc[-25])),"ema20":prod.sf(a.ema20),"ema50":prod.sf(a.ema50),"ema200":prod.sf(a.ema200),"ema20_slope":prod.pct(prod.sf(a.ema20),prod.sf(x.ema20.iloc[-4])),"ema50_slope":prod.pct(prod.sf(a.ema50),prod.sf(x.ema50.iloc[-4])),"dist_ema20":prod.pct(p,prod.sf(a.ema20)),"dist_ema50":prod.pct(p,prod.sf(a.ema50)),"rsi":prod.sf(a.rsi),"stoch_k":prod.sf(a.stoch_k),"stoch_d":prod.sf(a.stoch_d),"stoch_k_prev":prod.sf(b.stoch_k),"stoch_min3":prod.sf(x.stoch_k.tail(3).min()),"macd_hist":prod.sf(a.macd_hist),"macd_hist_prev":prod.sf(b.macd_hist),"vol_ratio":prod.sf(a.vol_ratio,1),"obv_up":prod.sf(a.obv)>=prod.sf(x.obv.iloc[-6]),"obv_fast_up":prod.sf(a.obv)>=prod.sf(x.obv.iloc[-3]),"taker_buy_ratio":prod.sf(x.taker_buy_ratio.tail(3).mean(),.5),"higher_closes6":int(sum(c[i]>c[i-1] for i in range(1,len(c)))),"higher_lows6":int(sum(l[i]>=l[i-1] for i in range(1,len(l)))),"near_high20_pct":max(0.,-prod.pct(p,prod.sf(x.high.tail(20).max()))),"prev_high6":prod.sf(x.high.iloc[-7:-1].max()),"atr_pct":100*atr/p if p else 0,"upper_wick":upper,"lower_wick":lower,"supports":sorted([v for v in lows if v<p],reverse=True)[:4],"resistances":sorted([v for v in highs if v>p])[:4]}
+
 def new_templates_at(ts, selected, snaps):
     out=[]; regime=base.btc_regime(ts,snaps)
     if regime=="RED": return out
@@ -79,7 +97,7 @@ def new_templates_at(ts, selected, snaps):
     return out
 
 def replay_added(symbols,hourly,data):
-    snaps=base.SnapCache(data); cache={}; selected_by_hour={}; active=defaultdict(set)
+    snaps=FastSnapCache(data); cache={}; selected_by_hour={}; active=defaultdict(set)
     rows=[]; scans=pd.date_range(base.START.ceil("15min"),base.END,freq="15min",tz="UTC")
     for n,ts in enumerate(scans,1):
         hour=ts.floor("1h")
@@ -152,7 +170,7 @@ def main():
           "1d":base.parallel_fetch(union,"1d",base.START-pd.Timedelta(days=270),base.END)}
     usable=sorted(set(union)&set(data["15m"])&set(data["4h"])&set(data["1d"])&set(hourly))
     print(f"[STAGE] usable={len(usable)}",flush=True)
-    v11=base.replay_entries(usable,hourly,data)
+    base.SnapCache=FastSnapCache\n    v11=base.replay_entries(usable,hourly,data)
     added=replay_added(usable,hourly,data)
     mid=added[added.kind=="MID_40_70"].copy() if len(added) else added
     reset=added[added.kind=="RESET_TURN"].copy() if len(added) else added
