@@ -2783,6 +2783,23 @@ def _hybrid_validated_plan(plan: dict, zones: dict, price: float) -> dict:
         action = "wait_trigger"
     if action == "buy_candidate" and _hybrid_resistance_close(r1, price) and entry != "resistance_break":
         action = "wait_trigger"
+
+    # Olumlu momentum tek başına yeterli değildir. İlk gerçek dirence kalan alan,
+    # yakın destek bölgesinin altına kadar olan yapısal riske göre zayıfsa alım
+    # adayı yerine bekleme kararı verilir.
+    near = zones.get("near_support")
+    if (
+        action == "buy_candidate"
+        and r1 and near
+        and float(r1["low"]) > price
+        and float(near["low"]) < price
+    ):
+        reward_pct = _hybrid_pct_gap(price, r1["low"], "resistance")
+        risk_pct = _hybrid_pct_gap(price, near["low"], "support")
+        room_risk_ratio = reward_pct / risk_pct if risk_pct > 0 else None
+        if room_risk_ratio is not None and room_risk_ratio < 1.5:
+            action = "wait_trigger"
+
     plan["action"] = action
     plan["reasons"] = reasons
     return plan
@@ -2916,6 +2933,11 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
             sentences.append(
                 "Saatlik momentumun yeniden güçlenmesiyle alım koşulları önceki görünüme göre iyileşmiş durumda."
             )
+        elif action == "wait_trigger" and h1_timing in {"retrigger", "sideways_reset", "pullback_reset"}:
+            sentences.append(
+                "Momentum görünümü olumlu olsa da mevcut hareket alanı yapısal riske göre yeterince güçlü değil; "
+                "bu nedenle doğrudan alım yerine ek teyit beklemek daha dengeli."
+            )
     elif r1 and r1["low"] > price:
         upside = _hybrid_pct_gap(price, r1["low"], "resistance")
         if action == "buy_candidate":
@@ -2963,7 +2985,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     action = plan["action"]
     entry = _hybrid_effective_entry(plan, zones, price)
     if action == "buy_candidate":
-        opening = "Ben olsam bunu kısa vadeli bir alım adayı olarak değerlendirirdim."
+        opening = "Ben olsam mevcut koşullarda kısa vadeli alım yapardım."
     elif action == "no_buy":
         opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
     else:
@@ -2979,11 +3001,11 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         trigger = "Yeni alım için saatlik fiyat hareketi ile alıcı katılımının birlikte güçlenmesini beklerdim."
 
     if entry == "resistance_break" and zones.get("resistance_1"):
-        invalidation = "Kırılım sonrasında fiyat ilk direncin altında yeniden saatlik kapanış yaparsa bu giriş düşüncesinden vazgeçerdim."
+        invalidation = "Alımdan sonra fiyat ilk direncin altında yeniden saatlik kapanış yaparsa pozisyonda kalmazdım."
     elif zones.get("near_support"):
-        invalidation = "Yakın destek kapanmış saatlik mumla kaybedilirse bu kısa vadeli alım düşüncesinden vazgeçerdim."
+        invalidation = "Alımdan sonra yakın destek kapanmış saatlik mumla kaybedilirse pozisyonda kalmazdım."
     else:
-        invalidation = "Saatlik ve 4 saatlik yapı birlikte aşağı dönerse alım düşüncesinden vazgeçerdim."
+        invalidation = "Alımdan sonra saatlik ve 4 saatlik yapı birlikte aşağı dönerse pozisyonda kalmazdım."
 
     support_gap = _hybrid_pct_gap(price, zones["near_support"]["high"], "support") if zones.get("near_support") else None
     resistance_gap = _hybrid_pct_gap(price, zones["resistance_1"]["low"], "resistance") if zones.get("resistance_1") else None
@@ -3013,7 +3035,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         f"📌 İşlem Fikirleri\n{_hybrid_trade_ideas(plan, zones, price, base)}\n\n"
         f"🌌 Benim Beklentim — Ne Yapardım?\n"
         + (
-            f"{opening} Yukarıdaki giriş senaryolarından biri oluşmadan işlem açmazdım. {timing_note}"
+            f"{opening} Yukarıdaki giriş koşulu netleşmeden işlem açmazdım. {timing_note}"
             if action == "wait_trigger" else
             f"{opening} {_hybrid_reason_sentence(plan)} {timing_note} {invalidation}"
             if action == "buy_candidate" else
