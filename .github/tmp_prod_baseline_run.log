@@ -1,13 +1,144 @@
+[START] 2026-08-30 02:30:00+00:00 -> 2026-09-06 02:30:00+00:00; universe=467
+[DATA] 1h 50/467 usable=50
+[DATA] 1h 100/467 usable=100
+[DATA] 1h 150/467 usable=150
+[DATA] 1h 200/467 usable=200
+[DATA] 1h 250/467 usable=250
+[DATA] skip MARSCOINUSDT 1h: insufficient candles MARSCOINUSDT 1h: 38
+[DATA] 1h 300/467 usable=299
+[DATA] 1h 350/467 usable=349
+[DATA] 1h 400/467 usable=399
+[DATA] 1h 450/467 usable=449
+[DATA] 1h 467/467 usable=466
+[STAGE] build historical prefilter union
+[PREFILTER] 48/168 union=435
+[PREFILTER] 96/168 union=454
+[PREFILTER] 144/168 union=462
+[PREFILTER] 168/168 union=464
+[DATA] 15m 50/464 usable=50
+[DATA] 15m 100/464 usable=100
+[DATA] 15m 150/464 usable=150
+[DATA] 15m 200/464 usable=200
+[DATA] 15m 250/464 usable=250
+[DATA] 15m 300/464 usable=300
+[DATA] 15m 350/464 usable=350
+[DATA] 15m 400/464 usable=400
+[DATA] 15m 450/464 usable=450
+[DATA] 15m 464/464 usable=464
+[DATA] 4h 50/464 usable=50
+[DATA] 4h 100/464 usable=100
+[DATA] skip CRWDBUSDT 4h: insufficient candles CRWDBUSDT 4h: 22
+[DATA] skip DJTBUSDT 4h: insufficient candles DJTBUSDT 4h: 64
+[DATA] 4h 150/464 usable=148
+[DATA] 4h 200/464 usable=198
+[DATA] 4h 250/464 usable=248
+[DATA] 4h 300/464 usable=298
+[DATA] 4h 350/464 usable=348
+[DATA] skip STXBUSDT 4h: insufficient candles STXBUSDT 4h: 22
+[DATA] 4h 400/464 usable=397
+[DATA] 4h 450/464 usable=447
+[DATA] 4h 464/464 usable=461
+[DATA] skip AAOIBUSDT 1d: insufficient candles AAOIBUSDT 1d: 54
+[DATA] skip AAPLBUSDT 1d: insufficient candles AAPLBUSDT 1d: 40
+[DATA] skip AEROUSDT 1d: insufficient candles AEROUSDT 1d: 52
+[DATA] skip ALABBUSDT 1d: insufficient candles ALABBUSDT 1d: 33
+[DATA] skip AMDBUSDT 1d: insufficient candles AMDBUSDT 1d: 76
+[DATA] skip AMZNBUSDT 1d: insufficient candles AMZNBUSDT 1d: 40
+[DATA] skip AMATBUSDT 1d: insufficient candles AMATBUSDT 1d: 40
+[DATA] skip ARMBUSDT 1d: insufficient candles ARMBUSDT 1d: 54
+[DATA] skip ASTSBUSDT 1d: insufficient candles ASTSBUSDT 1d: 33
+[DATA] skip ASMLBUSDT 1d: insufficient candles ASMLBUSDT 1d: 33
+[DATA] 1d 50/464 usable=40
+[DATA] skip AVGOBUSDT 1d: insufficient candles AVGOBUSDT 1d: 54
+[DATA] skip AXTIBUSDT 1d: insufficient candles AXTIBUSDT 1d: 47
+[DATA] skip BABABUSDT 1d: insufficient candles BABABUSDT 1d: 54
+[DATA] skip BEBUSDT 1d: insufficient candles BEBUSDT 1d: 40
+[DATA] skip BMNRBUSDT 1d: insufficient candles BMNRBUSDT 1d: 33
+[DATA] skip CBRSBUSDT 1d: insufficient candles CBRSBUSDT 1d: 62
+[DATA] 1d 100/464 usable=84
+[DATA] skip COHRBUSDT 1d: insufficient candles COHRBUSDT 1d: 33
+[DATA] skip COINBUSDT 1d: insufficient candles COINBUSDT 1d: 62
+[DATA] skip CRDOBUSDT 1d: insufficient candles CRDOBUSDT 1d: 33
+[DATA] skip CRWDBUSDT 1d: insufficient candles CRWDBUSDT 1d: 5
+[DATA] skip CRWVBUSDT 1d: insufficient candles CRWVBUSDT 1d: 47
+[DATA] skip DELLBUSDT 1d: insufficient candles DELLBUSDT 1d: 40
+[DATA] skip DJTBUSDT 1d: insufficient candles DJTBUSDT 1d: 12
+[DATA] skip DRAMBUSDT 1d: insufficient candles DRAMBUSDT 1d: 62
+[DATA] 1d 150/464 usable=126
+[DATA] skip EWYBUSDT 1d: insufficient candles EWYBUSDT 1d: 76
+[DATA] skip FLNCBUSDT 1d: insufficient candles FLNCBUSDT 1d: 40
+[DATA] skip GLWBUSDT 1d: insufficient candles GLWBUSDT 1d: 62
+[DATA] skip GMEBUSDT 1d: insufficient candles GMEBUSDT 1d: 26
+[DATA] skip GOOGLBUSDT 1d: insufficient candles GOOGLBUSDT 1d: 62
+[DATA] skip GRAMUSDT 1d: insufficient candles GRAMUSDT 1d: 67
+[DATA] skip GSBUSDT 1d: insufficient candles GSBUSDT 1d: 40
+[DATA] skip HOODBUSDT 1d: insufficient candles HOODBUSDT 1d: 54
+[DATA] 1d 200/464 usable=168
+[DATA] skip IBMBUSDT 1d: insufficient candles IBMBUSDT 1d: 54
+[DATA] skip INTCBUSDT 1d: insufficient candles INTCBUSDT 1d: 76
+[DATA] skip INTWBUSDT 1d: insufficient candles INTWBUSDT 1d: 47
+[DATA] skip IRENBUSDT 1d: insufficient candles IRENBUSDT 1d: 33
+[DATA] skip KORUBUSDT 1d: insufficient candles KORUBUSDT 1d: 47
+[DATA] skip LITEBUSDT 1d: insufficient candles LITEBUSDT 1d: 69
+[DATA] 1d 250/464 usable=212
+[DATA] skip METABUSDT 1d: insufficient candles METABUSDT 1d: 69
+[DATA] skip MRVLBUSDT 1d: insufficient candles MRVLBUSDT 1d: 54
+[DATA] skip MSFTBUSDT 1d: insufficient candles MSFTBUSDT 1d: 69
+[DATA] skip MSTRBUSDT 1d: insufficient candles MSTRBUSDT 1d: 76
+[DATA] skip MUUBUSDT 1d: insufficient candles MUUBUSDT 1d: 47
+[DATA] skip MVLLBUSDT 1d: insufficient candles MVLLBUSDT 1d: 47
+[DATA] skip NBISBUSDT 1d: insufficient candles NBISBUSDT 1d: 62
+[DATA] skip NFLXBUSDT 1d: insufficient candles NFLXBUSDT 1d: 33
+[DATA] skip NOKBUSDT 1d: insufficient candles NOKBUSDT 1d: 54
+[DATA] skip ORCLBUSDT 1d: insufficient candles ORCLBUSDT 1d: 47
+[DATA] 1d 300/464 usable=252
+[DATA] skip PLTRBUSDT 1d: insufficient candles PLTRBUSDT 1d: 69
+[DATA] skip PYPLBUSDT 1d: insufficient candles PYPLBUSDT 1d: 40
+[DATA] skip QCOMBUSDT 1d: insufficient candles QCOMBUSDT 1d: 62
+[DATA] skip QNTBUSDT 1d: insufficient candles QNTBUSDT 1d: 47
+[DATA] skip QQQBUSDT 1d: insufficient candles QQQBUSDT 1d: 69
+[DATA] skip RKLBBUSDT 1d: insufficient candles RKLBBUSDT 1d: 54
+[DATA] 1d 350/464 usable=296
+[DATA] skip SKHYBUSDT 1d: insufficient candles SKHYBUSDT 1d: 56
+[DATA] skip SMCIBUSDT 1d: insufficient candles SMCIBUSDT 1d: 33
+[DATA] skip SMHBUSDT 1d: insufficient candles SMHBUSDT 1d: 40
+[DATA] skip SNXXBUSDT 1d: insufficient candles SNXXBUSDT 1d: 47
+[DATA] skip SOXLBUSDT 1d: insufficient candles SOXLBUSDT 1d: 62
+[DATA] skip SOXSBUSDT 1d: insufficient candles SOXSBUSDT 1d: 40
+[DATA] skip SPYBUSDT 1d: insufficient candles SPYBUSDT 1d: 62
+[DATA] skip STXBUSDT 1d: insufficient candles STXBUSDT 1d: 5
+[DATA] 1d 400/464 usable=338
+[DATA] skip TQQQBUSDT 1d: insufficient candles TQQQBUSDT 1d: 47
+[DATA] skip TSMBUSDT 1d: insufficient candles TSMBUSDT 1d: 54
+[DATA] skip USARBUSDT 1d: insufficient candles USARBUSDT 1d: 33
+[DATA] skip WDCBUSDT 1d: insufficient candles WDCBUSDT 1d: 62
+[DATA] 1d 450/464 usable=384
+[DATA] 1d 464/464 usable=398
+[STAGE] exact stateful replay usable=398
+[REPLAY] 96/673 signals=6 watch=74
+[REPLAY] 192/673 signals=9 watch=54
+[REPLAY] 288/673 signals=12 watch=64
+[REPLAY] 384/673 signals=15 watch=54
+[REPLAY] 480/673 signals=18 watch=120
+[REPLAY] 576/673 signals=21 watch=106
+[REPLAY] 672/673 signals=24 watch=165
+[REPLAY] 673/673 signals=24 watch=164
 Traceback (most recent call last):
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 385, in <module>
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 392, in <module>
     if __name__=="__main__": main()
                              ^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 360, in main
-    symbols=current_universe(); print(f"[START] {START} -> {END}; universe={len(symbols)}",flush=True)
-            ^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 106, in current_universe
-    ex = api("/api/v3/exchangeInfo")
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 66, in api
-    raise RuntimeError(f"Binance {path}: {last}")
-RuntimeError: Binance /api/v3/exchangeInfo: 451 Client Error:  for url: https://api.binance.com/api/v3/exchangeInfo
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 383, in main
+    trades=apply_portfolio(signals); report=summary(trades)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 315, in apply_portfolio
+    groups={s:g.sort_values("open_time") for s,g in signals.groupby("symbol")}
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 315, in <dictcomp>
+    groups={s:g.sort_values("open_time") for s,g in signals.groupby("symbol")}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/frame.py", line 8361, in sort_values
+    k = self._get_label_or_level_values(by[0], axis=axis)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/generic.py", line 1764, in _get_label_or_level_values
+    raise KeyError(key)
+KeyError: 'open_time'
