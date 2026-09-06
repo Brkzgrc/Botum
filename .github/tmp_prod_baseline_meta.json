@@ -1,0 +1,13 @@
+{
+  "scanner_blob": "65ad801bf1a9fd6011231d4f56555deff96d33b7",
+  "days": 7,
+  "universe": 466,
+  "prefilter_union": 464,
+  "usable": 398,
+  "fee_side_pct": 0.1,
+  "notes": [
+    "current tradable USDT universe (survivorship limitation)",
+    "historical live price approximated by latest closed 15m close",
+    "Portfolio lifecycle uses 5m candles and close-confirmed trailing"
+  ]
+}

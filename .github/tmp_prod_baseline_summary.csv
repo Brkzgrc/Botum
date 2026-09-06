@@ -1,0 +1,2 @@
+version,scanner_blob,days,start,end,signals,closed,open,wins,losses,win_rate,tp1_hits,stops,expired,trailing,sum_gross_pct,sum_net_pct,avg_gross_pct,avg_loss_pct,avg_win_pct
+PROD_V11_BASELINE,65ad801bf1a9fd6011231d4f56555deff96d33b7,7,2026-08-30T03:30:00+00:00,2026-09-06T03:30:00+00:00,24,21,3,11,10,52.38095238095238,10,3,8,10,15.004846892421183,10.204846892421191,0.6252019538508826,-3.7229236819079348,4.77701130045512

@@ -1,18 +1,18 @@
-[START] 2026-08-30 02:30:00+00:00 -> 2026-09-06 02:30:00+00:00; universe=467
+[START] 2026-08-30 03:30:00+00:00 -> 2026-09-06 03:30:00+00:00; universe=467
 [DATA] 1h 50/467 usable=50
 [DATA] 1h 100/467 usable=100
 [DATA] 1h 150/467 usable=150
 [DATA] 1h 200/467 usable=200
 [DATA] 1h 250/467 usable=250
-[DATA] skip MARSCOINUSDT 1h: insufficient candles MARSCOINUSDT 1h: 38
+[DATA] skip MARSCOINUSDT 1h: insufficient candles MARSCOINUSDT 1h: 39
 [DATA] 1h 300/467 usable=299
 [DATA] 1h 350/467 usable=349
 [DATA] 1h 400/467 usable=399
 [DATA] 1h 450/467 usable=449
 [DATA] 1h 467/467 usable=466
 [STAGE] build historical prefilter union
-[PREFILTER] 48/168 union=435
-[PREFILTER] 96/168 union=454
+[PREFILTER] 48/168 union=437
+[PREFILTER] 96/168 union=455
 [PREFILTER] 144/168 union=462
 [PREFILTER] 168/168 union=464
 [DATA] 15m 50/464 usable=50
@@ -42,12 +42,12 @@
 [DATA] skip AAPLBUSDT 1d: insufficient candles AAPLBUSDT 1d: 40
 [DATA] skip AEROUSDT 1d: insufficient candles AEROUSDT 1d: 52
 [DATA] skip ALABBUSDT 1d: insufficient candles ALABBUSDT 1d: 33
+[DATA] skip AMATBUSDT 1d: insufficient candles AMATBUSDT 1d: 40
 [DATA] skip AMDBUSDT 1d: insufficient candles AMDBUSDT 1d: 76
 [DATA] skip AMZNBUSDT 1d: insufficient candles AMZNBUSDT 1d: 40
-[DATA] skip AMATBUSDT 1d: insufficient candles AMATBUSDT 1d: 40
 [DATA] skip ARMBUSDT 1d: insufficient candles ARMBUSDT 1d: 54
-[DATA] skip ASTSBUSDT 1d: insufficient candles ASTSBUSDT 1d: 33
 [DATA] skip ASMLBUSDT 1d: insufficient candles ASMLBUSDT 1d: 33
+[DATA] skip ASTSBUSDT 1d: insufficient candles ASTSBUSDT 1d: 33
 [DATA] 1d 50/464 usable=40
 [DATA] skip AVGOBUSDT 1d: insufficient candles AVGOBUSDT 1d: 54
 [DATA] skip AXTIBUSDT 1d: insufficient candles AXTIBUSDT 1d: 47
@@ -73,8 +73,8 @@
 [DATA] skip GRAMUSDT 1d: insufficient candles GRAMUSDT 1d: 67
 [DATA] skip GSBUSDT 1d: insufficient candles GSBUSDT 1d: 40
 [DATA] skip HOODBUSDT 1d: insufficient candles HOODBUSDT 1d: 54
-[DATA] 1d 200/464 usable=168
 [DATA] skip IBMBUSDT 1d: insufficient candles IBMBUSDT 1d: 54
+[DATA] 1d 200/464 usable=167
 [DATA] skip INTCBUSDT 1d: insufficient candles INTCBUSDT 1d: 76
 [DATA] skip INTWBUSDT 1d: insufficient candles INTWBUSDT 1d: 47
 [DATA] skip IRENBUSDT 1d: insufficient candles IRENBUSDT 1d: 33
@@ -90,8 +90,8 @@
 [DATA] skip NBISBUSDT 1d: insufficient candles NBISBUSDT 1d: 62
 [DATA] skip NFLXBUSDT 1d: insufficient candles NFLXBUSDT 1d: 33
 [DATA] skip NOKBUSDT 1d: insufficient candles NOKBUSDT 1d: 54
+[DATA] 1d 300/464 usable=253
 [DATA] skip ORCLBUSDT 1d: insufficient candles ORCLBUSDT 1d: 47
-[DATA] 1d 300/464 usable=252
 [DATA] skip PLTRBUSDT 1d: insufficient candles PLTRBUSDT 1d: 69
 [DATA] skip PYPLBUSDT 1d: insufficient candles PYPLBUSDT 1d: 40
 [DATA] skip QCOMBUSDT 1d: insufficient candles QCOMBUSDT 1d: 62
@@ -115,30 +115,31 @@
 [DATA] 1d 450/464 usable=384
 [DATA] 1d 464/464 usable=398
 [STAGE] exact stateful replay usable=398
-[REPLAY] 96/673 signals=6 watch=74
-[REPLAY] 192/673 signals=9 watch=54
-[REPLAY] 288/673 signals=12 watch=64
-[REPLAY] 384/673 signals=15 watch=54
-[REPLAY] 480/673 signals=18 watch=120
-[REPLAY] 576/673 signals=21 watch=106
-[REPLAY] 672/673 signals=24 watch=165
-[REPLAY] 673/673 signals=24 watch=164
-Traceback (most recent call last):
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 392, in <module>
-    if __name__=="__main__": main()
-                             ^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 383, in main
-    trades=apply_portfolio(signals); report=summary(trades)
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 315, in apply_portfolio
-    groups={s:g.sort_values("open_time") for s,g in signals.groupby("symbol")}
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 315, in <dictcomp>
-    groups={s:g.sort_values("open_time") for s,g in signals.groupby("symbol")}
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/frame.py", line 8361, in sort_values
-    k = self._get_label_or_level_values(by[0], axis=axis)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/site-packages/pandas/core/generic.py", line 1764, in _get_label_or_level_values
-    raise KeyError(key)
-KeyError: 'open_time'
+[REPLAY] 96/673 signals=6 watch=70
+[REPLAY] 192/673 signals=9 watch=56
+[REPLAY] 288/673 signals=12 watch=60
+[REPLAY] 384/673 signals=15 watch=52
+[REPLAY] 480/673 signals=18 watch=123
+[REPLAY] 576/673 signals=21 watch=105
+[REPLAY] 672/673 signals=24 watch=169
+[REPLAY] 673/673 signals=24 watch=169
+[5M] 1/18
+[5M] 2/18
+[5M] 3/18
+[5M] 4/18
+[5M] 5/18
+[5M] 6/18
+[5M] 7/18
+[5M] 8/18
+[5M] 9/18
+[5M] 10/18
+[5M] 11/18
+[5M] 12/18
+[5M] 13/18
+[5M] 14/18
+[5M] 15/18
+[5M] 16/18
+[5M] 17/18
+[5M] 18/18
+          version                             scanner_blob  days                     start                       end  signals  closed  open  wins  losses  win_rate  tp1_hits  stops  expired  trailing  sum_gross_pct  sum_net_pct  avg_gross_pct  avg_loss_pct  avg_win_pct
+PROD_V11_BASELINE 65ad801bf1a9fd6011231d4f56555deff96d33b7     7 2026-08-30T03:30:00+00:00 2026-09-06T03:30:00+00:00       24      21     3    11      10 52.380952        10      3        8        10      15.004847    10.204847       0.625202     -3.722924     4.777011
