@@ -2436,38 +2436,56 @@ def _hybrid_indicator_bullets(snapshot: dict) -> list[str]:
     return bullets[:3]
 
 
+
+def _hybrid_resistance_close(zone: dict | None, price: float, threshold_pct: float = 0.5) -> bool:
+    if not zone or not price:
+        return False
+    low, high = float(zone["low"]), float(zone["high"])
+    if low <= price <= high:
+        return True
+    boundary = low if price < low else high
+    return abs(price - boundary) / price * 100 <= threshold_pct
+
+
 def _hybrid_validated_plan(plan: dict, zones: dict, price: float) -> dict:
     plan = dict(plan)
     entry = plan.get("entry_type", "none")
     action = plan.get("action", "wait_trigger")
     r1 = zones.get("resistance_1")
+    reasons = list(plan.get("reasons") or [])
+    if _hybrid_resistance_close(r1, price) and "price_near_resistance" not in reasons:
+        reasons.append("price_near_resistance")
     if action == "buy_candidate" and entry == "none":
         action = "wait_trigger"
     if action == "buy_candidate" and plan.get("h1_timing") in {"overheated", "weakening"}:
         action = "wait_trigger"
-    if action == "buy_candidate" and r1 and _hybrid_pct_gap(price, r1["low"], "resistance") < 0.35 and entry != "resistance_break":
+    if action == "buy_candidate" and _hybrid_resistance_close(r1, price) and entry != "resistance_break":
         action = "wait_trigger"
     plan["action"] = action
+    plan["reasons"] = reasons
     return plan
 
 
+
 def _hybrid_effective_entry(plan: dict, zones: dict, price: float) -> str:
-    """Model belirsiz bıraksa bile mevcut fiyat konumundan somut izleme koşulu üret."""
+    """Model belirsiz kalsa da mevcut fiyat konumundan en yakın somut tetik üretilir."""
     entry = plan.get("entry_type", "none")
-    if entry != "none":
-        return entry
     r1 = zones.get("resistance_1")
     near = zones.get("near_support")
-    if r1 and r1["low"] <= price <= r1["high"]:
+    if _hybrid_resistance_close(r1, price):
         return "resistance_break"
+    if entry != "none":
+        return entry
     if near and _hybrid_pct_gap(price, near["high"], "support") <= 1.5:
         return "support_reaction"
     return "momentum_retrigger"
 
 
+
 def _hybrid_next_target(zones: dict, price: float, entry: str) -> dict | None:
-    """Girişin gerisinde veya içinde kalan direnç hiçbir zaman hedef olamaz."""
-    candidates = [zones.get("resistance_1"), zones.get("resistance_2")]
+    """Kırılan/çok yakın direnç hedef yapılmaz; onun üzerindeki ilk gerçek bölge seçilir."""
+    candidates = ([zones.get("resistance_2")] if entry == "resistance_break"
+                  else [zones.get("resistance_1"), zones.get("resistance_2")])
     valid = [z for z in candidates if z and float(z["low"]) > price]
     if not valid:
         return None
@@ -2511,12 +2529,13 @@ def _hybrid_reason_sentence(plan: dict) -> str:
     return ""
 
 
+
 def _hybrid_trade_ideas(zones: dict, price: float) -> str:
     near, r1, r2 = zones.get("near_support"), zones.get("resistance_1"), zones.get("resistance_2")
     sentences = []
-    if r1 and r1["low"] <= price <= r1["high"]:
+    if _hybrid_resistance_close(r1, price):
         sentences.append(
-            f"Fiyat {_hybrid_fmt(r1['low'])}–{_hybrid_fmt(r1['high'])} ilk direnç bölgesinin içinde olduğu için "
+            f"Fiyat {_hybrid_fmt(r1['low'])}–{_hybrid_fmt(r1['high'])} ilk direnç bölgesine çok yakın olduğu için "
             "mevcut seviyeden yeni alımın kısa vadeli hareket alanı sınırlı."
         )
         if r2 and r2["low"] > price:
@@ -2567,7 +2586,9 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     else:
         trigger = "Yeni alım için saatlik fiyat hareketi ile alıcı katılımının birlikte güçlenmesini beklerdim."
 
-    if zones.get("near_support"):
+    if entry == "resistance_break" and zones.get("resistance_1"):
+        invalidation = "Kırılım sonrasında fiyat ilk direncin altında yeniden saatlik kapanış yaparsa bu giriş düşüncesinden vazgeçerdim."
+    elif zones.get("near_support"):
         invalidation = "Yakın destek kapanmış saatlik mumla kaybedilirse bu kısa vadeli alım düşüncesinden vazgeçerdim."
     else:
         invalidation = "Saatlik ve 4 saatlik yapı birlikte aşağı dönerse alım düşüncesinden vazgeçerdim."
@@ -2585,7 +2606,10 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     if support_gap is not None:
         location.append(f"yakın destek yaklaşık %{support_gap:.1f} aşağıda")
     if resistance_gap is not None:
-        location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
+        if resistance_gap < 0.1:
+            location.append("ilk direnç hemen üzerinde")
+        else:
+            location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
     location_text = "; ".join(location).capitalize() + "." if location else "Fiyatın yakın bölgelere mesafesi güvenilir biçimde hesaplanamadı."
 
     timing = snapshot["timing_15m"]
