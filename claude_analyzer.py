@@ -52,7 +52,7 @@ _PROMPT_V_SIGNAL  = "1.1"   # sinyal değerlendirme prompt versiyonu
 _PROMPT_V_WATCHER = "1.0"   # market watcher prompt versiyonu
 _PROMPT_V_MANUAL  = "4.5"   # doğal yükseliş anlatımı ve genel araç etiketi temizliği
 _PROMPT_V_MANUAL_V2 = "1.3"  # Flash-Lite: fiyat alanı ve geri çekilme mesafesi karşılaştırması
-_PROMPT_V_MANUAL_V2_PLAN = "2.0"  # Flash-Lite karar planı; Türkçe metni kod kurar
+_PROMPT_V_MANUAL_V2_PLAN = "2.1"  # Flash-Lite karar planı; Türkçe metni kod kurar
 # PORTFOLIO_URL bot.py servisinde tanımlı; bu modül portfolio-tracker
 # servisinin İÇİNDE çalıştığı için kendine PATCH/GET atarken Render'ın
 # her servise otomatik verdiği RENDER_EXTERNAL_URL'e düşer.
@@ -2348,30 +2348,274 @@ def _hybrid_zone_text(zone: dict | None, live_price: float) -> str:
     return text + f" — güncel fiyatın %{(zone['low']-live_price)/live_price*100:.1f} üstünde"
 
 
-def _hybrid_market_snapshot(symbol: str) -> tuple[dict, dict]:
-    from anton_scanner.gpt_sonnet_analyzer.market_analyst_bot import (
-        build_timeframe_snapshot, fetch_klines, fetch_live_price, normalize_pair,
+class _HybridCandle:
+    """Normal ücretsiz sorguya ait kapanmış mum kaydı; GPT modülüne bağımlı değildir."""
+    __slots__ = ("open_time", "open", "high", "low", "close", "volume", "close_time")
+
+    def __init__(self, row):
+        self.open_time = int(row[0])
+        self.open = float(row[1])
+        self.high = float(row[2])
+        self.low = float(row[3])
+        self.close = float(row[4])
+        self.volume = float(row[5])
+        self.close_time = int(row[6])
+
+
+def _hybrid_normalize_pair(symbol: str) -> str:
+    pair = re.sub(r"[^A-Z0-9]", "", symbol.upper().strip())
+    return pair if pair.endswith("USDT") else pair + "USDT"
+
+
+def _hybrid_fetch_closed_klines(symbol: str, interval: str, limit: int = 260) -> list:
+    """Açık mumu dışarıda bırakarak normal sorgu için Binance spot verisi çeker."""
+    pair = _hybrid_normalize_pair(symbol)
+    response = requests.get(
+        "https://api.binance.com/api/v3/klines",
+        params={"symbol": pair, "interval": interval, "limit": limit},
+        timeout=15,
     )
-    pair = normalize_pair(symbol)
+    if response.status_code != 200:
+        raise RuntimeError(f"Binance kline hatası ({pair} {interval}): {response.text[:160]}")
+    now_ms = int(time.time() * 1000)
+    candles = [_HybridCandle(row) for row in response.json() if int(row[6]) < now_ms]
+    if len(candles) < 80:
+        raise RuntimeError(f"{pair} {interval}: yeterli kapanmış mum yok ({len(candles)})")
+    return candles
+
+
+def _hybrid_fetch_live_price(symbol: str) -> float:
+    pair = _hybrid_normalize_pair(symbol)
+    response = requests.get(
+        "https://api.binance.com/api/v3/ticker/price",
+        params={"symbol": pair},
+        timeout=15,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Binance fiyat hatası ({pair}): {response.text[:160]}")
+    return float(response.json()["price"])
+
+
+def _hybrid_safe_round(value, digits: int = 2):
+    try:
+        number = float(value)
+        return round(number, digits) if np.isfinite(number) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _hybrid_direction(series: pd.Series) -> str:
+    valid = series.dropna()
+    if len(valid) < 2:
+        return "veri_yok"
+    if float(valid.iloc[-1]) > float(valid.iloc[-2]) + 1e-9:
+        return "yukari"
+    if float(valid.iloc[-1]) < float(valid.iloc[-2]) - 1e-9:
+        return "asagi"
+    return "yatay"
+
+
+def _hybrid_recent_swings(candles: list, lookback: int = 60, wing: int = 2) -> tuple[float, float]:
+    subset = candles[-lookback:]
+    highs, lows = [], []
+    for idx in range(wing, len(subset) - wing):
+        window = subset[idx - wing:idx + wing + 1]
+        if subset[idx].high == max(item.high for item in window):
+            highs.append(subset[idx].high)
+        if subset[idx].low == min(item.low for item in window):
+            lows.append(subset[idx].low)
+    last = candles[-1].close
+    below = [value for value in lows if value <= last]
+    above = [value for value in highs if value >= last]
+    support = max(below) if below else min(item.low for item in subset)
+    resistance = min(above) if above else max(item.high for item in subset)
+    return support, resistance
+
+
+def _hybrid_build_timeframe_snapshot(candles: list) -> dict:
+    """GPT analizindeki yararlı teknik okumanın normal sorguya uyarlanmış bağımsız sürümü."""
+    close = pd.Series([item.close for item in candles], dtype="float64")
+    high = pd.Series([item.high for item in candles], dtype="float64")
+    low = pd.Series([item.low for item in candles], dtype="float64")
+    volume = pd.Series([item.volume for item in candles], dtype="float64")
+
+    delta = close.diff()
+    avg_gain = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    avg_loss = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    rsi = 100 - (100 / (1 + avg_gain / avg_loss.replace(0, np.nan)))
+    rsi = rsi.where(avg_loss != 0, 100.0)
+
+    rsi_low = rsi.rolling(14, min_periods=14).min()
+    rsi_high = rsi.rolling(14, min_periods=14).max()
+    stoch_den = rsi_high - rsi_low
+    stoch = (100 * (rsi - rsi_low) / stoch_den.replace(0, np.nan)).where(stoch_den != 0, 50.0)
+    stoch_ma = stoch.rolling(3, min_periods=3).mean()
+
+    ema20 = close.ewm(span=20, adjust=False, min_periods=20).mean()
+    ema50 = close.ewm(span=50, adjust=False, min_periods=50).mean()
+    ema200 = close.ewm(span=200, adjust=False, min_periods=200).mean()
+    macd = close.ewm(span=12, adjust=False, min_periods=12).mean() - close.ewm(
+        span=26, adjust=False, min_periods=26
+    ).mean()
+    macd_signal = macd.ewm(span=9, adjust=False, min_periods=9).mean()
+    macd_hist = macd - macd_signal
+
+    prev_close = close.shift(1)
+    true_range = pd.concat(
+        [(high - low), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
+    ).max(axis=1)
+    atr = true_range.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+
+    hh9, ll9 = high.rolling(9, min_periods=9).max(), low.rolling(9, min_periods=9).min()
+    rsv = 100 * (close - ll9) / (hh9 - ll9).replace(0, np.nan)
+    k_values, d_values, j_values = [], [], []
+    k_prev = d_prev = 50.0
+    for value in rsv:
+        if pd.isna(value):
+            k_values.append(np.nan)
+            d_values.append(np.nan)
+            j_values.append(np.nan)
+            continue
+        k_prev = (2 / 3) * k_prev + (1 / 3) * float(value)
+        d_prev = (2 / 3) * d_prev + (1 / 3) * k_prev
+        k_values.append(k_prev)
+        d_values.append(d_prev)
+        j_values.append(3 * k_prev - 2 * d_prev)
+    kdj_k = pd.Series(k_values)
+    kdj_d = pd.Series(d_values)
+    kdj_j = pd.Series(j_values)
+
+    hh14, ll14 = high.rolling(14, min_periods=14).max(), low.rolling(14, min_periods=14).min()
+    williams = -100 * (hh14 - close) / (hh14 - ll14).replace(0, np.nan)
+
+    obv_values = [0.0]
+    for idx in range(1, len(candles)):
+        if close.iloc[idx] > close.iloc[idx - 1]:
+            obv_values.append(obv_values[-1] + volume.iloc[idx])
+        elif close.iloc[idx] < close.iloc[idx - 1]:
+            obv_values.append(obv_values[-1] - volume.iloc[idx])
+        else:
+            obv_values.append(obv_values[-1])
+    obv = pd.Series(obv_values)
+
+    support, resistance = _hybrid_recent_swings(candles)
+    last, previous = candles[-1], candles[-2]
+    atr_last = float(atr.dropna().iloc[-1]) if not atr.dropna().empty else None
+    bb_mid = float(close.iloc[-20:].mean())
+    bb_std = float(close.iloc[-20:].std(ddof=0))
+    avg_volume = float(volume.iloc[-21:-1].mean()) if len(volume) >= 21 else float(volume.iloc[-20:].mean())
+    candle_range = max(last.high - last.low, 1e-12)
+    body = abs(last.close - last.open)
+    range3 = max(item.high for item in candles[-3:]) - min(item.low for item in candles[-3:])
+    price_3bar = 100 * (last.close / candles[-4].close - 1) if len(candles) >= 4 else None
+
+    def last_value(series: pd.Series):
+        valid = series.dropna()
+        return float(valid.iloc[-1]) if not valid.empty else None
+
+    stoch_now, stoch_ma_now = last_value(stoch), last_value(stoch_ma)
+    return {
+        "last_closed": {
+            "time_utc": datetime.fromtimestamp(last.close_time / 1000, tz=timezone.utc).isoformat(),
+            "open": _hybrid_safe_round(last.open, 8),
+            "high": _hybrid_safe_round(last.high, 8),
+            "low": _hybrid_safe_round(last.low, 8),
+            "close": _hybrid_safe_round(last.close, 8),
+            "change_pct": _hybrid_safe_round(100 * (last.close / previous.close - 1)),
+            "body_pct_of_range": _hybrid_safe_round(100 * body / candle_range),
+            "upper_wick_pct_of_range": _hybrid_safe_round(
+                100 * (last.high - max(last.open, last.close)) / candle_range
+            ),
+            "lower_wick_pct_of_range": _hybrid_safe_round(
+                100 * (min(last.open, last.close) - last.low) / candle_range
+            ),
+        },
+        "momentum": {
+            "rsi14": _hybrid_safe_round(last_value(rsi)),
+            "rsi_direction": _hybrid_direction(rsi),
+            "stochrsi": _hybrid_safe_round(stoch_now),
+            "ma_stochrsi": _hybrid_safe_round(stoch_ma_now),
+            "stochrsi_direction": _hybrid_direction(stoch),
+            "stoch_vs_ma": (
+                "ustunde" if stoch_now is not None and stoch_ma_now is not None and stoch_now > stoch_ma_now
+                else "altinda"
+            ),
+            "macd": _hybrid_safe_round(last_value(macd), 8),
+            "macd_signal": _hybrid_safe_round(last_value(macd_signal), 8),
+            "macd_hist": _hybrid_safe_round(last_value(macd_hist), 8),
+            "macd_hist_direction": _hybrid_direction(macd_hist),
+            "kdj_k": _hybrid_safe_round(last_value(kdj_k)),
+            "kdj_d": _hybrid_safe_round(last_value(kdj_d)),
+            "kdj_j": _hybrid_safe_round(last_value(kdj_j)),
+            "williams_r14": _hybrid_safe_round(last_value(williams)),
+        },
+        "trend_structure": {
+            "ema20": _hybrid_safe_round(last_value(ema20), 8),
+            "ema50": _hybrid_safe_round(last_value(ema50), 8),
+            "ema200": _hybrid_safe_round(last_value(ema200), 8),
+            "close_vs_ema20_pct": _hybrid_safe_round(100 * (last.close / last_value(ema20) - 1)) if last_value(ema20) else None,
+            "close_vs_ema50_pct": _hybrid_safe_round(100 * (last.close / last_value(ema50) - 1)) if last_value(ema50) else None,
+            "close_vs_ema200_pct": _hybrid_safe_round(100 * (last.close / last_value(ema200) - 1)) if last_value(ema200) else None,
+            "support_recent": _hybrid_safe_round(support, 8),
+            "resistance_recent": _hybrid_safe_round(resistance, 8),
+            "distance_support_pct": _hybrid_safe_round(100 * (last.close / support - 1)) if support else None,
+            "distance_resistance_pct": _hybrid_safe_round(100 * (resistance / last.close - 1)),
+        },
+        "volatility_volume": {
+            "atr14": _hybrid_safe_round(atr_last, 8),
+            "atr_pct": _hybrid_safe_round(100 * atr_last / last.close) if atr_last else None,
+            "bollinger_mid": _hybrid_safe_round(bb_mid, 8),
+            "bollinger_upper": _hybrid_safe_round(bb_mid + 2 * bb_std, 8),
+            "bollinger_lower": _hybrid_safe_round(bb_mid - 2 * bb_std, 8),
+            "volume_vs_20bar_avg": _hybrid_safe_round(last.volume / avg_volume) if avg_volume else None,
+            "obv_direction_5bar": (
+                "yukari" if obv.iloc[-1] > obv.iloc[-6]
+                else "asagi" if obv.iloc[-1] < obv.iloc[-6] else "yatay"
+            ),
+        },
+        "short_behavior": {
+            "price_change_3bar_pct": _hybrid_safe_round(price_3bar),
+            "three_bar_range_atr_multiple": _hybrid_safe_round(range3 / atr_last) if atr_last else None,
+            "note": "Fiyat değişimi sınırlı ve 3 mum aralığı ATR'ye göre düşükse momentum yatay soğuyor olabilir.",
+        },
+    }
+
+
+def _hybrid_market_snapshot(symbol: str) -> tuple[dict, dict]:
+    pair = _hybrid_normalize_pair(symbol)
     base = pair[:-4]
-    coin_frames = {"1D": fetch_klines(pair, "1d"), "4H": fetch_klines(pair, "4h"),
-                   "1H": fetch_klines(pair, "1h"), "15M": fetch_klines(pair, "15m")}
-    btc_frames = {"1D": fetch_klines("BTC", "1d"), "4H": fetch_klines("BTC", "4h"),
-                  "1H": fetch_klines("BTC", "1h")}
-    live_price = fetch_live_price(pair)
+    coin_frames = {
+        "1D": _hybrid_fetch_closed_klines(pair, "1d"),
+        "4H": _hybrid_fetch_closed_klines(pair, "4h"),
+        "1H": _hybrid_fetch_closed_klines(pair, "1h"),
+        "15M": _hybrid_fetch_closed_klines(pair, "15m"),
+    }
+    btc_frames = {
+        "1D": _hybrid_fetch_closed_klines("BTC", "1d"),
+        "4H": _hybrid_fetch_closed_klines("BTC", "4h"),
+        "1H": _hybrid_fetch_closed_klines("BTC", "1h"),
+    }
+    live_price = _hybrid_fetch_live_price(pair)
     snapshot = {
         "symbol": base,
         "live_price": live_price,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "coin": {tf: build_timeframe_snapshot(coin_frames[tf]) for tf in ("1D", "4H", "1H")},
-        "timing_15m": build_timeframe_snapshot(coin_frames["15M"]),
-        "btc": {tf: build_timeframe_snapshot(btc_frames[tf]) for tf in ("1D", "4H", "1H")},
+        "coin": {
+            tf: _hybrid_build_timeframe_snapshot(coin_frames[tf])
+            for tf in ("1D", "4H", "1H")
+        },
+        "timing_15m": _hybrid_build_timeframe_snapshot(coin_frames["15M"]),
+        "btc": {
+            tf: _hybrid_build_timeframe_snapshot(btc_frames[tf])
+            for tf in ("1D", "4H", "1H")
+        },
         "note": "Bütün indikatörler yalnız kapanmış mumlardan hesaplandı; live_price ayrıca anlık fiyattır.",
     }
-    zones = _hybrid_select_zones({k: coin_frames[k] for k in ("1D", "4H", "1H")}, live_price)
+    zones = _hybrid_select_zones(
+        {key: coin_frames[key] for key in ("1D", "4H", "1H")},
+        live_price,
+    )
     return snapshot, zones
-
-
 def _hybrid_decision_plan(snapshot: dict, zones: dict, api_key: str, model_name: str) -> tuple[dict, dict, int]:
     zone_payload = {key: None if value is None else {
         "low": round(value["low"], 10), "high": round(value["high"], 10),
@@ -2382,8 +2626,10 @@ def _hybrid_decision_plan(snapshot: dict, zones: dict, api_key: str, model_name:
 mumlardan hesaplandı; live_price yalnız anlık konumu gösterir. Mekanik tek gösterge kararı verme.
 
 Karar sırası: 1D genel rejim, 4H'nin bu rejimdeki rolü, 1H giriş zamanlaması ve son olarak 15M yardımcı
-zamanlama. Fiyat düşmeden yatay kalarak momentum boşaltıyorsa bunu özellikle ayır. Güçlü üst zaman diliminde
-1H öncü göstergeler yeniden dönerken MACD'nin gecikmesini tek başına ret nedeni yapma. BTC bağlamını kullan
+zamanlama. StochRSI'yi kendi hareketli ortalaması, KDJ, fiyat davranışı, OBV ve MACD ile birlikte oku;
+aşırı alım/aşırı satımı tek başına al-sat nedeni yapma. Fiyat düşmeden yatay kalarak momentum boşaltıyorsa
+bunu özellikle ayır. Güçlü üst zaman diliminde 1H öncü göstergeler yeniden dönerken MACD'nin gecikmesini
+tek başına ret nedeni yapma. 15M yalnız giriş zamanlamasını inceltsin. BTC bağlamını kullan
 ama coinin kendi yapısını ezme. Yalnız JSON şemasındaki seçenekleri seç; Türkçe rapor yazma ve seviye uydurma.
 
 VERİ:\n""" + json.dumps({"snapshot": snapshot, "zones": zone_payload}, ensure_ascii=False)
@@ -2422,20 +2668,96 @@ VERİ:\n""" + json.dumps({"snapshot": snapshot, "zones": zone_payload}, ensure_a
 def _hybrid_indicator_bullets(snapshot: dict) -> list[str]:
     coin = snapshot["coin"]
     bullets = []
-    obv_up = [tf for tf in ("1H", "4H", "1D") if coin[tf]["volatility_volume"]["obv_direction_5bar"] == "yukari"]
+    h1_momentum = coin["1H"]["momentum"]
+    h1_behavior = coin["1H"]["short_behavior"]
+    stoch = h1_momentum.get("stochrsi")
+    stoch_ma = h1_momentum.get("ma_stochrsi")
+    stoch_direction = h1_momentum.get("stochrsi_direction")
+    stoch_vs_ma = h1_momentum.get("stoch_vs_ma")
+    kdj_k = h1_momentum.get("kdj_k")
+    kdj_d = h1_momentum.get("kdj_d")
+    price_3bar = h1_behavior.get("price_change_3bar_pct")
+    range_atr = h1_behavior.get("three_bar_range_atr_multiple")
+
+    if stoch is not None and stoch_ma is not None:
+        if stoch_direction == "yukari" and stoch_vs_ma == "ustunde":
+            confirmation = " KDJ de dönüşü destekliyor." if (
+                kdj_k is not None and kdj_d is not None and float(kdj_k) > float(kdj_d)
+            ) else " KDJ teyidi henüz tam değil."
+            if float(stoch) >= 80:
+                bullets.append(
+                    f"1H StochRSI {stoch:.1f} ile ortalamasının üzerinde yükseliyor; momentum güçlü fakat kısa vadede ısınmış.{confirmation}"
+                )
+            else:
+                bullets.append(
+                    f"1H StochRSI {stoch:.1f}, ortalaması {stoch_ma:.1f} üzerine dönüyor; erken momentum toparlanması var.{confirmation}"
+                )
+        elif stoch_direction == "asagi" and stoch_vs_ma == "altinda":
+            sideways = (
+                price_3bar is not None and range_atr is not None
+                and abs(float(price_3bar)) <= 1.0 and float(range_atr) <= 2.0
+            )
+            if sideways:
+                bullets.append(
+                    f"1H StochRSI {stoch:.1f} seviyesine soğuyor; son üç mumda fiyat sınırlı değiştiği için bu henüz yapısal bozulma değil."
+                )
+            else:
+                bullets.append(
+                    f"1H StochRSI {stoch:.1f} ile ortalamasının altında geriliyor; kısa vadeli giriş momentumu zayıf."
+                )
+
+    obv_up = [
+        tf for tf in ("1H", "4H", "1D")
+        if coin[tf]["volatility_volume"]["obv_direction_5bar"] == "yukari"
+    ]
     if obv_up:
-        bullets.append(f"OBV {', '.join(obv_up)} görünümünde yükseliyor; alıcı katılımı {len(obv_up)} zaman diliminde fiyatı destekliyor.")
-    ema_up = [tf for tf in ("1H", "4H", "1D") if float(coin[tf]["trend_structure"]["close_vs_ema20_pct"] or -999) >= 0]
+        bullets.append(
+            f"OBV {', '.join(obv_up)} görünümünde yükseliyor; alıcı katılımı {len(obv_up)} zaman diliminde fiyatı destekliyor."
+        )
+    ema_up = [
+        tf for tf in ("1H", "4H", "1D")
+        if float(coin[tf]["trend_structure"]["close_vs_ema20_pct"] or -999) >= 0
+    ]
     if ema_up:
-        bullets.append(f"Kapanmış mum fiyatı {', '.join(ema_up)} grafiklerinde EMA20 üzerinde; kısa ve orta vadeli yapı tamamen bozulmuş değil.")
-    macd_up = [tf for tf in ("1H", "4H", "1D") if coin[tf]["momentum"]["macd_hist_direction"] == "yukari"]
+        bullets.append(
+            f"Kapanmış mum fiyatı {', '.join(ema_up)} grafiklerinde EMA20 üzerinde; kısa ve orta vadeli yapı tamamen bozulmuş değil."
+        )
+    macd_up = [
+        tf for tf in ("1H", "4H", "1D")
+        if coin[tf]["momentum"]["macd_hist_direction"] == "yukari"
+    ]
     if macd_up:
-        bullets.append(f"MACD histogramı {', '.join(macd_up)} görünümünde güçleniyor; momentum bu zaman dilimlerinde yukarı dönüyor.")
+        bullets.append(
+            f"MACD histogramı {', '.join(macd_up)} görünümünde güçleniyor; momentum bu zaman dilimlerinde yukarı dönüyor."
+        )
     if not bullets:
-        bullets.append("Ana göstergeler zaman dilimleri arasında ortak bir yön üretmiyor; fiyat seviyeleri daha belirleyici.")
-    return bullets[:3]
+        bullets.append(
+            "Ana göstergeler zaman dilimleri arasında ortak bir yön üretmiyor; fiyat seviyeleri daha belirleyici."
+        )
+    return bullets[:4]
 
 
+def _hybrid_15m_timing_note(snapshot: dict) -> str:
+    """15M yalnızca gün içi giriş zamanlamasını inceltir; ana yönü değiştirmez."""
+    momentum = snapshot["timing_15m"]["momentum"]
+    stoch_up = (
+        momentum.get("stochrsi_direction") == "yukari"
+        and momentum.get("stoch_vs_ma") == "ustunde"
+    )
+    stoch_down = (
+        momentum.get("stochrsi_direction") == "asagi"
+        and momentum.get("stoch_vs_ma") == "altinda"
+    )
+    macd_direction = momentum.get("macd_hist_direction")
+    if stoch_up and macd_direction == "yukari":
+        return "15 dakikalık kapanmış mumlarda StochRSI ve MACD birlikte yukarı dönüyor; giriş zamanlaması güçleniyor."
+    if stoch_down and macd_direction == "asagi":
+        return "15 dakikalık kapanmış mumlarda StochRSI ve MACD birlikte zayıflıyor; henüz giriş teyidi yok."
+    if stoch_up:
+        return "15 dakikalık StochRSI erken toparlanıyor ancak MACD teyidi henüz tamamlanmadı."
+    if stoch_down:
+        return "15 dakikalık StochRSI soğuyor; ana yapı korunuyorsa yeniden yukarı dönüş beklenmeli."
+    return "15 dakikalık kapanmış mumlar net bir giriş zamanlaması üretmiyor."
 
 def _hybrid_resistance_close(zone: dict | None, price: float, threshold_pct: float = 0.5) -> bool:
     if not zone or not price:
@@ -2612,11 +2934,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
             location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
     location_text = "; ".join(location).capitalize() + "." if location else "Fiyatın yakın bölgelere mesafesi güvenilir biçimde hesaplanamadı."
 
-    timing = snapshot["timing_15m"]
-    timing_note = "15 dakikalık kapanmış mumlarda momentum " + (
-        "yukarı dönüyor." if timing["momentum"]["macd_hist_direction"] == "yukari" else
-        "zayıflıyor." if timing["momentum"]["macd_hist_direction"] == "asagi" else "karışık ilerliyor."
-    )
+    timing_note = _hybrid_15m_timing_note(snapshot)
     body = (
         f"🔍 Genel Değerlendirme\n{base} şu anda {_hybrid_fmt(price)} seviyesinde. {location_text} "
         f"{day}; {h4}; {h1}. {btc}.\n\n"
@@ -2652,7 +2970,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
                 snapshot, zones, GEMINI_API_KEY, model_name
             )
             _log_usage(
-                "manual_coin_hybrid", model_name, "hybrid-1.1",
+                "manual_coin_hybrid", model_name, "hybrid-1.2",
                 int(usage.get("promptTokenCount") or 0),
                 int(usage.get("candidatesTokenCount") or 0),
                 time.time() - started, prompt_chars=prompt_chars,
