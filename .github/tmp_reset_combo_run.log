@@ -1,0 +1,4 @@
+  File "/home/runner/work/Botum/Botum/.github/tmp_prod_reset_combo_replay.py", line 173
+    base.SnapCache=FastSnapCache\n    v11=base.replay_entries(usable,hourly,data)
+                                 ^
+SyntaxError: unexpected character after line continuation character
