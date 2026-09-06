@@ -2960,33 +2960,8 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
             "Bu bölge korundukça eski direnç kısa vadeli destek gibi çalışabilir; yeniden altına inilmesi "
             "ise yükseliş denemesini zayıflatır."
         )
-        if action == "buy_candidate" and h1_timing in {"retrigger", "sideways_reset", "pullback_reset"}:
-            sentences.append(
-                "Saatlik momentumun yeniden güçlenmesiyle alım koşulları önceki görünüme göre iyileşmiş durumda."
-            )
-        elif action == "wait_trigger" and h1_timing in {"retrigger", "sideways_reset", "pullback_reset"}:
-            sentences.append(
-                "Momentum görünümü olumlu olsa da mevcut hareket alanı yapısal riske göre yeterince güçlü değil; "
-                "bu nedenle doğrudan alım yerine ek teyit beklemek daha dengeli."
-            )
     elif r1 and r1["low"] > price:
-        upside = _hybrid_pct_gap(price, r1["low"], "resistance")
-        momentum_positive = h1_timing in {"retrigger", "sideways_reset", "pullback_reset"}
-        if action == "buy_candidate":
-            sentences.append(
-                f"{symbol} için saatlik momentum ve alıcı katılımı güçlenmiş durumda; ilk dirence yaklaşık "
-                f"%{upside:.1f} hareket alanı bulunuyor."
-            )
-        elif momentum_positive:
-            sentences.append(
-                f"{symbol} için saatlik momentum toparlanıyor; ancak ilk dirence yalnızca %{upside:.1f} "
-                "alan kaldığı için mevcut seviyeden yeni alımın hareket alanı yetersiz."
-            )
-        else:
-            sentences.append(
-                f"{symbol} için ilk dirence yaklaşık %{upside:.1f} alan bulunuyor; yeni alımın anlamlı "
-                "olması için saatlik momentumun fiyat yapısı ve alıcı katılımıyla birlikte güçlenmesi gerekir."
-            )
+        sentences.append(f"{symbol} için giriş değerlendirmesinde ilk dirence kalan alan belirleyici.")
     else:
         sentences.append(
             f"{symbol} fiyatının üzerinde güvenilir direnç bölgesi oluşmadığı için kesin hedef uydurulmamalı."
@@ -2996,15 +2971,18 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
         upside = _hybrid_pct_gap(price, r1["low"], "resistance")
         if near and float(near["low"]) < price:
             structural_risk = _hybrid_pct_gap(price, near["low"], "support")
-            ratio = upside / structural_risk if structural_risk > 0 else None
-            ratio_text = (
-                f"; ham alan oranı yaklaşık {ratio:.2f}" if ratio is not None and ratio < 0.1
-                else f"; ham alan oranı yaklaşık {ratio:.1f}" if ratio is not None else ""
-            )
+            if upside < structural_risk:
+                comparison = "İlk dirence kalan alan, destek bölgesinin alt sınırına olan mesafeden daha küçük."
+            elif upside < structural_risk * 1.5:
+                comparison = "Yukarı hareket alanı, destek bölgesinin alt sınırına olan mesafeye göre sınırlı."
+            else:
+                comparison = "Yukarı hareket alanı, destek bölgesinin alt sınırına olan mesafeden daha geniş; bu tek başına giriş teyidi değildir."
             sentences.append(
-                f"İlk dirence alan yaklaşık %{upside:.1f}; yakın destek bölgesinin alt sınırına mesafe "
-                f"yaklaşık %{structural_risk:.1f}{ratio_text}."
+                f"İlk dirence yaklaşık %{upside:.1f} alan varken destek bölgesinin alt sınırı "
+                f"yaklaşık %{structural_risk:.1f} aşağıda. {comparison}"
             )
+        else:
+            sentences.append(f"İlk dirence yaklaşık %{upside:.1f} alan bulunuyor.")
     if near and (support_gap is None or support_gap > 0.8):
         sentences.append(
             f"{_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} yakın desteğine kontrollü dönüş ve "
@@ -3013,13 +2991,38 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
     return " ".join(sentences)
 
 
+def _hybrid_hourly_narrative(plan: dict, snapshot: dict) -> str:
+    """Yalnız anlatım: modelin saatlik evresini kapanmış mum kanıtıyla birlikte açıklar."""
+    momentum = snapshot.get("coin", {}).get("1H", {}).get("momentum", {})
+    early_up = (
+        momentum.get("stochrsi_direction") == "yukari"
+        and momentum.get("stoch_vs_ma") == "ustunde"
+        and momentum.get("macd_hist_direction") == "yukari"
+    )
+    phase = plan.get("h1_timing", "mixed")
+    if early_up and phase == "sideways_reset":
+        return "saatlik görünümde yatay soğumaya erken toparlanma işaretleri eşlik ediyor"
+    if early_up and phase == "pullback_reset":
+        return "saatlik görünümde kontrollü geri çekilme sonrasında erken toparlanma işaretleri var"
+    if early_up and phase == "weakening":
+        return "saatlik genel görünüm zayıf olsa da öncü göstergelerde erken toparlanma işaretleri var"
+    return {
+        "retrigger": "saatlik momentum yeniden yukarı tetikleniyor",
+        "sideways_reset": "saatlik momentum fiyat fazla gerilemeden yatay kalarak soğuyor",
+        "pullback_reset": "saatlik görünüm kontrollü geri çekilme sonrası yeniden güç arıyor",
+        "overheated": "saatlik hareket kısa vadede fazla uzamış",
+        "weakening": "saatlik momentum zayıflıyor",
+        "mixed": "saatlik zamanlama henüz karışık",
+    }.get(phase, "saatlik zamanlama henüz karışık")
+
+
 def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     price = float(snapshot["live_price"])
     base = snapshot["symbol"]
     plan = _hybrid_validated_plan(plan, zones, price)
     day = {"up": "Günlük ana yapı yukarı eğilimli", "mixed": "Günlük ana yapı karışık", "down": "Günlük ana yapı baskı altında"}[plan["day_regime"]]
     h4 = {"continuation": "4 saatlik görünüm devamı destekliyor", "controlled_pullback": "4 saatlik hareket kontrollü bir düzeltme gösteriyor", "reversal_attempt": "4 saatlik görünüm bir dönüş denemesinde", "distribution": "4 saatlik görünümde alıcı gücü dağılıyor", "breakdown": "4 saatlik yapı aşağı kırılmış görünüyor", "mixed": "4 saatlik görünüm henüz net değil"}[plan["h4_role"]]
-    h1 = {"retrigger": "saatlik momentum yeniden yukarı tetikleniyor", "sideways_reset": "saatlik momentum fiyat fazla gerilemeden yatay kalarak soğuyor", "pullback_reset": "saatlik görünüm kontrollü geri çekilme sonrası yeniden güç arıyor", "overheated": "saatlik hareket kısa vadede fazla uzamış", "weakening": "saatlik momentum zayıflıyor", "mixed": "saatlik zamanlama henüz karışık"}[plan["h1_timing"]]
+    h1 = _hybrid_hourly_narrative(plan, snapshot)
     btc = {"supportive": "Bitcoin görünümü genel piyasa baskısını azaltıyor", "neutral": "Bitcoin belirgin destek veya baskı oluşturmuyor", "caution": "Bitcoin kısa vadeli hareket için ek risk oluşturuyor"}[plan["btc_effect"]]
 
     action = plan["action"]
