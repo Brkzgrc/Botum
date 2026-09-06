@@ -25,7 +25,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import spot_opportunity_scanner as prod
 
 EXPECTED_SCANNER_BLOB = "65ad801bf1a9fd6011231d4f56555deff96d33b7"
-BINANCE = "https://api.binance.com"
+BINANCE_ENDPOINTS = (
+    "https://api.binance.com",
+    "https://data-api.binance.vision",
+)
 TR_TZ = timezone(timedelta(hours=3))
 DAYS = int(os.getenv("BASELINE_DAYS", "7"))
 WORKERS = int(os.getenv("BASELINE_WORKERS", "8"))
@@ -53,16 +56,20 @@ def verify_frozen_source():
 
 def api(path, params=None, attempts=7):
     last = None
-    for i in range(attempts):
-        try:
-            r = HTTP.get(BINANCE + path, params=params, timeout=25)
-            if r.status_code in (418, 429):
-                time.sleep(min(30, 1.5 * 2**i)); continue
-            r.raise_for_status()
-            return r.json()
-        except Exception as exc:
-            last = exc
-            time.sleep(min(15, .5 * 2**i))
+    for endpoint in BINANCE_ENDPOINTS:
+        for i in range(attempts):
+            try:
+                r = HTTP.get(endpoint + path, params=params, timeout=25)
+                if r.status_code == 451:
+                    last = RuntimeError(f"451 from {endpoint}")
+                    break
+                if r.status_code in (418, 429):
+                    time.sleep(min(30, 1.5 * 2**i)); continue
+                r.raise_for_status()
+                return r.json()
+            except Exception as exc:
+                last = exc
+                time.sleep(min(15, .5 * 2**i))
     raise RuntimeError(f"Binance {path}: {last}")
 
 
