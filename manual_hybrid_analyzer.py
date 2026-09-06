@@ -225,17 +225,106 @@ def _validated_plan(plan: dict, zones: dict, price: float) -> dict:
     return plan
 
 
+def _effective_entry(plan: dict, zones: dict, price: float) -> str:
+    """Model belirsiz bıraksa bile mevcut fiyat konumundan somut izleme koşulu üret."""
+    entry = plan.get("entry_type", "none")
+    if entry != "none":
+        return entry
+    r1 = zones.get("resistance_1")
+    near = zones.get("near_support")
+    if r1 and r1["low"] <= price <= r1["high"]:
+        return "resistance_break"
+    if near and _pct_gap(price, near["high"], "support") <= 1.5:
+        return "support_reaction"
+    return "momentum_retrigger"
+
+
+def _next_target(zones: dict, price: float, entry: str) -> dict | None:
+    """Girişin gerisinde veya içinde kalan direnç hiçbir zaman hedef olamaz."""
+    candidates = [zones.get("resistance_1"), zones.get("resistance_2")]
+    valid = [z for z in candidates if z and float(z["low"]) > price]
+    if not valid:
+        return None
+    return min(valid, key=lambda z: float(z["low"]) - price)
+
+
+def _reason_sentence(plan: dict) -> str:
+    positive_labels = {
+        "aligned_uptrend": "üst zaman dilimlerinin yükselişi desteklemesi",
+        "buyer_participation": "alıcı katılımının sürmesi",
+        "sideways_cooling": "fiyat fazla gerilemeden momentumun boşalması",
+        "controlled_pullback": "geri çekilmenin şimdilik kontrollü kalması",
+        "early_retrigger": "saatlik momentumda erken toparlanma görülmesi",
+        "btc_supportive": "Bitcoin görünümünün destekleyici olması",
+    }
+    risk_labels = {
+        "price_near_resistance": "fiyatın direnç bölgesinde bulunması",
+        "price_far_support": "yakın desteğin mevcut fiyata göre aşağıda kalması",
+        "overheated_move": "kısa vadeli hareketin uzamış olması",
+        "momentum_weakness": "kısa vadeli momentumun zayıflaması",
+        "timeframe_conflict": "zaman dilimlerinin henüz tam uyumlu olmaması",
+        "btc_weakness": "Bitcoin'in kısa vadeli baskı oluşturması",
+    }
+    reasons = plan.get("reasons", [])
+    positives = [positive_labels[x] for x in reasons if x in positive_labels][:2]
+    risks = [risk_labels[x] for x in reasons if x in risk_labels][:2]
+
+    def joined(items: list[str]) -> str:
+        return items[0] if len(items) == 1 else " ve ".join(items)
+
+    if plan.get("action") in {"wait_trigger", "no_buy"} and risks:
+        if positives:
+            return f"{joined(positives).capitalize()} olumlu; ancak {joined(risks)} nedeniyle yeni alımı aceleye getirmezdim."
+        return f"Beklememin temel nedeni {joined(risks)}."
+    if positives:
+        return f"Bu görüşü {joined(positives)} destekliyor."
+    if risks:
+        return f"Bu görüşte {joined(risks)} nedeniyle temkinli kalırdım."
+    if not positives and not risks:
+        return "Kararda fiyatın bulunduğu bölge ile saatlik zamanlamayı birlikte dikkate alırdım."
+    return ""
+
+
+def _trade_ideas(zones: dict, price: float) -> str:
+    near, r1, r2 = zones.get("near_support"), zones.get("resistance_1"), zones.get("resistance_2")
+    sentences = []
+    if r1 and r1["low"] <= price <= r1["high"]:
+        sentences.append(
+            f"Fiyat {_fmt(r1['low'])}–{_fmt(r1['high'])} ilk direnç bölgesinin içinde olduğu için "
+            "mevcut seviyeden yeni alımın kısa vadeli hareket alanı sınırlı."
+        )
+        if r2 and r2["low"] > price:
+            sentences.append(
+                f"İlk direncin kapanmış saatlik mumla aşılması ve ardından korunması hâlinde "
+                f"{_fmt(r2['low'])}–{_fmt(r2['high'])} sonraki kâr alanı olarak izlenebilir."
+            )
+    elif r1 and r1["low"] > price:
+        gap = _pct_gap(price, r1["low"], "resistance")
+        sentences.append(
+            f"İlk dirence yaklaşık %{gap:.1f} alan bulunuyor; yeni alımın anlamlı olması için "
+            "saatlik momentumun yeniden güçlenmesi gerekir."
+        )
+    else:
+        sentences.append("Fiyatın üzerinde güvenilir direnç oluşmadığı için önceden kesin hedef uydurulmamalı.")
+    if near:
+        sentences.append(
+            f"Alternatif olarak {_fmt(near['low'])}–{_fmt(near['high'])} yakın desteğine kontrollü geri çekilme "
+            "ve bu bölgede satışın durması daha avantajlı bir giriş senaryosu oluşturabilir."
+        )
+    return " ".join(sentences[:3])
+
+
 def render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     price = float(snapshot["live_price"])
     base = snapshot["symbol"]
     plan = _validated_plan(plan, zones, price)
-    day = {"up": "günlük ana yapı yukarı eğilimli", "mixed": "günlük ana yapı karışık", "down": "günlük ana yapı baskı altında"}[plan["day_regime"]]
+    day = {"up": "Günlük ana yapı yukarı eğilimli", "mixed": "Günlük ana yapı karışık", "down": "Günlük ana yapı baskı altında"}[plan["day_regime"]]
     h4 = {"continuation": "4 saatlik görünüm devamı destekliyor", "controlled_pullback": "4 saatlik hareket kontrollü bir düzeltme gösteriyor", "reversal_attempt": "4 saatlik görünüm bir dönüş denemesinde", "distribution": "4 saatlik görünümde alıcı gücü dağılıyor", "breakdown": "4 saatlik yapı aşağı kırılmış görünüyor", "mixed": "4 saatlik görünüm henüz net değil"}[plan["h4_role"]]
     h1 = {"retrigger": "saatlik momentum yeniden yukarı tetikleniyor", "sideways_reset": "saatlik momentum fiyat fazla gerilemeden yatay kalarak soğuyor", "pullback_reset": "saatlik görünüm kontrollü geri çekilme sonrası yeniden güç arıyor", "overheated": "saatlik hareket kısa vadede fazla uzamış", "weakening": "saatlik momentum zayıflıyor", "mixed": "saatlik zamanlama henüz karışık"}[plan["h1_timing"]]
     btc = {"supportive": "Bitcoin görünümü genel piyasa baskısını azaltıyor", "neutral": "Bitcoin belirgin destek veya baskı oluşturmuyor", "caution": "Bitcoin kısa vadeli hareket için ek risk oluşturuyor"}[plan["btc_effect"]]
 
     action = plan["action"]
-    entry = plan["entry_type"]
+    entry = _effective_entry(plan, zones, price)
     if action == "buy_candidate":
         opening = "Ben olsam bunu alım adayı olarak değerlendirirdim; yine de tek seferde tam büyüklükte girmezdim."
     elif action == "no_buy":
@@ -250,7 +339,7 @@ def render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     elif entry == "momentum_retrigger":
         trigger = "Fiyat yapısı korunurken saatlik öncü göstergelerin yeniden yukarı dönmesi giriş koşulum olurdu."
     else:
-        trigger = "Yeni alım için zaman dilimlerinin daha belirgin biçimde aynı yöne dönmesini beklerdim."
+        trigger = "Yeni alım için saatlik fiyat hareketi ile alıcı katılımının birlikte güçlenmesini beklerdim."
 
     if zones.get("near_support"):
         invalidation = "Yakın destek kapanmış saatlik mumla kaybedilirse bu kısa vadeli alım düşüncesinden vazgeçerdim."
@@ -258,12 +347,9 @@ def render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         invalidation = "Saatlik ve 4 saatlik yapı birlikte aşağı dönerse alım düşüncesinden vazgeçerdim."
 
     # Hedefi giriş türüne göre kod seçer; model geride kalmış bir direnci hedef yapamaz.
-    target_zone = zones.get("resistance_2") if entry == "resistance_break" else zones.get("resistance_1")
-    if target_zone and target_zone["low"] > price:
+    target_zone = _next_target(zones, price, entry)
+    if target_zone:
         profit = f"İlk kâr değerlendirme alanım {_fmt(target_zone['low'])}–{_fmt(target_zone['high'])} olurdu."
-    elif entry == "resistance_break" and zones.get("resistance_2"):
-        z = zones["resistance_2"]
-        profit = f"Kırılım sonrası sonraki direnç olan {_fmt(z['low'])}–{_fmt(z['high'])} bölgesini izlerdim."
     else:
         profit = "Fiyatın üzerinde güvenilir hedef oluşmadığı için sabit hedef uydurmaz, hareket zayıfladıkça kademeli kâr alırdım."
 
@@ -290,7 +376,9 @@ def render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         f"• Sonraki destek: {_zone_text(zones.get('next_support'), price)}\n"
         f"• İlk direnç: {_zone_text(zones.get('resistance_1'), price)}\n"
         f"• Sonraki direnç: {_zone_text(zones.get('resistance_2'), price)}\n\n"
-        f"🌌 Benim Beklentim — Ne Yapardım?\n{opening} {trigger} {timing_note} {invalidation} {profit}"
+        f"📌 İşlem Fikirleri\n{_trade_ideas(zones, price)}\n\n"
+        f"🌌 Benim Beklentim — Ne Yapardım?\n{opening} {_reason_sentence(plan)} "
+        f"{trigger} {timing_note} {invalidation} {profit}"
     )
     return body
 
