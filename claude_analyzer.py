@@ -2753,14 +2753,19 @@ def _hybrid_15m_timing_note(snapshot: dict, action: str, zones: dict | None = No
 
     if both_up and action == "wait_trigger":
         resistance = (zones or {}).get("resistance_1")
-        if (
-            resistance and price is not None
-            and float(resistance["low"]) <= float(price) <= float(resistance["high"])
-        ):
-            return (
-                "15 dakikalık momentum yukarı dönse de fiyatın direnç bölgesinde olması nedeniyle "
-                "bunu tek başına giriş teyidi saymazdım."
-            )
+        if resistance and price is not None:
+            if float(resistance["low"]) <= float(price) <= float(resistance["high"]):
+                return (
+                    "15 dakikalık momentum yukarı dönse de fiyatın direnç bölgesinde olması nedeniyle "
+                    "bunu tek başına giriş teyidi saymazdım."
+                )
+            if float(resistance["low"]) > float(price):
+                gap = _hybrid_pct_gap(float(price), float(resistance["low"]), "resistance")
+                if gap <= 1.0:
+                    return (
+                        f"15 dakikalık momentum yukarı dönse de ilk dirence yalnızca %{gap:.1f} alan "
+                        "kaldığı için bunu tek başına giriş teyidi saymazdım."
+                    )
         return (
             "15 dakikalık momentum yukarı dönse de mevcut fiyat konumu ve risk/getiri dengesi nedeniyle "
             "bunu tek başına giriş teyidi saymazdım."
@@ -2963,10 +2968,16 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
             )
     elif r1 and r1["low"] > price:
         upside = _hybrid_pct_gap(price, r1["low"], "resistance")
+        momentum_positive = h1_timing in {"retrigger", "sideways_reset", "pullback_reset"}
         if action == "buy_candidate":
             sentences.append(
                 f"{symbol} için saatlik momentum ve alıcı katılımı güçlenmiş durumda; ilk dirence yaklaşık "
                 f"%{upside:.1f} hareket alanı bulunuyor."
+            )
+        elif momentum_positive:
+            sentences.append(
+                f"{symbol} için saatlik momentum toparlanıyor; ancak ilk dirence yalnızca %{upside:.1f} "
+                "alan kaldığı için mevcut seviyeden yeni alımın hareket alanı yetersiz."
             )
         else:
             sentences.append(
@@ -3014,9 +3025,25 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     else:
         near = zones.get("near_support")
         resistance = zones.get("resistance_1")
+        resistance_gap = (
+            _hybrid_pct_gap(price, resistance["low"], "resistance")
+            if resistance and float(resistance["low"]) > price else None
+        )
+        structural_risk = (
+            _hybrid_pct_gap(price, near["low"], "support")
+            if near and float(near["low"]) < price else None
+        )
+        room_risk_ratio = (
+            resistance_gap / structural_risk
+            if resistance_gap is not None and structural_risk not in (None, 0) else None
+        )
         if (
             near and resistance
-            and float(resistance["low"]) <= price <= float(resistance["high"])
+            and (
+                float(resistance["low"]) <= price <= float(resistance["high"])
+                or (resistance_gap is not None and resistance_gap <= 1.0)
+                or (room_risk_ratio is not None and room_risk_ratio < 1.5)
+            )
         ):
             opening = (
                 f"Ben olsam mevcut fiyattan almaz; {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} "
