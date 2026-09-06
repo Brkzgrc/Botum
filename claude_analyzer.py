@@ -2252,7 +2252,7 @@ Yazım kuralları:
 
 def analyze_coin_on_demand(symbol: str) -> bool:
     """Thread 38 için, Portfolio sinyalinden bağımsız tek seferlik güncel coin analizi."""
-    pair = symbol.replace("/", "").upper()
+    # Normal COIN sorgusu: kapanmış mum + zengin MTF veri + ücretsiz kontrollü Gemini kararı.\n    # Legacy yalnız açıkça seçilirse eski ücretli Haiku yolunda kalır; otomatik ücretli fallback yoktur.\n    if MANUAL_ANALYZER_MODE == "v2":\n        from manual_hybrid_analyzer import analyze_coin_hybrid\n        return analyze_coin_hybrid(\n            symbol, send_decision, GEMINI_API_KEY, _resolve_manual_v2_model(), _log_usage\n        )\n\n    pair = symbol.replace("/", "").upper()
     base = pair[:-4] if pair.endswith("USDT") else pair
     pair = base + "USDT"
     display_symbol = base + "/USDT"
