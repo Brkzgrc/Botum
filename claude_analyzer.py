@@ -2852,33 +2852,67 @@ def _hybrid_reason_sentence(plan: dict) -> str:
 
 
 
-def _hybrid_trade_ideas(zones: dict, price: float) -> str:
-    near, r1, r2 = zones.get("near_support"), zones.get("resistance_1"), zones.get("resistance_2")
-    sentences = []
+def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> str:
+    """Gün içi kararını seviye, olası alan ve riskle doğal bir paragrafta açıklar."""
+    near = zones.get("near_support")
+    r1 = zones.get("resistance_1")
+    r2 = zones.get("resistance_2")
     if _hybrid_resistance_close(r1, price):
-        sentences.append(
-            f"Fiyat {_hybrid_fmt(r1['low'])}–{_hybrid_fmt(r1['high'])} ilk direnç bölgesine çok yakın olduğu için "
-            "mevcut seviyeden yeni alımın kısa vadeli hareket alanı sınırlı."
+        sentences = [
+            f"{symbol} genel olarak olumlu yapıda olsa da şu an yeni alım için elverişli bir yerde değil; "
+            f"fiyat {_hybrid_fmt(r1['low'])}–{_hybrid_fmt(r1['high'])} ilk direnç bölgesinin içinde."
+        ]
+        upside = (
+            _hybrid_pct_gap(price, r2["low"], "resistance")
+            if r2 and float(r2["low"]) > price else None
         )
-        if r2 and r2["low"] > price:
-            sentences.append(
-                f"İlk direncin kapanmış saatlik mumla aşılması ve ardından korunması hâlinde "
-                f"{_hybrid_fmt(r2['low'])}–{_hybrid_fmt(r2['high'])} sonraki kâr alanı olarak izlenebilir."
+        downside = (
+            _hybrid_pct_gap(price, near["high"], "support")
+            if near and float(near["high"]) < price else None
+        )
+        if upside is not None and downside is not None:
+            comparison = (
+                "Bu nedenle mevcut fiyattan risk/getiri cazip değil."
+                if upside <= downside else
+                "Yukarı alan geri çekilme mesafesinden büyük olsa da direnç içinden giriş hâlâ teyitsiz."
             )
-    elif r1 and r1["low"] > price:
-        gap = _hybrid_pct_gap(price, r1["low"], "resistance")
+            sentences.append(
+                f"Bir sonraki dirence yaklaşık %{upside:.1f} alan varken yakın desteğe olası geri çekilme "
+                f"mesafesi yaklaşık %{downside:.1f}. {comparison}"
+            )
+        scenarios = []
+        scenarios.append(
+            f"{_hybrid_fmt(r1['high'])} üzerinde kapanmış 1H mum ve bölgenin korunması alım ihtimalini güçlendirir"
+        )
+        if near:
+            scenarios.append(
+                f"{_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} desteğine kontrollü dönüş ve "
+                "bu bölgede satışın durması daha avantajlı bir giriş oluşturur"
+            )
+        sentences.append("; alternatif olarak ".join(scenarios) + ".")
+        if near:
+            sentences.append(
+                "İlk direnç aşılamazsa kısa vadede yakın desteğe doğru geri çekilme olasılığı artar."
+            )
+        return " ".join(sentences)
+
+    sentences = []
+    if r1 and r1["low"] > price:
+        upside = _hybrid_pct_gap(price, r1["low"], "resistance")
         sentences.append(
-            f"İlk dirence yaklaşık %{gap:.1f} alan bulunuyor; yeni alımın anlamlı olması için "
-            "saatlik momentumun yeniden güçlenmesi gerekir."
+            f"{symbol} için ilk dirence yaklaşık %{upside:.1f} alan bulunuyor; ancak yeni alımın anlamlı "
+            "olması için saatlik momentumun fiyat yapısı ve alıcı katılımıyla birlikte güçlenmesi gerekir."
         )
     else:
-        sentences.append("Fiyatın üzerinde güvenilir direnç oluşmadığı için önceden kesin hedef uydurulmamalı.")
+        sentences.append(
+            f"{symbol} fiyatının üzerinde güvenilir direnç bölgesi oluşmadığı için kesin hedef uydurulmamalı."
+        )
     if near:
         sentences.append(
-            f"Alternatif olarak {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} yakın desteğine kontrollü geri çekilme "
-            "ve bu bölgede satışın durması daha avantajlı bir giriş senaryosu oluşturabilir."
+            f"{_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} yakın desteğine kontrollü dönüş ve "
+            "bu bölgede satışın durması daha avantajlı bir giriş senaryosu oluşturabilir."
         )
-    return " ".join(sentences[:3])
+    return " ".join(sentences)
 
 
 def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
@@ -2893,11 +2927,11 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     action = plan["action"]
     entry = _hybrid_effective_entry(plan, zones, price)
     if action == "buy_candidate":
-        opening = "Ben olsam bunu alım adayı olarak değerlendirirdim; yine de tek seferde tam büyüklükte girmezdim."
+        opening = "Ben olsam bunu ALIM_ADAYI olarak değerlendirirdim; yine de tek seferde tam büyüklükte girmezdim."
     elif action == "no_buy":
         opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
     else:
-        opening = "Ben olsam şu anda tetik beklerdim."
+        opening = "Ben olsam mevcut fiyattan almaz, TETİK_BEKLE konumunda kalırdım."
 
     if entry == "support_reaction" and zones.get("near_support"):
         trigger = "Yakın destekte satışın durması ve saatlik momentumun yeniden yukarı dönmesi giriş koşulum olurdu."
@@ -2915,20 +2949,16 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     else:
         invalidation = "Saatlik ve 4 saatlik yapı birlikte aşağı dönerse alım düşüncesinden vazgeçerdim."
 
-    # Hedefi giriş türüne göre kod seçer; model geride kalmış bir direnci hedef yapamaz.
-    target_zone = _hybrid_next_target(zones, price, entry)
-    if target_zone:
-        profit = f"İlk kâr değerlendirme alanım {_hybrid_fmt(target_zone['low'])}–{_hybrid_fmt(target_zone['high'])} olurdu."
-    else:
-        profit = "Fiyatın üzerinde güvenilir hedef oluşmadığı için sabit hedef uydurmaz, hareket zayıfladıkça kademeli kâr alırdım."
-
     support_gap = _hybrid_pct_gap(price, zones["near_support"]["high"], "support") if zones.get("near_support") else None
     resistance_gap = _hybrid_pct_gap(price, zones["resistance_1"]["low"], "resistance") if zones.get("resistance_1") else None
     location = []
     if support_gap is not None:
         location.append(f"yakın destek yaklaşık %{support_gap:.1f} aşağıda")
     if resistance_gap is not None:
-        if resistance_gap < 0.1:
+        resistance_zone = zones.get("resistance_1")
+        if resistance_zone and resistance_zone["low"] <= price <= resistance_zone["high"]:
+            location.append("fiyat ilk direnç bölgesinin içinde")
+        elif resistance_gap < 0.1:
             location.append("ilk direnç hemen üzerinde")
         else:
             location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
@@ -2944,9 +2974,15 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         f"• Sonraki destek: {_hybrid_zone_text(zones.get('next_support'), price)}\n"
         f"• İlk direnç: {_hybrid_zone_text(zones.get('resistance_1'), price)}\n"
         f"• Sonraki direnç: {_hybrid_zone_text(zones.get('resistance_2'), price)}\n\n"
-        f"📌 İşlem Fikirleri\n{_hybrid_trade_ideas(zones, price)}\n\n"
-        f"🌌 Benim Beklentim — Ne Yapardım?\n{opening} {_hybrid_reason_sentence(plan)} "
-        f"{trigger} {timing_note} {invalidation} {profit}"
+        f"📌 İşlem Fikirleri\n{_hybrid_trade_ideas(plan, zones, price, base)}\n\n"
+        f"🌌 Benim Beklentim — Ne Yapardım?\n"
+        + (
+            f"{opening} Yukarıdaki giriş senaryolarından biri oluşmadan işlem açmazdım. {timing_note}"
+            if action == "wait_trigger" else
+            f"{opening} {_hybrid_reason_sentence(plan)} {timing_note} {invalidation}"
+            if action == "buy_candidate" else
+            f"{opening} {_hybrid_reason_sentence(plan)}"
+        )
     )
     return body
 
