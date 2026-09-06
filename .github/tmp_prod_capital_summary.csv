@@ -1,2 +1,2 @@
 version,start_capital,end_capital_mark_to_market,return_pct_mark_to_market,selected_trades,closed_trades,open_positions,wins,losses,avg_hold_h,realised_days,days_at_or_above_4pct,days_locked_after_5pct,daily_goal_pct,daily_lock_pct
-PROD_V11_SINGLE_POSITION_BASELINE,2500.0,2751.442469122608,10.057698764904321,6,5,1,4,1,15.26666638888889,5,1,1,4.0,5.0
+PROD_V11_SINGLE_POSITION_BASELINE,2500.0,2677.072057719091,7.082882308763638,6,5,1,3,2,18.76666638888889,5,1,1,4.0,5.0
