@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 23, in <module>
+    import spot_opportunity_scanner as prod
+ModuleNotFoundError: No module named 'spot_opportunity_scanner'
