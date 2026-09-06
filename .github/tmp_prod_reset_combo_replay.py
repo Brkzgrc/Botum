@@ -97,25 +97,24 @@ def new_templates_at(ts, selected, snaps):
     return out
 
 def replay_added(symbols,hourly,data):
-    snaps=FastSnapCache(data); cache={}; selected_by_hour={}; active=defaultdict(set)
+    snaps=FastSnapCache(data); cache={}; selected_by_hour={}; last_emit={}
     rows=[]; scans=pd.date_range(base.START.ceil("15min"),base.END,freq="15min",tz="UTC")
     for n,ts in enumerate(scans,1):
         hour=ts.floor("1h")
         if hour not in selected_by_hour:
             selected_by_hour[hour]=base.selected_at(ts,symbols,hourly,cache)
         now=new_templates_at(ts,selected_by_hour[hour],snaps)
-        current={(x.symbol,x.decision["setup_kind"]) for x in now}
-        # Emit only when a condition newly turns true; a 12h same-template cooldown blocks repeats.
+        # A template may remain true over several 15m bars.  One setup may emit once per 12h only.
         for x in now:
             key=(x.symbol,x.decision["setup_kind"])
-            if key in active[x.symbol]: continue
+            if key in last_emit and ts-last_emit[key] < pd.Timedelta(hours=12): continue
             entry,stop,tp1,tp2=base.levels(x,ts,data)
+            if (entry-stop)/entry > .03: continue
+            last_emit[key]=ts
             rows.append({"entry_time":ts,"symbol":x.symbol,"kind":x.decision["setup_kind"],
                          "score":x.decision["confidence"],"rank":x.rank,
                          "btc_regime":x.snapshot["btc_regime"],"entry":entry,"stop":stop,
                          "tp1":tp1,"tp2":tp2})
-        active=defaultdict(set)
-        for symbol,kind in current: active[symbol].add(kind)
         if n%96==0 or n==len(scans):
             print(f"[ADDED] {n}/{len(scans)} signals={len(rows)}",flush=True)
     return pd.DataFrame(rows)
@@ -157,8 +156,11 @@ def tag(df,variant):
 
 def main():
     base.verify_frozen_source()
-    symbols=base.current_universe()
-    print(f"[START] {base.START} -> {base.END}; universe={len(symbols)}",flush=True)
+    all_symbols=base.current_universe()
+    ticks=base.api("/api/v3/ticker/24hr")
+    quote={x.get("symbol"):base.prod.sf(x.get("quoteVolume")) for x in ticks if isinstance(x,dict)}
+    symbols=sorted(all_symbols,key=lambda x:quote.get(x,0),reverse=True)[:100]
+    print(f"[START] {base.START} -> {base.END}; top100_by_current_quote_volume={len(symbols)}",flush=True)
     hourly=base.parallel_fetch(symbols,"1h",base.START-pd.Timedelta(days=12),base.END)
     symbols=sorted(hourly); cache={}; union=set()
     for ts in pd.date_range(base.START.ceil("1h"),base.END,freq="1h",tz="UTC"):
