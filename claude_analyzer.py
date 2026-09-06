@@ -2737,7 +2737,7 @@ def _hybrid_indicator_bullets(snapshot: dict) -> list[str]:
     return bullets[:4]
 
 
-def _hybrid_15m_timing_note(snapshot: dict, action: str) -> str:
+def _hybrid_15m_timing_note(snapshot: dict, action: str, zones: dict | None = None, price: float | None = None) -> str:
     """15M ana kararı değiştirmez; yalnız mevcut karar içindeki zamanlamayı açıklar."""
     momentum = snapshot["timing_15m"]["momentum"]
     stoch_up = (
@@ -2752,6 +2752,15 @@ def _hybrid_15m_timing_note(snapshot: dict, action: str) -> str:
     both_up = stoch_up and macd_direction == "yukari"
 
     if both_up and action == "wait_trigger":
+        resistance = (zones or {}).get("resistance_1")
+        if (
+            resistance and price is not None
+            and float(resistance["low"]) <= float(price) <= float(resistance["high"])
+        ):
+            return (
+                "15 dakikalık momentum yukarı dönse de fiyatın direnç bölgesinde olması nedeniyle "
+                "bunu tek başına giriş teyidi saymazdım."
+            )
         return (
             "15 dakikalık momentum yukarı dönse de mevcut fiyat konumu ve risk/getiri dengesi nedeniyle "
             "bunu tek başına giriş teyidi saymazdım."
@@ -3003,7 +3012,23 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
     elif action == "no_buy":
         opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
     else:
-        opening = "Ben olsam mevcut fiyattan almaz, uygun giriş koşulu için tetikte beklerdim."
+        near = zones.get("near_support")
+        resistance = zones.get("resistance_1")
+        if (
+            near and resistance
+            and float(resistance["low"]) <= price <= float(resistance["high"])
+        ):
+            opening = (
+                f"Ben olsam mevcut fiyattan almaz; {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} "
+                "desteğine kontrollü dönüş ve bu bölgede satışın durması için tetikte beklerdim."
+            )
+        elif near and _hybrid_pct_gap(price, near["high"], "support") <= 0.8:
+            opening = (
+                f"Ben olsam mevcut fiyattan almaz; {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} "
+                "bölgesinin destek olarak korunduğunu görmeyi beklerdim."
+            )
+        else:
+            opening = "Ben olsam mevcut fiyattan almaz, uygun giriş koşulu için tetikte beklerdim."
 
     if entry == "support_reaction" and zones.get("near_support"):
         trigger = "Yakın destekte satışın durması ve saatlik momentumun yeniden yukarı dönmesi giriş koşulum olurdu."
@@ -3036,7 +3061,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
             location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
     location_text = "; ".join(location).capitalize() + "." if location else "Fiyatın yakın bölgelere mesafesi güvenilir biçimde hesaplanamadı."
 
-    timing_note = _hybrid_15m_timing_note(snapshot, action)
+    timing_note = _hybrid_15m_timing_note(snapshot, action, zones, price)
     body = (
         f"🔍 Genel Değerlendirme\n{base} şu anda {_hybrid_fmt(price)} seviyesinde. {location_text} "
         f"{day}; {h4}; {h1}. {btc}.\n\n"
