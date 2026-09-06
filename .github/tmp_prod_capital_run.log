@@ -1,0 +1,9 @@
+                          version  start_capital  end_capital_mark_to_market  return_pct_mark_to_market  selected_trades  closed_trades  open_positions  wins  losses  avg_hold_h  realised_days  days_at_or_above_4pct  days_locked_after_5pct  daily_goal_pct  daily_lock_pct
+PROD_V11_SINGLE_POSITION_BASELINE         2500.0                 2751.442469                  10.057699                6              5               1     4       1   15.266666              5                      1                       1             4.0             5.0
+DAILY
+    tr_day  realised_net_pct  target_4_hit  locked_after_5
+2026-08-31          0.033918         False           False
+2026-09-01          0.705331         False           False
+2026-09-02          8.569016          True            True
+2026-09-04         -1.176756         False           False
+2026-09-05          1.124193         False           False

@@ -1,0 +1,8 @@
+{
+  "capital": 2500.0,
+  "one_open_position": true,
+  "full_capital_per_trade": true,
+  "daily_goal_pct": 4.0,
+  "daily_lock_after_realised_pct": 5.0,
+  "fee_roundtrip_pct": 0.2
+}
