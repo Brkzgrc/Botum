@@ -1,0 +1,42 @@
+name: tmp production combined reset and 40-70 replay
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/tmp_prod_reset_combo_replay.py'
+      - '.github/workflows/tmp_prod_reset_combo_replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy requests flask
+      - name: Replay V11 plus added entry templates
+        shell: bash
+        run: |
+          set +e
+          python .github/tmp_prod_reset_combo_replay.py 2>&1 | tee /tmp/reset_combo_run.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > /tmp/reset_combo_exit_code.txt
+          exit 0
+      - name: Save research outputs
+        shell: bash
+        run: |
+          cp /tmp/reset_combo_run.log .github/tmp_reset_combo_run.log
+          cp /tmp/reset_combo_exit_code.txt .github/tmp_reset_combo_exit_code.txt
+          for f in summary trades ledger signals; do
+            if [ -f "/tmp/reset_combo_${f}.csv" ]; then cp "/tmp/reset_combo_${f}.csv" ".github/tmp_reset_combo_${f}.csv"; fi
+          done
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -f .github/tmp_reset_combo_*
+          git commit -m 'test: save combined reset and 40-70 replay' || true
+          git pull --rebase
+          git push
