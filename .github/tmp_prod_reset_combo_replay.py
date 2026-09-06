@@ -1,6 +1,6 @@
 """Seven-day replay: production V11 plus two additional timing templates.
 
-Research only. Production scanner and Portfolio are not changed.
+Research only. Production scanner and Portfolio are not changed.\nThis replay intentionally has no workflow timeout.
 The added templates are:
 - MID_40_70: 15m StochRSI K in (40, 70], turning up, with existing HTF structure.
 - RESET_TURN: 1h reset/turn plus 15m low reset/turn, KDJ and Williams %R recovery.
