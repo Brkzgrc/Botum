@@ -1,4 +1,13 @@
 Traceback (most recent call last):
-  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 23, in <module>
-    import spot_opportunity_scanner as prod
-ModuleNotFoundError: No module named 'spot_opportunity_scanner'
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 385, in <module>
+    if __name__=="__main__": main()
+                             ^^^^^^
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 360, in main
+    symbols=current_universe(); print(f"[START] {START} -> {END}; universe={len(symbols)}",flush=True)
+            ^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 106, in current_universe
+    ex = api("/api/v3/exchangeInfo")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/Botum/Botum/.github/tmp_spot_production_baseline.py", line 66, in api
+    raise RuntimeError(f"Binance {path}: {last}")
+RuntimeError: Binance /api/v3/exchangeInfo: 451 Client Error:  for url: https://api.binance.com/api/v3/exchangeInfo
