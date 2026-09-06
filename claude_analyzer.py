@@ -2905,7 +2905,10 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
     action = plan.get("action")
     h1_timing = plan.get("h1_timing")
 
-    if _hybrid_resistance_close(r1, price):
+    inside_resistance = bool(
+        r1 and float(r1["low"]) <= price <= float(r1["high"])
+    )
+    if inside_resistance:
         sentences = [
             f"{symbol} genel olarak olumlu yapıda olsa da şu an yeni alım için elverişli bir yerde değil; "
             f"fiyat {_hybrid_fmt(r1['low'])}–{_hybrid_fmt(r1['high'])} ilk direnç bölgesinin içinde."
@@ -2994,7 +2997,10 @@ def _hybrid_trade_ideas(plan: dict, zones: dict, price: float, symbol: str) -> s
         if near and float(near["low"]) < price:
             structural_risk = _hybrid_pct_gap(price, near["low"], "support")
             ratio = upside / structural_risk if structural_risk > 0 else None
-            ratio_text = f"; ham alan oranı yaklaşık {ratio:.1f}" if ratio is not None else ""
+            ratio_text = (
+                f"; ham alan oranı yaklaşık {ratio:.2f}" if ratio is not None and ratio < 0.1
+                else f"; ham alan oranı yaklaşık {ratio:.1f}" if ratio is not None else ""
+            )
             sentences.append(
                 f"İlk dirence alan yaklaşık %{upside:.1f}; yakın destek bölgesinin alt sınırına mesafe "
                 f"yaklaşık %{structural_risk:.1f}{ratio_text}."
