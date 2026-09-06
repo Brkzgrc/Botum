@@ -170,7 +170,8 @@ def main():
           "1d":base.parallel_fetch(union,"1d",base.START-pd.Timedelta(days=270),base.END)}
     usable=sorted(set(union)&set(data["15m"])&set(data["4h"])&set(data["1d"])&set(hourly))
     print(f"[STAGE] usable={len(usable)}",flush=True)
-    base.SnapCache=FastSnapCache\n    v11=base.replay_entries(usable,hourly,data)
+    base.SnapCache=FastSnapCache
+    v11=base.replay_entries(usable,hourly,data)
     added=replay_added(usable,hourly,data)
     mid=added[added.kind=="MID_40_70"].copy() if len(added) else added
     reset=added[added.kind=="RESET_TURN"].copy() if len(added) else added
