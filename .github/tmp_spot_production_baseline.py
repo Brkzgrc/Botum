@@ -11,6 +11,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import spot_opportunity_scanner as prod
 
 EXPECTED_SCANNER_BLOB = "65ad801bf1a9fd6011231d4f56555deff96d33b7"
