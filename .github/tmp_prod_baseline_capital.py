@@ -25,16 +25,22 @@ def main():
     d = pd.read_csv(SOURCE, parse_dates=["entry_time", "exit_time"])
     d["entry_time"] = pd.to_datetime(d.entry_time, utc=True)
     d["exit_time"] = pd.to_datetime(d.exit_time, utc=True, errors="coerce")
-    # Existing CSV order is the scanner's rank order for equal-timestamp finals.
     d = d.sort_values(["entry_time"], kind="stable").reset_index(drop=True)
+    # One position means simultaneous finals must be reduced to the genuinely
+    # strongest candidate before capital allocation.  Rank is production's
+    # selection score; R/R is used only for an exact rank tie.
+    stop_risk = (d.entry - d.stop) / d.entry
+    target = (d.tp1 - d.entry) / d.entry
+    d["_rr"] = target / stop_risk.replace(0, float("nan"))
 
     capital = START_CAPITAL
     available_at = pd.Timestamp.min.tz_localize("UTC")
     daily_realised: dict[str, float] = {}
     rows = []
 
-    for _, x in d.iterrows():
-        entry = x.entry_time
+    for entry, same_bar in d.groupby("entry_time", sort=True):
+        x = same_bar.sort_values(["rank", "_rr", "score"], ascending=False,
+                                 kind="stable").iloc[0]
         day = entry.tz_convert(TR_TZ).strftime("%Y-%m-%d")
         if entry < available_at:
             continue
