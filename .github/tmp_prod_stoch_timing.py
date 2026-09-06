@@ -79,6 +79,7 @@ def main():
     closed=x[x.status=="closed"].copy(); closed["outcome"]=np.where(closed.net_pct>0,"WIN","LOSS")
     variants={
       "CURRENT": x,
+      "LOW_STOCH_K40": x[x.stoch_k<=40],
       "RETRIGGER_DEEP_RESET": x[(x.kind!="RETRIGGER") | (x.stoch_min3<=30)],
       "NO_LATE_STOCH": x[x.stoch_k<=70],
       "DEEP_RETRIGGER_PLUS_PRESSURE": x[((x.kind=="RETRIGGER")&(x.stoch_min3<=30)) | ((x.kind=="PRESSURE")&(x.stoch_k<=65))],
