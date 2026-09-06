@@ -2737,8 +2737,8 @@ def _hybrid_indicator_bullets(snapshot: dict) -> list[str]:
     return bullets[:4]
 
 
-def _hybrid_15m_timing_note(snapshot: dict) -> str:
-    """15M yalnızca gün içi giriş zamanlamasını inceltir; ana yönü değiştirmez."""
+def _hybrid_15m_timing_note(snapshot: dict, action: str) -> str:
+    """15M ana kararı değiştirmez; yalnız mevcut karar içindeki zamanlamayı açıklar."""
     momentum = snapshot["timing_15m"]["momentum"]
     stoch_up = (
         momentum.get("stochrsi_direction") == "yukari"
@@ -2749,14 +2749,28 @@ def _hybrid_15m_timing_note(snapshot: dict) -> str:
         and momentum.get("stoch_vs_ma") == "altinda"
     )
     macd_direction = momentum.get("macd_hist_direction")
-    if stoch_up and macd_direction == "yukari":
-        return "15 dakikalık kapanmış mumlarda StochRSI ve MACD birlikte yukarı dönüyor; giriş zamanlaması güçleniyor."
+    both_up = stoch_up and macd_direction == "yukari"
+
+    if both_up and action == "wait_trigger":
+        return (
+            "15 dakikalık momentum yukarı dönse de mevcut fiyat konumu ve risk/getiri dengesi nedeniyle "
+            "bunu tek başına giriş teyidi saymazdım."
+        )
+    if both_up and action == "no_buy":
+        return (
+            "15 dakikalık momentum yukarı dönüyor; ancak bu, üst zaman dilimlerindeki olumsuz görünümü "
+            "tek başına değiştirmiyor."
+        )
+    if both_up:
+        return "15 dakikalık kapanmış mumlarda StochRSI ve MACD birlikte yukarı dönüyor; giriş zamanlaması da kararı destekliyor."
     if stoch_down and macd_direction == "asagi":
         return "15 dakikalık kapanmış mumlarda StochRSI ve MACD birlikte zayıflıyor; henüz giriş teyidi yok."
+    if stoch_up and action == "wait_trigger":
+        return "15 dakikalık StochRSI erken toparlansa da MACD teyidi tamamlanmadığı için bunu giriş sinyali saymazdım."
     if stoch_up:
         return "15 dakikalık StochRSI erken toparlanıyor ancak MACD teyidi henüz tamamlanmadı."
     if stoch_down:
-        return "15 dakikalık StochRSI soğuyor; ana yapı korunuyorsa yeniden yukarı dönüş beklenmeli."
+        return "15 dakikalık StochRSI soğuyor; yeniden yukarı dönüş görülmeden giriş zamanlaması teyit edilmiş sayılmaz."
     return "15 dakikalık kapanmış mumlar net bir giriş zamanlaması üretmiyor."
 
 def _hybrid_resistance_close(zone: dict | None, price: float, threshold_pct: float = 0.5) -> bool:
@@ -3022,7 +3036,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
             location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
     location_text = "; ".join(location).capitalize() + "." if location else "Fiyatın yakın bölgelere mesafesi güvenilir biçimde hesaplanamadı."
 
-    timing_note = _hybrid_15m_timing_note(snapshot)
+    timing_note = _hybrid_15m_timing_note(snapshot, action)
     body = (
         f"🔍 Genel Değerlendirme\n{base} şu anda {_hybrid_fmt(price)} seviyesinde. {location_text} "
         f"{day}; {h4}; {h1}. {btc}.\n\n"
@@ -3035,7 +3049,7 @@ def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
         f"📌 İşlem Fikirleri\n{_hybrid_trade_ideas(plan, zones, price, base)}\n\n"
         f"🌌 Benim Beklentim — Ne Yapardım?\n"
         + (
-            f"{opening} Yukarıdaki giriş koşulu netleşmeden işlem açmazdım. {timing_note}"
+            f"{opening} {timing_note}"
             if action == "wait_trigger" else
             f"{opening} {_hybrid_reason_sentence(plan)} {timing_note} {invalidation}"
             if action == "buy_candidate" else
