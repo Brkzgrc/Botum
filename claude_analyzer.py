@@ -2616,52 +2616,95 @@ def _hybrid_market_snapshot(symbol: str) -> tuple[dict, dict]:
         live_price,
     )
     return snapshot, zones
+def _hybrid_prose_context(snapshot: dict, zones: dict) -> tuple[dict, dict]:
+    """Sayısal değerler koddan gelir; yorumun cümlelerini model üretir."""
+    tokens = {"price": _hybrid_fmt(snapshot["live_price"])}
+    facts = {}
+    price = float(snapshot["live_price"])
+    for name, zone in zones.items():
+        if not zone:
+            facts[name] = None
+            continue
+        low, high = float(zone["low"]), float(zone["high"])
+        tokens[name] = f"{_hybrid_fmt(low)}–{_hybrid_fmt(high)}"
+        tokens[name + "_low"] = _hybrid_fmt(low)
+        tokens[name + "_high"] = _hybrid_fmt(high)
+        tokens[name + "_distance"] = f"%{min(abs(price-low), abs(price-high))/price*100:.1f}"
+        facts[name] = {
+            "position": "inside" if low <= price <= high else "below" if price < low else "above",
+            "low": low, "high": high, "timeframes": sorted(zone["tfs"]),
+        }
+    # Model göstergeleri rakam dökmeden yorumlayabilir; gerekli değerler de referanslanabilir.
+    for tf, frame in snapshot.get("coin", {}).items():
+        for key, value in frame.get("momentum", {}).items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and np.isfinite(value):
+                tokens[f"{tf}_{key}"] = str(value)
+    return tokens, facts
+
+
 def _hybrid_decision_plan(snapshot: dict, zones: dict, api_key: str, model_name: str) -> tuple[dict, dict, int]:
-    zone_payload = {key: None if value is None else {
-        "low": round(value["low"], 10), "high": round(value["high"], 10),
-        "timeframes": sorted(value["tfs"]), "touches": value["touches"],
-        "strength": round(value["strength"], 2),
-    } for key, value in zones.items()}
-    prompt = """Aşağıdaki Binance spot verisini bir bütün olarak değerlendir. Bütün teknik göstergeler kapanmış
-mumlardan hesaplandı; live_price yalnız anlık konumu gösterir. Mekanik tek gösterge kararı verme.
+    tokens, facts = _hybrid_prose_context(snapshot, zones)
+    prompt = """Türkçe, kısa ama gerekçeli bir gün içi SPOT coin analizi yaz.
+Bu bir etiket seçme görevi değildir: kullanıcıya gösterilecek özgün yorumları sen yazacaksın.
+Başlıkları kod ekleyecek; hazır örnek cümleleri taklit etme. Toplam 220–330 kelimeyi aşma.
 
-Karar sırası: 1D genel rejim, 4H'nin bu rejimdeki rolü, 1H giriş zamanlaması ve son olarak 15M yardımcı
-zamanlama. StochRSI'yi kendi hareketli ortalaması, KDJ, fiyat davranışı, OBV ve MACD ile birlikte oku;
-aşırı alım/aşırı satımı tek başına al-sat nedeni yapma. Fiyat düşmeden yatay kalarak momentum boşaltıyorsa
-bunu özellikle ayır. Güçlü üst zaman diliminde 1H öncü göstergeler yeniden dönerken MACD'nin gecikmesini
-tek başına ret nedeni yapma. 15M yalnız giriş zamanlamasını inceltsin. BTC bağlamını kullan
-ama coinin kendi yapısını ezme. Yalnız JSON şemasındaki seçenekleri seç; Türkçe rapor yazma ve seviye uydurma.
+Zaman dilimlerini birlikte oku: 1D bağlam, 4H hareketin rolü, 1H esas zamanlama, 15M yardımcı teyit.
+StochRSI/ortalaması, KDJ, MACD, OBV, fiyat ve hacmi birlikte değerlendir.
+Aşırı alım/satımı mekanik al-sat kuralı yapma. Soğuma ile yeniden toparlanmayı ayır;
+kanıtlar çatışıyorsa bunu açıkla. Verilmeyen geçmiş sorgularla karşılaştırma yapma.
+Tek kapanmış mum verisinden yeni kesişim veya teyitli kırılım uydurma.
+Anlık fiyatla kapanmış mum fiyatı farklıdır: anlık fiyatın üstüne çıktığı bölge,
+saatlik kapanış ve tutunma kanıtı olmadan teyitli yeni destek değildir.
+Direnç bulunmaması yükselişin sınırsız olduğu veya alımın yasak olduğu anlamına gelmez.
+Destek/direnç konumunda hesaplanan position alanına uy; below, inside demek değildir.
+Direncin ötesindeki alanı ancak kırılım koşuluna bağlı anlat.
+Destek alt sınırına mesafe otomatik stop veya gerçekleşmiş kayıp değildir.
+Getiri garantisi, zorunlu kâr alma seviyesi, pozisyon büyüklüğü tavsiyesi verme.
+Kullanıcının elinde coin olduğunu varsayma.
 
-VERİ:\n""" + json.dumps({"snapshot": snapshot, "zones": zone_payload}, ensure_ascii=False)
+general: O coinin şu anki durumunun kısa sentezi, gösterge listesi değil.
+technical: Kararı gerçekten etkileyen 2–4 özgün kısa açıklama; karşıt kanıtları gizleme.
+trade_ideas: Mevcut girişin avantaj/dezavantajı ve veriye uygun alternatifler; sayıları tekrarlama.
+personal: 'Ben olsam' bakışıyla net tercih, somut gerekçe, fikri değiştirecek giriş koşulu ve
+bu koşul bozulursa yeniden değerlendirme. Soyut 'uygun koşulu beklerdim' ile bitirme.
+Her sorguya destek bekleme dayatma: kırılım, destek tepkisi, devam veya işlemden uzak durma
+arasında mevcut kanıta göre seçim yap. Destek yoksa seviye uydurmadan gözlenebilir koşul anlat.
+trade_ideas ile personal birbirini kopyalamasın; karar ve gerekçeleri çelişmesin.
+Alım tercihinde bozulma koşulunu 'alımdan sonra' diye ayır; beklemede alım yapılmış gibi yazma.
+15M olumlu diye tek başına al deme; olumsuz diye üst zaman dilimindeki fırsatı otomatik silme.
+
+SAYI KURALI: Fiyat, bölge, gösterge değeri veya yüzde yazarken yalnız aşağıdaki sözlükten
+{{price}}, {{near_support}}, {{near_support_low}} gibi çift süslü referanslar kullan.
+Kendi sayını üretme. Zaman dilimleri için yalnız 1D, 4H, 1H, 15M kullanabilirsin.
+Sözlükte bulunmayan referans kullanma. Sayı gerekmiyorsa sade sözcüklerle anlat.
+Markdown, HTML veya başlık yazma; yalnız şemaya uygun JSON döndür.
+VERİ:
+""" + json.dumps({"snapshot": snapshot, "zone_facts": facts, "number_references": tokens}, ensure_ascii=False, allow_nan=False)
     schema = {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["buy_candidate", "wait_trigger", "no_buy"]},
-            "day_regime": {"type": "string", "enum": ["up", "mixed", "down"]},
-            "h4_role": {"type": "string", "enum": ["continuation", "controlled_pullback", "reversal_attempt", "distribution", "breakdown", "mixed"]},
-            "h1_timing": {"type": "string", "enum": ["retrigger", "sideways_reset", "pullback_reset", "overheated", "weakening", "mixed"]},
-            "entry_type": {"type": "string", "enum": ["support_reaction", "momentum_retrigger", "resistance_break", "none"]},
-            "btc_effect": {"type": "string", "enum": ["supportive", "neutral", "caution"]},
-            "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
-            "reasons": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"type": "string", "enum": [
-                "aligned_uptrend", "buyer_participation", "sideways_cooling", "controlled_pullback",
-                "early_retrigger", "price_near_resistance", "price_far_support", "overheated_move",
-                "momentum_weakness", "timeframe_conflict", "btc_supportive", "btc_weakness"]}},
+            "general": {"type": "string"},
+            "technical": {"type": "array", "minItems": 2, "maxItems": 4, "items": {"type": "string"}},
+            "trade_ideas": {"type": "string"},
+            "personal": {"type": "string"},
         },
-        "required": ["action", "day_regime", "h4_role", "h1_timing", "entry_type", "btc_effect", "confidence", "reasons"],
+        "required": ["general", "technical", "trade_ideas", "personal"],
     }
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
         headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
               "generationConfig": {"responseMimeType": "application/json", "responseSchema": schema,
-                                     "maxOutputTokens": 450, "temperature": 0.1}}, timeout=45,
+                                   "maxOutputTokens": 2400, "temperature": 0.2}},
+        timeout=45,
     )
     response.raise_for_status()
     payload = response.json()
-    raw = "".join(str(p.get("text") or "") for p in payload.get("candidates", [{}])[0].get("content", {}).get("parts", []))
-    if not raw.strip():
-        raise ValueError("Ücretsiz model boş karar planı döndürdü")
+    candidates = payload.get("candidates") or []
+    if not candidates or candidates[0].get("finishReason") != "STOP":
+        raise ValueError("Ücretsiz yorum tamamlanmadı; eksik metin gönderilmedi")
+    raw = "".join(str(p.get("text") or "") for p in candidates[0].get("content", {}).get("parts", [])
+                  if not p.get("thought"))
     return json.loads(raw), (payload.get("usageMetadata") or {}), len(prompt)
 
 
@@ -3017,106 +3060,38 @@ def _hybrid_hourly_narrative(plan: dict, snapshot: dict) -> str:
 
 
 def _hybrid_render_report(plan: dict, snapshot: dict, zones: dict) -> str:
+    """Yalnız biçim ve sayısal referans kontrolü; karar/prose burada üretilmez."""
+    tokens, _ = _hybrid_prose_context(snapshot, zones)
+
+    def resolve(value):
+        if not isinstance(value, str) or not value.strip() or len(value) > 2400:
+            raise ValueError("Ücretsiz yorum bölümü boş veya geçersiz")
+        references = re.findall(r"\{\{([A-Za-z0-9_]+)\}\}", value)
+        if any(key not in tokens for key in references):
+            raise ValueError("Yorum veride bulunmayan bir seviyeye başvuruyor")
+        rest = re.sub(r"\{\{([A-Za-z0-9_]+)\}\}", "", value)
+        rest = re.sub(r"\b(?:1D|4H|1H|15M|EMA20|EMA50|EMA200|RSI14)\b", "", rest)
+        if re.search(r"[0-9{}]", rest):
+            raise ValueError("Yorum doğrulanmamış sayı içeriyor")
+        return re.sub(r"\{\{([A-Za-z0-9_]+)\}\}", lambda match: tokens[match.group(1)], value.strip())
+
+    technical = plan.get("technical")
+    if not isinstance(technical, list) or not 2 <= len(technical) <= 4:
+        raise ValueError("Teknik yorum listesi geçersiz")
     price = float(snapshot["live_price"])
-    base = snapshot["symbol"]
-    plan = _hybrid_validated_plan(plan, zones, price)
-    day = {"up": "Günlük ana yapı yukarı eğilimli", "mixed": "Günlük ana yapı karışık", "down": "Günlük ana yapı baskı altında"}[plan["day_regime"]]
-    h4 = {"continuation": "4 saatlik görünüm devamı destekliyor", "controlled_pullback": "4 saatlik hareket kontrollü bir düzeltme gösteriyor", "reversal_attempt": "4 saatlik görünüm bir dönüş denemesinde", "distribution": "4 saatlik görünümde alıcı gücü dağılıyor", "breakdown": "4 saatlik yapı aşağı kırılmış görünüyor", "mixed": "4 saatlik görünüm henüz net değil"}[plan["h4_role"]]
-    h1 = _hybrid_hourly_narrative(plan, snapshot)
-    btc = {"supportive": "Bitcoin görünümü genel piyasa baskısını azaltıyor", "neutral": "Bitcoin belirgin destek veya baskı oluşturmuyor", "caution": "Bitcoin kısa vadeli hareket için ek risk oluşturuyor"}[plan["btc_effect"]]
-
-    action = plan["action"]
-    entry = _hybrid_effective_entry(plan, zones, price)
-    if action == "buy_candidate":
-        opening = "Ben olsam mevcut koşullarda kısa vadeli alım yapardım."
-    elif action == "no_buy":
-        opening = "Ben olsam mevcut koşullarda yeni alım düşünmezdim."
-    else:
-        near = zones.get("near_support")
-        resistance = zones.get("resistance_1")
-        resistance_gap = (
-            _hybrid_pct_gap(price, resistance["low"], "resistance")
-            if resistance and float(resistance["low"]) > price else None
-        )
-        structural_risk = (
-            _hybrid_pct_gap(price, near["low"], "support")
-            if near and float(near["low"]) < price else None
-        )
-        room_risk_ratio = (
-            resistance_gap / structural_risk
-            if resistance_gap is not None and structural_risk not in (None, 0) else None
-        )
-        if (
-            near and resistance
-            and (
-                float(resistance["low"]) <= price <= float(resistance["high"])
-                or (resistance_gap is not None and resistance_gap <= 1.0)
-                or (room_risk_ratio is not None and room_risk_ratio < 1.5)
-            )
-        ):
-            opening = (
-                f"Ben olsam mevcut fiyattan almaz; {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} "
-                "desteğine kontrollü dönüş ve bu bölgede satışın durması için tetikte beklerdim."
-            )
-        elif near and _hybrid_pct_gap(price, near["high"], "support") <= 0.8:
-            opening = (
-                f"Ben olsam mevcut fiyattan almaz; {_hybrid_fmt(near['low'])}–{_hybrid_fmt(near['high'])} "
-                "bölgesinin destek olarak korunduğunu görmeyi beklerdim."
-            )
-        else:
-            opening = "Ben olsam mevcut fiyattan almaz, uygun giriş koşulu için tetikte beklerdim."
-
-    if entry == "support_reaction" and zones.get("near_support"):
-        trigger = "Yakın destekte satışın durması ve saatlik momentumun yeniden yukarı dönmesi giriş koşulum olurdu."
-    elif entry == "resistance_break" and zones.get("resistance_1"):
-        trigger = "İlk direncin kapanmış saatlik mumla aşılması ve sonrasında bu bölgenin korunması giriş koşulum olurdu."
-    elif entry == "momentum_retrigger":
-        trigger = "Fiyat yapısı korunurken saatlik öncü göstergelerin yeniden yukarı dönmesi giriş koşulum olurdu."
-    else:
-        trigger = "Yeni alım için saatlik fiyat hareketi ile alıcı katılımının birlikte güçlenmesini beklerdim."
-
-    if entry == "resistance_break" and zones.get("resistance_1"):
-        invalidation = "Alımdan sonra fiyat ilk direncin altında yeniden saatlik kapanış yaparsa pozisyonda kalmazdım."
-    elif zones.get("near_support"):
-        invalidation = "Alımdan sonra yakın destek kapanmış saatlik mumla kaybedilirse pozisyonda kalmazdım."
-    else:
-        invalidation = "Alımdan sonra saatlik ve 4 saatlik yapı birlikte aşağı dönerse pozisyonda kalmazdım."
-
-    support_gap = _hybrid_pct_gap(price, zones["near_support"]["high"], "support") if zones.get("near_support") else None
-    resistance_gap = _hybrid_pct_gap(price, zones["resistance_1"]["low"], "resistance") if zones.get("resistance_1") else None
-    location = []
-    if support_gap is not None:
-        location.append(f"yakın destek yaklaşık %{support_gap:.1f} aşağıda")
-    if resistance_gap is not None:
-        resistance_zone = zones.get("resistance_1")
-        if resistance_zone and resistance_zone["low"] <= price <= resistance_zone["high"]:
-            location.append("fiyat ilk direnç bölgesinin içinde")
-        elif resistance_gap < 0.1:
-            location.append("ilk direnç hemen üzerinde")
-        else:
-            location.append(f"ilk direnç yaklaşık %{resistance_gap:.1f} yukarıda")
-    location_text = "; ".join(location).capitalize() + "." if location else "Fiyatın yakın bölgelere mesafesi güvenilir biçimde hesaplanamadı."
-
-    timing_note = _hybrid_15m_timing_note(snapshot, action, zones, price)
     body = (
-        f"🔍 Genel Değerlendirme\n{base} şu anda {_hybrid_fmt(price)} seviyesinde. {location_text} "
-        f"{day}; {h4}; {h1}. {btc}.\n\n"
-        "📉 Teknik Göstergeler\n" + "\n".join(f"• {x}" for x in _hybrid_indicator_bullets(snapshot)) +
-        "\n\n📈 Kritik Seviyeler\n"
-        f"• Yakın destek: {_hybrid_zone_text(zones.get('near_support'), price)}\n"
-        f"• Sonraki destek: {_hybrid_zone_text(zones.get('next_support'), price)}\n"
-        f"• İlk direnç: {_hybrid_zone_text(zones.get('resistance_1'), price)}\n"
-        f"• Sonraki direnç: {_hybrid_zone_text(zones.get('resistance_2'), price)}\n\n"
-        f"📌 İşlem Fikirleri\n{_hybrid_trade_ideas(plan, zones, price, base)}\n\n"
-        f"🌌 Benim Beklentim — Ne Yapardım?\n"
-        + (
-            f"{opening} {timing_note}"
-            if action == "wait_trigger" else
-            f"{opening} {_hybrid_reason_sentence(plan)} {timing_note} {invalidation}"
-            if action == "buy_candidate" else
-            f"{opening} {_hybrid_reason_sentence(plan)}"
-        )
+        "🔍 Genel Değerlendirme\n" + resolve(plan.get("general")) +
+        "\n\n📉 Teknik Göstergeler\n" + "\n".join("• " + resolve(item) for item in technical) +
+        "\n\n📈 Kritik Seviyeler\n" +
+        "\n".join(f"• {label}: {_hybrid_zone_text(zones.get(key), price)}" for key, label in (
+            ("near_support", "Yakın destek"), ("next_support", "Sonraki destek"),
+            ("resistance_1", "İlk direnç"), ("resistance_2", "Sonraki direnç"))) +
+        "\n\n📌 İşlem Fikirleri\n" + resolve(plan.get("trade_ideas")) +
+        "\n\n🌌 Benim Beklentim — Ne Yapardım?\n" + resolve(plan.get("personal"))
     )
+    # Telegram bölünmesinde yarım HTML oluşmasını önle; eski kalıplara sessiz dönüş yok.
+    if len(html.escape(body)) > 3650:
+        raise ValueError("Ücretsiz yorum mesaj sınırını aşıyor")
     return body
 
 
@@ -3139,7 +3114,7 @@ def analyze_coin_on_demand(symbol: str) -> bool:
                 snapshot, zones, GEMINI_API_KEY, model_name
             )
             _log_usage(
-                "manual_coin_hybrid", model_name, "hybrid-1.2",
+                "manual_coin_hybrid", model_name, "free-prose-2.0",
                 int(usage.get("promptTokenCount") or 0),
                 int(usage.get("candidatesTokenCount") or 0),
                 time.time() - started, prompt_chars=prompt_chars,
