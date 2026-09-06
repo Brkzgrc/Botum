@@ -1,0 +1,50 @@
+name: tmp spot production baseline
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/tmp_spot_production_baseline.py'
+      - '.github/workflows/tmp_spot_production_baseline.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: tmp-spot-production-baseline
+  cancel-in-progress: false
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      BASELINE_DAYS: '7'
+      BASELINE_WORKERS: '8'
+      FEE_SIDE_PCT: '0.10'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy requests flask
+      - name: Replay exact production scanner and portfolio lifecycle
+        shell: bash
+        run: |
+          set +e
+          python .github/tmp_spot_production_baseline.py 2>&1 | tee /tmp/prod_baseline_run.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > /tmp/prod_baseline_exit_code.txt
+          exit 0
+      - name: Save baseline outputs or failure diagnostics
+        shell: bash
+        run: |
+          cp /tmp/prod_baseline_run.log .github/tmp_prod_baseline_run.log
+          cp /tmp/prod_baseline_exit_code.txt .github/tmp_prod_baseline_exit_code.txt
+          for f in summary signals trades meta; do
+            if [ -f "/tmp/prod_baseline_${f}.csv" ]; then cp "/tmp/prod_baseline_${f}.csv" ".github/tmp_prod_baseline_${f}.csv"; fi
+            if [ -f "/tmp/prod_baseline_${f}.json" ]; then cp "/tmp/prod_baseline_${f}.json" ".github/tmp_prod_baseline_${f}.json"; fi
+          done
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -f .github/tmp_prod_baseline_*
+          git commit -m 'test: save production scanner baseline' || true
+          git pull --rebase
+          git push
