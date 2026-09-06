@@ -1,854 +1,209 @@
-[START] 2026-08-30 08:30:00+00:00 -> 2026-09-06 08:30:00+00:00; universe=467
-[DATA] 1h 50/467 usable=50
-[DATA] 1h 100/467 usable=100
-[DATA] 1h 150/467 usable=150
-[DATA] 1h 200/467 usable=200
-[DATA] 1h 250/467 usable=250
-[DATA] skip MARSCOINUSDT 1h: insufficient candles MARSCOINUSDT 1h: 44
-[DATA] 1h 300/467 usable=299
-[DATA] 1h 350/467 usable=349
-[DATA] 1h 400/467 usable=399
-[DATA] 1h 450/467 usable=449
-[DATA] 1h 467/467 usable=466
-[DATA] 15m 50/465 usable=50
-[DATA] 15m 100/465 usable=100
-[DATA] 15m 150/465 usable=150
-[DATA] 15m 200/465 usable=200
-[DATA] 15m 250/465 usable=250
-[DATA] 15m 300/465 usable=300
-[DATA] 15m 350/465 usable=350
-[DATA] 15m 400/465 usable=400
-[DATA] 15m 450/465 usable=450
-[DATA] 15m 465/465 usable=465
-[DATA] 4h 50/465 usable=50
-[DATA] 4h 100/465 usable=100
-[DATA] skip CRWDBUSDT 4h: insufficient candles CRWDBUSDT 4h: 24
-[DATA] skip DJTBUSDT 4h: insufficient candles DJTBUSDT 4h: 66
-[DATA] 4h 150/465 usable=148
-[DATA] 4h 200/465 usable=198
-[DATA] 4h 250/465 usable=248
-[DATA] skip MRNABUSDT 4h: insufficient candles MRNABUSDT 4h: 24
-[DATA] 4h 300/465 usable=297
-[DATA] 4h 350/465 usable=347
-[DATA] skip STXBUSDT 4h: insufficient candles STXBUSDT 4h: 24
-[DATA] 4h 400/465 usable=396
-[DATA] 4h 450/465 usable=446
-[DATA] 4h 465/465 usable=461
-[DATA] skip AAOIBUSDT 1d: insufficient candles AAOIBUSDT 1d: 54
-[DATA] skip AAPLBUSDT 1d: insufficient candles AAPLBUSDT 1d: 40
+[START] 2026-08-30 19:45:00+00:00 -> 2026-09-06 19:45:00+00:00; top100_by_current_quote_volume=100
+[DATA] skip MARSCOINUSDT 1h: insufficient candles MARSCOINUSDT 1h: 55
+[DATA] 1h 50/100 usable=49
+[DATA] 1h 100/100 usable=99
+[DATA] 15m 50/99 usable=50
+[DATA] 15m 99/99 usable=99
+[DATA] 4h 50/99 usable=50
+[DATA] 4h 99/99 usable=99
 [DATA] skip AEROUSDT 1d: insufficient candles AEROUSDT 1d: 52
-[DATA] skip ALABBUSDT 1d: insufficient candles ALABBUSDT 1d: 33
-[DATA] skip AMATBUSDT 1d: insufficient candles AMATBUSDT 1d: 40
-[DATA] skip AMDBUSDT 1d: insufficient candles AMDBUSDT 1d: 76
-[DATA] skip AMZNBUSDT 1d: insufficient candles AMZNBUSDT 1d: 40
-[DATA] skip ARMBUSDT 1d: insufficient candles ARMBUSDT 1d: 54
-[DATA] skip ASMLBUSDT 1d: insufficient candles ASMLBUSDT 1d: 33
-[DATA] skip ASTSBUSDT 1d: insufficient candles ASTSBUSDT 1d: 33
-[DATA] 1d 50/465 usable=40
-[DATA] skip AVGOBUSDT 1d: insufficient candles AVGOBUSDT 1d: 54
-[DATA] skip AXTIBUSDT 1d: insufficient candles AXTIBUSDT 1d: 47
-[DATA] skip BABABUSDT 1d: insufficient candles BABABUSDT 1d: 54
-[DATA] skip BEBUSDT 1d: insufficient candles BEBUSDT 1d: 40
-[DATA] skip BMNRBUSDT 1d: insufficient candles BMNRBUSDT 1d: 33
-[DATA] skip CBRSBUSDT 1d: insufficient candles CBRSBUSDT 1d: 62
-[DATA] 1d 100/465 usable=84
-[DATA] skip COHRBUSDT 1d: insufficient candles COHRBUSDT 1d: 33
-[DATA] skip COINBUSDT 1d: insufficient candles COINBUSDT 1d: 62
-[DATA] skip CRDOBUSDT 1d: insufficient candles CRDOBUSDT 1d: 33
-[DATA] skip CRWDBUSDT 1d: insufficient candles CRWDBUSDT 1d: 5
-[DATA] skip CRWVBUSDT 1d: insufficient candles CRWVBUSDT 1d: 47
-[DATA] skip DELLBUSDT 1d: insufficient candles DELLBUSDT 1d: 40
-[DATA] skip DJTBUSDT 1d: insufficient candles DJTBUSDT 1d: 12
-[DATA] skip DRAMBUSDT 1d: insufficient candles DRAMBUSDT 1d: 62
-[DATA] 1d 150/465 usable=126
-[DATA] skip EWYBUSDT 1d: insufficient candles EWYBUSDT 1d: 76
-[DATA] skip FLNCBUSDT 1d: insufficient candles FLNCBUSDT 1d: 40
-[DATA] skip GLWBUSDT 1d: insufficient candles GLWBUSDT 1d: 62
-[DATA] skip GMEBUSDT 1d: insufficient candles GMEBUSDT 1d: 26
-[DATA] skip GOOGLBUSDT 1d: insufficient candles GOOGLBUSDT 1d: 62
 [DATA] skip GRAMUSDT 1d: insufficient candles GRAMUSDT 1d: 67
-[DATA] skip GSBUSDT 1d: insufficient candles GSBUSDT 1d: 40
-[DATA] skip HOODBUSDT 1d: insufficient candles HOODBUSDT 1d: 54
-[DATA] 1d 200/465 usable=168
-[DATA] skip IBMBUSDT 1d: insufficient candles IBMBUSDT 1d: 54
-[DATA] skip INTCBUSDT 1d: insufficient candles INTCBUSDT 1d: 76
-[DATA] skip INTWBUSDT 1d: insufficient candles INTWBUSDT 1d: 47
-[DATA] skip IRENBUSDT 1d: insufficient candles IRENBUSDT 1d: 33
-[DATA] skip KORUBUSDT 1d: insufficient candles KORUBUSDT 1d: 47
-[DATA] skip LITEBUSDT 1d: insufficient candles LITEBUSDT 1d: 69
-[DATA] 1d 250/465 usable=212
-[DATA] skip METABUSDT 1d: insufficient candles METABUSDT 1d: 69
-[DATA] skip MRNABUSDT 1d: insufficient candles MRNABUSDT 1d: 5
-[DATA] skip MSFTBUSDT 1d: insufficient candles MSFTBUSDT 1d: 69
-[DATA] skip MRVLBUSDT 1d: insufficient candles MRVLBUSDT 1d: 54
 [DATA] skip MSTRBUSDT 1d: insufficient candles MSTRBUSDT 1d: 76
-[DATA] skip MUUBUSDT 1d: insufficient candles MUUBUSDT 1d: 47
-[DATA] skip MVLLBUSDT 1d: insufficient candles MVLLBUSDT 1d: 47
-[DATA] skip NBISBUSDT 1d: insufficient candles NBISBUSDT 1d: 62
-[DATA] skip NFLXBUSDT 1d: insufficient candles NFLXBUSDT 1d: 33
-[DATA] skip NOKBUSDT 1d: insufficient candles NOKBUSDT 1d: 54
-[DATA] skip ORCLBUSDT 1d: insufficient candles ORCLBUSDT 1d: 47
-[DATA] 1d 300/465 usable=251
-[DATA] skip PLTRBUSDT 1d: insufficient candles PLTRBUSDT 1d: 69
-[DATA] skip PYPLBUSDT 1d: insufficient candles PYPLBUSDT 1d: 40
-[DATA] skip QCOMBUSDT 1d: insufficient candles QCOMBUSDT 1d: 62
-[DATA] skip QNTBUSDT 1d: insufficient candles QNTBUSDT 1d: 47
+[DATA] 1d 50/99 usable=47
 [DATA] skip QQQBUSDT 1d: insufficient candles QQQBUSDT 1d: 69
-[DATA] skip RKLBBUSDT 1d: insufficient candles RKLBBUSDT 1d: 54
-[DATA] 1d 350/465 usable=295
-[DATA] skip SKHYBUSDT 1d: insufficient candles SKHYBUSDT 1d: 56
-[DATA] skip SMCIBUSDT 1d: insufficient candles SMCIBUSDT 1d: 33
-[DATA] skip SMHBUSDT 1d: insufficient candles SMHBUSDT 1d: 40
-[DATA] skip SNXXBUSDT 1d: insufficient candles SNXXBUSDT 1d: 47
 [DATA] skip SOXLBUSDT 1d: insufficient candles SOXLBUSDT 1d: 62
-[DATA] skip SOXSBUSDT 1d: insufficient candles SOXSBUSDT 1d: 40
-[DATA] skip SPYBUSDT 1d: insufficient candles SPYBUSDT 1d: 62
-[DATA] skip STXBUSDT 1d: insufficient candles STXBUSDT 1d: 5
-[DATA] 1d 400/465 usable=337
-[DATA] skip TQQQBUSDT 1d: insufficient candles TQQQBUSDT 1d: 47
-[DATA] skip TSMBUSDT 1d: insufficient candles TSMBUSDT 1d: 54
-[DATA] skip USARBUSDT 1d: insufficient candles USARBUSDT 1d: 33
-[DATA] skip WDCBUSDT 1d: insufficient candles WDCBUSDT 1d: 62
-[DATA] 1d 450/465 usable=383
-[DATA] 1d 465/465 usable=398
-[STAGE] usable=398
-[REPLAY] 96/673 signals=6 watch=67
-[REPLAY] 192/673 signals=9 watch=63
-[REPLAY] 288/673 signals=12 watch=57
-[REPLAY] 384/673 signals=15 watch=55
-[REPLAY] 480/673 signals=18 watch=146
-[REPLAY] 576/673 signals=21 watch=91
-[REPLAY] 672/673 signals=24 watch=179
-[REPLAY] 673/673 signals=24 watch=177
-[ADDED] 96/673 signals=390
-[ADDED] 192/673 signals=775
-[ADDED] 288/673 signals=1284
-[ADDED] 384/673 signals=1806
-[ADDED] 480/673 signals=2367
-[ADDED] 576/673 signals=2963
-[ADDED] 672/673 signals=3648
-[ADDED] 673/673 signals=3653
-[5M] 1/21
-[5M] 2/21
-[5M] 3/21
-[5M] 4/21
-[5M] 5/21
-[5M] 6/21
-[5M] 7/21
-[5M] 8/21
-[5M] 9/21
-[5M] 10/21
-[5M] 11/21
-[5M] 12/21
-[5M] 13/21
-[5M] 14/21
-[5M] 15/21
-[5M] 16/21
-[5M] 17/21
-[5M] 18/21
-[5M] 19/21
-[5M] 20/21
-[5M] 21/21
-[5M] 1/332
-[5M] 2/332
-[5M] 3/332
-[5M] 4/332
-[5M] 5/332
-[5M] 6/332
-[5M] 7/332
-[5M] 8/332
-[5M] 9/332
-[5M] 10/332
-[5M] 11/332
-[5M] 12/332
-[5M] 13/332
-[5M] 14/332
-[5M] 15/332
-[5M] 16/332
-[5M] 17/332
-[5M] 18/332
-[5M] 19/332
-[5M] 20/332
-[5M] 21/332
-[5M] 22/332
-[5M] 23/332
-[5M] 24/332
-[5M] 25/332
-[5M] 26/332
-[5M] 27/332
-[5M] 28/332
-[5M] 29/332
-[5M] 30/332
-[5M] 31/332
-[5M] 32/332
-[5M] 33/332
-[5M] 34/332
-[5M] 35/332
-[5M] 36/332
-[5M] 37/332
-[5M] 38/332
-[5M] 39/332
-[5M] 40/332
-[5M] 41/332
-[5M] 42/332
-[5M] 43/332
-[5M] 44/332
-[5M] 45/332
-[5M] 46/332
-[5M] 47/332
-[5M] 48/332
-[5M] 49/332
-[5M] 50/332
-[5M] 51/332
-[5M] 52/332
-[5M] 53/332
-[5M] 54/332
-[5M] 55/332
-[5M] 56/332
-[5M] 57/332
-[5M] 58/332
-[5M] 59/332
-[5M] 60/332
-[5M] 61/332
-[5M] 62/332
-[5M] 63/332
-[5M] 64/332
-[5M] 65/332
-[5M] 66/332
-[5M] 67/332
-[5M] 68/332
-[5M] 69/332
-[5M] 70/332
-[5M] 71/332
-[5M] 72/332
-[5M] 73/332
-[5M] 74/332
-[5M] 75/332
-[5M] 76/332
-[5M] 77/332
-[5M] 78/332
-[5M] 79/332
-[5M] 80/332
-[5M] 81/332
-[5M] 82/332
-[5M] 83/332
-[5M] 84/332
-[5M] 85/332
-[5M] 86/332
-[5M] 87/332
-[5M] 88/332
-[5M] 89/332
-[5M] 90/332
-[5M] 91/332
-[5M] 92/332
-[5M] 93/332
-[5M] 94/332
-[5M] 95/332
-[5M] 96/332
-[5M] 97/332
-[5M] 98/332
-[5M] 99/332
-[5M] 100/332
-[5M] 101/332
-[5M] 102/332
-[5M] 103/332
-[5M] 104/332
-[5M] 105/332
-[5M] 106/332
-[5M] 107/332
-[5M] 108/332
-[5M] 109/332
-[5M] 110/332
-[5M] 111/332
-[5M] 112/332
-[5M] 113/332
-[5M] 114/332
-[5M] 115/332
-[5M] 116/332
-[5M] 117/332
-[5M] 118/332
-[5M] 119/332
-[5M] 120/332
-[5M] 121/332
-[5M] 122/332
-[5M] 123/332
-[5M] 124/332
-[5M] 125/332
-[5M] 126/332
-[5M] 127/332
-[5M] 128/332
-[5M] 129/332
-[5M] 130/332
-[5M] 131/332
-[5M] 132/332
-[5M] 133/332
-[5M] 134/332
-[5M] 135/332
-[5M] 136/332
-[5M] 137/332
-[5M] 138/332
-[5M] 139/332
-[5M] 140/332
-[5M] ILVUSDT: insufficient candles ILVUSDT 5m: 59
-[5M] 141/332
-[5M] 142/332
-[5M] 143/332
-[5M] 144/332
-[5M] 145/332
-[5M] 146/332
-[5M] 147/332
-[5M] 148/332
-[5M] 149/332
-[5M] 150/332
-[5M] 151/332
-[5M] 152/332
-[5M] 153/332
-[5M] 154/332
-[5M] 155/332
-[5M] 156/332
-[5M] 157/332
-[5M] 158/332
-[5M] 159/332
-[5M] 160/332
-[5M] 161/332
-[5M] 162/332
-[5M] 163/332
-[5M] 164/332
-[5M] 165/332
-[5M] 166/332
-[5M] 167/332
-[5M] 168/332
-[5M] 169/332
-[5M] 170/332
-[5M] 171/332
-[5M] 172/332
-[5M] 173/332
-[5M] 174/332
-[5M] 175/332
-[5M] 176/332
-[5M] 177/332
-[5M] 178/332
-[5M] 179/332
-[5M] 180/332
-[5M] 181/332
-[5M] 182/332
-[5M] 183/332
-[5M] 184/332
-[5M] 185/332
-[5M] 186/332
-[5M] 187/332
-[5M] 188/332
-[5M] 189/332
-[5M] 190/332
-[5M] 191/332
-[5M] 192/332
-[5M] 193/332
-[5M] 194/332
-[5M] 195/332
-[5M] 196/332
-[5M] 197/332
-[5M] 198/332
-[5M] 199/332
-[5M] 200/332
-[5M] 201/332
-[5M] 202/332
-[5M] 203/332
-[5M] 204/332
-[5M] 205/332
-[5M] 206/332
-[5M] 207/332
-[5M] 208/332
-[5M] 209/332
-[5M] 210/332
-[5M] 211/332
-[5M] 212/332
-[5M] 213/332
-[5M] 214/332
-[5M] 215/332
-[5M] 216/332
-[5M] 217/332
-[5M] POLUSDT: insufficient candles POLUSDT 5m: 36
-[5M] 218/332
-[5M] 219/332
-[5M] 220/332
-[5M] 221/332
-[5M] 222/332
-[5M] 223/332
-[5M] 224/332
-[5M] 225/332
-[5M] 226/332
-[5M] 227/332
-[5M] 228/332
-[5M] 229/332
-[5M] 230/332
-[5M] 231/332
-[5M] 232/332
-[5M] 233/332
-[5M] 234/332
-[5M] 235/332
-[5M] 236/332
-[5M] 237/332
-[5M] 238/332
-[5M] 239/332
-[5M] 240/332
-[5M] 241/332
-[5M] 242/332
-[5M] 243/332
-[5M] 244/332
-[5M] 245/332
-[5M] 246/332
-[5M] 247/332
-[5M] 248/332
-[5M] 249/332
-[5M] 250/332
-[5M] 251/332
-[5M] 252/332
-[5M] 253/332
-[5M] 254/332
-[5M] 255/332
-[5M] 256/332
-[5M] 257/332
-[5M] 258/332
-[5M] 259/332
-[5M] 260/332
-[5M] SNXUSDT: insufficient candles SNXUSDT 5m: 66
-[5M] 261/332
-[5M] 262/332
-[5M] 263/332
-[5M] 264/332
-[5M] 265/332
-[5M] 266/332
-[5M] 267/332
-[5M] 268/332
-[5M] 269/332
-[5M] 270/332
-[5M] 271/332
-[5M] 272/332
-[5M] 273/332
-[5M] 274/332
-[5M] 275/332
-[5M] 276/332
-[5M] 277/332
-[5M] 278/332
-[5M] 279/332
-[5M] 280/332
-[5M] 281/332
-[5M] 282/332
-[5M] 283/332
-[5M] 284/332
-[5M] 285/332
-[5M] 286/332
-[5M] 287/332
-[5M] 288/332
-[5M] 289/332
-[5M] 290/332
-[5M] 291/332
-[5M] 292/332
-[5M] 293/332
-[5M] 294/332
-[5M] 295/332
-[5M] 296/332
-[5M] 297/332
-[5M] 298/332
-[5M] 299/332
-[5M] 300/332
-[5M] 301/332
-[5M] 302/332
-[5M] 303/332
-[5M] 304/332
-[5M] 305/332
-[5M] 306/332
-[5M] 307/332
-[5M] 308/332
-[5M] 309/332
-[5M] WLDUSDT: insufficient candles WLDUSDT 5m: 36
-[5M] 310/332
-[5M] 311/332
-[5M] 312/332
-[5M] 313/332
-[5M] 314/332
-[5M] 315/332
-[5M] 316/332
-[5M] 317/332
-[5M] 318/332
-[5M] 319/332
-[5M] 320/332
-[5M] 321/332
-[5M] 322/332
-[5M] 323/332
-[5M] 324/332
-[5M] 325/332
-[5M] 326/332
-[5M] 327/332
-[5M] 328/332
-[5M] 329/332
-[5M] 330/332
-[5M] ZROUSDT: insufficient candles ZROUSDT 5m: 63
-[5M] 331/332
-[5M] 332/332
-[5M] 1/24
-[5M] 2/24
-[5M] 3/24
-[5M] 4/24
-[5M] 5/24
-[5M] 6/24
-[5M] 7/24
-[5M] 8/24
-[5M] 9/24
-[5M] 10/24
-[5M] 11/24
-[5M] 12/24
-[5M] 13/24
-[5M] 14/24
-[5M] 15/24
-[5M] 16/24
-[5M] 17/24
-[5M] 18/24
-[5M] 19/24
-[5M] 20/24
-[5M] 21/24
-[5M] 22/24
-[5M] 23/24
-[5M] 24/24
-[5M] 1/332
-[5M] 2/332
-[5M] 3/332
-[5M] 4/332
-[5M] 5/332
-[5M] 6/332
-[5M] 7/332
-[5M] 8/332
-[5M] 9/332
-[5M] 10/332
-[5M] 11/332
-[5M] 12/332
-[5M] 13/332
-[5M] 14/332
-[5M] 15/332
-[5M] 16/332
-[5M] 17/332
-[5M] 18/332
-[5M] 19/332
-[5M] 20/332
-[5M] 21/332
-[5M] 22/332
-[5M] 23/332
-[5M] 24/332
-[5M] 25/332
-[5M] 26/332
-[5M] 27/332
-[5M] 28/332
-[5M] 29/332
-[5M] 30/332
-[5M] 31/332
-[5M] 32/332
-[5M] 33/332
-[5M] 34/332
-[5M] 35/332
-[5M] 36/332
-[5M] 37/332
-[5M] 38/332
-[5M] 39/332
-[5M] 40/332
-[5M] 41/332
-[5M] 42/332
-[5M] 43/332
-[5M] 44/332
-[5M] 45/332
-[5M] 46/332
-[5M] 47/332
-[5M] 48/332
-[5M] 49/332
-[5M] 50/332
-[5M] 51/332
-[5M] 52/332
-[5M] 53/332
-[5M] 54/332
-[5M] 55/332
-[5M] 56/332
-[5M] 57/332
-[5M] 58/332
-[5M] 59/332
-[5M] 60/332
-[5M] 61/332
-[5M] 62/332
-[5M] 63/332
-[5M] 64/332
-[5M] 65/332
-[5M] 66/332
-[5M] 67/332
-[5M] 68/332
-[5M] 69/332
-[5M] 70/332
-[5M] 71/332
-[5M] 72/332
-[5M] 73/332
-[5M] 74/332
-[5M] 75/332
-[5M] 76/332
-[5M] 77/332
-[5M] 78/332
-[5M] 79/332
-[5M] 80/332
-[5M] 81/332
-[5M] 82/332
-[5M] 83/332
-[5M] 84/332
-[5M] 85/332
-[5M] 86/332
-[5M] 87/332
-[5M] 88/332
-[5M] 89/332
-[5M] 90/332
-[5M] 91/332
-[5M] 92/332
-[5M] 93/332
-[5M] 94/332
-[5M] 95/332
-[5M] 96/332
-[5M] 97/332
-[5M] 98/332
-[5M] 99/332
-[5M] 100/332
-[5M] 101/332
-[5M] 102/332
-[5M] 103/332
-[5M] 104/332
-[5M] 105/332
-[5M] 106/332
-[5M] 107/332
-[5M] 108/332
-[5M] 109/332
-[5M] 110/332
-[5M] 111/332
-[5M] 112/332
-[5M] 113/332
-[5M] 114/332
-[5M] 115/332
-[5M] 116/332
-[5M] 117/332
-[5M] 118/332
-[5M] 119/332
-[5M] 120/332
-[5M] 121/332
-[5M] 122/332
-[5M] 123/332
-[5M] 124/332
-[5M] 125/332
-[5M] 126/332
-[5M] 127/332
-[5M] 128/332
-[5M] 129/332
-[5M] 130/332
-[5M] 131/332
-[5M] 132/332
-[5M] 133/332
-[5M] 134/332
-[5M] 135/332
-[5M] 136/332
-[5M] 137/332
-[5M] 138/332
-[5M] 139/332
-[5M] 140/332
-[5M] ILVUSDT: insufficient candles ILVUSDT 5m: 60
-[5M] 141/332
-[5M] 142/332
-[5M] 143/332
-[5M] 144/332
-[5M] 145/332
-[5M] 146/332
-[5M] 147/332
-[5M] 148/332
-[5M] 149/332
-[5M] 150/332
-[5M] 151/332
-[5M] 152/332
-[5M] 153/332
-[5M] 154/332
-[5M] 155/332
-[5M] 156/332
-[5M] 157/332
-[5M] 158/332
-[5M] 159/332
-[5M] 160/332
-[5M] 161/332
-[5M] 162/332
-[5M] 163/332
-[5M] 164/332
-[5M] 165/332
-[5M] 166/332
-[5M] 167/332
-[5M] 168/332
-[5M] 169/332
-[5M] 170/332
-[5M] 171/332
-[5M] 172/332
-[5M] 173/332
-[5M] 174/332
-[5M] 175/332
-[5M] 176/332
-[5M] 177/332
-[5M] 178/332
-[5M] 179/332
-[5M] 180/332
-[5M] 181/332
-[5M] 182/332
-[5M] 183/332
-[5M] 184/332
-[5M] 185/332
-[5M] 186/332
-[5M] 187/332
-[5M] 188/332
-[5M] 189/332
-[5M] 190/332
-[5M] 191/332
-[5M] 192/332
-[5M] 193/332
-[5M] 194/332
-[5M] 195/332
-[5M] 196/332
-[5M] 197/332
-[5M] 198/332
-[5M] 199/332
-[5M] 200/332
-[5M] 201/332
-[5M] 202/332
-[5M] 203/332
-[5M] 204/332
-[5M] 205/332
-[5M] 206/332
-[5M] 207/332
-[5M] 208/332
-[5M] 209/332
-[5M] 210/332
-[5M] 211/332
-[5M] 212/332
-[5M] 213/332
-[5M] 214/332
-[5M] 215/332
-[5M] 216/332
-[5M] 217/332
-[5M] POLUSDT: insufficient candles POLUSDT 5m: 36
-[5M] 218/332
-[5M] 219/332
-[5M] 220/332
-[5M] 221/332
-[5M] 222/332
-[5M] 223/332
-[5M] 224/332
-[5M] 225/332
-[5M] 226/332
-[5M] 227/332
-[5M] 228/332
-[5M] 229/332
-[5M] 230/332
-[5M] 231/332
-[5M] 232/332
-[5M] 233/332
-[5M] 234/332
-[5M] 235/332
-[5M] 236/332
-[5M] 237/332
-[5M] 238/332
-[5M] 239/332
-[5M] 240/332
-[5M] 241/332
-[5M] 242/332
-[5M] 243/332
-[5M] 244/332
-[5M] 245/332
-[5M] 246/332
-[5M] 247/332
-[5M] 248/332
-[5M] 249/332
-[5M] 250/332
-[5M] 251/332
-[5M] 252/332
-[5M] 253/332
-[5M] 254/332
-[5M] 255/332
-[5M] 256/332
-[5M] 257/332
-[5M] 258/332
-[5M] 259/332
-[5M] 260/332
-[5M] SNXUSDT: insufficient candles SNXUSDT 5m: 66
-[5M] 261/332
-[5M] 262/332
-[5M] 263/332
-[5M] 264/332
-[5M] 265/332
-[5M] 266/332
-[5M] 267/332
-[5M] 268/332
-[5M] 269/332
-[5M] 270/332
-[5M] 271/332
-[5M] 272/332
-[5M] 273/332
-[5M] 274/332
-[5M] 275/332
-[5M] 276/332
-[5M] 277/332
-[5M] 278/332
-[5M] 279/332
-[5M] 280/332
-[5M] 281/332
-[5M] 282/332
-[5M] 283/332
-[5M] 284/332
-[5M] 285/332
-[5M] 286/332
-[5M] 287/332
-[5M] 288/332
-[5M] 289/332
-[5M] 290/332
-[5M] 291/332
-[5M] 292/332
-[5M] 293/332
-[5M] 294/332
-[5M] 295/332
-[5M] 296/332
-[5M] 297/332
-[5M] 298/332
-[5M] 299/332
-[5M] 300/332
-[5M] 301/332
-[5M] 302/332
-[5M] 303/332
-[5M] 304/332
-[5M] 305/332
-[5M] 306/332
-[5M] 307/332
-[5M] 308/332
-[5M] 309/332
-[5M] WLDUSDT: insufficient candles WLDUSDT 5m: 36
-[5M] 310/332
-[5M] 311/332
-[5M] 312/332
-[5M] 313/332
-[5M] 314/332
-[5M] 315/332
-[5M] 316/332
-[5M] 317/332
-[5M] 318/332
-[5M] 319/332
-[5M] 320/332
-[5M] 321/332
-[5M] 322/332
-[5M] 323/332
-[5M] 324/332
-[5M] 325/332
-[5M] 326/332
-[5M] 327/332
-[5M] 328/332
-[5M] 329/332
-[5M] 330/332
-[5M] ZROUSDT: insufficient candles ZROUSDT 5m: 63
-[5M] 331/332
-[5M] 332/332
+[DATA] 1d 99/99 usable=94
+[STAGE] usable=94
+[REPLAY] 96/673 signals=5 watch=17
+[REPLAY] 192/673 signals=8 watch=32
+[REPLAY] 288/673 signals=11 watch=25
+[REPLAY] 384/673 signals=14 watch=45
+[REPLAY] 480/673 signals=17 watch=50
+[REPLAY] 576/673 signals=20 watch=55
+[REPLAY] 672/673 signals=23 watch=67
+[REPLAY] 673/673 signals=23 watch=67
+[ADDED] 96/673 signals=6
+[ADDED] 192/673 signals=27
+[ADDED] 288/673 signals=39
+[ADDED] 384/673 signals=57
+[ADDED] 480/673 signals=83
+[ADDED] 576/673 signals=126
+[ADDED] 672/673 signals=161
+[ADDED] 673/673 signals=161
+[5M] 1/11
+[5M] 2/11
+[5M] 3/11
+[5M] 4/11
+[5M] 5/11
+[5M] 6/11
+[5M] 7/11
+[5M] 8/11
+[5M] 9/11
+[5M] 10/11
+[5M] 11/11
+[5M] 1/74
+[5M] 2/74
+[5M] 3/74
+[5M] 4/74
+[5M] 5/74
+[5M] 6/74
+[5M] 7/74
+[5M] 8/74
+[5M] 9/74
+[5M] 10/74
+[5M] 11/74
+[5M] 12/74
+[5M] 13/74
+[5M] 14/74
+[5M] 15/74
+[5M] 16/74
+[5M] 17/74
+[5M] 18/74
+[5M] 19/74
+[5M] 20/74
+[5M] 21/74
+[5M] 22/74
+[5M] 23/74
+[5M] 24/74
+[5M] 25/74
+[5M] 26/74
+[5M] 27/74
+[5M] 28/74
+[5M] 29/74
+[5M] 30/74
+[5M] 31/74
+[5M] 32/74
+[5M] 33/74
+[5M] 34/74
+[5M] 35/74
+[5M] 36/74
+[5M] 37/74
+[5M] 38/74
+[5M] 39/74
+[5M] 40/74
+[5M] 41/74
+[5M] 42/74
+[5M] 43/74
+[5M] 44/74
+[5M] 45/74
+[5M] 46/74
+[5M] 47/74
+[5M] 48/74
+[5M] 49/74
+[5M] 50/74
+[5M] 51/74
+[5M] 52/74
+[5M] 53/74
+[5M] 54/74
+[5M] 55/74
+[5M] 56/74
+[5M] 57/74
+[5M] 58/74
+[5M] 59/74
+[5M] 60/74
+[5M] 61/74
+[5M] 62/74
+[5M] 63/74
+[5M] 64/74
+[5M] 65/74
+[5M] 66/74
+[5M] 67/74
+[5M] 68/74
+[5M] 69/74
+[5M] 70/74
+[5M] 71/74
+[5M] 72/74
+[5M] 73/74
+[5M] ZROUSDT: insufficient candles ZROUSDT 5m: 79
+[5M] 74/74
+[5M] 1/11
+[5M] 2/11
+[5M] 3/11
+[5M] 4/11
+[5M] 5/11
+[5M] 6/11
+[5M] 7/11
+[5M] 8/11
+[5M] 9/11
+[5M] 10/11
+[5M] 11/11
+[5M] 1/74
+[5M] 2/74
+[5M] 3/74
+[5M] 4/74
+[5M] 5/74
+[5M] 6/74
+[5M] 7/74
+[5M] 8/74
+[5M] 9/74
+[5M] 10/74
+[5M] 11/74
+[5M] 12/74
+[5M] 13/74
+[5M] 14/74
+[5M] 15/74
+[5M] 16/74
+[5M] 17/74
+[5M] 18/74
+[5M] 19/74
+[5M] 20/74
+[5M] 21/74
+[5M] 22/74
+[5M] 23/74
+[5M] 24/74
+[5M] 25/74
+[5M] 26/74
+[5M] 27/74
+[5M] 28/74
+[5M] 29/74
+[5M] 30/74
+[5M] 31/74
+[5M] 32/74
+[5M] 33/74
+[5M] 34/74
+[5M] 35/74
+[5M] 36/74
+[5M] 37/74
+[5M] 38/74
+[5M] 39/74
+[5M] 40/74
+[5M] 41/74
+[5M] 42/74
+[5M] 43/74
+[5M] 44/74
+[5M] 45/74
+[5M] 46/74
+[5M] 47/74
+[5M] 48/74
+[5M] 49/74
+[5M] 50/74
+[5M] 51/74
+[5M] 52/74
+[5M] 53/74
+[5M] 54/74
+[5M] 55/74
+[5M] 56/74
+[5M] 57/74
+[5M] 58/74
+[5M] 59/74
+[5M] 60/74
+[5M] 61/74
+[5M] 62/74
+[5M] 63/74
+[5M] 64/74
+[5M] 65/74
+[5M] 66/74
+[5M] 67/74
+[5M] 68/74
+[5M] 69/74
+[5M] 70/74
+[5M] 71/74
+[5M] 72/74
+[5M] 73/74
+[5M] ZROUSDT: insufficient candles ZROUSDT 5m: 79
+[5M] 74/74
             variant  signals  selected  end_capital  return_pct  closed  wins  losses  avg_hold_h
-V11_PLUS_RESET_TURN       28         6  2691.874494    7.674980       5     2       3   16.483333
-           V11_BASE       24         6  2514.272220    0.570889       5     2       3   16.800000
-     V11_PLUS_40_70     3666         8  2328.753070   -6.849877       7     2       5   21.047619
-      V11_PLUS_BOTH     3670         8  2328.753070   -6.849877       7     2       5   21.047619
+           V11_BASE       23         6  3479.943876   39.197755       6     5       1   14.027778
+V11_PLUS_RESET_TURN       24         6  3479.943876   39.197755       6     5       1   14.027778
+     V11_PLUS_40_70      182        10  2827.870265   13.114811       9     5       4   12.129629
+      V11_PLUS_BOTH      183        10  2827.870265   13.114811       9     5       4   12.129629
