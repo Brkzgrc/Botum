@@ -1,0 +1,42 @@
+name: tmp production StochRSI timing audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/tmp_prod_stoch_timing.py'
+      - '.github/workflows/tmp_prod_stoch_timing.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy requests flask
+      - name: Audit StochRSI timing variants
+        shell: bash
+        run: |
+          set +e
+          python .github/tmp_prod_stoch_timing.py 2>&1 | tee /tmp/prod_stoch_run.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > /tmp/prod_stoch_exit_code.txt
+          exit 0
+      - name: Save timing audit
+        shell: bash
+        run: |
+          cp /tmp/prod_stoch_run.log .github/tmp_prod_stoch_run.log
+          cp /tmp/prod_stoch_exit_code.txt .github/tmp_prod_stoch_exit_code.txt
+          for f in summary ledgers entries audit; do
+            if [ -f "/tmp/prod_stoch_${f}.csv" ]; then cp "/tmp/prod_stoch_${f}.csv" ".github/tmp_prod_stoch_${f}.csv"; fi
+          done
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -f .github/tmp_prod_stoch_*
+          git commit -m 'test: save StochRSI timing audit' || true
+          git pull --rebase
+          git push
