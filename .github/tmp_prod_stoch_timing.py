@@ -20,17 +20,17 @@ import spot_opportunity_scanner as prod
 SRC = Path(".github/tmp_prod_baseline_trades.csv")
 BASE = "https://data-api.binance.vision"
 HTTP = requests.Session()
-STEP = 900_000
+STEPS = {"15m": 900_000, "1h": 3_600_000}
 COLS = ["open_time","open","high","low","close","volume","close_time",
         "quote_volume","trades","taker_base","taker_quote","ignore"]
 
-def get(symbol, start, end):
+def get(symbol, interval, start, end):
     cur=int(pd.Timestamp(start).timestamp()*1000); stop=int(pd.Timestamp(end).timestamp()*1000); rows=[]
     while cur<stop:
-        r=HTTP.get(BASE+"/api/v3/klines",params={"symbol":symbol,"interval":"15m","startTime":cur,"endTime":stop,"limit":1000},timeout=30)
+        r=HTTP.get(BASE+"/api/v3/klines",params={"symbol":symbol,"interval":interval,"startTime":cur,"endTime":stop,"limit":1000},timeout=30)
         r.raise_for_status(); q=r.json()
         if not q: break
-        rows.extend(q); nxt=int(q[-1][0])+STEP
+        rows.extend(q); nxt=int(q[-1][0])+STEPS[interval]
         if nxt<=cur: break
         cur=nxt
     d=pd.DataFrame(rows,columns=COLS)
@@ -38,17 +38,31 @@ def get(symbol, start, end):
     d.open_time=pd.to_datetime(d.open_time,unit="ms",utc=True); d.close_time=pd.to_datetime(d.close_time,unit="ms",utc=True)
     return d.dropna().drop_duplicates("open_time").sort_values("open_time").reset_index(drop=True)
 
+def kdj_wpr(d):
+    lo=d.low.rolling(9).min(); hi=d.high.rolling(9).max()
+    rsv=(100*(d.close-lo)/(hi-lo).replace(0,np.nan)).fillna(50)
+    k=rsv.ewm(com=2,adjust=False).mean(); dd=k.ewm(com=2,adjust=False).mean(); j=3*k-2*dd
+    wh=d.high.rolling(14).max(); wl=d.low.rolling(14).min()
+    wpr=(-100*(wh-d.close)/(wh-wl).replace(0,np.nan)).fillna(-50)
+    return k,dd,j,wpr
+
 def features(symbol, entries):
     start=entries.min()-pd.Timedelta(days=4); end=entries.max()+pd.Timedelta(minutes=15)
-    d=get(symbol,start,end); z=prod.indicators(d); out=[]
+    d=get(symbol,"15m",start,end); z=prod.indicators(d); k,dj,j,wpr=kdj_wpr(d)
+    h=get(symbol,"1h",start-pd.Timedelta(days=8),end); hz=prod.indicators(h); out=[]
     for ts in entries:
         q=z[z.close_time<=ts]
-        if len(q)<80: continue
+        hq=hz[hz.close_time<=ts]
+        if len(q)<80 or len(hq)<80: continue
         x=q.iloc[-1]; p=q.iloc[-2]
+        ii=x.name; hh=hq.iloc[-1]; hp=hq.iloc[-2]
         out.append({"entry_time":ts,"symbol":symbol,"stoch_k":float(x.stoch_k),"stoch_d":float(x.stoch_d),
                     "stoch_prev":float(p.stoch_k),"stoch_min3":float(q.stoch_k.tail(3).min()),
                     "rsi15":float(x.rsi),"macd_up":bool(x.macd_hist>p.macd_hist),
-                    "reclaim_ema20":bool(x.close>=x.ema20*.995),"k_slope":float(x.stoch_k-p.stoch_k)})
+                    "reclaim_ema20":bool(x.close>=x.ema20*.995),"k_slope":float(x.stoch_k-p.stoch_k),
+                    "oneh_stoch_k":float(hh.stoch_k),"oneh_stoch_turn":bool(hh.stoch_k>hh.stoch_d and hh.stoch_k>hp.stoch_k),
+                    "kdj_turn":bool(k.iloc[ii]>dj.iloc[ii] and j.iloc[ii]>j.iloc[ii-1]),
+                    "wpr":float(wpr.iloc[ii]),"wpr_turn":bool(wpr.iloc[ii]>wpr.iloc[ii-1])})
     return out
 
 def ledger(d, name):
@@ -81,6 +95,9 @@ def main():
       "CURRENT": x,
       "LOW_STOCH_K40": x[x.stoch_k<=40],
       "MID_STOCH_40_70": x[(x.stoch_k>40) & (x.stoch_k<=70)],
+      "RESET_TURN_1H40_15M30": x[(x.oneh_stoch_k<=40) & (x.oneh_stoch_turn) &
+                                  (x.stoch_k<=30) & (x.stoch_k>x.stoch_d) &
+                                  (x.k_slope>0) & x.kdj_turn & (x.wpr<=-60) & x.wpr_turn],
       "RETRIGGER_DEEP_RESET": x[(x.kind!="RETRIGGER") | (x.stoch_min3<=30)],
       "NO_LATE_STOCH": x[x.stoch_k<=70],
       "DEEP_RETRIGGER_PLUS_PRESSURE": x[((x.kind=="RETRIGGER")&(x.stoch_min3<=30)) | ((x.kind=="PRESSURE")&(x.stoch_k<=65))],
