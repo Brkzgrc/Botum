@@ -312,7 +312,7 @@ def replay_entries(symbols, hourly, data):
 
 def apply_portfolio(signals):
     if signals.empty: return pd.DataFrame()
-    groups={s:g.sort_values("open_time") for s,g in signals.groupby("symbol")}
+    groups={s:g.sort_values("entry_time") for s,g in signals.groupby("symbol")}
     five={}
     for n,(s,g) in enumerate(groups.items(),1):
         start=g.entry_time.min()-pd.Timedelta(minutes=5); end=END+pd.Timedelta(days=2)
@@ -380,8 +380,8 @@ def main():
     usable=sorted(set(union)&set(data["15m"])&set(data["4h"])&set(data["1d"])&set(hourly))
     print(f"[STAGE] exact stateful replay usable={len(usable)}",flush=True)
     signals=replay_entries(usable,hourly,data)
-    trades=apply_portfolio(signals); report=summary(trades)
     signals.to_csv("/tmp/prod_baseline_signals.csv",index=False)
+    trades=apply_portfolio(signals); report=summary(trades)
     trades.to_csv("/tmp/prod_baseline_trades.csv",index=False)
     report.to_csv("/tmp/prod_baseline_summary.csv",index=False)
     with open("/tmp/prod_baseline_meta.json","w",encoding="utf-8") as f:
