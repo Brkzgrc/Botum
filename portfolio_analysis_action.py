@@ -6,7 +6,8 @@ Portfolio + piyasa verisini çeker, Claude ile analiz eder, Telegram'a gönderir
 import os
 import json
 import requests
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 PORTFOLIO_URL   = os.environ.get("PORTFOLIO_URL", "").rstrip("/")
 PORTFOLIO_TOKEN = os.environ.get("PORTFOLIO_AUTH_TOKEN", "")
@@ -38,7 +39,7 @@ def send_telegram(text):
 
 
 def main():
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(ZoneInfo("Europe/Istanbul")).strftime("%Y-%m-%d %H:%M TR")
     print(f"=== Özgür Analiz — {now} ===\n")
 
     if not PORTFOLIO_URL:
@@ -58,7 +59,10 @@ def main():
 
     print(f"\n--- AÇIK POZİSYONLAR ({len(open_pos)}) ---")
     for p in open_pos:
+        current = float(p.get("current_price") or 0)
+        current_pct = float(p.get("current_pct") or 0)
         print(f"  {p.get('symbol','?')} | giriş:{p.get('entry',0):.5g} "
+              f"| güncel:{current:.5g} ({current_pct:+.2f}%) "
               f"| TP1:{p.get('tp1',0):.5g} TP2:{p.get('tp2',0):.5g} "
               f"| stop:{p.get('stop',0):.5g} | tip:{p.get('sig_type','?')}")
 
@@ -98,7 +102,16 @@ def main():
         tp1  = p.get("tp1", 0)
         tp2  = p.get("tp2", 0)
         stp  = p.get("stop", 0)
-        open_lines += f"  {sym} ({tip}): giriş={ent:.5g} TP1={tp1:.5g} TP2={tp2:.5g} stop={stp:.5g}\n"
+        cur  = float(p.get("current_price") or 0)
+        cur_pct = float(p.get("current_pct") or 0)
+        tp1_hit = bool(p.get("tp1_hit"))
+        trailing = bool(p.get("trailing_active") or p.get("trailing"))
+        last_check = p.get("last_check") or "bilinmiyor"
+        open_lines += (
+            f"  {sym} ({tip}): giriş={ent:.5g} güncel={cur:.5g} "
+            f"getiri={cur_pct:+.2f}% TP1={tp1:.5g} TP2={tp2:.5g} stop={stp:.5g} "
+            f"TP1_vuruldu={tp1_hit} trailing={trailing} son_kontrol={last_check}\n"
+        )
 
     mc_str = f"${total_mc/1e12:.2f}T" if total_mc >= 1e12 else f"${total_mc/1e9:.1f}B"
 
@@ -126,6 +139,10 @@ PİYASA:
 - Her nokta ayrı satırda olsun
 - Maksimum 4 satır
 - Her satır tek cümle, kısa ve net
+- Yalnızca verilen sayısal verilere dayan; eksik bilgiyi tahmin etme
+- Bir pozisyonun TP1'e yakınlığını yalnızca güncel fiyat alanı sıfırdan büyükse hesapla
+- Güncel fiyat yoksa o pozisyon için hedefe yakınlık veya kâr realizasyonu önerme
+- TP1_vuruldu veya trailing durumu açıkça true değilse gerçekleşmiş gibi yazma
 - Varsa aksiyon önerisi son satırda
 - Markdown yok, sembol yok, düz metin"""
 
