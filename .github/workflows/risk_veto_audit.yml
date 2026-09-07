@@ -1,12 +1,15 @@
 name: risk veto audit two poor weeks
+
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/risk_veto_audit.yml'
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   audit:
     name: poor-week-${{ matrix.offset }}d
@@ -17,21 +20,30 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       WEEK_OFFSET_DAYS: ${{ matrix.offset }}
+      # Fixed anchor = same historical window and a reusable cache for every rule test.
+      REPLAY_END_UTC: '2026-09-07T05:45:00Z'
+      REPLAY_CACHE_DIR: .replay-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install pandas numpy requests flask
-      - name: Replay frozen live-system entries
-        run: python .github/tmp_prod_reset_combo_replay.py
-      - name: Upload risk-audit inputs
+      - name: Restore frozen candle cache
+        uses: actions/cache@v4
+        with:
+          path: .replay-cache
+          key: risk-veto-candles-v1-${{ matrix.offset }}-20260907T0545
+      - name: Replay live-system entries once
+        run: python .github/tmp_risk_veto_audit_fast.py
+      - name: Upload risk-audit result
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: risk-veto-input-offset-${{ matrix.offset }}
+          name: risk-veto-audit-offset-${{ matrix.offset }}
           retention-days: 14
           path: |
-            /tmp/reset_combo_summary.csv
-            /tmp/reset_combo_trades.csv
-            /tmp/reset_combo_ledger.csv
-            /tmp/reset_combo_signals.csv
+            /tmp/risk_audit_signals.csv
+            /tmp/risk_audit_trades.csv
+            /tmp/risk_audit_feature_report.csv
+          if-no-files-found: warn
