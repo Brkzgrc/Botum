@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -81,9 +82,25 @@ def main():
     trades = base.apply_portfolio(signals)
     report = feature_report(trades)
 
-    signals.to_csv("/tmp/risk_audit_signals.csv", index=False)
-    trades.to_csv("/tmp/risk_audit_trades.csv", index=False)
-    report.to_csv("/tmp/risk_audit_feature_report.csv", index=False)
+    outputs = {
+        "risk_audit_signals.csv": signals,
+        "risk_audit_trades.csv": trades,
+        "risk_audit_feature_report.csv": report,
+    }
+    for filename, frame in outputs.items():
+        frame.to_csv("/tmp/" + filename, index=False)
+
+    # Persist the expensive baseline result alongside the candle cache.  Later
+    # veto rules only read this snapshot and finish in seconds.
+    cache_root = os.getenv("REPLAY_CACHE_DIR", "").strip()
+    if cache_root:
+        anchor = os.getenv("REPLAY_END_UTC", "moving").replace(":", "").replace("-", "")
+        snapshot_dir = Path(cache_root) / "audit-snapshots" / f"offset-{base.WEEK_OFFSET_DAYS}d-{anchor}"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        for filename, frame in outputs.items():
+            frame.to_csv(snapshot_dir / filename, index=False)
+        print(f"[SNAPSHOT] saved {snapshot_dir}", flush=True)
+
     print("\n=== RISK FEATURE REPORT ===", flush=True)
     print(report.to_string(index=False), flush=True)
 
