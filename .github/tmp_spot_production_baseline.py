@@ -16,6 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import timedelta, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -33,14 +34,60 @@ TR_TZ = timezone(timedelta(hours=3))
 DAYS = int(os.getenv("BASELINE_DAYS", "7"))
 WORKERS = int(os.getenv("BASELINE_WORKERS", "8"))
 FEE_SIDE_PCT = float(os.getenv("FEE_SIDE_PCT", "0.10"))
-END = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=int(os.getenv("WEEK_OFFSET_DAYS", "0")))).floor("15min")
+WEEK_OFFSET_DAYS = int(os.getenv("WEEK_OFFSET_DAYS", "0"))
+
+def _as_utc(value):
+    ts = pd.Timestamp(value)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+# A fixed anchor makes a replay reproducible and lets its candle cache be reused.
+# Without it, the old code moved the window forward every 15 minutes and refetched
+# nearly identical Binance data for every experiment.
+_replay_anchor = os.getenv("REPLAY_END_UTC", "").strip()
+END = ((_as_utc(_replay_anchor) - pd.Timedelta(days=WEEK_OFFSET_DAYS))
+       if _replay_anchor
+       else (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=WEEK_OFFSET_DAYS))).floor("15min")
 START = END - pd.Timedelta(days=DAYS)
+_cache_root = os.getenv("REPLAY_CACHE_DIR", "").strip()
+CACHE_DIR = Path(_cache_root).expanduser() if _cache_root else None
 HTTP = requests.Session()
 HTTP.headers.update({"User-Agent": "Botum-production-replay/1.0"})
 COLS = ["open_time","open","high","low","close","volume","close_time",
         "quote_volume","trades","taker_base","taker_quote","ignore"]
 STEP_MS = {"5m":300_000,"15m":900_000,"1h":3_600_000,
            "4h":14_400_000,"1d":86_400_000}
+
+def _cache_path(symbol, interval, start, end):
+    if CACHE_DIR is None:
+        return None
+    start_ms = int(pd.Timestamp(start).timestamp() * 1000)
+    end_ms = int(pd.Timestamp(end).timestamp() * 1000)
+    return CACHE_DIR / "klines" / f"{symbol}_{interval}_{start_ms}_{end_ms}.pkl"
+
+def _load_cached_frame(symbol, interval, start, end):
+    path = _cache_path(symbol, interval, start, end)
+    if path is None or not path.exists():
+        return None
+    try:
+        data = pd.read_pickle(path)
+        if len(data) >= 80:
+            print(f"[CACHE] hit {symbol} {interval}", flush=True)
+            return data
+    except Exception:
+        pass
+    return None
+
+def _store_cached_frame(symbol, interval, start, end, data):
+    path = _cache_path(symbol, interval, start, end)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        data.to_pickle(tmp)
+        tmp.replace(path)
+    except Exception as exc:
+        print(f"[CACHE] write skipped {symbol} {interval}: {exc}", flush=True)
 
 
 def verify_frozen_source():
@@ -87,6 +134,9 @@ def frame(rows):
 
 
 def fetch_klines(symbol, interval, start, end):
+    cached = _load_cached_frame(symbol, interval, start, end)
+    if cached is not None:
+        return cached
     cur = int(pd.Timestamp(start).timestamp() * 1000)
     end_ms = int(pd.Timestamp(end).timestamp() * 1000)
     out = []
@@ -106,6 +156,7 @@ def fetch_klines(symbol, interval, start, end):
     d = frame(out)
     if len(d) < 80:
         raise ValueError(f"insufficient candles {symbol} {interval}: {len(d)}")
+    _store_cached_frame(symbol, interval, start, end, d)
     return d
 
 
