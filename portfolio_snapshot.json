@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-07 10:30:09",
+  "updated_at": "2026-09-07 11:00:11",
   "performance": {
     "total": 15,
-    "open": 2,
-    "closed": 13,
-    "wins": 8,
+    "open": 1,
+    "closed": 14,
+    "wins": 9,
     "win_tp2": 0,
     "losses": 5,
     "expired": 5,
-    "tp1_hits": 7,
-    "win_pnl": 29.48,
+    "tp1_hits": 8,
+    "win_pnl": 32.23,
     "loss_pnl": -12.78,
     "expired_win": 1,
     "expired_loss": 4,
-    "total_pnl": 16.7,
-    "win_loss_pnl": 24.05,
+    "total_pnl": 19.45,
+    "win_loss_pnl": 26.8,
     "expired_pnl": -7.35,
-    "avg_peak": 4.14,
-    "win_rate": 61.5,
-    "real_win_rate": 61.5,
+    "avg_peak": 4.23,
+    "win_rate": 64.3,
+    "real_win_rate": 64.3,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,20 +45,20 @@
     "by_type": {
       "DİĞER": {
         "total": 15,
-        "open": 2,
-        "wins": 8,
+        "open": 1,
+        "wins": 9,
         "losses": 5,
         "expired": 5,
-        "tp1_hits": 7,
-        "total_pnl": 16.7,
+        "tp1_hits": 8,
+        "total_pnl": 19.45,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 61.5,
-        "avg_peak": 4.14,
+        "win_rate": 64.3,
+        "avg_peak": 4.23,
         "tp2_rate": 0,
         "expired_pnl": -7.35,
-        "win_loss_pnl": 24.05
+        "win_loss_pnl": 26.8
       }
     },
     "daily": {
@@ -82,8 +82,8 @@
       },
       "2026-09-04": {
         "trades": 6,
-        "pnl": 21.43,
-        "wins": 4,
+        "pnl": 24.18,
+        "wins": 5,
         "losses": 1
       }
     },
@@ -96,16 +96,16 @@
       },
       "2026-W35": {
         "trades": 12,
-        "pnl": 19.64,
-        "wins": 7,
+        "pnl": 22.39,
+        "wins": 8,
         "losses": 4
       }
     },
     "monthly": {
       "2026-09": {
         "trades": 15,
-        "pnl": 16.700000000000003,
-        "wins": 8,
+        "pnl": 19.450000000000003,
+        "wins": 9,
         "losses": 5
       }
     }
@@ -135,17 +135,17 @@
       "close_pct": null,
       "peak_price": 1251.54,
       "peak_pct": 2.47,
-      "low_price": 1171.87,
-      "low_pct": -4.06,
-      "current_price": 1195.86,
-      "current_pct": -2.09,
+      "low_price": 1170.0,
+      "low_pct": -4.21,
+      "current_price": 1186.62,
+      "current_pct": -2.85,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-07T10:29:03.543037+03:00",
-      "checks": 123,
+      "last_check": "2026-09-07T10:59:08.768500+03:00",
+      "checks": 129,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -156,62 +156,6 @@
         "score": 100.0,
         "btc_regime": "GREEN"
       }
-    },
-    {
-      "id": "WCT_USDT_1788523564",
-      "symbol": "WCT/USDT",
-      "entry": 0.03828,
-      "stop": 0.03635775,
-      "tp1": 0.03954,
-      "tp2": 0.04109,
-      "tp3": null,
-      "limit_price": 0.03828,
-      "signal_price": 0.03828,
-      "sig_type": "spot_opportunity",
-      "sub_type": "",
-      "source": "spot-scanner",
-      "phase": "manual_review",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-09-04T15:06:04.975492+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.04034,
-      "peak_pct": 5.38,
-      "low_price": 0.0371,
-      "low_pct": -3.08,
-      "current_price": 0.03954,
-      "current_pct": 3.29,
-      "tp1_hit": true,
-      "tp1_time": "2026-09-05T13:23:48.856848+03:00",
-      "spot_tracking_v1": true,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-09-07T10:29:03.543037+03:00",
-      "checks": 718,
-      "extra": {
-        "tp3": null,
-        "entry_zone": [
-          0.0381731518,
-          0.0383156161
-        ],
-        "target_pct": 3.29,
-        "stop_pct": 5.29,
-        "rr": 0.62,
-        "setup": "ENTRY",
-        "setup_kind": "PRESSURE",
-        "positives": [
-          "1D ana yapı güçlü; 4H yeniden güç topluyor; Kurulum hazır; giriş tetiği henüz tamamlanmadı; Sıkışan yükseliş baskısı 15M'de kırılıma dönüştü",
-          "Sıkışan yükseliş baskısı 15M'de kırılıma dönüştü"
-        ],
-        "risks": [],
-        "score": 91.0,
-        "btc_regime": "YELLOW"
-      },
-      "tp1_pct": 3.29
     }
   ],
   "closed": [
@@ -809,6 +753,62 @@
         "score": 86.0,
         "btc_regime": "YELLOW"
       }
+    },
+    {
+      "id": "WCT_USDT_1788523564",
+      "symbol": "WCT/USDT",
+      "entry": 0.03828,
+      "stop": 0.03635775,
+      "tp1": 0.03954,
+      "tp2": 0.04109,
+      "tp3": null,
+      "limit_price": 0.03828,
+      "signal_price": 0.03828,
+      "sig_type": "spot_opportunity",
+      "sub_type": "",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-09-04T15:06:04.975492+03:00",
+      "close_time": "2026-09-07T10:44:06.573327+03:00",
+      "close_price": 0.0393315,
+      "close_reason": "trailing",
+      "close_pct": 2.75,
+      "peak_price": 0.04034,
+      "peak_pct": 5.38,
+      "low_price": 0.0371,
+      "low_pct": -3.08,
+      "current_price": 0.03933,
+      "current_pct": 2.74,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-05T13:23:48.856848+03:00",
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-07T10:44:06.573327+03:00",
+      "checks": 721,
+      "extra": {
+        "tp3": null,
+        "entry_zone": [
+          0.0381731518,
+          0.0383156161
+        ],
+        "target_pct": 3.29,
+        "stop_pct": 5.29,
+        "rr": 0.62,
+        "setup": "ENTRY",
+        "setup_kind": "PRESSURE",
+        "positives": [
+          "1D ana yapı güçlü; 4H yeniden güç topluyor; Kurulum hazır; giriş tetiği henüz tamamlanmadı; Sıkışan yükseliş baskısı 15M'de kırılıma dönüştü",
+          "Sıkışan yükseliş baskısı 15M'de kırılıma dönüştü"
+        ],
+        "risks": [],
+        "score": 91.0,
+        "btc_regime": "YELLOW"
+      },
+      "tp1_pct": 3.29
     },
     {
       "id": "ACH_USDT_1788523564",
