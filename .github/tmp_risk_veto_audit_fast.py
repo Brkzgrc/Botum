@@ -14,7 +14,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.abspath(".github"))
 import tmp_spot_production_baseline as base
-from tmp_prod_reset_combo_replay import FastSnapCache
+from tmp_prod_reset_combo_replay import FastSnapCache, capital
 
 
 def feature_report(trades: pd.DataFrame) -> pd.DataFrame:
@@ -82,10 +82,18 @@ def main():
     trades = base.apply_portfolio(signals)
     report = feature_report(trades)
 
+    # Candidate identified only on the two poor weeks.  It is reported here,
+    # but will be accepted/rejected solely by its separate holdout weeks.
+    baseline_portfolio, _ = capital(trades, "LIVE_BASELINE")
+    veto_trades = trades[trades["one_dist_ema20"].lt(4.0)].copy()
+    veto_portfolio, _ = capital(veto_trades, "VETO_1H_EMA20_DIST_LT_4")
+    portfolio_report = pd.DataFrame([baseline_portfolio, veto_portfolio])
+
     outputs = {
         "risk_audit_signals.csv": signals,
         "risk_audit_trades.csv": trades,
         "risk_audit_feature_report.csv": report,
+        "risk_audit_portfolio_report.csv": portfolio_report,
     }
     for filename, frame in outputs.items():
         frame.to_csv("/tmp/" + filename, index=False)
