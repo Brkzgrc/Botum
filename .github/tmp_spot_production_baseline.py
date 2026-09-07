@@ -304,7 +304,7 @@ def replay_entries(symbols, hourly, data):
         if tr_day!=day_key: day_key=tr_day; day_count=0
         for c in finals[:max(0,prod.MAX_SIGNALS_PER_DAY-day_count)]:
             entry,stop,tp1,tp2=levels(c,ts,data)
-            signals.append({"entry_time":ts,"symbol":c.symbol,"kind":c.decision["setup_kind"],"score":c.decision["confidence"],"rank":c.rank,"btc_regime":regime,"entry":entry,"stop":stop,"tp1":tp1,"tp2":tp2})
+            signals.append({"entry_time":ts,"symbol":c.symbol,"kind":c.decision["setup_kind"],"score":c.decision["confidence"],"rank":c.rank,"btc_regime":regime,"day_rsi":c.snapshot["1d"]["rsi"],"four_rsi":c.snapshot["4h"]["rsi"],"four_dist_ema50":c.snapshot["4h"]["dist_ema50"],"four_ema20_slope":c.snapshot["4h"]["ema20_slope"],"one_rsi":c.snapshot["1h"]["rsi"],"one_stoch_k":c.snapshot["1h"]["stoch_k"],"one_dist_ema20":c.snapshot["1h"]["dist_ema20"],"one_upper_wick":c.snapshot["1h"]["upper_wick"],"fast_rsi":c.snapshot["15m"]["rsi"],"fast_stoch_k":c.snapshot["15m"]["stoch_k"],"entry":entry,"stop":stop,"tp1":tp1,"tp2":tp2})
             day_count+=1; watch.pop(c.symbol,None)
         if n%96==0 or n==len(scans): print(f"[REPLAY] {n}/{len(scans)} signals={len(signals)} watch={len(watch)}",flush=True)
     return pd.DataFrame(signals)
