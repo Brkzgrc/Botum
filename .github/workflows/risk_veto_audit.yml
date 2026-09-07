@@ -1,4 +1,4 @@
-name: risk veto audit two poor weeks
+name: risk veto holdout weeks
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        offset: [7, 21]
+        offset: [0, 14]
     runs-on: ubuntu-24.04
     env:
       WEEK_OFFSET_DAYS: ${{ matrix.offset }}
@@ -33,7 +33,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .replay-cache
-          key: risk-veto-candles-v1-${{ matrix.offset }}-20260907T0545
+          key: risk-veto-holdout-candles-v1-${{ matrix.offset }}-20260907T0545
       - name: Replay live-system entries once
         run: python .github/tmp_risk_veto_audit_fast.py
       - name: Upload risk-audit result
@@ -46,4 +46,5 @@ jobs:
             /tmp/risk_audit_signals.csv
             /tmp/risk_audit_trades.csv
             /tmp/risk_audit_feature_report.csv
+            /tmp/risk_audit_portfolio_report.csv
           if-no-files-found: warn
