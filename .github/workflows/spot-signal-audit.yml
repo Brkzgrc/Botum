@@ -58,7 +58,7 @@ jobs:
         run: |
           mkdir -p audit_output .audit_cache
           cat > /tmp/run_spot_audit.py <<'PY'
-          import csv, json, os, time, traceback
+          import csv, io, json, os, time, traceback, zipfile
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from datetime import datetime, timezone, timedelta
           from pathlib import Path
@@ -82,61 +82,80 @@ jobs:
           current_cutoff = START
           live_price = {}
 
-          def get_json(url, params=None):
-              for attempt in range(5):
-                  try:
-                      r = HTTP.get(url, params=params, timeout=25)
-                      if r.status_code in (418,429):
-                          time.sleep(1.5 * (attempt + 1)); continue
-                      r.raise_for_status()
-                      return r.json()
-                  except Exception:
-                      if attempt == 4: raise
-                      time.sleep(1.2 * (attempt + 1))
+          # GitHub-hosted runnerlar Binance API'den 451 aldığı için yalnız
+          # Binance'in indirilebilir tarihsel mum arşivi kullanılır.
+          # Bu liste, audit için sabit geniş spot örneklemidir; canlı API çağrısı yapılmaz.
+          STATIC_BASES = """BTC ETH BNB SOL XRP DOGE ADA TRX SUI LINK AVAX TON SHIB LTC HBAR DOT BCH XLM PEPE UNI AAVE NEAR APT ICP FIL ATOM ETC VET ALGO ARB OP INJ SEI RENDER FET TAO WLD TIA JUP ONDO ENA PENDLE PYTH JTO ZRO WIF BONK FLOKI TURBO CAKE ZEC DASH KAS KAVA GALA SAND MANA AXS IMX THETA MKR CRV LDO RUNE FTM KNC SNX COMP SUSHI YFI 1INCH ENS MASK CHZ ENJ FLOW EGLD MINA ROSE KSM ZIL IOTA XTZ EOS NEO QNT GRT STX RAY RNDR ASTR CFX APE BLUR DYDX GMX MAGIC LRC BAT ZRX OCEAN SKL COTI DENT CELR SXP CTSI BAND API3 LPT SSV RPL ARK ARPA ACH C98 DODO HIGH ID ACE BMT TUT GPS ONG COW EUL""".split()
+          static_symbols = [f"{base}USDT" for base in STATIC_BASES]
+          VISION = "https://data.binance.vision/data/spot"
+          LOOKBACK_DAYS = {"15m": 16, "1h": 18, "4h": 55, "1d": 300}
 
-          def frame(rows):
-              d = pd.DataFrame(rows, columns=COLS)
-              for col in ("open","high","low","close","volume","quote_volume","taker_quote"):
-                  d[col] = pd.to_numeric(d[col], errors="coerce")
-              d["open_time"] = pd.to_datetime(d["open_time"], unit="ms", utc=True)
-              d["close_time"] = pd.to_datetime(d["close_time"], unit="ms", utc=True)
-              return d.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
+          def csv_frame(raw):
+              z = zipfile.ZipFile(io.BytesIO(raw))
+              names = [n for n in z.namelist() if n.endswith(".csv")]
+              if not names: return pd.DataFrame(columns=COLS)
+              d = pd.read_csv(z.open(names[0]), header=None)
+              if not d.empty and str(d.iloc[0,0]).lower() == "open_time":
+                  d = d.iloc[1:].reset_index(drop=True)
+              d = d.iloc[:, :len(COLS)]
+              d.columns = COLS[:len(d.columns)]
+              return frame(d.values.tolist())
+
+          def vision_zip(url):
+              for attempt in range(4):
+                  try:
+                      r = HTTP.get(url, timeout=35)
+                      if r.status_code == 404: return None
+                      r.raise_for_status()
+                      return r.content
+                  except Exception:
+                      if attempt == 3: raise
+                      time.sleep(1.0 * (attempt + 1))
 
           def load(symbol, interval, limit):
-              name = CACHE / f"{symbol}_{interval}_{int(END.timestamp())}_{limit}.json"
+              name = CACHE / f"vision_{symbol}_{interval}_{START.date()}_{END.date()}.json"
               if name.exists():
                   rows = json.loads(name.read_text())
-              else:
-                  rows = get_json("https://api.binance.com/api/v3/klines", {
-                      "symbol": symbol, "interval": interval, "limit": limit,
-                      "endTime": int(END.timestamp() * 1000)
-                  })
-                  name.write_text(json.dumps(rows))
-              d = frame(rows)
+                  return frame(rows).tail(limit).reset_index(drop=True)
+              earliest = (START - pd.Timedelta(days=LOOKBACK_DAYS[interval])).normalize()
+              month_starts = pd.date_range(earliest.replace(day=1), END.normalize().replace(day=1), freq="MS", tz="UTC")
+              pieces = []
+              for month in month_starts:
+                  # Tamamlanmış ay: tek aylık arşiv. İçinde bulunulan ay: günlük arşiv.
+                  if month < END.normalize().replace(day=1):
+                      stamp = month.strftime("%Y-%m")
+                      url = f"{VISION}/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
+                      raw = vision_zip(url)
+                      if raw: pieces.append(csv_frame(raw))
+                  else:
+                      for day in pd.date_range(month, END.normalize(), freq="D", tz="UTC"):
+                          if day < earliest: continue
+                          stamp = day.strftime("%Y-%m-%d")
+                          url = f"{VISION}/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
+                          raw = vision_zip(url)
+                          if raw: pieces.append(csv_frame(raw))
+              if not pieces:
+                  raise RuntimeError(f"{symbol} {interval}: Vision arşivinde mum yok")
+              d = pd.concat(pieces, ignore_index=True).drop_duplicates("open_time").sort_values("open_time")
+              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True)
               if len(d) < 80:
-                  raise RuntimeError(f"{symbol} {interval}: yetersiz mum")
-              return d
+                  raise RuntimeError(f"{symbol} {interval}: yetersiz Vision mumu ({len(d)})")
+              name.write_text(json.dumps(d[COLS].assign(open_time=d.open_time.astype(str), close_time=d.close_time.astype(str)).values.tolist()))
+              return d.tail(limit).reset_index(drop=True)
 
-          def eligible_universe():
-              exchange = get_json("https://api.binance.com/api/v3/exchangeInfo")
-              ticks = {x["symbol"]: x for x in get_json("https://api.binance.com/api/v3/ticker/24hr")}
-              ignored = scanner.IGNORED_BASES
-              out = []
-              for x in exchange.get("symbols", []):
-                  sym, base = x.get("symbol",""), x.get("baseAsset","")
-                  if x.get("quoteAsset") != "USDT" or x.get("status") != "TRADING":
-                      continue
-                  if base in ignored or (base.endswith(scanner.LEVERAGED_SUFFIXES) and base not in scanner.CRYPTO_BASES_ENDING_B):
-                      continue
-                  try: qv = float(ticks.get(sym, {}).get("quoteVolume", 0))
-                  except Exception: qv = 0
-                  out.append((sym, qv))
-              return sorted(out, key=lambda x: x[1], reverse=True)[:TOP_N]
-
-          universe = eligible_universe()
-          symbols = ["BTCUSDT"] + [s for s,_ in universe]
+          # Tarihsel sıralama API hacmi olmadan yeniden kurulamayacağı için sabit geniş örneklem
+          # kullanılır. Portfolio'da geçen semboller de mutlaka kapsama eklenir.
+          snapshot_symbols = []
+          try:
+              snap = json.loads(Path("portfolio_snapshot.json").read_text())
+              snapshot_symbols = [str(x.get("symbol","")).replace("/","") for x in (snap.get("open", []) + snap.get("closed", [])) if x.get("source") == "spot-scanner"]
+          except Exception:
+              pass
+          symbols_from_sample = list(dict.fromkeys(static_symbols + snapshot_symbols))
+          universe = [(s, 1_000_000_000 - i) for i, s in enumerate(symbols_from_sample[:TOP_N])]
+          symbols = ["BTCUSDT"] + [s for s,_ in universe if s != "BTCUSDT"]
           quote_volume = dict(universe)
-          print(f"[AUDIT] {len(universe)} coin | {START} -> {END}", flush=True)
+          print(f"[AUDIT] Vision archive | {len(universe)} coin | {START} -> {END}", flush=True)
 
           def fetch_symbol(symbol):
               return symbol, {
@@ -146,13 +165,17 @@ jobs:
                   "1d": load(symbol, "1d", 260),
               }
 
-          with ThreadPoolExecutor(max_workers=10) as pool:
+          with ThreadPoolExecutor(max_workers=8) as pool:
               futures = [pool.submit(fetch_symbol, s) for s in symbols]
               for n, future in enumerate(as_completed(futures), 1):
-                  sym, series = future.result()
-                  data[sym] = series
-                  if n % 15 == 0 or n == len(symbols):
-                      print(f"[DATA] {n}/{len(symbols)}", flush=True)
+                  try:
+                      sym, series = future.result()
+                      data[sym] = series
+                  except Exception as exc:
+                      print(f"[SKIP] {exc}", flush=True)
+                      continue
+                  if n % 10 == 0 or n == len(symbols):
+                      print(f"[DATA] {n}/{len(symbols)} usable={len(data)}", flush=True)
 
           active = [s for s,_ in universe if s in data]
           if "BTCUSDT" not in data or not active:
