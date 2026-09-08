@@ -88,6 +88,7 @@ jobs:
           STATIC_BASES = """BTC ETH BNB SOL XRP DOGE ADA TRX SUI LINK AVAX TON SHIB LTC HBAR DOT BCH XLM PEPE UNI AAVE NEAR APT ICP FIL ATOM ETC VET ALGO ARB OP INJ SEI RENDER FET TAO WLD TIA JUP ONDO ENA PENDLE PYTH JTO ZRO WIF BONK FLOKI TURBO CAKE ZEC DASH KAS KAVA GALA SAND MANA AXS IMX THETA MKR CRV LDO RUNE FTM KNC SNX COMP SUSHI YFI 1INCH ENS MASK CHZ ENJ FLOW EGLD MINA ROSE KSM ZIL IOTA XTZ EOS NEO QNT GRT STX RAY RNDR ASTR CFX APE BLUR DYDX GMX MAGIC LRC BAT ZRX OCEAN SKL COTI DENT CELR SXP CTSI BAND API3 LPT SSV RPL ARK ARPA ACH C98 DODO HIGH ID ACE BMT TUT GPS ONG COW EUL""".split()
           static_symbols = [f"{base}USDT" for base in STATIC_BASES]
           VISION = "https://data.binance.vision/data/spot"
+          DATA_API = "https://data-api.binance.vision/api/v3"
           LOOKBACK_DAYS = {"15m": 16, "1h": 18, "4h": 55, "1d": 300}
 
           def frame(rows):
@@ -144,12 +145,19 @@ jobs:
                           url = f"{VISION}/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
                           raw = vision_zip(url)
                           if raw: pieces.append(csv_frame(raw))
-              if not pieces:
-                  raise RuntimeError(f"{symbol} {interval}: Vision arşivinde mum yok")
-              d = pd.concat(pieces, ignore_index=True).drop_duplicates("open_time").sort_values("open_time")
-              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True)
+              d = pd.concat(pieces, ignore_index=True).drop_duplicates("open_time").sort_values("open_time") if pieces else pd.DataFrame(columns=COLS)
+              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True) if not d.empty else d
+              # Vision günlük/aylık arşivi geç yayımlanırsa, aynı Binance'in yalnız piyasa
+              # verisi için açık veri ucu kullanılır. Emir, hesap veya canlı sistem çağrısı yoktur.
               if len(d) < 80:
-                  raise RuntimeError(f"{symbol} {interval}: yetersiz Vision mumu ({len(d)})")
+                  try:
+                      r = HTTP.get(f"{DATA_API}/klines", params={"symbol":symbol,"interval":interval,"limit":max(limit, 300),"endTime":int(END.timestamp()*1000)}, timeout=35)
+                      r.raise_for_status()
+                      d = frame(r.json())
+                  except Exception as exc:
+                      raise RuntimeError(f"{symbol} {interval}: tarihsel mum alınamadı ({exc})")
+              if len(d) < 80:
+                  raise RuntimeError(f"{symbol} {interval}: yetersiz mum ({len(d)})")
               d[COLS].to_json(name, orient="records", date_format="epoch", date_unit="ms")
               return d.tail(limit).reset_index(drop=True)
 
