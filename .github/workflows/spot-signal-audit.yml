@@ -69,8 +69,8 @@ jobs:
 
           import spot_opportunity_scanner as scanner
 
-          START = pd.Timestamp(os.environ["AUDIT_START"], tz="UTC")
-          END = pd.Timestamp(os.environ["AUDIT_END"], tz="UTC")
+          START = pd.to_datetime(os.environ["AUDIT_START"], utc=True)
+          END = pd.to_datetime(os.environ["AUDIT_END"], utc=True)
           TOP_N = max(20, min(120, int(os.environ["AUDIT_SYMBOLS"])))
           CACHE = Path(".audit_cache")
           OUT = Path("audit_output")
@@ -346,7 +346,7 @@ jobs:
           (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
           print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
           PY
-          python /tmp/run_spot_audit.py | tee audit_output/run.log
+          PYTHONPATH="$PWD" python /tmp/run_spot_audit.py | tee audit_output/run.log
 
       - name: Upload audit report
         if: always()
