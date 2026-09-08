@@ -85,6 +85,8 @@ def main():
             a15,a1,a4=at(d15,ts),at(d1,ts),at(d4,ts)
             if any(x is None for x in (a15,a1,a4)): raise ValueError("insufficient closed context")
             entry=sf(item["entry"]); tp=sf(item["tp1"]); stop=sf(item["stop"])
+            extra=item.get("extra",{})
+            target_pct=sf(extra.get("target_pct")); stop_pct=sf(extra.get("stop_pct"))
             hist=d15[d15.close_time<=ts].tail(96)
             high24=sf(hist.high.max()); low6=sf(hist.tail(24).low.min())
             flags=[]
@@ -93,12 +95,12 @@ def main():
             if pct(high24,entry)<=3: flags.append("NEAR_24H_HIGH")
             if sf(a15.rsi)>=75 and sf(a15.stoch_k)>=80: flags.append("FAST_EXHAUSTION")
             if sf(a4.rsi)>=70: flags.append("4H_OVERBOUGHT")
-            if sf(item.get("stop_pct"))>sf(item.get("target_pct"))*1.5: flags.append("ASYMMETRIC_RISK")
+            if stop_pct > target_pct*1.5: flags.append("ASYMMETRIC_RISK")
             rows.append({
                 "symbol":item["symbol"],"open_time_tr":item["open_time"],"status":item["status"],
                 "close_pct":sf(item.get("close_pct")),"peak_pct":sf(item.get("peak_pct")),
-                "setup_kind":item.get("extra",{}).get("setup_kind"),"scanner_score":sf(item.get("extra",{}).get("score")),
-                "target_pct":sf(item.get("extra",{}).get("target_pct")),"stop_pct":sf(item.get("extra",{}).get("stop_pct")),
+                "setup_kind":extra.get("setup_kind"),"scanner_score":sf(extra.get("score")),
+                "target_pct":target_pct,"stop_pct":stop_pct,
                 "rr":rr,"entry_to_24h_high_pct":pct(high24,entry),"entry_from_6h_low_pct":pct(entry,low6),
                 "rsi_15m":sf(a15.rsi),"stoch_15m":sf(a15.stoch_k),"dist_ema20_15m":pct(entry,sf(a15.ema20)),
                 "rsi_1h":sf(a1.rsi),"stoch_1h":sf(a1.stoch_k),"dist_ema20_1h":pct(entry,sf(a1.ema20)),
