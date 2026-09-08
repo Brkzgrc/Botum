@@ -457,27 +457,76 @@ def analyze_with_claude(snapshot: dict) -> str:
     prompt = _analysis_prompt(snapshot)
     messages = [{"role": "user", "content": prompt}]
     chunks: List[str] = []
+    token_limit = DEFAULT_MAX_TOKENS
+    empty_retries = 0
+    continuation = 0
 
-    for continuation in range(MAX_CONTINUATIONS + 1):
+    def incomplete(reason: str) -> str:
+        return ("⚠️ ANALİZ TAMAMLANAMADI — Aşağıdaki metin eksiktir; tamamlanmış işlem kararı değildir.\n"
+                + reason + "\n\n" + "\n\n".join(chunks))
+
+    # Normal devam sınırına ek olarak sorgu başına yalnız bir boş-yanıt kurtarma çağrısı.
+    while continuation <= MAX_CONTINUATIONS:
         resp = client.messages.create(
             model=DEFAULT_MODEL,
-            max_tokens=DEFAULT_MAX_TOKENS,
+            max_tokens=token_limit,
             system=SYSTEM_PROMPT,
             messages=messages,
         )
-        text = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text").strip()
+        content = resp.content or []
+        text = "".join(block.text for block in content if getattr(block, "type", None) == "text").strip()
+        stop = getattr(resp, "stop_reason", None)
+        usage = getattr(resp, "usage", None)
+        diagnostic = {
+            "symbol": snapshot.get("symbol"), "requested_model": DEFAULT_MODEL,
+            "model": getattr(resp, "model", None), "stop_reason": stop,
+            "content_types": [getattr(block, "type", "unknown") for block in content],
+            "text_chars": len(text), "max_tokens": token_limit,
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+            "request_id": getattr(resp, "_request_id", None),
+            "continuation": continuation, "empty_retries": empty_retries,
+        }
+        # İçerik, düşünme blokları ve API anahtarı loglanmaz.
+        print("[GPT RESPONSE] " + json.dumps(diagnostic, ensure_ascii=False), flush=True)
+        if stop == "refusal":
+            raise RuntimeError("AI sağlayıcısı analiz isteğini reddetti (stop_reason=refusal).")
         if not text:
-            raise RuntimeError("AI analist boş yanıt döndürdü.")
+            if stop in {"end_turn", "max_tokens", "stop_sequence"} and empty_retries < 1:
+                empty_retries += 1
+                if stop == "max_tokens":
+                    token_limit = DEFAULT_MAX_TOKENS * 2
+                # Boş assistant yanıtını geri göndermek yerine son kullanıcı isteğini
+                # netleştir. Mevcut tamamlanmış parçalar konuşmada korunur.
+                messages = messages[:-1] + [{
+                    "role": "user",
+                    "content": messages[-1]["content"] +
+                    "\nÖnceki çağrıda kullanıcıya gösterilecek metin oluşmadı. "
+                    "Verilen veriye dayalı analizi görünür metin olarak yaz; "
+                    "varsa önceki analiz parçasını tekrarlamadan eksik bölümleri tamamla.",
+                }]
+                continue
+            reason = f"Model metin üretmedi (model={DEFAULT_MODEL}, stop_reason={stop})."
+            if chunks:
+                return incomplete(reason)
+            raise RuntimeError(reason)
         chunks.append(text)
-        if getattr(resp, "stop_reason", None) != "max_tokens":
-            break
+        if stop in {"end_turn", "stop_sequence"}:
+            return "\n\n".join(chunks).strip()
+        if stop != "max_tokens":
+            return incomplete(f"Beklenmeyen durma nedeni: {stop}.")
         if continuation >= MAX_CONTINUATIONS:
-            chunks.append("\n[UYARI: Model azami devam sayısına ulaştı.]")
-            break
+            return incomplete("Model azami devam sayısına ulaştı.")
+        # İmzalı düşünme blokları dahil tüm yanıt korunur; yalnız metne indirgenmez.
+        assistant_content = [
+            block.model_dump(exclude_none=True) if hasattr(block, "model_dump") else block
+            for block in content
+        ]
         messages.extend([
-            {"role": "assistant", "content": text},
+            {"role": "assistant", "content": assistant_content},
             {"role": "user", "content": "Yanıt token sınırında kesildi. Tam kaldığın yerden devam et; tekrar etme ve analizi mutlaka tamamla."},
         ])
+        continuation += 1
 
     return "\n\n".join(chunks).strip()
 
