@@ -16,7 +16,7 @@ ROOT=Path(__file__).resolve().parents[1]
 OUT=Path("/tmp")
 HTTP=requests.Session()
 HTTP.headers.update({"User-Agent":"Botum-portfolio-entry-audit/1.0"})
-BASES=("https://api.binance.com","https://data-api.binance.vision")
+BASES=("https://data-api.binance.vision","https://api.binance.com")
 COLS=["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
 MS={"15m":900000,"1h":3600000,"4h":14400000}
 
