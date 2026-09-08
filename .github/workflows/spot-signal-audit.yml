@@ -346,7 +346,8 @@ jobs:
           (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
           print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
           PY
-          PYTHONPATH="$PWD" python /tmp/run_spot_audit.py | tee audit_output/run.log
+          set -o pipefail
+          PYTHONPATH="$PWD" python /tmp/run_spot_audit.py 2>&1 | tee audit_output/run.log
 
       - name: Upload audit report
         if: always()
