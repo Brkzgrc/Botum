@@ -22,6 +22,10 @@ on:
     paths:
       - ".github/workflows/spot-signal-audit.yml"
 
+concurrency:
+  group: spot-signal-audit
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
