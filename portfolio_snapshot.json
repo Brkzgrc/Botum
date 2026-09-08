@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-08 05:32:08",
+  "updated_at": "2026-09-08 06:02:11",
   "performance": {
     "total": 18,
-    "open": 3,
-    "closed": 15,
+    "open": 2,
+    "closed": 16,
     "wins": 9,
     "win_tp2": 0,
-    "losses": 6,
+    "losses": 7,
     "expired": 6,
     "tp1_hits": 8,
     "win_pnl": 32.23,
-    "loss_pnl": -17.98,
+    "loss_pnl": -22.79,
     "expired_win": 1,
     "expired_loss": 5,
-    "total_pnl": 14.25,
-    "win_loss_pnl": 26.8,
+    "total_pnl": 9.44,
+    "win_loss_pnl": 21.99,
     "expired_pnl": -12.55,
-    "avg_peak": 4.11,
-    "win_rate": 60.0,
-    "real_win_rate": 60.0,
+    "avg_peak": 3.95,
+    "win_rate": 56.2,
+    "real_win_rate": 56.2,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,28 +45,28 @@
     "by_type": {
       "DİĞER": {
         "total": 18,
-        "open": 3,
+        "open": 2,
         "wins": 9,
-        "losses": 6,
+        "losses": 7,
         "expired": 6,
         "tp1_hits": 8,
-        "total_pnl": 14.25,
+        "total_pnl": 9.44,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 60.0,
-        "avg_peak": 4.11,
+        "win_rate": 56.2,
+        "avg_peak": 3.95,
         "tp2_rate": 0,
         "expired_pnl": -12.55,
-        "win_loss_pnl": 26.8
+        "win_loss_pnl": 21.99
       }
     },
     "daily": {
       "2026-09-08": {
         "trades": 3,
-        "pnl": 0.0,
+        "pnl": -4.81,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       },
       "2026-09-07": {
         "trades": 3,
@@ -96,9 +96,9 @@
     "weekly": {
       "2026-W36": {
         "trades": 6,
-        "pnl": -8.139999999999999,
+        "pnl": -12.949999999999998,
         "wins": 1,
-        "losses": 2
+        "losses": 3
       },
       "2026-W35": {
         "trades": 12,
@@ -110,9 +110,9 @@
     "monthly": {
       "2026-09": {
         "trades": 18,
-        "pnl": 14.250000000000004,
+        "pnl": 9.440000000000003,
         "wins": 9,
-        "losses": 6
+        "losses": 7
       }
     }
   },
@@ -143,15 +143,15 @@
       "peak_pct": 1.26,
       "low_price": 0.4205,
       "low_pct": -2.03,
-      "current_price": 0.4302,
-      "current_pct": 0.23,
+      "current_price": 0.4256,
+      "current_pct": -0.84,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-08T05:27:13.598313+03:00",
-      "checks": 64,
+      "last_check": "2026-09-08T05:57:20.392991+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null,
         "target_pct": 2.94,
@@ -189,15 +189,15 @@
       "peak_pct": 2.42,
       "low_price": 0.179,
       "low_pct": -3.61,
-      "current_price": 0.1894,
-      "current_pct": 1.99,
+      "current_price": 0.1865,
+      "current_pct": 0.43,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-08T05:27:13.598313+03:00",
-      "checks": 64,
+      "last_check": "2026-09-08T05:57:20.392991+03:00",
+      "checks": 70,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -208,7 +208,9 @@
         "score": 100.0,
         "btc_regime": "GREEN"
       }
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "ORCA_USDT_1788815240",
       "symbol": "ORCA/USDT",
@@ -225,25 +227,25 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "loss",
       "open_time": "2026-09-08T00:07:20.763350+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-09-08T05:37:16.235874+03:00",
+      "close_price": 1.484925,
+      "close_reason": "stop",
+      "close_pct": -4.81,
       "peak_price": 1.583,
       "peak_pct": 1.47,
-      "low_price": 1.491,
-      "low_pct": -4.42,
-      "current_price": 1.5,
-      "current_pct": -3.85,
+      "low_price": 1.483,
+      "low_pct": -4.94,
+      "current_price": 1.487,
+      "current_pct": -4.68,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-08T05:27:13.598313+03:00",
-      "checks": 64,
+      "last_check": "2026-09-08T05:37:16.235874+03:00",
+      "checks": 66,
       "extra": {
         "tp3": null,
         "target_pct": 5.51,
@@ -254,9 +256,7 @@
         "score": 100.0,
         "btc_regime": "GREEN"
       }
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "CHIP_USDT_1788729095",
       "symbol": "CHIP/USDT",
