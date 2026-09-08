@@ -90,6 +90,14 @@ jobs:
           VISION = "https://data.binance.vision/data/spot"
           LOOKBACK_DAYS = {"15m": 16, "1h": 18, "4h": 55, "1d": 300}
 
+          def frame(rows):
+              d = pd.DataFrame(rows, columns=COLS)
+              for col in ("open","high","low","close","volume","quote_volume","taker_quote"):
+                  d[col] = pd.to_numeric(d[col], errors="coerce")
+              d["open_time"] = pd.to_datetime(d["open_time"], unit="ms", utc=True)
+              d["close_time"] = pd.to_datetime(d["close_time"], unit="ms", utc=True)
+              return d.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
+
           def csv_frame(raw):
               z = zipfile.ZipFile(io.BytesIO(raw))
               names = [n for n in z.namelist() if n.endswith(".csv")]
@@ -115,8 +123,10 @@ jobs:
           def load(symbol, interval, limit):
               name = CACHE / f"vision_{symbol}_{interval}_{START.date()}_{END.date()}.json"
               if name.exists():
-                  rows = json.loads(name.read_text())
-                  return frame(rows).tail(limit).reset_index(drop=True)
+                  d = pd.read_json(name)
+                  d["open_time"] = pd.to_datetime(d["open_time"], utc=True)
+                  d["close_time"] = pd.to_datetime(d["close_time"], utc=True)
+                  return d.tail(limit).reset_index(drop=True)
               earliest = (START - pd.Timedelta(days=LOOKBACK_DAYS[interval])).normalize()
               month_starts = pd.date_range(earliest.replace(day=1), END.normalize().replace(day=1), freq="MS", tz="UTC")
               pieces = []
@@ -140,7 +150,7 @@ jobs:
               d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True)
               if len(d) < 80:
                   raise RuntimeError(f"{symbol} {interval}: yetersiz Vision mumu ({len(d)})")
-              name.write_text(json.dumps(d[COLS].assign(open_time=d.open_time.astype(str), close_time=d.close_time.astype(str)).values.tolist()))
+              d[COLS].to_json(name, orient="records", date_format="epoch", date_unit="ms")
               return d.tail(limit).reset_index(drop=True)
 
           # Tarihsel sıralama API hacmi olmadan yeniden kurulamayacağı için sabit geniş örneklem
