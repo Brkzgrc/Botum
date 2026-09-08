@@ -29,7 +29,6 @@ jobs:
   audit:
     name: Chronological signal audit
     runs-on: ubuntu-latest
-    timeout-minutes: 180
     env:
       AUDIT_START: ${{ inputs.start || '2026-09-04T00:00:00Z' }}
       AUDIT_END: ${{ inputs.end || '2026-09-08T23:59:00Z' }}
