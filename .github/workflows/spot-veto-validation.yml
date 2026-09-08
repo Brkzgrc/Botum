@@ -1,0 +1,479 @@
+name: Spot Veto Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Başlangıç (UTC, ör. 2026-09-04T00:00:00Z)"
+        required: false
+        default: "2026-09-04T00:00:00Z"
+      end:
+        description: "Bitiş (UTC)"
+        required: false
+        default: "2026-09-08T23:59:00Z"
+      symbols:
+        description: "İncelenecek en likit güncel USDT spot parite sayısı"
+        required: false
+        default: "120"
+
+# Workflow dosyası eklendiğinde yalnız bir kez otomatik çalışır.
+# Sonraki çalıştırmalar Actions ekranından Run workflow ile yapılır.
+  push:
+    paths:
+      - ".github/workflows/spot-veto-validation.yml"
+
+concurrency:
+  group: spot-veto-validation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Chronological signal audit
+    runs-on: ubuntu-latest
+    env:
+      AUDIT_START: ${{ inputs.start || '2026-09-04T00:00:00Z' }}
+      AUDIT_END: ${{ inputs.end || '2026-09-08T23:59:00Z' }}
+      AUDIT_SYMBOLS: ${{ inputs.symbols || '120' }}
+      TELEGRAM_ENABLED: "false"
+      PORTFOLIO_URL: ""
+      SCAN_ON_START: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audit dependencies
+        run: pip install --disable-pip-version-check --quiet numpy pandas requests flask
+
+      - name: Restore Binance candle cache
+        uses: actions/cache@v4
+        with:
+          path: .audit_cache
+          key: spot-veto-validation-v1-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
+
+      - name: Replay current scanner without live output
+        shell: bash
+        run: |
+          mkdir -p audit_output .audit_cache
+          cat > /tmp/run_spot_audit.py <<'PY'
+          import csv, io, json, os, time, traceback, zipfile
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
+          import numpy as np
+          import pandas as pd
+          import requests
+
+          import spot_opportunity_scanner as scanner
+
+          START = pd.to_datetime(os.environ["AUDIT_START"], utc=True)
+          END = pd.to_datetime(os.environ["AUDIT_END"], utc=True)
+          TOP_N = max(20, min(120, int(os.environ["AUDIT_SYMBOLS"])))
+          CACHE = Path(".audit_cache")
+          OUT = Path("audit_output")
+          OUT.mkdir(exist_ok=True)
+          HTTP = requests.Session()
+          HTTP.headers.update({"User-Agent": "Botum-chronological-audit/1.0"})
+          COLS = ["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_base","taker_quote","ignore"]
+          data = {}
+          current_cutoff = START
+          live_price = {}
+
+          # GitHub-hosted runnerlar Binance API'den 451 aldığı için yalnız
+          # Binance'in indirilebilir tarihsel mum arşivi kullanılır.
+          # Bu liste, audit için sabit geniş spot örneklemidir; canlı API çağrısı yapılmaz.
+          STATIC_BASES = """BTC ETH BNB SOL XRP DOGE ADA TRX SUI LINK AVAX TON SHIB LTC HBAR DOT BCH XLM PEPE UNI AAVE NEAR APT ICP FIL ATOM ETC VET ALGO ARB OP INJ SEI RENDER FET TAO WLD TIA JUP ONDO ENA PENDLE PYTH JTO ZRO WIF BONK FLOKI TURBO CAKE ZEC DASH KAS KAVA GALA SAND MANA AXS IMX THETA MKR CRV LDO RUNE FTM KNC SNX COMP SUSHI YFI 1INCH ENS MASK CHZ ENJ FLOW EGLD MINA ROSE KSM ZIL IOTA XTZ EOS NEO QNT GRT STX RAY RNDR ASTR CFX APE BLUR DYDX GMX MAGIC LRC BAT ZRX OCEAN SKL COTI DENT CELR SXP CTSI BAND API3 LPT SSV RPL ARK ARPA ACH C98 DODO HIGH ID ACE BMT TUT GPS ONG COW EUL""".split()
+          static_symbols = [f"{base}USDT" for base in STATIC_BASES]
+          VISION = "https://data.binance.vision/data/spot"
+          DATA_API = "https://data-api.binance.vision/api/v3"
+          LOOKBACK_DAYS = {"15m": 16, "1h": 18, "4h": 55, "1d": 300}
+
+          def frame(rows):
+              d = pd.DataFrame(rows, columns=COLS)
+              for col in ("open","high","low","close","volume","quote_volume","taker_quote"):
+                  d[col] = pd.to_numeric(d[col], errors="coerce")
+              d["open_time"] = pd.to_datetime(d["open_time"], unit="ms", utc=True)
+              d["close_time"] = pd.to_datetime(d["close_time"], unit="ms", utc=True)
+              return d.dropna(subset=["open","high","low","close","volume"]).reset_index(drop=True)
+
+          def csv_frame(raw):
+              z = zipfile.ZipFile(io.BytesIO(raw))
+              names = [n for n in z.namelist() if n.endswith(".csv")]
+              if not names: return pd.DataFrame(columns=COLS)
+              d = pd.read_csv(z.open(names[0]), header=None)
+              if not d.empty and str(d.iloc[0,0]).lower() == "open_time":
+                  d = d.iloc[1:].reset_index(drop=True)
+              d = d.iloc[:, :len(COLS)]
+              d.columns = COLS[:len(d.columns)]
+              return frame(d.values.tolist())
+
+          def vision_zip(url):
+              for attempt in range(4):
+                  try:
+                      r = HTTP.get(url, timeout=35)
+                      if r.status_code == 404: return None
+                      r.raise_for_status()
+                      return r.content
+                  except Exception:
+                      if attempt == 3: raise
+                      time.sleep(1.0 * (attempt + 1))
+
+          def load(symbol, interval, limit):
+              name = CACHE / f"vision_{symbol}_{interval}_{START.date()}_{END.date()}.json"
+              if name.exists():
+                  d = pd.read_json(name)
+                  d["open_time"] = pd.to_datetime(d["open_time"], utc=True)
+                  d["close_time"] = pd.to_datetime(d["close_time"], utc=True)
+                  return d.tail(limit).reset_index(drop=True)
+              earliest = (START - pd.Timedelta(days=LOOKBACK_DAYS[interval])).normalize()
+              month_starts = pd.date_range(earliest.replace(day=1), END.normalize().replace(day=1), freq="MS", tz="UTC")
+              pieces = []
+              for month in month_starts:
+                  # Tamamlanmış ay: tek aylık arşiv. İçinde bulunulan ay: günlük arşiv.
+                  if month < END.normalize().replace(day=1):
+                      stamp = month.strftime("%Y-%m")
+                      url = f"{VISION}/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
+                      raw = vision_zip(url)
+                      if raw: pieces.append(csv_frame(raw))
+                  else:
+                      for day in pd.date_range(month, END.normalize(), freq="D", tz="UTC"):
+                          if day < earliest: continue
+                          stamp = day.strftime("%Y-%m-%d")
+                          url = f"{VISION}/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
+                          raw = vision_zip(url)
+                          if raw: pieces.append(csv_frame(raw))
+              d = pd.concat(pieces, ignore_index=True).drop_duplicates("open_time").sort_values("open_time") if pieces else pd.DataFrame(columns=COLS)
+              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True) if not d.empty else d
+              # Vision günlük/aylık arşivi geç yayımlanırsa, aynı Binance'in yalnız piyasa
+              # verisi için açık veri ucu kullanılır. Emir, hesap veya canlı sistem çağrısı yoktur.
+              if len(d) < 80:
+                  try:
+                      r = HTTP.get(f"{DATA_API}/klines", params={"symbol":symbol,"interval":interval,"limit":max(limit, 300),"endTime":int(END.timestamp()*1000)}, timeout=35)
+                      r.raise_for_status()
+                      d = frame(r.json())
+                  except Exception as exc:
+                      raise RuntimeError(f"{symbol} {interval}: tarihsel mum alınamadı ({exc})")
+              if len(d) < 80:
+                  raise RuntimeError(f"{symbol} {interval}: yetersiz mum ({len(d)})")
+              d[COLS].to_json(name, orient="records", date_format="epoch", date_unit="ms")
+              return d.tail(limit).reset_index(drop=True)
+
+          # Tarihsel sıralama API hacmi olmadan yeniden kurulamayacağı için sabit geniş örneklem
+          # kullanılır. Portfolio'da geçen semboller de mutlaka kapsama eklenir.
+          snapshot_symbols = []
+          try:
+              snap = json.loads(Path("portfolio_snapshot.json").read_text())
+              snapshot_symbols = [str(x.get("symbol","")).replace("/","") for x in (snap.get("open", []) + snap.get("closed", [])) if x.get("source") == "spot-scanner"]
+          except Exception:
+              pass
+          symbols_from_sample = list(dict.fromkeys(static_symbols + snapshot_symbols))
+          universe = [(s, 1_000_000_000 - i) for i, s in enumerate(symbols_from_sample[:TOP_N])]
+          symbols = ["BTCUSDT"] + [s for s,_ in universe if s != "BTCUSDT"]
+          quote_volume = dict(universe)
+          print(f"[AUDIT] Vision archive | {len(universe)} coin | {START} -> {END}", flush=True)
+
+          def fetch_symbol(symbol):
+              return symbol, {
+                  "15m": load(symbol, "15m", 1000),
+                  "1h": load(symbol, "1h", 260),
+                  "4h": load(symbol, "4h", 260),
+                  "1d": load(symbol, "1d", 260),
+              }
+
+          with ThreadPoolExecutor(max_workers=8) as pool:
+              futures = [pool.submit(fetch_symbol, s) for s in symbols]
+              for n, future in enumerate(as_completed(futures), 1):
+                  try:
+                      sym, series = future.result()
+                      data[sym] = series
+                  except Exception as exc:
+                      print(f"[SKIP] {exc}", flush=True)
+                      continue
+                  if n % 10 == 0 or n == len(symbols):
+                      print(f"[DATA] {n}/{len(symbols)} usable={len(data)}", flush=True)
+
+          active = [s for s,_ in universe if s in data]
+          if "BTCUSDT" not in data or not active:
+              raise SystemExit("Yeterli Binance verisi indirilemedi.")
+
+          def historical_ohlcv(symbol, interval, limit=240):
+              d = data[symbol][interval]
+              closed = d[d["close_time"] <= current_cutoff]
+              if len(closed) < 80:
+                  raise ValueError(f"{symbol} {interval}: {current_cutoff} öncesi yetersiz kapanmış mum")
+              return closed.tail(limit).copy().reset_index(drop=True)
+
+          old_ohlcv, old_get = scanner.ohlcv, scanner._get
+          scanner.ohlcv = historical_ohlcv
+
+          def historical_get(path, params=None, attempts=4):
+              if path == "/api/v3/ticker/price":
+                  return {"price": str(live_price.get((params or {}).get("symbol"), 0))}
+              return old_get(path, params, attempts)
+          scanner._get = historical_get
+
+          def prepare_cutoff(cutoff):
+              global current_cutoff, live_price
+              current_cutoff = cutoff
+              live_price = {}
+              for sym in active + ["BTCUSDT"]:
+                  d = historical_ohlcv(sym, "15m", 240)
+                  live_price[sym] = float(d.close.iloc[-1])
+
+          def choose_prefilter():
+              rows = []
+              for sym in active:
+                  try:
+                      got = scanner._prefilter(sym, quote_volume.get(sym, 0))
+                      if got: rows.append(got)
+                  except Exception:
+                      pass
+              rows.sort(key=lambda x: x[2], reverse=True)
+              selected = list(rows[:scanner.PREFILTER_CORE_N])
+              seen = {x[0] for x in selected}
+              for row in rows[scanner.PREFILTER_CORE_N:]:
+                  if len(selected) >= scanner.PYTHON_TOP_N: break
+                  if row[3] and row[0] not in seen:
+                      selected.append(row); seen.add(row[0])
+              for row in rows[scanner.PREFILTER_CORE_N:]:
+                  if len(selected) >= scanner.PYTHON_TOP_N: break
+                  if row[0] not in seen:
+                      selected.append(row); seen.add(row[0])
+              return [(s,q,r) for s,q,r,_ in selected]
+
+          def rnum(x):
+              try: return round(float(x), 4)
+              except Exception: return None
+
+          def feature_row(symbol, cutoff):
+              prepare_cutoff(cutoff)
+              one = scanner.snap(historical_ohlcv(symbol, "1h", 260), "1H")
+              four = scanner.snap(historical_ohlcv(symbol, "4h", 260), "4H")
+              day = scanner.snap(historical_ohlcv(symbol, "1d", 260), "1D")
+              fast = scanner.snap(historical_ohlcv(symbol, "15m", 260), "15M")
+              one_df = historical_ohlcv(symbol, "1h", 260)
+              base_72 = float(one_df.close.iloc[-73]) if len(one_df) >= 73 else np.nan
+              ext72 = scanner.pct(float(one_df.close.iloc[-1]), base_72) if np.isfinite(base_72) else None
+              return {
+                  "price": rnum(fast["price"]), "ret_72h": rnum(ext72),
+                  "1h_rsi": rnum(one["rsi"]), "1h_stoch": rnum(one["stoch_k"]),
+                  "1h_ret3": rnum(one["ret3"]), "1h_ret24": rnum(one["ret24"]),
+                  "1h_dist_ema20": rnum(one["dist_ema20"]), "1h_dist_ema50": rnum(one["dist_ema50"]),
+                  "4h_rsi": rnum(four["rsi"]), "4h_ret24": rnum(four["ret24"]),
+                  "4h_dist_ema50": rnum(four["dist_ema50"]),
+                  "1d_rsi": rnum(day["rsi"]), "15m_rsi": rnum(fast["rsi"]),
+                  "15m_stoch": rnum(fast["stoch_k"]),
+                  "15m_macd_hist": rnum(fast["macd_hist"]),
+              }
+
+          watch, emitted, replay_rows = {}, [], []
+          daily_count = {}
+          cutoffs = pd.date_range(START.ceil("15min"), END.floor("15min"), freq="15min", tz="UTC")
+          for idx, cutoff in enumerate(cutoffs, 1):
+              try:
+                  prepare_cutoff(cutoff)
+                  pre = choose_prefilter()
+                  regime = scanner.btc_regime()
+                  finals, waits = [], []
+                  for sym, qv, pre_rank in pre:
+                      try:
+                          c = scanner.evaluate(sym, qv, pre_rank, regime, watch.get(sym))
+                          if c.decision["decision"] == "ALIM_ADAYI": finals.append(c)
+                          elif c.decision["decision"] == "TETIK_BEKLE": waits.append(c)
+                      except Exception:
+                          continue
+                  for c in waits:
+                      rec = watch.get(c.symbol) or {"first_seen": cutoff.timestamp(), "first_price": c.snapshot["live_price"], "observations": 0, "last_bar_15m": 0}
+                      oldbar = int(float(rec.get("last_bar_15m", 0) or 0))
+                      bar = int(c.snapshot["15m"]["bar_id"])
+                      if oldbar and bar > oldbar: rec["observations"] = int(rec.get("observations",0)) + 1
+                      rec.update({"phase":c.decision["state"], "setup_kind":c.decision["setup_kind"], "last_bar_15m":bar, "updated_at":cutoff.timestamp()})
+                      watch[c.symbol] = rec
+                  day_key = cutoff.strftime("%Y-%m-%d")
+                  room = max(0, scanner.MAX_SIGNALS_PER_DAY - daily_count.get(day_key, 0))
+                  for c in sorted(finals, key=lambda x: x.rank, reverse=True)[:room]:
+                      lv = scanner.levels(c)
+                      daily_count[day_key] = daily_count.get(day_key, 0) + 1
+                      watch.pop(c.symbol, None)
+                      row = {
+                          "time_utc": cutoff.isoformat(), "symbol": c.symbol, "setup": c.decision["setup_kind"],
+                          "score": rnum(c.decision["confidence"]), "btc_regime": regime,
+                          "entry": rnum(lv["price"]), "stop": rnum(lv["stop"]), "tp1": rnum(lv["tp1"]),
+                          "target_pct": rnum(scanner.pct(lv["tp1"], lv["price"])),
+                          "stop_pct": rnum(scanner.pct(lv["price"], lv["stop"])),
+                      }
+                      row["rr"] = rnum((row["target_pct"] or 0) / row["stop_pct"]) if row["stop_pct"] else None
+                      row.update(feature_row(c.symbol, cutoff))
+                      replay_rows.append(row)
+              except Exception as exc:
+                  print(f"[CUT] {cutoff}: {type(exc).__name__}: {exc}", flush=True)
+              if idx % max(1, len(cutoffs)//12) == 0:
+                  print(f"[REPLAY] {idx}/{len(cutoffs)} | emitted={len(replay_rows)}", flush=True)
+
+          # Actual Portfolio rows: exact signal record plus the data that was available then.
+          snapshot = json.loads(Path("portfolio_snapshot.json").read_text())
+          actual = list(snapshot.get("open", [])) + list(snapshot.get("closed", []))
+          actual_rows = []
+          for s in actual:
+              if s.get("source") != "spot-scanner":
+                  continue
+              symbol = s.get("symbol","").replace("/","")
+              if symbol not in data: continue
+              opened = pd.Timestamp(s["open_time"]).tz_convert("UTC")
+              cutoff = opened.floor("15min")
+              if cutoff < START or cutoff > END: continue
+              try:
+                  row = {
+                      "time_utc": opened.isoformat(), "symbol": symbol, "status": s.get("status"),
+                      "close_reason": s.get("close_reason"), "entry": s.get("entry"),
+                      "stop": s.get("stop"), "tp1": s.get("tp1"), "close_pct": s.get("close_pct"),
+                      "peak_pct": s.get("peak_pct"), "setup": s.get("extra",{}).get("setup_kind"),
+                      "score": s.get("extra",{}).get("score"), "btc_regime": s.get("extra",{}).get("btc_regime"),
+                      "target_pct": s.get("extra",{}).get("target_pct"), "stop_pct": s.get("extra",{}).get("stop_pct"),
+                      "rr": s.get("extra",{}).get("rr"),
+                  }
+                  row.update(feature_row(symbol, cutoff))
+                  actual_rows.append(row)
+              except Exception as exc:
+                  actual_rows.append({"time_utc": opened.isoformat(), "symbol": symbol, "audit_error": str(exc)})
+
+          def write_csv(path, rows):
+              keys = sorted({k for r in rows for k in r}) if rows else ["note"]
+              with open(path, "w", newline="", encoding="utf-8") as f:
+                  w = csv.DictWriter(f, fieldnames=keys); w.writeheader(); w.writerows(rows)
+
+          write_csv(OUT / "actual_portfolio_signal_audit.csv", actual_rows)
+          write_csv(OUT / "replayed_scanner_emissions.csv", replay_rows)
+
+          # Independent validation of the three Portfolio-derived vetoes.
+          # This is research only: it never changes the live scanner. Outcomes use
+          # the next 24h of 15m candles, with same-candle TP/stop conflicts labelled
+          # ambiguous rather than guessed.
+          def nval(value, default=float("nan")):
+              try: return float(value)
+              except Exception: return default
+
+          def first_touch_outcome(row):
+              start = pd.Timestamp(row["time_utc"])
+              d = data[row["symbol"]]["15m"]
+              future = d[(d["close_time"] > start) & (d["close_time"] <= start + pd.Timedelta(hours=24))]
+              entry, stop, target = nval(row.get("entry")), nval(row.get("stop")), nval(row.get("tp1"))
+              if future.empty or not np.isfinite(entry) or not np.isfinite(stop) or not np.isfinite(target):
+                  return {"outcome_24h":"NO_DATA","mfe_24h_pct":None,"mae_24h_pct":None}
+              mfe = scanner.pct(float(future.high.max()), entry)
+              mae = scanner.pct(float(future.low.min()), entry)
+              for _, candle in future.iterrows():
+                  stop_hit = float(candle.low) <= stop
+                  target_hit = float(candle.high) >= target
+                  if stop_hit and target_hit:
+                      return {"outcome_24h":"AMBIGUOUS_SAME_15M","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+                  if target_hit:
+                      return {"outcome_24h":"TP1_FIRST","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+                  if stop_hit:
+                      return {"outcome_24h":"STOP_FIRST","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+              return {"outcome_24h":"NEITHER_24H","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+
+          def veto_flags(row):
+              rr = nval(row.get("rr"))
+              rsi4 = nval(row.get("4h_rsi"))
+              dist4 = nval(row.get("4h_dist_ema50"))
+              rsi15 = nval(row.get("15m_rsi"))
+              stoch15 = nval(row.get("15m_stoch"))
+              dist15 = nval(row.get("15m_dist_ema20"))
+              stoch1 = nval(row.get("1h_stoch"))
+              rsi1 = nval(row.get("1h_rsi"))
+              return {
+                  "veto_4h_extreme_late": bool(rr < .70 and rsi4 >= 70 and dist4 >= 10),
+                  "veto_fast_blowoff": bool(rsi15 >= 80 and stoch15 >= 90 and dist15 >= 6 and stoch1 >= 90),
+                  "veto_weak_1h_bounce": bool(stoch15 >= 95 and rsi15 <= 65 and rsi1 <= 58),
+              }
+
+          veto_rows = []
+          for row in replay_rows:
+              flags = veto_flags(row)
+              result = dict(row)
+              result.update(flags)
+              result["veto_combined"] = any(flags.values())
+              result.update(first_touch_outcome(row))
+              veto_rows.append(result)
+          write_csv(OUT / "replayed_veto_outcomes.csv", veto_rows)
+
+          def summarize(label, rows):
+              usable = [x for x in rows if x.get("outcome_24h") not in {"NO_DATA","AMBIGUOUS_SAME_15M"}]
+              return {
+                  "group": label,
+                  "signals": len(rows),
+                  "usable_24h": len(usable),
+                  "tp1_first": sum(x.get("outcome_24h") == "TP1_FIRST" for x in usable),
+                  "stop_first": sum(x.get("outcome_24h") == "STOP_FIRST" for x in usable),
+                  "neither_24h": sum(x.get("outcome_24h") == "NEITHER_24H" for x in usable),
+                  "tp1_first_rate_pct": rnum(100 * sum(x.get("outcome_24h") == "TP1_FIRST" for x in usable) / len(usable)) if usable else None,
+                  "mean_mfe_24h_pct": rnum(np.nanmean([nval(x.get("mfe_24h_pct")) for x in usable])) if usable else None,
+                  "mean_mae_24h_pct": rnum(np.nanmean([nval(x.get("mae_24h_pct")) for x in usable])) if usable else None,
+              }
+
+          validation = [summarize("baseline_all", veto_rows)]
+          for name in ("veto_4h_extreme_late","veto_fast_blowoff","veto_weak_1h_bounce","veto_combined"):
+              blocked = [x for x in veto_rows if x.get(name)]
+              kept = [x for x in veto_rows if not x.get(name)]
+              validation.append(summarize(name + "_blocked", blocked))
+              validation.append(summarize(name + "_kept", kept))
+          write_csv(OUT / "veto_validation_summary.csv", validation)
+          print("\nVETO_VALIDATION_24H\n" + pd.DataFrame(validation).to_string(index=False), flush=True)
+
+          # Post-hoc momentum windows are explicitly labelled outcome research, not valid entry signals.
+          signal_times = {}
+          for r in replay_rows:
+              signal_times.setdefault(r["symbol"], []).append(pd.Timestamp(r["time_utc"]))
+          misses = []
+          hourly = pd.date_range(START.ceil("1h"), (END - pd.Timedelta(hours=24)).floor("1h"), freq="1h", tz="UTC")
+          for symbol in active:
+              d = data[symbol]["15m"]
+              for cutoff in hourly:
+                  prior = d[d.close_time <= cutoff]
+                  future = d[(d.close_time > cutoff) & (d.close_time <= cutoff + pd.Timedelta(hours=24))]
+                  if prior.empty or future.empty: continue
+                  entry = float(prior.close.iloc[-1]); mfe = (float(future.high.max()) / entry - 1) * 100
+                  if mfe < 12: continue
+                  had = any(abs((t-cutoff).total_seconds()) <= 4*3600 for t in signal_times.get(symbol, []))
+                  if not had:
+                      misses.append({"time_utc":cutoff.isoformat(),"symbol":symbol,"future_24h_mfe_pct":round(mfe,2),"note":"Sonradan ölçülen hareket; canlı sinyal kanıtı değildir."})
+          misses = sorted(misses, key=lambda x:x["future_24h_mfe_pct"], reverse=True)[:150]
+          write_csv(OUT / "posthoc_unemitted_momentum_windows.csv", misses)
+
+          rr_bad = [r for r in actual_rows if isinstance(r.get("rr"), (int,float)) and r["rr"] < 1]
+          summary = {
+              "period_utc": {"start":START.isoformat(),"end":END.isoformat()},
+              "universe_current_top_n": len(active),
+              "portfolio_records_audited": len(actual_rows),
+              "replay_emissions": len(replay_rows),
+              "actual_low_rr_below_1": len(rr_bad),
+              "actual_low_rr_symbols": [r.get("symbol") for r in rr_bad],
+              "posthoc_unemitted_momentum_windows": len(misses),
+              "method_limits": [
+                  "Replay yalnız kapanmış mumları kullanır.",
+                  "Geçmişteki gerçek Binance parite evreni yeniden kurulamaz; güncel en likit 120 USDT paritesi kullanılır.",
+                  "Post-hoc momentum dosyası gelecekte oluşan hareketi işaretler; bunu geçmişte geçerli sinyal saymaz.",
+                  "Bu Action Render'a, Portfolio API'sine veya Telegram'a hiçbir çağrı yapmaz."
+              ]
+          }
+          (OUT / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+          print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
+          PY
+          set -o pipefail
+          PYTHONPATH="$PWD" python /tmp/run_spot_audit.py 2>&1 | tee audit_output/run.log
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spot-signal-audit
+          path: audit_output/
+          if-no-files-found: warn
+          retention-days: 30
