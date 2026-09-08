@@ -24,7 +24,7 @@ on:
 
 concurrency:
   group: spot-veto-validation
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -266,8 +266,8 @@ jobs:
                   "1h_ret3": rnum(one["ret3"]), "1h_ret24": rnum(one["ret24"]),
                   "1h_dist_ema20": rnum(one["dist_ema20"]), "1h_dist_ema50": rnum(one["dist_ema50"]),
                   "4h_rsi": rnum(four["rsi"]), "4h_ret24": rnum(four["ret24"]),
-                  "4h_dist_ema50": rnum(four["dist_ema50"]),
-                  "1d_rsi": rnum(day["rsi"]), "15m_rsi": rnum(fast["rsi"]),
+                  "4h_dist_ema20": rnum(four["dist_ema20"]), "4h_dist_ema50": rnum(four["dist_ema50"]),
+                  "1d_rsi": rnum(day["rsi"]), "15m_rsi": rnum(fast["rsi"]), "15m_dist_ema20": rnum(fast["dist_ema20"]),
                   "15m_stoch": rnum(fast["stoch_k"]),
                   "15m_macd_hist": rnum(fast["macd_hist"]),
               }
@@ -366,6 +366,8 @@ jobs:
               entry, stop, target = nval(row.get("entry")), nval(row.get("stop")), nval(row.get("tp1"))
               if future.empty or not np.isfinite(entry) or not np.isfinite(stop) or not np.isfinite(target):
                   return {"outcome_24h":"NO_DATA","mfe_24h_pct":None,"mae_24h_pct":None}
+              if future.close_time.max() < start + pd.Timedelta(hours=24):
+                  return {"outcome_24h":"INCOMPLETE_24H","mfe_24h_pct":None,"mae_24h_pct":None}
               mfe = scanner.pct(float(future.high.max()), entry)
               mae = scanner.pct(float(future.low.min()), entry)
               for _, candle in future.iterrows():
@@ -382,7 +384,7 @@ jobs:
           def veto_flags(row):
               rr = nval(row.get("rr"))
               rsi4 = nval(row.get("4h_rsi"))
-              dist4 = nval(row.get("4h_dist_ema50"))
+              dist4 = nval(row.get("4h_dist_ema20"))
               rsi15 = nval(row.get("15m_rsi"))
               stoch15 = nval(row.get("15m_stoch"))
               dist15 = nval(row.get("15m_dist_ema20"))
@@ -405,7 +407,7 @@ jobs:
           write_csv(OUT / "replayed_veto_outcomes.csv", veto_rows)
 
           def summarize(label, rows):
-              usable = [x for x in rows if x.get("outcome_24h") not in {"NO_DATA","AMBIGUOUS_SAME_15M"}]
+              usable = [x for x in rows if x.get("outcome_24h") not in {"NO_DATA","INCOMPLETE_24H","AMBIGUOUS_SAME_15M"}]
               return {
                   "group": label,
                   "signals": len(rows),
