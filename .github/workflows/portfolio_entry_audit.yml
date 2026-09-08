@@ -1,0 +1,33 @@
+name: portfolio actual entry audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'portfolio_snapshot.json'
+      - '.github/portfolio_entry_audit.py'
+      - '.github/workflows/portfolio_entry_audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install audit dependencies
+        run: pip install pandas numpy requests
+      - name: Reconstruct actual Portfolio entries
+        run: python .github/portfolio_entry_audit.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-entry-audit
+          retention-days: 14
+          path: |
+            /tmp/portfolio_entry_audit.csv
+            /tmp/portfolio_entry_audit_summary.csv
