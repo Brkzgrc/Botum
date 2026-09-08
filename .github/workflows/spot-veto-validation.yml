@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .audit_cache
-          key: spot-veto-validation-v2-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
+          key: spot-veto-validation-v3-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
 
       - name: Replay current scanner without live output
         shell: bash
@@ -74,6 +74,9 @@ jobs:
 
           START = pd.to_datetime(os.environ["AUDIT_START"], utc=True)
           END = pd.to_datetime(os.environ["AUDIT_END"], utc=True)
+          # Son sinyallerin 24 saatlik sonucunu hesaplayabilmek için mum verisini
+          # test bitişinden bir gün ileriye kadar indiriyoruz.
+          DATA_END = END + pd.Timedelta(days=1)
           TOP_N = max(20, min(120, int(os.environ["AUDIT_SYMBOLS"])))
           CACHE = Path(".audit_cache")
           OUT = Path("audit_output")
@@ -134,29 +137,29 @@ jobs:
                   d["close_time"] = pd.to_datetime(pd.to_numeric(d["close_time"], errors="raise"), unit="ms", utc=True)
                   return d.tail(limit).reset_index(drop=True)
               earliest = (START - pd.Timedelta(days=LOOKBACK_DAYS[interval])).normalize()
-              month_starts = pd.date_range(earliest.replace(day=1), END.normalize().replace(day=1), freq="MS", tz="UTC")
+              month_starts = pd.date_range(earliest.replace(day=1), DATA_END.normalize().replace(day=1), freq="MS", tz="UTC")
               pieces = []
               for month in month_starts:
                   # Tamamlanmış ay: tek aylık arşiv. İçinde bulunulan ay: günlük arşiv.
-                  if month < END.normalize().replace(day=1):
+                  if month < DATA_END.normalize().replace(day=1):
                       stamp = month.strftime("%Y-%m")
                       url = f"{VISION}/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
                       raw = vision_zip(url)
                       if raw: pieces.append(csv_frame(raw))
                   else:
-                      for day in pd.date_range(month, END.normalize(), freq="D", tz="UTC"):
+                      for day in pd.date_range(month, DATA_END.normalize(), freq="D", tz="UTC"):
                           if day < earliest: continue
                           stamp = day.strftime("%Y-%m-%d")
                           url = f"{VISION}/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
                           raw = vision_zip(url)
                           if raw: pieces.append(csv_frame(raw))
               d = pd.concat(pieces, ignore_index=True).drop_duplicates("open_time").sort_values("open_time") if pieces else pd.DataFrame(columns=COLS)
-              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= END + pd.Timedelta(days=1))].reset_index(drop=True) if not d.empty else d
+              d = d[(d["open_time"] >= earliest) & (d["open_time"] <= DATA_END + pd.Timedelta(days=1))].reset_index(drop=True) if not d.empty else d
               # Vision günlük/aylık arşivi geç yayımlanırsa, aynı Binance'in yalnız piyasa
               # verisi için açık veri ucu kullanılır. Emir, hesap veya canlı sistem çağrısı yoktur.
               if len(d) < 80:
                   try:
-                      r = HTTP.get(f"{DATA_API}/klines", params={"symbol":symbol,"interval":interval,"limit":max(limit, 300),"endTime":int(END.timestamp()*1000)}, timeout=35)
+                      r = HTTP.get(f"{DATA_API}/klines", params={"symbol":symbol,"interval":interval,"limit":max(limit, 300),"endTime":int(DATA_END.timestamp()*1000)}, timeout=35)
                       r.raise_for_status()
                       d = frame(r.json())
                   except Exception as exc:
