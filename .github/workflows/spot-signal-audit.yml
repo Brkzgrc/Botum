@@ -27,6 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: write
   contents: read
 
 jobs:
@@ -41,6 +42,24 @@ jobs:
       PORTFOLIO_URL: ""
       SCAN_ON_START: "false"
     steps:
+      - name: Cancel obsolete duplicate audits
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const obsoleteRuns = [34183965480, 34184065614, 34184128845];
+            for (const run_id of obsoleteRuns) {
+              try {
+                await github.rest.actions.cancelWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id,
+                });
+                core.info(`Cancellation requested for obsolete run ${run_id}`);
+              } catch (err) {
+                core.warning(`Could not cancel ${run_id}: ${err.message}`);
+              }
+            }
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
