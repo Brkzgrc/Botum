@@ -348,6 +348,82 @@ jobs:
           write_csv(OUT / "actual_portfolio_signal_audit.csv", actual_rows)
           write_csv(OUT / "replayed_scanner_emissions.csv", replay_rows)
 
+          # Independent validation of the three Portfolio-derived vetoes.
+          # This is research only: it never changes the live scanner. Outcomes use
+          # the next 24h of 15m candles, with same-candle TP/stop conflicts labelled
+          # ambiguous rather than guessed.
+          def nval(value, default=float("nan")):
+              try: return float(value)
+              except Exception: return default
+
+          def first_touch_outcome(row):
+              start = pd.Timestamp(row["time_utc"])
+              d = data[row["symbol"]]["15m"]
+              future = d[(d["close_time"] > start) & (d["close_time"] <= start + pd.Timedelta(hours=24))]
+              entry, stop, target = nval(row.get("entry")), nval(row.get("stop")), nval(row.get("tp1"))
+              if future.empty or not np.isfinite(entry) or not np.isfinite(stop) or not np.isfinite(target):
+                  return {"outcome_24h":"NO_DATA","mfe_24h_pct":None,"mae_24h_pct":None}
+              mfe = scanner.pct(float(future.high.max()), entry)
+              mae = scanner.pct(float(future.low.min()), entry)
+              for _, candle in future.iterrows():
+                  stop_hit = float(candle.low) <= stop
+                  target_hit = float(candle.high) >= target
+                  if stop_hit and target_hit:
+                      return {"outcome_24h":"AMBIGUOUS_SAME_15M","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+                  if target_hit:
+                      return {"outcome_24h":"TP1_FIRST","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+                  if stop_hit:
+                      return {"outcome_24h":"STOP_FIRST","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+              return {"outcome_24h":"NEITHER_24H","mfe_24h_pct":rnum(mfe),"mae_24h_pct":rnum(mae)}
+
+          def veto_flags(row):
+              rr = nval(row.get("rr"))
+              rsi4 = nval(row.get("4h_rsi"))
+              dist4 = nval(row.get("4h_dist_ema50"))
+              rsi15 = nval(row.get("15m_rsi"))
+              stoch15 = nval(row.get("15m_stoch"))
+              dist15 = nval(row.get("15m_dist_ema20"))
+              stoch1 = nval(row.get("1h_stoch"))
+              rsi1 = nval(row.get("1h_rsi"))
+              return {
+                  "veto_4h_extreme_late": bool(rr < .70 and rsi4 >= 70 and dist4 >= 10),
+                  "veto_fast_blowoff": bool(rsi15 >= 80 and stoch15 >= 90 and dist15 >= 6 and stoch1 >= 90),
+                  "veto_weak_1h_bounce": bool(stoch15 >= 95 and rsi15 <= 65 and rsi1 <= 58),
+              }
+
+          veto_rows = []
+          for row in replay_rows:
+              flags = veto_flags(row)
+              result = dict(row)
+              result.update(flags)
+              result["veto_combined"] = any(flags.values())
+              result.update(first_touch_outcome(row))
+              veto_rows.append(result)
+          write_csv(OUT / "replayed_veto_outcomes.csv", veto_rows)
+
+          def summarize(label, rows):
+              usable = [x for x in rows if x.get("outcome_24h") not in {"NO_DATA","AMBIGUOUS_SAME_15M"}]
+              return {
+                  "group": label,
+                  "signals": len(rows),
+                  "usable_24h": len(usable),
+                  "tp1_first": sum(x.get("outcome_24h") == "TP1_FIRST" for x in usable),
+                  "stop_first": sum(x.get("outcome_24h") == "STOP_FIRST" for x in usable),
+                  "neither_24h": sum(x.get("outcome_24h") == "NEITHER_24H" for x in usable),
+                  "tp1_first_rate_pct": rnum(100 * sum(x.get("outcome_24h") == "TP1_FIRST" for x in usable) / len(usable)) if usable else None,
+                  "mean_mfe_24h_pct": rnum(np.nanmean([nval(x.get("mfe_24h_pct")) for x in usable])) if usable else None,
+                  "mean_mae_24h_pct": rnum(np.nanmean([nval(x.get("mae_24h_pct")) for x in usable])) if usable else None,
+              }
+
+          validation = [summarize("baseline_all", veto_rows)]
+          for name in ("veto_4h_extreme_late","veto_fast_blowoff","veto_weak_1h_bounce","veto_combined"):
+              blocked = [x for x in veto_rows if x.get(name)]
+              kept = [x for x in veto_rows if not x.get(name)]
+              validation.append(summarize(name + "_blocked", blocked))
+              validation.append(summarize(name + "_kept", kept))
+          write_csv(OUT / "veto_validation_summary.csv", validation)
+          print("\nVETO_VALIDATION_24H\n" + pd.DataFrame(validation).to_string(index=False), flush=True)
+
           # Post-hoc momentum windows are explicitly labelled outcome research, not valid entry signals.
           signal_times = {}
           for r in replay_rows:
