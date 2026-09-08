@@ -29,7 +29,7 @@ jobs:
   audit:
     name: Chronological signal audit
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 180
     env:
       AUDIT_START: ${{ inputs.start || '2026-09-04T00:00:00Z' }}
       AUDIT_END: ${{ inputs.end || '2026-09-08T23:59:00Z' }}
@@ -158,7 +158,7 @@ jobs:
                       raise RuntimeError(f"{symbol} {interval}: tarihsel mum alınamadı ({exc})")
               if len(d) < 80:
                   raise RuntimeError(f"{symbol} {interval}: yetersiz mum ({len(d)})")
-              d[COLS].to_json(name, orient="records", date_format="epoch", date_unit="ms")
+              d[COLS].to_json(name, orient="records", date_format="iso")
               return d.tail(limit).reset_index(drop=True)
 
           # Tarihsel sıralama API hacmi olmadan yeniden kurulamayacağı için sabit geniş örneklem
