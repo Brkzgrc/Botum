@@ -120,4 +120,28 @@ def main():
     summary.to_csv(OUT/"portfolio_entry_audit_summary.csv",index=False)
     print(summary.to_string(index=False),flush=True)
 
+    # Counterfactual, research only: these are independent pre-entry vetoes
+    # derived from the actual entry-state audit. They do not alter the scanner.
+    closed=report[report.status.isin(["loss","expired","win_trail"])].copy()
+    scenarios={
+        "4H_extreme_late": (closed.rr < .70) & (closed.rsi_4h >= 70) & (closed.dist_ema20_4h >= 10),
+        "fast_blowoff": (closed.rsi_15m >= 80) & (closed.stoch_15m >= 90) & (closed.dist_ema20_15m >= 6) & (closed.stoch_1h >= 90),
+        "weak_1H_bounce": (closed.stoch_15m >= 95) & (closed.rsi_15m <= 65) & (closed.rsi_1h <= 58),
+    }
+    scenarios["combined"] = scenarios["4H_extreme_late"] | scenarios["fast_blowoff"] | scenarios["weak_1H_bounce"]
+    result=[]
+    for name,mask in scenarios.items():
+        avoided=closed[mask]
+        result.append({
+            "scenario":name,
+            "avoided_count":len(avoided),
+            "avoided_symbols":"|".join(avoided.symbol.str.replace("/USDT","",regex=False)),
+            "avoided_loss_sum_pct":avoided.loc[avoided.close_pct<0,"close_pct"].sum(),
+            "foregone_positive_sum_pct":avoided.loc[avoided.close_pct>0,"close_pct"].sum(),
+            "net_trade_pnl_delta_pct":-avoided.close_pct.sum(),
+        })
+    scenario=pd.DataFrame(result)
+    scenario.to_csv(OUT/"portfolio_entry_rescue_scenarios.csv",index=False)
+    print("\nCOUNTERFACTUAL_RESCUE_SCENARIOS\n"+scenario.to_string(index=False),flush=True)
+
 if __name__=="__main__": main()
