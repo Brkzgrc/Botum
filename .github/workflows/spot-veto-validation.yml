@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .audit_cache
-          key: spot-veto-validation-v1-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
+          key: spot-veto-validation-v2-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
 
       - name: Replay current scanner without live output
         shell: bash
@@ -128,8 +128,10 @@ jobs:
               name = CACHE / f"vision_{symbol}_{interval}_{START.date()}_{END.date()}.json"
               if name.exists():
                   d = pd.read_json(name)
-                  d["open_time"] = pd.to_datetime(d["open_time"], utc=True)
-                  d["close_time"] = pd.to_datetime(d["close_time"], utc=True)
+                  # Cache epoch-millis olarak yazılır; unit belirtilmezse pandas bunu
+                  # nanosaniye sayıp 1970'e taşır ve tüm ileri-24s pencerelerini bozar.
+                  d["open_time"] = pd.to_datetime(pd.to_numeric(d["open_time"], errors="raise"), unit="ms", utc=True)
+                  d["close_time"] = pd.to_datetime(pd.to_numeric(d["close_time"], errors="raise"), unit="ms", utc=True)
                   return d.tail(limit).reset_index(drop=True)
               earliest = (START - pd.Timedelta(days=LOOKBACK_DAYS[interval])).normalize()
               month_starts = pd.date_range(earliest.replace(day=1), END.normalize().replace(day=1), freq="MS", tz="UTC")
