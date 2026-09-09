@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-09 04:46:54",
+  "updated_at": "2026-09-09 05:16:57",
   "performance": {
     "total": 21,
     "open": 3,
@@ -145,19 +145,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.06345,
-      "peak_pct": 2.57,
+      "peak_price": 0.064,
+      "peak_pct": 3.46,
       "low_price": 0.06128,
       "low_pct": -0.94,
-      "current_price": 0.0632,
-      "current_pct": 2.17,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 0.06315,
+      "current_pct": 2.09,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-09T04:57:33.826971+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T04:42:29.833489+03:00",
-      "checks": 57,
+      "last_check": "2026-09-09T05:12:37.815014+03:00",
+      "checks": 63,
       "extra": {
         "tp3": null,
         "target_pct": 3.06,
@@ -167,7 +167,8 @@
         "setup_kind": "PRESSURE",
         "score": 92.0,
         "btc_regime": "GREEN"
-      }
+      },
+      "tp1_pct": 3.06
     },
     {
       "id": "KAVA_USDT_1788901252",
@@ -195,15 +196,15 @@
       "peak_pct": 1.47,
       "low_price": 0.05906,
       "low_pct": -0.34,
-      "current_price": 0.05983,
-      "current_pct": 0.96,
+      "current_price": 0.0595,
+      "current_pct": 0.4,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T04:42:29.833489+03:00",
-      "checks": 57,
+      "last_check": "2026-09-09T05:12:37.815014+03:00",
+      "checks": 63,
       "extra": {
         "tp3": null,
         "target_pct": 3.29,
@@ -237,19 +238,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 8.86,
-      "peak_pct": 3.02,
+      "peak_price": 9.04,
+      "peak_pct": 5.12,
       "low_price": 8.55,
       "low_pct": -0.58,
-      "current_price": 8.81,
-      "current_pct": 2.44,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 8.95,
+      "current_pct": 4.07,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-09T04:52:32.520254+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T04:42:29.833489+03:00",
-      "checks": 57,
+      "last_check": "2026-09-09T05:12:37.815014+03:00",
+      "checks": 63,
       "extra": {
         "tp3": null,
         "target_pct": 3.26,
@@ -259,7 +260,8 @@
         "setup_kind": "PRESSURE",
         "score": 100.0,
         "btc_regime": "GREEN"
-      }
+      },
+      "tp1_pct": 3.26
     }
   ],
   "closed": [
