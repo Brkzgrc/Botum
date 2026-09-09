@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-09 05:16:57",
+  "updated_at": "2026-09-09 05:47:00",
   "performance": {
     "total": 21,
-    "open": 3,
-    "closed": 18,
-    "wins": 9,
+    "open": 2,
+    "closed": 19,
+    "wins": 10,
     "win_tp2": 0,
     "losses": 9,
     "expired": 7,
-    "tp1_hits": 8,
-    "win_pnl": 32.23,
+    "tp1_hits": 9,
+    "win_pnl": 34.72,
     "loss_pnl": -29.5,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 2.73,
-    "win_loss_pnl": 18.24,
+    "total_pnl": 5.22,
+    "win_loss_pnl": 20.73,
     "expired_pnl": -15.51,
-    "avg_peak": 3.71,
-    "win_rate": 50.0,
-    "real_win_rate": 50.0,
+    "avg_peak": 3.79,
+    "win_rate": 52.6,
+    "real_win_rate": 52.6,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "DİĞER": {
         "total": 21,
-        "open": 3,
-        "wins": 9,
+        "open": 2,
+        "wins": 10,
         "losses": 9,
         "expired": 7,
-        "tp1_hits": 8,
-        "total_pnl": 2.73,
+        "tp1_hits": 9,
+        "total_pnl": 5.22,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 50.0,
-        "avg_peak": 3.71,
+        "win_rate": 52.6,
+        "avg_peak": 3.79,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 18.24
+        "win_loss_pnl": 20.73
       }
     },
     "daily": {
       "2026-09-09": {
         "trades": 3,
-        "pnl": 0.0,
-        "wins": 0,
+        "pnl": 2.49,
+        "wins": 1,
         "losses": 0
       },
       "2026-09-08": {
@@ -102,8 +102,8 @@
     "weekly": {
       "2026-W36": {
         "trades": 9,
-        "pnl": -19.659999999999997,
-        "wins": 1,
+        "pnl": -17.17,
+        "wins": 2,
         "losses": 5
       },
       "2026-W35": {
@@ -116,8 +116,8 @@
     "monthly": {
       "2026-09": {
         "trades": 21,
-        "pnl": 2.7300000000000044,
-        "wins": 9,
+        "pnl": 5.22,
+        "wins": 10,
         "losses": 9
       }
     }
@@ -149,15 +149,15 @@
       "peak_pct": 3.46,
       "low_price": 0.06128,
       "low_pct": -0.94,
-      "current_price": 0.06315,
-      "current_pct": 2.09,
+      "current_price": 0.06263,
+      "current_pct": 1.24,
       "tp1_hit": true,
       "tp1_time": "2026-09-09T04:57:33.826971+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T05:12:37.815014+03:00",
-      "checks": 63,
+      "last_check": "2026-09-09T05:42:44.585586+03:00",
+      "checks": 69,
       "extra": {
         "tp3": null,
         "target_pct": 3.06,
@@ -196,15 +196,15 @@
       "peak_pct": 1.47,
       "low_price": 0.05906,
       "low_pct": -0.34,
-      "current_price": 0.0595,
-      "current_pct": 0.4,
+      "current_price": 0.05959,
+      "current_pct": 0.56,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T05:12:37.815014+03:00",
-      "checks": 63,
+      "last_check": "2026-09-09T05:42:44.585586+03:00",
+      "checks": 69,
       "extra": {
         "tp3": null,
         "target_pct": 3.29,
@@ -215,7 +215,9 @@
         "score": 100.0,
         "btc_regime": "GREEN"
       }
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "ETC_USDT_1788901252",
       "symbol": "ETC/USDT",
@@ -232,25 +234,25 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "win_trail",
       "open_time": "2026-09-09T00:00:52.601683+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-09-09T05:22:40.451041+03:00",
+      "close_price": 8.814,
+      "close_reason": "trailing",
+      "close_pct": 2.49,
       "peak_price": 9.04,
       "peak_pct": 5.12,
       "low_price": 8.55,
       "low_pct": -0.58,
-      "current_price": 8.95,
-      "current_pct": 4.07,
+      "current_price": 8.79,
+      "current_pct": 2.21,
       "tp1_hit": true,
       "tp1_time": "2026-09-09T04:52:32.520254+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-09T05:12:37.815014+03:00",
-      "checks": 63,
+      "last_check": "2026-09-09T05:22:40.451041+03:00",
+      "checks": 65,
       "extra": {
         "tp3": null,
         "target_pct": 3.26,
@@ -262,9 +264,7 @@
         "btc_regime": "GREEN"
       },
       "tp1_pct": 3.26
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "TIA_USDT_1788815240",
       "symbol": "TIA/USDT",
