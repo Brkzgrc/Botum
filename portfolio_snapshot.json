@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-09 21:48:51",
+  "updated_at": "2026-09-09 22:18:54",
   "performance": {
     "total": 21,
-    "open": 1,
-    "closed": 20,
-    "wins": 11,
+    "open": 0,
+    "closed": 21,
+    "wins": 12,
     "win_tp2": 0,
     "losses": 9,
     "expired": 7,
-    "tp1_hits": 10,
-    "win_pnl": 35.59,
+    "tp1_hits": 11,
+    "win_pnl": 42.53,
     "loss_pnl": -29.5,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 6.09,
-    "win_loss_pnl": 21.6,
+    "total_pnl": 13.03,
+    "win_loss_pnl": 28.54,
     "expired_pnl": -15.51,
-    "avg_peak": 3.77,
-    "win_rate": 55.0,
-    "real_win_rate": 55.0,
+    "avg_peak": 4.05,
+    "win_rate": 57.1,
+    "real_win_rate": 57.1,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "DİĞER": {
         "total": 21,
-        "open": 1,
-        "wins": 11,
+        "open": 0,
+        "wins": 12,
         "losses": 9,
         "expired": 7,
-        "tp1_hits": 10,
-        "total_pnl": 6.09,
+        "tp1_hits": 11,
+        "total_pnl": 13.03,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 55.0,
-        "avg_peak": 3.77,
+        "win_rate": 57.1,
+        "avg_peak": 4.05,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 21.6
+        "win_loss_pnl": 28.54
       }
     },
     "daily": {
       "2026-09-09": {
         "trades": 3,
-        "pnl": 3.3600000000000003,
-        "wins": 2,
+        "pnl": 10.3,
+        "wins": 3,
         "losses": 0
       },
       "2026-09-08": {
@@ -102,8 +102,8 @@
     "weekly": {
       "2026-W36": {
         "trades": 9,
-        "pnl": -16.299999999999997,
-        "wins": 3,
+        "pnl": -9.359999999999998,
+        "wins": 4,
         "losses": 5
       },
       "2026-W35": {
@@ -116,61 +116,13 @@
     "monthly": {
       "2026-09": {
         "trades": 21,
-        "pnl": 6.090000000000004,
-        "wins": 11,
+        "pnl": 13.030000000000003,
+        "wins": 12,
         "losses": 9
       }
     }
   },
-  "open": [
-    {
-      "id": "KAVA_USDT_1788901252",
-      "symbol": "KAVA/USDT",
-      "entry": 0.05926,
-      "stop": 0.057135,
-      "tp1": 0.06121,
-      "tp2": 0.0625193,
-      "tp3": null,
-      "limit_price": 0.05926,
-      "signal_price": 0.05926,
-      "sig_type": "spot_opportunity",
-      "sub_type": "",
-      "source": "spot-scanner",
-      "phase": "manual_review",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-09-09T00:00:52.622634+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.06147,
-      "peak_pct": 3.73,
-      "low_price": 0.05906,
-      "low_pct": -0.34,
-      "current_price": 0.06129,
-      "current_pct": 3.43,
-      "tp1_hit": true,
-      "tp1_time": "2026-09-09T21:39:40.346011+03:00",
-      "spot_tracking_v1": true,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-09-09T21:44:40.932331+03:00",
-      "checks": 261,
-      "extra": {
-        "tp3": null,
-        "target_pct": 3.29,
-        "stop_pct": 3.72,
-        "rr": 0.88,
-        "setup": "ENTRY",
-        "setup_kind": "PRESSURE",
-        "score": 100.0,
-        "btc_regime": "GREEN"
-      },
-      "tp1_pct": 3.29
-    }
-  ],
+  "open": [],
   "closed": [
     {
       "id": "CATI_USDT_1788901252",
@@ -218,6 +170,53 @@
         "btc_regime": "GREEN"
       },
       "tp1_pct": 3.06
+    },
+    {
+      "id": "KAVA_USDT_1788901252",
+      "symbol": "KAVA/USDT",
+      "entry": 0.05926,
+      "stop": 0.057135,
+      "tp1": 0.06121,
+      "tp2": 0.0625193,
+      "tp3": null,
+      "limit_price": 0.05926,
+      "signal_price": 0.05926,
+      "sig_type": "spot_opportunity",
+      "sub_type": "",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-09-09T00:00:52.622634+03:00",
+      "close_time": "2026-09-09T22:09:43.885982+03:00",
+      "close_price": 0.063375,
+      "close_reason": "trailing",
+      "close_pct": 6.94,
+      "peak_price": 0.065,
+      "peak_pct": 9.69,
+      "low_price": 0.05906,
+      "low_pct": -0.34,
+      "current_price": 0.06171,
+      "current_pct": 4.13,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-09T21:39:40.346011+03:00",
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-09T22:09:43.885982+03:00",
+      "checks": 266,
+      "extra": {
+        "tp3": null,
+        "target_pct": 3.29,
+        "stop_pct": 3.72,
+        "rr": 0.88,
+        "setup": "ENTRY",
+        "setup_kind": "PRESSURE",
+        "score": 100.0,
+        "btc_regime": "GREEN"
+      },
+      "tp1_pct": 3.29
     },
     {
       "id": "ETC_USDT_1788901252",
