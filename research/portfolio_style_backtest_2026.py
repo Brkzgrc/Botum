@@ -81,7 +81,7 @@ def main():
     ap.add_argument("--start", default="2026-01-01")
     ap.add_argument("--end", default=pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d"))
     ap.add_argument("--symbols", type=int, default=120)
-    ap.add_argument("--step-minutes", type=int, default=15, choices=(15,30,60))
+    ap.add_argument("--step-minutes", type=int, default=15, choices=(15,))
     ap.add_argument("--output", default="")
     args = ap.parse_args()
     start = pd.Timestamp(args.start, tz="UTC")
@@ -189,7 +189,7 @@ def main():
         "win_pct_sum":round(sum(t["close_pct"] for t in win),2),
         "loss_pct_sum":round(sum(t["close_pct"] for t in loss),2),
         "expired_pct_sum":round(sum(t["close_pct"] for t in exp),2)},
-      "trades":trades, "open_at_end":[{"symbol":s,**p} for s,p in positions.items()],
+      "trades":trades, "open_at_end":[{"symbol":s,**{**p, "expiry":p["expiry"].isoformat()}} for s,p in positions.items()],
       "limits":["Güncel coin evreni kullanılır; 2026 tarihsel evreni birebir yeniden kurulamıyor.",
                 "Bu bugünkü scannerin tarihsel replayidir; eski kod sürümlerinin performansı değildir.",
                 "Aynı 15dk mumda TP1/stop sırası kesin bilinemez; bu sürüm stop önceliği uygular."]}
