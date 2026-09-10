@@ -40,7 +40,7 @@ jobs:
           python-version: "3.11"
       - run: pip install --disable-pip-version-check numpy pandas requests flask
       - name: Run baseline and revised replay
-        run: python .github/baseline_vs_revised_2026.py
+        run: PYTHONPATH="$PWD" python .github/baseline_vs_revised_2026.py
       - uses: actions/upload-artifact@v4
         with:
           name: baseline-vs-revised-2026
