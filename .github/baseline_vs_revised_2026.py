@@ -14,7 +14,7 @@ def fetch(sym,tf):
     start=START-pd.Timedelta(days={"15m":18,"1h":20,"4h":60,"1d":320}[tf])
     cur=int(start.timestamp()*1000); end=int(END.timestamp()*1000); rows=[]
     while cur<end:
-        r=http.get("https://api.binance.com/api/v3/klines",params={"symbol":sym,"interval":tf,"startTime":cur,"endTime":end,"limit":1000},timeout=30)
+        r=http.get("https://data-api.binance.vision/api/v3/klines",params={"symbol":sym,"interval":tf,"startTime":cur,"endTime":end,"limit":1000},timeout=30)
         r.raise_for_status(); part=r.json()
         if not part: break
         rows+=part; nxt=int(part[-1][6])+1
