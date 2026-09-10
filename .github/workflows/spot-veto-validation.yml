@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .audit_cache
-          key: spot-veto-validation-v3-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
+          key: spot-veto-validation-v4-${{ env.AUDIT_START }}-${{ env.AUDIT_END }}-${{ env.AUDIT_SYMBOLS }}
 
       - name: Replay current scanner without live output
         shell: bash
@@ -433,6 +433,9 @@ jobs:
               validation.append(summarize(name + "_kept", kept))
           write_csv(OUT / "veto_validation_summary.csv", validation)
           print("\nVETO_VALIDATION_24H\n" + pd.DataFrame(validation).to_string(index=False), flush=True)
+          # 24 saatlik sonuç yoksa bu koşu geçersizdir; başarı olarak raporlanmaz.
+          if validation[0]["usable_24h"] == 0:
+              raise RuntimeError("GEÇERSİZ_VETO_TESTİ: tamamlanmış 24 saatlik sinyal sonucu yok.")
 
           # Post-hoc momentum windows are explicitly labelled outcome research, not valid entry signals.
           signal_times = {}
