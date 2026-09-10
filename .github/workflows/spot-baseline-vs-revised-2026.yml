@@ -1,0 +1,44 @@
+name: Baseline vs Revised 2026 Comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "UTC başlangıç tarihi"
+        required: false
+        default: "2026-01-01T00:00:00Z"
+      end:
+        description: "UTC bitiş tarihi"
+        required: false
+        default: "2026-09-10T23:59:00Z"
+      symbols:
+        description: "Sabit örneklem coin sayısı"
+        required: false
+        default: "120"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    env:
+      TEST_START: ${{ inputs.start || '2026-01-01T00:00:00Z' }}
+      TEST_END: ${{ inputs.end || '2026-09-10T23:59:00Z' }}
+      TEST_SYMBOLS: ${{ inputs.symbols || '120' }}
+      TELEGRAM_ENABLED: "false"
+      PORTFOLIO_URL: ""
+      SCAN_ON_START: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --disable-pip-version-check numpy pandas requests flask
+      - name: Run baseline and revised replay
+        run: python .github/baseline_vs_revised_2026.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baseline-vs-revised-2026
+          path: comparison_output/
+          retention-days: 30
