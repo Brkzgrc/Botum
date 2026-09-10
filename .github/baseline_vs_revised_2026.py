@@ -52,7 +52,15 @@ def run(revised):
         return bool(flags),"|".join(flags)
     try:
         for ts in pd.date_range(START.ceil("15min"),END-pd.Timedelta(minutes=15),freq="15min",tz="UTC"):
-            cutoff=ts; prices={s:float(data[s]["15m"][data[s]["15m"].close_time<=ts].tail(1).close.iloc[0]) for s in data}
+            cutoff=ts
+            prices={}
+            available=[]
+            for s in list(data):
+                q=data[s]["15m"][data[s]["15m"].close_time<=ts].tail(1)
+                if q.empty:
+                    continue
+                prices[s]=float(q.close.iloc[0])
+                available.append(s)
             for s,p in list(pos.items()):
                 b=data[s]["15m"]; b=b[(b.close_time>p["time"])&(b.close_time<=ts)].tail(1)
                 if b.empty: continue
@@ -65,7 +73,7 @@ def run(revised):
                 if reason:
                     out.append({"symbol":s,"entry_time":p["time"].isoformat(),"status":reason,"pnl":round((exitp/p["entry"]-1)*100,4),"peak":round((p["peak"]/p["entry"]-1)*100,4),"veto":p["veto"]}); pos.pop(s)
             regime=sc.btc_regime(); rows=[]
-            for s in data:
+            for s in available:
                 if s=="BTCUSDT": continue
                 try:
                     pre=sc._prefilter(s,1e9)
