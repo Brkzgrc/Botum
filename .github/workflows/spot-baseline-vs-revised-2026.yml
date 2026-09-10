@@ -1,6 +1,10 @@
 name: Baseline vs Revised 2026 Comparison
 
 on:
+  push:
+    paths:
+      - ".github/workflows/spot-baseline-vs-revised-2026.yml"
+      - ".github/baseline_vs_revised_2026.py"
   workflow_dispatch:
     inputs:
       start:
