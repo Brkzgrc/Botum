@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-11 01:52:06",
+  "updated_at": "2026-09-11 02:22:10",
   "performance": {
     "total": 30,
-    "open": 3,
-    "closed": 27,
+    "open": 2,
+    "closed": 28,
     "wins": 14,
     "win_tp2": 0,
-    "losses": 13,
+    "losses": 14,
     "expired": 7,
     "tp1_hits": 13,
     "win_pnl": 65.07,
-    "loss_pnl": -47.46,
+    "loss_pnl": -53.91,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 17.61,
-    "win_loss_pnl": 33.12,
+    "total_pnl": 11.16,
+    "win_loss_pnl": 26.67,
     "expired_pnl": -15.51,
-    "avg_peak": 4.27,
-    "win_rate": 51.9,
-    "real_win_rate": 51.9,
+    "avg_peak": 4.13,
+    "win_rate": 50.0,
+    "real_win_rate": 50.0,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,28 +45,28 @@
     "by_type": {
       "DİĞER": {
         "total": 30,
-        "open": 3,
+        "open": 2,
         "wins": 14,
-        "losses": 13,
+        "losses": 14,
         "expired": 7,
         "tp1_hits": 13,
-        "total_pnl": 17.61,
+        "total_pnl": 11.16,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 51.9,
-        "avg_peak": 4.27,
+        "win_rate": 50.0,
+        "avg_peak": 4.13,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 33.12
+        "win_loss_pnl": 26.67
       }
     },
     "daily": {
       "2026-09-11": {
         "trades": 3,
-        "pnl": 0.0,
+        "pnl": -6.45,
         "wins": 0,
-        "losses": 0
+        "losses": 1
       },
       "2026-09-10": {
         "trades": 6,
@@ -114,9 +114,9 @@
     "weekly": {
       "2026-W36": {
         "trades": 18,
-        "pnl": -4.779999999999998,
+        "pnl": -11.229999999999999,
         "wins": 6,
-        "losses": 9
+        "losses": 10
       },
       "2026-W35": {
         "trades": 12,
@@ -128,9 +128,9 @@
     "monthly": {
       "2026-09": {
         "trades": 30,
-        "pnl": 17.610000000000003,
+        "pnl": 11.160000000000002,
         "wins": 14,
-        "losses": 13
+        "losses": 14
       }
     }
   },
@@ -159,17 +159,17 @@
       "close_pct": null,
       "peak_price": 0.2201,
       "peak_pct": 0.46,
-      "low_price": 0.2143,
-      "low_pct": -2.19,
-      "current_price": 0.2145,
-      "current_pct": -2.1,
+      "low_price": 0.212,
+      "low_pct": -3.24,
+      "current_price": 0.2136,
+      "current_pct": -2.51,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T01:50:40.739319+03:00",
-      "checks": 19,
+      "last_check": "2026-09-11T02:20:48.718404+03:00",
+      "checks": 25,
       "extra": {
         "tp3": null,
         "target_pct": 5.66,
@@ -207,15 +207,15 @@
       "peak_pct": 1.06,
       "low_price": 1.3982,
       "low_pct": -4.57,
-      "current_price": 1.4199,
-      "current_pct": -3.09,
+      "current_price": 1.465,
+      "current_pct": -0.01,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T01:50:40.739319+03:00",
-      "checks": 19,
+      "last_check": "2026-09-11T02:20:48.718404+03:00",
+      "checks": 25,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -226,7 +226,9 @@
         "score": 92.0,
         "btc_regime": "YELLOW"
       }
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "XTZ_USDT_1789074950",
       "symbol": "XTZ/USDT",
@@ -243,25 +245,25 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "loss",
       "open_time": "2026-09-11T00:15:50.390884+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-09-11T02:15:47.344956+03:00",
+      "close_price": 0.2516475,
+      "close_reason": "stop",
+      "close_pct": -6.45,
       "peak_price": 0.2697,
       "peak_pct": 0.26,
-      "low_price": 0.2609,
-      "low_pct": -3.01,
-      "current_price": 0.2611,
-      "current_pct": -2.94,
+      "low_price": 0.251,
+      "low_pct": -6.69,
+      "current_price": 0.2515,
+      "current_pct": -6.51,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T01:50:40.739319+03:00",
-      "checks": 19,
+      "last_check": "2026-09-11T02:15:47.344956+03:00",
+      "checks": 24,
       "extra": {
         "tp3": null,
         "target_pct": 2.97,
@@ -272,9 +274,7 @@
         "score": 97.0,
         "btc_regime": "YELLOW"
       }
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "ZEC_USDT_1789013034",
       "symbol": "ZEC/USDT",
