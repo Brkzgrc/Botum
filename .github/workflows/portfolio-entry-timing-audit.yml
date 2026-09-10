@@ -1,0 +1,129 @@
+name: Portfolio Entry Timing Audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/portfolio-entry-timing-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Actual loss timing audit
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_ENABLED: "false"
+      PORTFOLIO_URL: ""
+      SCAN_ON_START: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install --disable-pip-version-check --quiet pandas requests
+      - name: Audit actual Portfolio losses only
+        shell: bash
+        run: |
+          mkdir -p timing_audit
+          cat > /tmp/timing_audit.py <<'PY'
+          import csv, io, json, zipfile
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+          import pandas as pd
+          import requests
+
+          SNAP = json.loads(Path("portfolio_snapshot.json").read_text())
+          closed = SNAP.get("closed", [])
+          # Sadece Portfolio'da kapanmış ve eksi yazmış gerçek spot-scanner işlemleri.
+          trades = [t for t in closed if t.get("source") == "spot-scanner"
+                    and float(t.get("close_pct") or 0) < 0
+                    and t.get("open_time") and t.get("close_time")]
+          if not trades:
+              raise RuntimeError("İncelenecek negatif kapanmış Portfolio işlemi yok.")
+
+          cols = ["open_time","open","high","low","close","volume","close_time",
+                  "quote_volume","trades","taker_base","taker_quote","ignore"]
+          http = requests.Session()
+          http.headers["User-Agent"] = "Botum-portfolio-timing-audit/1.0"
+          base = "https://data.binance.vision/data/spot/daily/klines"
+
+          def candles(symbol, start, end):
+              rows = []
+              for day in pd.date_range(start.normalize(), end.normalize(), freq="D", tz="UTC"):
+                  stamp = day.strftime("%Y-%m-%d")
+                  url = f"{base}/{symbol}/15m/{symbol}-15m-{stamp}.zip"
+                  r = http.get(url, timeout=30)
+                  if r.status_code == 404:
+                      continue
+                  r.raise_for_status()
+                  z = zipfile.ZipFile(io.BytesIO(r.content))
+                  name = next(n for n in z.namelist() if n.endswith(".csv"))
+                  d = pd.read_csv(z.open(name), header=None)
+                  if not d.empty and str(d.iloc[0,0]).lower() == "open_time":
+                      d = d.iloc[1:]
+                  rows.extend(d.iloc[:, :12].values.tolist())
+              if not rows:
+                  raise RuntimeError(f"{symbol}: 15dk mum bulunamadı")
+              d = pd.DataFrame(rows, columns=cols)
+              for c in ("open","high","low","close","volume"):
+                  d[c] = pd.to_numeric(d[c], errors="coerce")
+              d["open_time"] = pd.to_datetime(d["open_time"], unit="ms", utc=True)
+              d["close_time"] = pd.to_datetime(d["close_time"], unit="ms", utc=True)
+              return d.dropna().drop_duplicates("open_time").sort_values("open_time").reset_index(drop=True)
+
+          def audit(t):
+              symbol = t["symbol"].replace("/", "")
+              opened = pd.Timestamp(t["open_time"]).tz_convert("UTC")
+              closed_at = pd.Timestamp(t["close_time"]).tz_convert("UTC")
+              d = candles(symbol, opened - pd.Timedelta(hours=30), closed_at + pd.Timedelta(hours=1))
+              pre = d[(d.close_time <= opened) & (d.close_time > opened - pd.Timedelta(hours=24))]
+              held = d[(d.close_time > opened) & (d.close_time <= closed_at)]
+              if len(pre) < 80 or held.empty:
+                  raise RuntimeError(f"{symbol}: yetersiz pencere pre={len(pre)} held={len(held)}")
+              entry, stop = float(t["entry"]), float(t["stop"])
+              low24, high24 = float(pre.low.min()), float(pre.high.max())
+              return {
+                "symbol": symbol, "open_time_utc": opened.isoformat(), "close_time_utc": closed_at.isoformat(),
+                "portfolio_status": t.get("status"), "close_reason": t.get("close_reason"),
+                "entry": entry, "stop": stop, "tp1": t.get("tp1"), "realized_pct": t.get("close_pct"),
+                "peak_pct_portfolio": t.get("peak_pct"), "setup_kind": t.get("extra",{}).get("setup_kind"),
+                "score": t.get("extra",{}).get("score"), "rr": t.get("extra",{}).get("rr"),
+                "prior_24h_low": low24, "prior_24h_high": high24,
+                "entry_above_prior_24h_low_pct": round((entry/low24-1)*100, 2),
+                "entry_below_prior_24h_high_pct": round((high24/entry-1)*100, 2),
+                "held_max_up_pct": round((float(held.high.max())/entry-1)*100, 2),
+                "held_max_down_pct": round((float(held.low.min())/entry-1)*100, 2),
+                "stop_was_touched": bool(float(held.low.min()) <= stop),
+                "pre_candles": len(pre), "held_candles": len(held)
+              }
+
+          results, errors = [], []
+          with ThreadPoolExecutor(max_workers=6) as pool:
+              futures = {pool.submit(audit, t): t for t in trades}
+              for f in as_completed(futures):
+                  t = futures[f]
+                  try: results.append(f.result())
+                  except Exception as e: errors.append({"symbol":t.get("symbol"),"error":str(e)})
+          results.sort(key=lambda x: x["open_time_utc"])
+          Path("timing_audit/portfolio_loss_timing.csv").write_text(
+              pd.DataFrame(results).to_csv(index=False), encoding="utf-8")
+          Path("timing_audit/fetch_errors.csv").write_text(
+              pd.DataFrame(errors).to_csv(index=False), encoding="utf-8")
+          manifest = {"portfolio_negative_closed":len(trades),"audited":len(results),
+                      "fetch_errors":len(errors),
+                      "method":"Gerçek Portfolio zararlarının girişten önceki 24s ve işlem açık kaldığı dönem.",
+                      "not_a_decision":"Bu rapor erken giriş kuralı önermez; önce gerçek zararları sayısal olarak teşhis eder."}
+          Path("timing_audit/manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
+          print(json.dumps(manifest,ensure_ascii=False))
+          if errors or len(results) != len(trades):
+              raise RuntimeError("GEÇERSİZ_TIMING_AUDIT: tüm gerçek zarar işlemleri için mum verisi alınamadı.")
+          PY
+          python /tmp/timing_audit.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portfolio-entry-timing-audit
+          path: timing_audit/
+          retention-days: 30
