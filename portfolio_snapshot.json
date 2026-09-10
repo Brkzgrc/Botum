@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-10 15:20:49",
+  "updated_at": "2026-09-10 15:50:53",
   "performance": {
     "total": 27,
-    "open": 2,
-    "closed": 25,
+    "open": 0,
+    "closed": 27,
     "wins": 14,
     "win_tp2": 0,
-    "losses": 11,
+    "losses": 13,
     "expired": 7,
     "tp1_hits": 13,
     "win_pnl": 65.07,
-    "loss_pnl": -36.54,
+    "loss_pnl": -47.46,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 28.53,
-    "win_loss_pnl": 44.04,
+    "total_pnl": 17.61,
+    "win_loss_pnl": 33.12,
     "expired_pnl": -15.51,
-    "avg_peak": 4.56,
-    "win_rate": 56.0,
-    "real_win_rate": 56.0,
+    "avg_peak": 4.27,
+    "win_rate": 51.9,
+    "real_win_rate": 51.9,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,28 +45,28 @@
     "by_type": {
       "DİĞER": {
         "total": 27,
-        "open": 2,
+        "open": 0,
         "wins": 14,
-        "losses": 11,
+        "losses": 13,
         "expired": 7,
         "tp1_hits": 13,
-        "total_pnl": 28.53,
+        "total_pnl": 17.61,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 56.0,
-        "avg_peak": 4.56,
+        "win_rate": 51.9,
+        "avg_peak": 4.27,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 44.04
+        "win_loss_pnl": 33.12
       }
     },
     "daily": {
       "2026-09-10": {
         "trades": 6,
-        "pnl": 15.5,
+        "pnl": 4.58,
         "wins": 2,
-        "losses": 2
+        "losses": 4
       },
       "2026-09-09": {
         "trades": 3,
@@ -108,9 +108,9 @@
     "weekly": {
       "2026-W36": {
         "trades": 15,
-        "pnl": 6.140000000000005,
+        "pnl": -4.779999999999998,
         "wins": 6,
-        "losses": 7
+        "losses": 9
       },
       "2026-W35": {
         "trades": 12,
@@ -122,13 +122,14 @@
     "monthly": {
       "2026-09": {
         "trades": 27,
-        "pnl": 28.53000000000001,
+        "pnl": 17.610000000000003,
         "wins": 14,
-        "losses": 11
+        "losses": 13
       }
     }
   },
-  "open": [
+  "open": [],
+  "closed": [
     {
       "id": "ZEC_USDT_1789013034",
       "symbol": "ZEC/USDT",
@@ -145,25 +146,25 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "loss",
       "open_time": "2026-09-10T07:03:54.912338+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
+      "close_time": "2026-09-10T15:49:53.853407+03:00",
+      "close_price": 1191.45,
+      "close_reason": "stop",
+      "close_pct": -4.41,
       "peak_price": 1252.49,
       "peak_pct": 0.49,
-      "low_price": 1209.06,
-      "low_pct": -3.0,
-      "current_price": 1213.46,
-      "current_pct": -2.65,
+      "low_price": 1176.58,
+      "low_pct": -5.6,
+      "current_price": 1199.12,
+      "current_pct": -3.8,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-10T15:19:48.593045+03:00",
-      "checks": 99,
+      "last_check": "2026-09-10T15:49:53.853407+03:00",
+      "checks": 105,
       "extra": {
         "tp3": null,
         "target_pct": 3.98,
@@ -175,54 +176,6 @@
         "btc_regime": "YELLOW"
       }
     },
-    {
-      "id": "SUPER_USDT_1788988369",
-      "symbol": "SUPER/USDT",
-      "entry": 0.1263,
-      "stop": 0.1180725,
-      "tp1": 0.1307205,
-      "tp2": 0.13333491,
-      "tp3": null,
-      "limit_price": 0.1263,
-      "signal_price": 0.1263,
-      "sig_type": "spot_opportunity",
-      "sub_type": "",
-      "source": "spot-scanner",
-      "phase": "manual_review",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-09-10T00:12:49.585631+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.1272,
-      "peak_pct": 0.71,
-      "low_price": 0.1183,
-      "low_pct": -6.33,
-      "current_price": 0.1187,
-      "current_pct": -6.02,
-      "tp1_hit": false,
-      "tp1_time": null,
-      "spot_tracking_v1": true,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-09-10T15:19:48.593045+03:00",
-      "checks": 181,
-      "extra": {
-        "tp3": null,
-        "target_pct": 3.5,
-        "stop_pct": 6.97,
-        "rr": 0.5,
-        "setup": "ENTRY",
-        "setup_kind": "PRESSURE",
-        "score": 100.0,
-        "btc_regime": "YELLOW"
-      }
-    }
-  ],
-  "closed": [
     {
       "id": "PROVE_USDT_1789013034",
       "symbol": "PROVE/USDT",
@@ -408,6 +361,52 @@
         "btc_regime": "YELLOW"
       },
       "tp1_pct": 3.5
+    },
+    {
+      "id": "SUPER_USDT_1788988369",
+      "symbol": "SUPER/USDT",
+      "entry": 0.1263,
+      "stop": 0.1180725,
+      "tp1": 0.1307205,
+      "tp2": 0.13333491,
+      "tp3": null,
+      "limit_price": 0.1263,
+      "signal_price": 0.1263,
+      "sig_type": "spot_opportunity",
+      "sub_type": "",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "loss",
+      "open_time": "2026-09-10T00:12:49.585631+03:00",
+      "close_time": "2026-09-10T15:34:51.610698+03:00",
+      "close_price": 0.1180725,
+      "close_reason": "stop",
+      "close_pct": -6.51,
+      "peak_price": 0.1272,
+      "peak_pct": 0.71,
+      "low_price": 0.118,
+      "low_pct": -6.57,
+      "current_price": 0.1181,
+      "current_pct": -6.49,
+      "tp1_hit": false,
+      "tp1_time": null,
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-10T15:34:51.610698+03:00",
+      "checks": 184,
+      "extra": {
+        "tp3": null,
+        "target_pct": 3.5,
+        "stop_pct": 6.97,
+        "rr": 0.5,
+        "setup": "ENTRY",
+        "setup_kind": "PRESSURE",
+        "score": 100.0,
+        "btc_regime": "YELLOW"
+      }
     },
     {
       "id": "CATI_USDT_1788901252",
