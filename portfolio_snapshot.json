@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-11 03:52:20",
+  "updated_at": "2026-09-11 04:22:23",
   "performance": {
     "total": 30,
-    "open": 2,
-    "closed": 28,
-    "wins": 14,
+    "open": 1,
+    "closed": 29,
+    "wins": 15,
     "win_tp2": 0,
     "losses": 14,
     "expired": 7,
-    "tp1_hits": 13,
-    "win_pnl": 65.07,
+    "tp1_hits": 14,
+    "win_pnl": 70.5,
     "loss_pnl": -53.91,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 11.16,
-    "win_loss_pnl": 26.67,
+    "total_pnl": 16.59,
+    "win_loss_pnl": 32.1,
     "expired_pnl": -15.51,
-    "avg_peak": 4.13,
-    "win_rate": 50.0,
-    "real_win_rate": 50.0,
+    "avg_peak": 4.27,
+    "win_rate": 51.7,
+    "real_win_rate": 51.7,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "DİĞER": {
         "total": 30,
-        "open": 2,
-        "wins": 14,
+        "open": 1,
+        "wins": 15,
         "losses": 14,
         "expired": 7,
-        "tp1_hits": 13,
-        "total_pnl": 11.16,
+        "tp1_hits": 14,
+        "total_pnl": 16.59,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 50.0,
-        "avg_peak": 4.13,
+        "win_rate": 51.7,
+        "avg_peak": 4.27,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 26.67
+        "win_loss_pnl": 32.1
       }
     },
     "daily": {
       "2026-09-11": {
         "trades": 3,
-        "pnl": -6.45,
-        "wins": 0,
+        "pnl": -1.0200000000000005,
+        "wins": 1,
         "losses": 1
       },
       "2026-09-10": {
@@ -114,8 +114,8 @@
     "weekly": {
       "2026-W36": {
         "trades": 18,
-        "pnl": -11.229999999999999,
-        "wins": 6,
+        "pnl": -5.800000000000002,
+        "wins": 7,
         "losses": 10
       },
       "2026-W35": {
@@ -128,8 +128,8 @@
     "monthly": {
       "2026-09": {
         "trades": 30,
-        "pnl": 11.160000000000002,
-        "wins": 14,
+        "pnl": 16.59,
+        "wins": 15,
         "losses": 14
       }
     }
@@ -161,15 +161,15 @@
       "peak_pct": 0.46,
       "low_price": 0.212,
       "low_pct": -3.24,
-      "current_price": 0.2145,
-      "current_pct": -2.1,
+      "current_price": 0.2138,
+      "current_pct": -2.42,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T03:51:05.688470+03:00",
-      "checks": 43,
+      "last_check": "2026-09-11T04:21:11.414728+03:00",
+      "checks": 49,
       "extra": {
         "tp3": null,
         "target_pct": 5.66,
@@ -180,7 +180,9 @@
         "score": 95.0,
         "btc_regime": "YELLOW"
       }
-    },
+    }
+  ],
+  "closed": [
     {
       "id": "RAY_USDT_1789074950",
       "symbol": "RAY/USDT",
@@ -197,25 +199,25 @@
       "phase": "manual_review",
       "candle": "",
       "funding_neg": false,
-      "status": "open",
+      "status": "win_trail",
       "open_time": "2026-09-11T00:15:50.412174+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 1.5495,
-      "peak_pct": 5.75,
+      "close_time": "2026-09-11T04:21:11.414728+03:00",
+      "close_price": 1.5446925,
+      "close_reason": "trailing",
+      "close_pct": 5.43,
+      "peak_price": 1.5843,
+      "peak_pct": 8.13,
       "low_price": 1.3982,
       "low_pct": -4.57,
-      "current_price": 1.5339,
-      "current_pct": 4.69,
+      "current_price": 1.5409,
+      "current_pct": 5.17,
       "tp1_hit": true,
       "tp1_time": "2026-09-11T03:51:05.688470+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T03:51:05.688470+03:00",
-      "checks": 43,
+      "last_check": "2026-09-11T04:21:11.414728+03:00",
+      "checks": 49,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -227,9 +229,7 @@
         "btc_regime": "YELLOW"
       },
       "tp1_pct": 3.5
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "XTZ_USDT_1789074950",
       "symbol": "XTZ/USDT",
