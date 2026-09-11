@@ -26,8 +26,14 @@ def fetch(sym,tf):
     return d.dropna(subset=["open","high","low","close","volume"]).drop_duplicates("open_time").reset_index(drop=True)
 
 def load(s):
-    try:return s,{tf:fetch(s,tf) for tf in ("15m","1h","4h","1d")}
-    except Exception as e: print("[ATLA]",s,e,flush=True); return s,None
+    try:
+        # Dört zaman dilimini coin başına seri değil paralel indirir.
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            jobs={tf:pool.submit(fetch,s,tf) for tf in ("15m","1h","4h","1d")}
+            return s,{tf:jobs[tf].result() for tf in jobs}
+    except Exception as e:
+        print("[ATLA]",s,e,flush=True)
+        return s,None
 
 def run(revised):
     global cutoff,prices
