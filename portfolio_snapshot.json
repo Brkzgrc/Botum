@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-11 03:22:16",
+  "updated_at": "2026-09-11 03:52:20",
   "performance": {
     "total": 30,
     "open": 2,
@@ -161,15 +161,15 @@
       "peak_pct": 0.46,
       "low_price": 0.212,
       "low_pct": -3.24,
-      "current_price": 0.2157,
-      "current_pct": -1.55,
+      "current_price": 0.2145,
+      "current_pct": -2.1,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T03:21:00.060246+03:00",
-      "checks": 37,
+      "last_check": "2026-09-11T03:51:05.688470+03:00",
+      "checks": 43,
       "extra": {
         "tp3": null,
         "target_pct": 5.66,
@@ -203,19 +203,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 1.4837,
-      "peak_pct": 1.26,
+      "peak_price": 1.5495,
+      "peak_pct": 5.75,
       "low_price": 1.3982,
       "low_pct": -4.57,
-      "current_price": 1.4705,
-      "current_pct": 0.36,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 1.5339,
+      "current_pct": 4.69,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-11T03:51:05.688470+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T03:21:00.060246+03:00",
-      "checks": 37,
+      "last_check": "2026-09-11T03:51:05.688470+03:00",
+      "checks": 43,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -225,7 +225,8 @@
         "setup_kind": "PRESSURE",
         "score": 92.0,
         "btc_regime": "YELLOW"
-      }
+      },
+      "tp1_pct": 3.5
     }
   ],
   "closed": [
