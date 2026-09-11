@@ -2146,6 +2146,33 @@ def _fetch_market_pulse():
         out["funding_rate"] = float(r6.json().get("lastFundingRate", 0)) * 100
     except Exception as e:
         print(f"[MARKET] Funding Rate hata: {e}", flush=True)
+    # BTC Futures Open Interest — mevcut OI + yaklaşık 24s değişim
+    # Bilgi amaçlıdır; spot emir/pozisyon değildir. Binance USD-M Futures verisi.
+    try:
+        _oi_now_r = requests.get(
+            "https://fapi.binance.com/fapi/v1/openInterest",
+            params={"symbol": "BTCUSDT"}, timeout=6)
+        if _oi_now_r.ok:
+            _oi_now = float(_oi_now_r.json().get("openInterest", 0) or 0)
+            if _oi_now > 0:
+                out["btc_oi"] = _oi_now
+                _btc_px = out.get("btc_price")
+                if _btc_px:
+                    out["btc_oi_usd"] = _oi_now * float(_btc_px)
+
+        _oi_hist_r = requests.get(
+            "https://fapi.binance.com/futures/data/openInterestHist",
+            params={"symbol": "BTCUSDT", "period": "1h", "limit": 25}, timeout=6)
+        if _oi_hist_r.ok:
+            _oi_hist = _oi_hist_r.json()
+            if isinstance(_oi_hist, list) and len(_oi_hist) >= 2:
+                _oi_old = float(_oi_hist[0].get("sumOpenInterest", 0) or 0)
+                _oi_latest = float(_oi_hist[-1].get("sumOpenInterest", 0) or 0)
+                if _oi_old > 0 and _oi_latest > 0:
+                    out["btc_oi_change_24h"] = round((_oi_latest / _oi_old - 1) * 100, 2)
+    except Exception as e:
+        print(f"[MARKET] Open Interest hata: {e}", flush=True)
+
     try:
         r7 = requests.get(
             "https://fapi.binance.com/futures/data/globalLongShortAccountRatio",
@@ -2384,6 +2411,29 @@ def market_dashboard():
         else:
             fr_label, fr_lc = "aşırı long", "#e74c3c"
 
+    # ── Open Interest ──
+    oi_btc = mp.get("btc_oi")
+    oi_usd = mp.get("btc_oi_usd")
+    oi_chg = mp.get("btc_oi_change_24h")
+    btc_chg = mp.get("btc_change")
+    oi_btc_fmt = f"{oi_btc/1000:.1f}K BTC" if oi_btc is not None else "—"
+    oi_usd_fmt = _mcap_fmt(oi_usd) if oi_usd else "—"
+    oi_chg_fmt = f"{oi_chg:+.2f}%" if oi_chg is not None else "—"
+    oi_chg_color = ("#2ecc71" if oi_chg is not None and oi_chg > 0
+                    else "#e74c3c" if oi_chg is not None and oi_chg < 0 else "#5a6a7a")
+    if btc_chg is None or oi_chg is None:
+        oi_state, oi_state_color = "yorum için veri yok", "#5a6a7a"
+    elif btc_chg < 0 and oi_chg > 0:
+        oi_state, oi_state_color = "riskli kaldıraç birikimi", "#e74c3c"
+    elif btc_chg < 0 and oi_chg < 0:
+        oi_state, oi_state_color = "kaldıraç temizleniyor", "#2ecc71"
+    elif btc_chg > 0 and oi_chg > 0:
+        oi_state, oi_state_color = "trend kaldıraçla destekli", "#2ecc71"
+    elif btc_chg > 0 and oi_chg < 0:
+        oi_state, oi_state_color = "short kapanışı ihtimali", "#f1c40f"
+    else:
+        oi_state, oi_state_color = "dengeli", "#5a6a7a"
+
     # ── Long/Short ──
     ls    = mp.get("ls_ratio")
     lr    = mp.get("long_ratio")
@@ -2545,7 +2595,7 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
 .m-value{{font-size:.95rem;font-weight:bold;color:#ecf0f1;line-height:1.1}}
 .m-value.lg{{font-size:1.1rem}}
 .m-sub{{font-size:.56rem;margin-top:4px;color:var(--dim)}}
-.visual-row{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
+.visual-row{{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px;align-items:stretch}}
 .card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}}
 .card h3{{color:var(--accent);font-size:.58rem;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase;text-align:center}}
 .gauge-wrap{{display:flex;flex-direction:column;align-items:center;padding-top:2px}}
@@ -2681,6 +2731,17 @@ body{{background:var(--bg);color:var(--text);font-family:'JetBrains Mono','Fira 
       {fr_bar_svg}
       <div class="gauge-sub">8 saatlik · Binance BTCUSDT</div>
       <div class="gauge-sub" style="margin-top:2px">Vadeli (futures) işlemlerde kim baskın</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Open Interest</h3>
+    <div class="stat-card-inner">
+      <div style="font-size:1.15rem;font-weight:bold;color:#ecf0f1">{oi_btc_fmt}</div>
+      <div style="font-size:.62rem;color:#8a9bb0;margin-top:3px">≈ {oi_usd_fmt}</div>
+      <div style="font-size:.72rem;font-weight:bold;color:{oi_chg_color};margin-top:10px">24s {oi_chg_fmt}</div>
+      <div style="font-size:.58rem;color:{oi_state_color};font-weight:bold;margin-top:7px;text-align:center">BTC {btc_cs} / OI {oi_chg_fmt}</div>
+      <div style="font-size:.58rem;color:{oi_state_color};font-weight:bold;margin-top:3px;text-align:center">{oi_state}</div>
+      <div class="gauge-sub" style="margin-top:7px">Binance USD-M Futures · açık pozisyon</div>
     </div>
   </div>
   <div class="card">
