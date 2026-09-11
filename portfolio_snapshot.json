@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-11 07:22:42",
+  "updated_at": "2026-09-11 07:52:46",
   "performance": {
     "total": 30,
     "open": 1,
@@ -157,19 +157,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.2271,
-      "peak_pct": 3.65,
+      "peak_price": 0.235,
+      "peak_pct": 7.26,
       "low_price": 0.2086,
       "low_pct": -4.79,
-      "current_price": 0.2246,
-      "current_pct": 2.51,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 0.2317,
+      "current_pct": 5.75,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-11T07:41:35.193027+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-11T07:21:33.010110+03:00",
-      "checks": 85,
+      "last_check": "2026-09-11T07:51:36.263057+03:00",
+      "checks": 91,
       "extra": {
         "tp3": null,
         "target_pct": 5.66,
@@ -179,7 +179,8 @@
         "setup_kind": "RETRIGGER",
         "score": 95.0,
         "btc_regime": "YELLOW"
-      }
+      },
+      "tp1_pct": 5.66
     }
   ],
   "closed": [
