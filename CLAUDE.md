@@ -872,11 +872,15 @@ isaretli olaylari kabul eden birlesim madencisi) · `ozellik_fabrikasi.py`
 `yapi_fabrikasi` ve `parmak_izi` dogrulandi: ileriye bakma SIFIR, gostergeler
 ZEC referansiyla birebir, ekilen ayrim bulunuyor, rastgelede sans asilmiyor.
 
-## NIHAI TEST — dondurulmus protokol (2026-09-12, SONUC: AYRIM YOK)
+## NIHAI TEST — (2026-09-12, SONUC: AYRIM YOK · PROTOKOL HENUZ DONMADI)
 
-Kullanicinin ikinci itirazi uzerine bes metodolojik acik daha kapatildi ve
-protokol donduruldu. Bu, "12 isaretin parmak izi" sorusunun su anki veriyle
-verilebilecek en iyi cevabidir.
+Kullanicinin ikinci ve ucuncu itirazi uzerine yedi metodolojik acik kapatildi.
+
+**PROTOKOL DONDURULMADI.** Once "donduruldu" yazilmisti; kullanici hakli olarak
+itiraz etti — dondurmadan SONRA iki hata daha bulundu (OBV olcek artifakti,
+episode zincirlemesi). Bu hala KESIF/GELISTIRME setidir. Dogru sira:
+hatalari bul -> episode tanimini duzelt -> coin normalizasyonunu duzelt ->
+null'u dogrula -> **ANCAK O ZAMAN dondur** -> sonra yeni donemlere dokunma.
 
 ### Kapatilan bes acik
 
@@ -910,19 +914,59 @@ ort/egim/fark + 1d nokta) · olcek filtresi 2.772 ozelligi eledi ·
 
 ### SONUC
 
-| | F1 | sans %95 | sans en iyi | hukum |
+| kurulum | F1 | sans %95 | sans en iyi | hukum |
 |---|---|---|---|---|
-| olcek filtresi YOK | 1.000 | 0.875 | 0.952 | asti (ARTIFAKT) |
-| olcek filtresi VAR | **0.800** | 0.875 | 0.947 | **ASMADI** |
+| olcek filtresi YOK (7 ep) | 1.000 | 0.875 | 0.952 | asti (ARTIFAKT) |
+| olcek filtresi VAR (7 ep) | 0.800 | 0.875 | 0.947 | asmadi |
+| **+ episode duzeltmesi + coin ici yuzdelik (17 ep)** | **0.909** | 0.857 | **1.000** | **ASMADI** |
 
-Artifakt temizlenince ayrim sansi asmiyor.
+### UCUNCU NORMALIZASYON KATMANI eklendi
 
-### ASIL SINIR: 7 EPISODE
+"Olceksiz olmak" yetmiyor — RSI 0-100 arasi ama BTC'nin RSI dagilimiyla
+SHIB'inki ayni olmak zorunda degil. Her ozellik serisi, KENDI COININ son 500
+barindaki goreli konumuna cevrildi (`coin_ici_yuzdelik`, nedensel). Dogrulandi:
+ayni seri 1e8 ile carpilinca yuzdelikler birebir ayni (fark 5.5e-13),
+kaydirmadan etkilenmiyor, ileriye bakmiyor.
 
-**12 isaret = 6 bagimsiz piyasa olayi.** Toplam 7 episode var; 7'den 6'sini
-secmenin 7 yolu oldugu icin permutasyon dagilimi neredeyse sabit ve
-ulasilabilecek en kucuk p-degeri ~1/7 = 0.14. **Bu testte KUSURSUZ bir ayrim
-bulunsa bile istatistiksel olarak kesin olmazdi.**
+### YENI VE KRITIK BULGU: arama uzayi cok genis
+
+Duzeltilmis (durust) null ile: **31.344 kosul + 6 derinlikle, 12 pozitifi 111
+negatiften RASTGELE etiketle bile KUSURSUZ ayirmak mumkun** (sans max F1=1.000).
+Bu kurulumda hicbir sonuc kanit olamaz.
+
+**Sonuc: orneklem buyutmek kadar ARAMA UZAYINI DARALTMAK da gerekiyor.**
+Dogrulayici test icin hem daha cok bagimsiz episode hem de onceden kayitli,
+cok daha dar bir ozellik/derinlik seti sart.
+
+### ~~ASIL SINIR: 7 EPISODE~~ — BU SAYI YANLISTI, DUZELTILDI
+
+**DUZELTME (kullanici itirazi hakli cikti):** "7 episode" sayisi EPISODE
+MOTORUNUN HATASIYDI. `episodeler()` TEK BAGLANTI (single-linkage) calisiyordu:
+yalnizca BIR ONCEKI ornekle arasindaki bosluga bakiyordu. A-B 10 gun, B-C 10
+gun, C-D 10 gun zinciriyle AYLARCA suren tek episode uretiyordu.
+
+Denetim tablosu (eski motor): 7 episode'un **4'u** 14 gunluk siniri asiyordu —
+en genisi **82 GUN** (39 ornek, 14 coin), digerleri 56, 48 ve 36 gun. Uc aylik
+bir donemi "tek piyasa olayi" saymak tanimin kendisiyle celisiyor.
+
+**Duzeltme:** yeni episode su iki durumda baslar — (a) onceki ornekle bosluk >
+EPISODE_GUN, (b) episode'un ILK ornegine uzaklik > EPISODE_GUN. Yani hicbir
+episode'un TOPLAM GENISLIGI siniri asamaz.
+
+| | eski (zincirleme) | yeni (span sinirli) |
+|---|---|---|
+| toplam episode | 7 | **17** |
+| isaretli episode | 6 | **10** |
+| sinir asan | 4 (en genisi 82 gun) | **0** |
+
+Permutasyon cesitliligi: 7'den 6 secmek = 7 yol; **17'den 10 secmek = 19.448
+yol**. Minimum p-degeri 0.14'ten ~0.00005'e indi.
+
+**KRITIK: bu duzeltme testi ZAYIFLATMADI, DURUSTLESTIRDI.** Eski null
+dagilimi neredeyse sabit oldugu icin sans tabanini OLDUGUNDAN DUSUK
+gosteriyordu (max F1 0.947). Duzeltilmis motorla ayni arama, rastgele
+etiketlerle **F1 = 1.000'e ulasiyor**. Yani onceki "0.947" sahte bir
+guvenceydi.
 
 **OLCULDU — ayni tarihlerde baska coin eklemek ISE YARAMIYOR:** 19 coinden
 111 negatif toplandi, bagimsiz olay sayisi 7'de kaldi. Ayni piyasa sokunun
