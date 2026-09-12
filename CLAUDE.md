@@ -330,6 +330,185 @@ CHoCH sisteminin kendi sinyallerini filtreleme/geliştirme) somut, gerekçeli te
 hipotezle başlanmalı — 192 kombinasyonluk "şans eseri pozitif çıkan var mı" taramaları,
 tam da bu turda yakalanan sahte pozitif riskini taşıyor.
 
+## spot_opportunity Sistem Teşhisi (2026-09-11, ÖLÇÜLDÜ — sistem kâr etmiyor)
+
+**Soru:** Canlı `spot_opportunity_scanner` sistemi neden kazanmıyor, kayıplar ve expired'lar
+nasıl azaltılır?
+
+**Veri:** 945 backtest işlemi (Ocak–Eylül 2026, iki ayrı evren: mcap-119 ve tüm-spot-469).
+Kalibrasyon: simülasyon orijinal backtest sonucunu %0.9 sapmayla yeniden üretiyor.
+
+### Bulgu 1 — Sistem para kaybediyor (panelin kendi hesabıyla bile)
+
+2500$ sırayla (tek lot, pozisyon açıkken yeni işlem alınmaz):
+
+| dönem | panel hesabı | emir dolsa (%0.19 BNB'li) |
+|---|---|---|
+| Temmuz–Eylül (tüm evren) | 2390$ | 2373$ |
+| **Ocak–Haziran** | **1266$** | **1240$** |
+| Temmuz–Eylül (mcap) | 1983$ | 1967$ |
+
+Komisyon/dolum tartışması sonucu birkaç puan oynatıyor; zarar %5–50 arası.
+**En cömert hesapla bile (hiç kayma yok, tam seviyeden dolum) üç dönemin ikisinde ağır zarar.**
+
+### Bulgu 2 — Sistem GEÇ giriyor (asıl sebep)
+
+945 işlemin sinyal anındaki durumu:
+
+| | 4 saat | günlük | 1 saat | 15 dakika |
+|---|---|---|---|---|
+| StochRSI medyanı | **73.0** | **85.5** | 42.6 | **69.0** |
+| MA20'nin **altında** olan işlem | **%0** | **%0** | %8 | %12 |
+| MA20 eğimi yukarı | **%100** | %95 | — | — |
+| MA20'ye uzaklık (medyan) | +%5.77 | +%12.77 | +%1.99 | +%0.85 |
+| Son 24 mumun getirisi (medyan) | **+%14.01** | — | +%5.57 | +%1.37 |
+
+Yani sistem, coin 4H'de zaten ~%14 yükselmiş ve MA20'nin %5.77 üstündeyken alıyor.
+**945 işlemin hiçbirinde 4H'de MA20'nin altında alım yok.** Bu bir momentum/kırılım sistemi,
+geri çekilme alıcısı değil.
+
+### Bulgu 3 — Trend hareketlerinden pay alamıyor
+
+En az 4 işlem yapılan, fiyatı %20'den fazla yükselen **28 coin**:
+
+| | |
+|---|---|
+| Coinlerin ortalama yükselişi | **+%109** |
+| Sistemin bu coinlerden aldığı | **−%1.4** |
+| Sistemin coinden iyi olduğu | **0 / 28** |
+| Sistemin zarar yazdığı | 15 / 28 |
+
+Örnek: **ZEC 245$ → 1223$ (+%399). Sistem 20 işlem yapıp −%6.17.**
+币安人生 +%1098 iken sistem −%23.
+
+Sebebi ölçülü: ortalama TP1 hedefi **+%4.15**, ortalama stop riski **−%6.56**. Yani
+%6.56 riske edip %4.15 kazanmaya çalışıyor. Medyan risk/ödül **0.64**; işlemlerin **%82'sinde
+hedef, riskten küçük**. Ayrıca işlemlerin **%43'ünde TP1 = tam +%3.50**, yani scanner uygun
+direnç bulamayınca kullandığı varsayılan `fiyat×1.035` — grafikte bir yere karşılık gelmiyor.
+
+### Bulgu 4 — Çıkış kuralı ZATEN optimal, değiştirilmemeli
+
+Girişler sabit tutulup **47 farklı çıkış kuralı** 5 dakikalık fiyat yolu üzerinde tam hesaplandı
+(`exit_lab.py`, scratchpad). 925 işlemde yüzde puan toplamı:
+
+| kural ailesi | mevcuda göre |
+|---|---|
+| Breakeven stop (+%0.5 … +%3.0) | **−130 … −479 puan** |
+| Stop tavanı (%2 … %8) | −38 … −163 |
+| Breakeven + tavan (9 kombinasyon) | −198 … −325 |
+| Expire süresi (8s / 12s / 18s / 36s) | −20 … −196 |
+| TP1'de kısmi satış (%30 / %50) | −82 … −136 |
+| Trailing genişliği (1.5 / 2 / 3 / 4 / 5) | −53 … **+35** (zikzak, gürültü) |
+
+**32/33 varyant mevcut kuraldan kötü.** Tek "iyi" olan TRAIL_3.0 işlem başına +%0.038 —
+ve trail dizisi zikzak (1.5 iyi, 2.0 kötü, 3.0 iyi, 4.0 kötü), desen yok.
+
+**Breakeven stop neden çöküyor:** giriş zaten `stop = destek × 0.975` ile desteğin hemen
+üstünde. Fiyatın girişe geri gelmesi bu sistemde **normal davranış** (destek testi), bozulma
+sinyali değil. Stop'u oraya koymak sistemin kendi mantığına ters.
+
+### Bulgu 5 — Girişte ayırt edici hiçbir şey yok
+
+Denenen ve düşen: revize veto sistemi (3 kural, engellediği 63 adayın 27'si kazanan,
+net −140 puan), momentum filtresi (`15m.ret24>1.29`), BTC rejimi, skor, stop mesafesi,
+RR, KDJ-J bantları, çoklu zaman dilimi osilatör uyumu, TP1'in uydurma mı gerçek direnç mi
+olduğu. **Toplam 20'den fazla kural, hiçbiri üç dönemde birden dayanmadı.**
+75 sinyal-anı göstergesi taranmıştı: max AUC 0.586.
+
+**UYARI — aynı taramayı tekrar yapma.** 12+ kural aynı veride denenince en az birinin şans
+eseri iyi görünme ihtimali ~%72. Bu projede 2026-07-30'da tam olarak bu tuzağa düşüldü
+(192 kombinasyon → sahte pozitif). Yeni bir fikir gelirse: önce yaz ve kilitle, sonra
+**dokunulmamış bir dönemde tek koşu**, sonucu görünce ayar yapma.
+
+### Karar
+
+- Canlı sisteme **hiçbir değişiklik yapılmadı**. Sadece takip modunda çalışıyor
+  (`SMC_MAIN_SOURCES = ("smc-v2",)` — spot sinyalleri trading-bot'a gitmiyor, Binance'e emir
+  konulmuyor). **İyi ki öyle** — ölçüm bağlanırsa gerçek para kaybedeceğini söylüyor.
+- **Trading-bot bu sinyallere bağlanmamalı.** Bağlanırsa ayrıca çıkış kuralı da değişir
+  (`position_monitor` trailing'i `peak − ATR×0.6` kullanır, portfolio_tracker'daki %2.5 değil).
+- Kâr için bu sistemi ayarlamak değil, **farklı bir giriş mantığı** gerekiyor (bkz. sonraki bölüm).
+
+### Panel doğruluğu notu (düzeltilmedi, bilinçli)
+
+`portfolio_tracker.py` satır 987–989: trailing `close <= trail_stop` ile tetikleniyor ama
+kapanış fiyatı olarak **seviyenin kendisi** kaydediliyor. Bu, o seviyede bekleyen bir Binance
+emri varsa doğru; bugün öyle bir emir yok (spot sinyalleri trading-bot'a gitmiyor), sistem
+5 dakikada bir bakıp "kapandı" diyor. Ölçüldü: bugünkü haliyle panel **%29–50 iyimser**.
+Emir konulursa fark %0.3'e iner. Düzeltme yapılmadı çünkü sistem zaten zararda — rakamın
+doğruluğu kararı değiştirmiyor. Trading-bot bağlanmayacaksa düzeltilmeli.
+
+## Gösterge Formülleri — Doğrulanmış Referans (2026-09-11)
+
+Kullanıcının kendi alım yönteminde kullandığı göstergeler, **ZECUSDT 23.08.2026 09:00 (TR)**
+anıyla birebir doğrulandı (9 göstergenin 9'u, virgülden sonra 2 hane). İleride yeniden
+kurmak gerekirse bu formüller referans alınmalı:
+
+| gösterge | tanım |
+|---|---|
+| RSI | 14, Wilder yumuşatma |
+| StochRSI | 14/14/3/3 — RSI'ın 14'lük stokastiği, %K = SMA3, %D = SMA3(%K) |
+| KDJ | 9/3/3 — `RSV=(C−LLV9)/(HHV9−LLV9)×100`, `K=⅔K₋₁+⅓RSV`, `D=⅔D₋₁+⅓K`, `J=3K−2D` |
+| W%R | 14 — `(HHV14−C)/(HHV14−LLV14)×−100` |
+| MACD | 12/26/9 — `dif=EMA12−EMA26`, `dea=EMA9(dif)`, **`hist=dif−dea`** (2× DEĞİL) |
+
+Doğrulama değerleri (ZEC, 23.08.2026 09:00 TR, 1 saatlik):
+RSI 48.57 · StochRSI 1.63/0.75 · KDJ 17.60/22.85/7.12 · W%R −84.31 · MACD 9.12/18.53/−9.42
+
+**Not:** Zaman kritik. Aynı gün 08:00 ile 09:00 arasında StochRSI 10.77 → 1.63 değişiyor.
+Bir örneği doğrularken önce doğru dakikayı bul (`an_bul.py`, scratchpad).
+
+## Kullanıcının Kendi Alım Yöntemi — Tarama (2026-09-11, DEVAM EDİYOR)
+
+**Sebep:** Kullanıcı aynı coinlerde (örn. ZEC) elle alım satım yapıp kazanırken sistem
+kaybediyor. Fark ölçüldü: **sistem geç giriyor** (yukarıdaki Bulgu 2). Kullanıcının kurulumu
+945 sistem işleminin sadece **%0.2–2.4'ünde** var — yani mevcut sinyalleri filtreleyerek
+test edilemez, sıfırdan sinyal üretmek gerekiyor.
+
+**Kural (kullanıcının 5 gerçek örneğinden çıkarıldı, uydurulmadı):**
+
+| | 4 SAAT | 1 SAAT | 15 DAKİKA |
+|---|---|---|---|
+| rol | trend güçlü mü | **giriş** | teyit |
+| RSI | ≥ 60 | ≤ 55 | ≤ 50 |
+| StochRSI | **≤ 15** | **≤ 10** | ≤ 20 |
+| KDJ J | — | ≤ 15 | — |
+| W%R | — | ≤ −80 | ≤ −70 |
+| MACD histogram | — | negatif (kesişme beklenmez) | — |
+
+Mantığı: **üst zaman dilimi trendi güçlü ama StochRSI dipte** — yani RSI mutlak olarak yüksek
+(ZEC: 4H RSI 70.34) ama kendi son 14 barlık aralığının en altında (4H StochRSI 2.41).
+Geri çekilme, dönüş değil. Alt zaman dilimleri tükenmiş. Klasik "yükselen trendde dip al".
+
+**Araç:** `dip_tarama.py` (scratchpad — repoya girmez, proje kuralı). Mevcut scanner'a
+dokunmaz, ayrı bağımsız tarama. Seviye mantığı (`stop = destek×0.975`, `tp1 = en yakın
+direnç ≥ +%2.5`) scanner'ın `levels()` fonksiyonuyla birebir aynı; `_swings` ile yan yana
+koşturulup doğrulandı. Çıkış canlı kurallarla (stop / TP1 / %2.5 trailing / 24h).
+
+**İlk sonuçlar (en likit 50 parite, saat başı tarama):**
+
+| | 2025 (dokunulmamış veri) | 2026 |
+|---|---|---|
+| işlem | 33 | 42 |
+| işlem başına | **+%1.13** | **+%0.97** |
+| 2500$ → | **3397$** | 2496$ |
+| en kötü düşüş | **−%15.1** | −%17.4 |
+
+Çıkış kırılımı (75 işlem): trailing +%5.56 (33 işlem) · stop **−%3.92** (24) · expired
+**−%0.63** (18). Mevcut sistemde bu rakamlar −%6.25 ve −%2.83.
+**Kazançlar aynı boyutta, kayıplar yarı, expired'lar neredeyse sıfır** — iki dönemde de.
+Mekanizma net: desteğin dibinden alınca destek yakın, stop yakın, kayıp küçük.
+
+**AÇIK SORULAR — sonuç kesinleşmedi:**
+1. **İstatistiksel olarak kanıtlanmadı.** t = 1.56 (75 işlem). Anlamlılık için > 2 gerekir.
+2. **Kâr birkaç işlemden geliyor.** Toplam +78 puan; en iyi 5 işlem çıkarılınca −2.2'ye düşüyor.
+   Medyan işlem +%0.29.
+3. **Örneklem çok küçük.** 21 ayda 75 işlem = ayda 3.5. Sonraki adım: `EVREN_LIMIT = 0`
+   (tüm evren, 400+ parite) ile koşmak → ~600 işlem beklentisi. Bu hem t değerini hem
+   kâr dağılımını netleştirecek.
+
+**Bu araştırma bitmeden canlı sisteme hiçbir şey eklenmeyecek.**
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
