@@ -574,6 +574,82 @@ var) ile aynı madenciliği **altcoin evreninde** koştur — en likit 30-50 par
 1h+4h destek, 2023-2026, son %30 dokunulmamış. Metodoloji aynen korunacak: olay bazlı
 puanlama + blok permütasyon tabanı + dokunulmamış dönem onayı.
 
+## Iz Avcisi — Yukselis Oncesi Ortak Iz Arastirmasi (2026-09-12, OLCULDU)
+
+**Sebep:** Kullanicinin yolladigi ChatGPT dokumu hakli bir elestiri iceriyordu:
+her bari siniflandirmak ("bu barda 8 saatte +%2 gelir mi") sorulan soru degil.
+Asil soru bir OLAY CALISMASI: *"Su bilinen yukselisler var. BASLAMADAN ONCE
+ortak olarak ne oluyordu?"* Ayrica 379 ozellik az; binlerce olmali, coklu
+parametre (RSI 2..50), ham fiyat/hacim davranisi ve zaman dilimleri arasi
+oranlar dahil. Ve tek an degil, yukselisten 48/24/12/6/3/1/0 saat once ayri
+ayri bakilmali ("iz kac saat once beliriyor").
+
+**Kurulan:** `ozellik_fabrikasi.py` + `iz_avcisi.py` (scratchpad, repoya girmez).
+2712 ozellik x 8 zaman noktasi = 21.696 olcum. 30 altcoin, 2023-01 → 2026-09,
+Binance verisi (ortam ag politikasina `data-api.binance.vision` eklendi).
+Fabrika dogrulandi: ileriye bakma SIFIR (son barlari bozunca onceki hicbir
+ozellik degismedi) ve gostergeler ZEC 23.08.2026 referansiyla birebir ayni.
+
+### Bulunan tek gercek sey ve neden ise yaramadigi
+
+1. **Sert dusen dipler daha cok siciriyor** — ROC12 AUC 0.158, 12 saat oncesine
+   kadar gorunuyor, gurultu tabanini (0.086) acik farkla asiyor. Oynaklik testi
+   de gecti: ATR'ye bolununce ayrismanin sadece %9'u kayboldu, bes ATR diliminin
+   hepsinde suruyor.
+2. **Ama YOL testinde coktu.** Butun yerel diplerde (12.819 bagimsiz firsat,
+   secme YOK), hedef-mi-once-stop-mu olarak:
+
+   | hedef/stop | en sert dusen %20 | basabas | komisyonlu |
+   |---|---|---|---|
+   | +%8/-%8 | %49.4 | %50.0 | -%0.24 |
+   | +%8/-%4 | %29.2 | %33.3 | -%0.68 |
+   | +%4/-%2 | %32.0 | %33.3 | -%0.27 |
+   | +%2/-%2 | %49.5 | %50.0 | -%0.21 |
+
+   Sert dusus +%8'e degme ihtimalini artirdigi KADAR -%8'e degme ihtimalini de
+   artiriyor. **Yon izi degil, OYNAKLIK izi.**
+
+**ATR'ye bolmek oynakligi temizlemeye YETMIYOR** — ATR(14) gecikmeli ve
+yumusatilmis; son 12 saatteki sert dusus ileriye donuk oynakligi ATR'den daha
+iyi tahmin ediyor. Sadece yol testi yakaliyor. (Oynaklik testi "gecti" demisti.)
+
+### Kendi kurgumdan dogan uc sahte bulgu (hepsi olculup elendi)
+
+1. **Rastgele kontrol** — olayi "son 12 barin en dibi" diye tanimlayip rastgele
+   barlarla karsilastirinca RSI5 AUC 0.077 cikti. Tamamen dongusel: "dipte
+   osilatorler dipte". Kontrol AYNI YAPIDA (yerel dip) olup yukselMEYEN barlar
+   olmali.
+2. **Secim asimetrisi** — olaylar kumenin EN DIBINDEN (argmin), kontroller
+   sadece aralik kuraliyla seciliyordu. Bu, olaylari tanim geregi daha asiri
+   satimda yapar. Duzeltilince en iyi ayrisma 0.316 → 0.112'ye dustu.
+3. **Gereksiz eleme** — kontrollerin olaylardan 48 bar uzak olma sarti, iki grup
+   zaten sonucuna gore birbirini dislarken yeni bir yanlilik uretiyordu
+   (kontrol sayisi 3630 → 1077).
+
+### Simetrik, temiz kosunun sonucu
+
+En iyi ayrisma 0.112 (taban 0.074). Kalan tek sey: **siciriyan dipler gercek
+cok-gunluk dibe (50/100 bar, 4h 10/20 bar) daha yakin** — osilator degil YAPI
+ozelligi, ve 12 saat once hala ayakta. Ama paraya cevrilince **TERS** cikti:
+dibe en yakin %20 dilim en kotusu (%22.2 kazanma, -%1.53/islem), en uzak dilim
+en iyisi. Yil yil: 2023 -%0.11, 2024 -%1.61, 2025 -%3.22, 2026 +%0.44.
+
+### Genel sonuc — komisyon esigi
+
+Bu oturumda denenen HER SEY (BTC'de 1.7M otomatik kural x 5 hedef; altcoinlerde
+2712 ozellik x 8 zaman noktasi; her ozelligin her yuzdelik dilimi) yol-farkinda
+ve ornekleme-yapilmamis olarak olculdugunde **-%1.5 ile +%0.03 arasinda**
+sikisiyor. Yani sifir.
+
+**Sayisal sebep: komisyon %0.19, bulunan avantajlar +-%0.2 mertebesinde.**
+1 saatlik zaman diliminde %2-8'lik hedeflerle avantaj ile komisyon AYNI
+buyuklukte. Bu olcekte mekanik bir kural kar edemez.
+
+**SONRAKI YON:** daha buyuk hareketler / daha uzun tutuslar — kullanicinin
+grafige cizdigi daireler gunluk grafikteydi ve %20-50'lik hareketlerdi; orada
+%0.19 komisyon hareketin yuzde biri bile degil. Ayni olay calismasi
+mimarisi gunluk/haftalik olceğe tasinmali.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
