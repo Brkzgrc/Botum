@@ -872,6 +872,87 @@ isaretli olaylari kabul eden birlesim madencisi) · `ozellik_fabrikasi.py`
 `yapi_fabrikasi` ve `parmak_izi` dogrulandi: ileriye bakma SIFIR, gostergeler
 ZEC referansiyla birebir, ekilen ayrim bulunuyor, rastgelede sans asilmiyor.
 
+## NIHAI TEST — dondurulmus protokol (2026-09-12, SONUC: AYRIM YOK)
+
+Kullanicinin ikinci itirazi uzerine bes metodolojik acik daha kapatildi ve
+protokol donduruldu. Bu, "12 isaretin parmak izi" sorusunun su anki veriyle
+verilebilecek en iyi cevabidir.
+
+### Kapatilan bes acik
+
+1. **Zaman bagimliligi** — once etiketler BAR bazinda karistiriliyordu.
+   Birbirine yakin barlar ayni trendi/oynakligi/haber ortamini paylasir.
+   Simdi EPISODE bazinda (14 gun icindekiler ayni olay), episode butun halinde.
+2. **Coklu capa = coklu test** — dort capanin en iyisine bakmak ek serbestlik.
+   Capa secimi KALDIRILDI; referans isaretli bolgenin BASLANGICI (veriden
+   secilen nokta yok).
+3. **15m'de yeniden hindsight** — gunluk daireyi veriye bakarak tek 15m barina
+   indirgemek. Simdi olay PENCERE: bolge basindan onceki 5 zaman penceresinde
+   (72-48s, 48-24s, 24-12s, 12-6s, 6-0s) ortalama/egim/fark.
+4. **Zor negatif eslesmesi** — CALIPER: 8 baglam boyutunda mutlak fark siniri.
+   Sinir asilirsa aday hic alinmaz. Sonuc: "isaretler daha derin dusmus"
+   karistiricisi 60 gunluk dususte 8.4 puandan **2.4 puana** indi; 20 gunluk
+   getiride yon TERSINE dondu (negatifler daha cok dusmus).
+5. **Olcek artifakti (BU TURDA BULUNDU)** — ilk kosu F1=1.000 verdi ve sansi
+   asti. Kural: `1d_OBV <= 3.458e6`. OBV kumulatif hacim; coinler arasi
+   **8 BASAMAK** degisiyor (BTC 1.6e6 ... SHIB 3.4e14). 12 isaretin hepsi BTC
+   oldugu icin bu kosul "bu satir BTC mi" diye soruyordu. Ayni sorun MACD dif'te
+   de var (fiyat birimi).
+   Cozum: VERIYE BAKAN olcek filtresi — bir ozelligin coin bazindaki medyanlari
+   25 kattan fazla degisiyorsa elenir (etikete BAKMAZ, sans tabanini etkilemez).
+
+### Kurulum
+
+12 isaretli bolge (BTC, Kasim 2021-Kasim 2022) · 111 zor negatif (19 coin,
+ayni ayi rejimi, caliper'li) · 44.068 ozellik (15m/1h/4h/1d x 5 pencere x
+ort/egim/fark + 1d nokta) · olcek filtresi 2.772 ozelligi eledi ·
+31.265 tekil kosul · 6 derinlikli acgozlu arama · 1000 tur episode permutasyonu.
+
+### SONUC
+
+| | F1 | sans %95 | sans en iyi | hukum |
+|---|---|---|---|---|
+| olcek filtresi YOK | 1.000 | 0.875 | 0.952 | asti (ARTIFAKT) |
+| olcek filtresi VAR | **0.800** | 0.875 | 0.947 | **ASMADI** |
+
+Artifakt temizlenince ayrim sansi asmiyor.
+
+### ASIL SINIR: 7 EPISODE
+
+**12 isaret = 6 bagimsiz piyasa olayi.** Toplam 7 episode var; 7'den 6'sini
+secmenin 7 yolu oldugu icin permutasyon dagilimi neredeyse sabit ve
+ulasilabilecek en kucuk p-degeri ~1/7 = 0.14. **Bu testte KUSURSUZ bir ayrim
+bulunsa bile istatistiksel olarak kesin olmazdi.**
+
+**OLCULDU — ayni tarihlerde baska coin eklemek ISE YARAMIYOR:** 19 coinden
+111 negatif toplandi, bagimsiz olay sayisi 7'de kaldi. Ayni piyasa sokunun
+yansimalari bagimsiz ornek degildir.
+
+### GEREKEN: FARKLI ZAMANLARDAN isaret
+
+Hedef ~50 bagimsiz EPISODE. 12 isaret 6 episode veriyorsa kabaca **100 isaret
+ve en az 4-5 AYRI DONEM** gerekiyor:
+
+- 2018-2019 ayi piyasasi (BTC 20.000 -> 3.200)
+- 2021 Mayis-Temmuz duzeltmesi (64.000 -> 29.000)
+- Kasim 2021 - Kasim 2022 (mevcut 12 isaret)
+- 2024-2025 ayi/yatay donemler
+- CANLI isaretleme (hindsight'i kapatir)
+
+Rejimler AYRI tutulmali (yukselen trend geri cekilmesi ile dusen trend
+sicramasi farkli problemler).
+
+### Araclar (scratchpad)
+
+`nihai_test.py` (dondurulmus protokol) · `zor_negatif.py` (caliper eslestirme)
+· `yapi_fabrikasi.py` (86 indikator-disi ozellik) · `ozellik_fabrikasi.py`
+(870 gosterge turevi) · `parmak_izi.py` · `etkilesim_avcisi.py` ·
+`iz_avcisi.py` · `kural_madenci.py` · `cikis_lab.py`
+
+Hepsi dogrulandi: ileriye bakma sifir · gostergeler ZEC referansiyla birebir ·
+ekilen ayrim bulunuyor · rastgelede sans asilmiyor · olcek filtresi dogru
+ayiriyor · episode karistirma toplam isareti koruyor.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
