@@ -650,6 +650,68 @@ grafige cizdigi daireler gunluk grafikteydi ve %20-50'lik hareketlerdi; orada
 %0.19 komisyon hareketin yuzde biri bile degil. Ayni olay calismasi
 mimarisi gunluk/haftalik olceğe tasinmali.
 
+## Gunluk Olcek ve Rejim Testi (2026-09-12, OLCULDU VE REDDEDILDI)
+
+1 saatlik olcekte komisyon esigine takilinca (bkz. ustteki bolum) ayni olay
+calismasi buyuk hareketlere tasindi: **100 coin, 2020-01 → 2026-09**, 4h izgara,
+gunluk destek, hedef +%20 / stop -%10, 30 gunluk pencere, 802 yukselis / 794
+kontrol. Gecikmeler 0/12/24/48/72/120/168/336 saat.
+
+### Olay calismasinin AUC YONU GECERSIZ — yapisal yanlilik bulundu
+
+Olay calismasi "kazananlarda 1d DI- yuksek" diyordu (AUC 0.638, sekiz zaman
+noktasinda birden tutarli, 2 hafta oncesinde bile). Butun diplerde (11.354
+firsat, ornekleme YOK) olculunce **alti ozelligin altisinda da yon TERS** cikti.
+
+Sebep: olaylar ve kontroller AYRI AYRI kumeleniyor (180 bar). Uzun bir dusus
+trendinde birbirine yakin onlarca kaybeden dip TEK kontrole cokuyor; yukselen
+piyasada kazananlar cokuyor. Cokme orani rejime bagli ve DI- tam olarak bir
+rejim olcusu. Bu yuzden yuksek DI-'li kaybedenler eksik sayiliyor.
+**Guvenilecek tek olcu: butun firsatlar uzerindeki yol-farkinda para testi.**
+
+### BTC rejim filtresi — havuzda parlak, yil icinde yok
+
+Para testi tutarli tek sey olarak BTC'nin **son 30 gunluk getirisini** verdi
+(gunluk EMA50/EMA200 ISE YARAMIYOR; EMA200 ustunde sonuc daha KOTU):
+
+| hedef | BTC 30g > +%5 | BTC 30g < -%5 | tum dipler |
+|---|---|---|---|
+| +%20/-%10 | +%1.18 (4070) | -%1.71 (3636) | -%0.20 |
+| +%30/-%15 | +%1.93 (3541) | -%3.13 (3001) | -%0.54 |
+| +%15/-%7.5 | +%0.59 (4305) | -%1.09 (3857) | -%0.16 |
+
+**Ama yil ICINDE o yilin kendi tabaniyla karsilastirilinca 7 yilin 3'unde
+pozitif:** 2020 -0.88, 2021 +8.16, 2022 -2.39, 2023 +9.99, 2024 -1.81,
+2025 -2.64, 2026 +1.53 (+%30/-%15 icin). Havuzlanmis rakamin tamami 2021 ve
+2023'ten geliyor. Yani yil-ICI avantaj degil, yillar-ARASI etki: boga
+yillarinda hem BTC 30g getirisi yuksek hem dipler kazaniyor.
+
+### Bu oturumun genel sonucu
+
+Her olcekte bulunan "avantaj", piyasanin kendi boga/ayi davranisina esit cikti.
+Dip almak boga yilinda karli, ayi yilinda zararli; denenen **hicbir ozellik
+bunu yil icinde tutarli bicimde ayirmadi**.
+
+### Tekrar dusulmemesi gereken bes tuzak (hepsi bu oturumda olculdu)
+
+1. **Bar saymak** — ayni kural bar bazinda z +6.7, FIRSAT bazinda z +0.7.
+2. **Gurultu tabani tek basina yetmiyor** — sentetik rastgele veride madenci
+   arama doneminde %86 kazanan kurallar bulup tabani da gecti.
+3. **Rastgele kontrol grubu** — olay "yerel dip" diye tanimlanip rastgele
+   barlarla karsilastirilinca RSI5 AUC 0.077; tamamen dongusel.
+4. **Secim asimetrisi** — olaylar kumenin en dibinden, kontroller rastgele
+   secilince ayrisma 0.316; ayni kural uygulaninca 0.112.
+5. **ATR'ye bolmek oynakligi temizlemiyor** — ATR gecikmeli; sert dusus ileriye
+   donuk oynakligi ATR'den iyi tahmin ediyor. Sadece yol testi yakaliyor.
+
+### Denenmemis kalan
+
+**CIKIS KURALI.** Bu oturumdaki her test sabit hedef/stop kullandi. Kullanicinin
+gercek yontemi cikisin kendisi ("2500$'da 50-100$ kar yapip hemen cikiyorum").
+Giriste avantaj bulunamamasi cikista da yok demek degil — hic bakilmadi.
+Ayrica: capraz-kesit siralama (bugun hangi coin, degil bu bar iyi mi) ve
+fiyat disi veri (emir defteri, funding, zincir ustu).
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
