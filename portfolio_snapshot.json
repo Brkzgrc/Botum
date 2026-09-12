@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-09-12 11:02:59",
+  "updated_at": "2026-09-12 11:33:02",
   "performance": {
     "total": 33,
     "open": 1,
@@ -163,19 +163,19 @@
       "close_price": null,
       "close_reason": null,
       "close_pct": null,
-      "peak_price": 0.06724,
-      "peak_pct": 1.89,
+      "peak_price": 0.06894,
+      "peak_pct": 4.47,
       "low_price": 0.0658,
       "low_pct": -0.29,
-      "current_price": 0.06688,
-      "current_pct": 1.35,
-      "tp1_hit": false,
-      "tp1_time": null,
+      "current_price": 0.06886,
+      "current_pct": 4.35,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-12T11:32:12.245762+03:00",
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-12T11:02:08.593049+03:00",
-      "checks": 131,
+      "last_check": "2026-09-12T11:32:12.245762+03:00",
+      "checks": 137,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -185,7 +185,8 @@
         "setup_kind": "PRESSURE",
         "score": 100.0,
         "btc_regime": "GREEN"
-      }
+      },
+      "tp1_pct": 3.5
     }
   ],
   "closed": [
