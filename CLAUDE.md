@@ -997,6 +997,96 @@ Hepsi dogrulandi: ileriye bakma sifir · gostergeler ZEC referansiyla birebir ·
 ekilen ayrim bulunuyor · rastgelede sans asilmiyor · olcek filtresi dogru
 ayiriyor · episode karistirma toplam isareti koruyor.
 
+## ADAY SECIM — on kayit (2026-09-12, TAMAMLANDI)
+
+Episode motoru duzeltildikten (17 episode, 10 isaretli) ve coin-ici yuzdelik
+normalizasyonu acildiktan sonra protokolun eksik son parcasi tamamlandi.
+
+### Neden ayri bir adim gerekiyordu
+
+Olculdu (12 poz / 111 neg sabit, rastgele etiket, 400 tur):
+
+| kosul | derinlik | sans F1 |
+|---|---|---|
+| 200 | 2 | 0.636 <- gercekci kural (0.700) GORUNUR |
+| 200 | 3 | 0.667 <- gorunur |
+| 1.000 | 3 | 0.818 <- gorunmez |
+| 31.000 | 6 | 0.957 <- hicbir sey gorunmez |
+
+Yani genis arama bu orneklem buyuklugunde KANIT uretemez. Dogru kullanimi
+**ADAY URETMEK**: genis aramayla hipotez cikar, dogrulamayi dar ve dondurulmus
+bir testle yeni veride yap.
+
+### Yontem ve bulunan metodoloji hatasi
+
+Gercek etiketle en iyi 200 kural toplanip TEMEL ozelliklerin kac kez gectigi
+sayildi; ayni sayim 300 tur episode-permutasyonuyla tekrarlandi.
+
+**HATA (olculup duzeltildi):** ilk surum her ozelligi KENDI null dagiliminin
+%95'iyle karsilastiriyordu. 300 ozellikte bu, tanim geregi ~15 sahte aday
+uretir. Sentetik saf rastgele veride sinandi: **12 "aday" cikti, hepsi sahte.**
+Duzeltme — **AILE DUZEYINDE esik**: her turda TUM ozelliklerin EN YUKSEK sayimi
+alinir, bir ozellik ancak o dagilimin %95'ini asarsa aday olur. Duzeltilmis
+surum saf rastgelede 0 aday veriyor, ekili ayrimda ekileni buluyor.
+
+### SONUC — tek aday
+
+| ozellik | gercek sayim | aile esigi %95 |
+|---|---|---|
+| **4h_dip100_uzaklik_d3** | **65** | 27.1 |
+
+Sayim siralamasinda ikinci sirada 19 var (`1d_ema100_uzaklik_d6`) — yani tek
+aday acik ara one cikiyor, gerisi sans bandinin icinde.
+
+**Bagimsiz tekrar:** bu ozellik, duzeltilmis `nihai_test` kosusunda bulunan
+kuralin da BIRINCI kosuluydu (`4h_dip100_uzaklik_d3|24-12s|ort <= 36.6`).
+Iki ayri olcut (derin acgozlu F1 / sig arama sayim yogunlugu) ayni yere isaret
+etti.
+
+### KISMI DOLASIKLIK — olculdu, gizlenmiyor
+
+Isaretler zaten dip; caliper GUNLUK dip baglamini dengeliyor ama 4h 100-barlik
+dibe uzakligi dengelemiyor. Aday bunun artigi olabilir mi diye olculdu:
+
+| olcu | deger |
+|---|---|
+| isaret medyan / negatif medyan | 33.12 / 49.44 (yuzdelik) |
+| 8 caliper boyutunun acikladigi varyans | **%26.6** |
+| ham AUC | 0.125 |
+| caliper artigi uzerinde AUC | **0.340** |
+
+Yorum: ayrimin kabaca **yarisi** eslesmenin kontrol etmedigi "diplik"ten
+geliyor, yarisi degil. Aday saf artifakt DEGIL ama temiz de degil.
+
+### ON KAYIT (aday_ozellikler.json, scratchpad) — DEGISTIRILMEZ
+
+    KURAL:  4h_dip100_uzaklik_d3|24-12s|ort <= 36.6
+      VE    4h_RSI2_ivme|48-24s|ort    >= 48.4
+
+Kesif verisindeki sonucu: F1 0.800 · 13 atesleme · 10 isaret · 3 yanlis alarm
+(BCH, JST, XLM) · 9 isaretli episode kapsandi.
+
+**Bu bir KANIT DEGIL.** F1 0.800, ayni genislikteki sans tabanina
+(31k kosul / derinlik 2 -> 0.783) neredeyse esit. Degeri kesif verisindeki
+skorunda degil, **ONCEDEN YAZILMIS olmasinda**.
+
+### Dogrulama protokolu (bundan sonra degistirilemez)
+
+- **Veri:** YENI donemler — 2018-19 ayi · 2021 May-Tem duzeltme · 2024-25 ·
+  canli isaretleme (hindsight'i kapatir). Hedef ~50 bagimsiz episode.
+- **Test:** TEK kosu, yukaridaki kural AYNEN bu esiklerle.
+- **Arama YOK:** dogrulamada kural arama, esik ayari, ozellik secimi yapilmaz.
+- Rejimler AYRI tutulur (yukselen trend geri cekilmesi ile dusen trend
+  sicramasi farkli problemlerdir).
+
+### Durum
+
+Protokolun uc acigi da kapandi (episode motoru · coin-ici normalizasyon ·
+on kayit). Kullanicidan yeni donem isaretleri artik istenebilir.
+
+Arac: `aday_secim.py` (scratchpad, repoya girmez) — saf rastgelede 0 aday,
+ekili ayrimda ekileni buluyor diye dogrulandi.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
