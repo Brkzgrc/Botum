@@ -761,6 +761,117 @@ ciddi bicimde duser:
     2. SHAPE DISCOVERY    — indikatorsuz ham grafik motifleri
     3. INTERACTION SEARCH — genetic programming / symbolic regression / rule mining
 
+## 12 ISARET — ZOR NEGATIF PARMAK IZI CALISMASI (2026-09-12, TAMAMLANDI)
+
+**Sebep:** Kullanici hakli olarak itiraz etti — arastirma onun sorusunu degil
+kendi urettigi olay tanimlarini cozuyordu. Ayrica dogrulama her seferinde
+problemi baska bir hedef/stop testine ceviriyordu. Bu bolumdeki calisma
+kullanicinin tarif ettigi deneyin BIREBIR uygulanmis halidir.
+
+### Ground truth: kullanicinin ISARETLEDIGI 12 bolge
+
+BTC gunluk, **10.11.2021 - 10.11.2022 (AYI PIYASASI, 66.948 -> 15.923, -%76)**.
+Grafikteki 12 daire piksel okumasiyla tarihe cevrildi:
+
+18.12.21 · 08.01.22 · 25.01.22 · 22.02.22 · 14.03.22 · 28.05.22 ·
+03.07.22 · 13.07.22 · 27.07.22 · 05.08.22 · 07.09.22 · 22.10.22
+
+12'sinin 12'si de 10-30 gun icinde +%7..+%29 sicradi. 9'unda sonraki dusus
+kucuk (-%0.6..-%8), 3'unde ciddi (-%18.7, -%20.8, -%29.8).
+
+**REJIM AYRIMI KRITIK:** 2020-21 "yukselis/duzeltme/yukselis", 2021-22
+"kesintisiz dusus". Bunlar FARKLI problemler, havuzlanmamali. Bu oturumda
+2020-2026 tek havuzda toplandigi icin cikan tek tutarli sey hep "boga
+yilinda al" oldu.
+
+### Kontrol grubu: ZOR NEGATIF (onceki turlarin en buyuk hatasi duzeltildi)
+
+Onceki kontroller "rastgele bar" veya "yerel dip olup yukselmeyen"di — KOLAY
+negatifler. Cogu isaretli ana hic benzemiyordu, o yuzden ayrisan sey "bu an
+iyi mi" degil "bu an dip mi" oluyordu.
+
+Zor negatif = ayni rejimde, **baglam olarak en yakin**, sicramamis gunler.
+Benzerlik SADECE GECMISE bakan olculerle: RSI14/50, 20-60 gunluk dususun
+buyuklugu, EMA50/200 uzakligi, ATR%, dip20 uzakligi, 5-20 gun getirisi.
+
+Eslesme kalitesi (medyan): RSI 39.99 vs 41.34 · ATR 5.97 vs 5.17 ·
+ema200 -27.09 vs -25.17. Ornek: isaret 22.10.22 ile zor negatif 15.10.22
+bir hafta arayla, baglam mesafesi 0.56 — biri sicradi biri sicramadi.
+**Kalan fark:** isaretler 60 gunluk dususte 8.4 puan daha derin. Eslesme
+mukemmel degil.
+
+### Deney
+
+- **4 zaman dilimi BIRLIKTE**: 15m + 1h + 4h + 1d (once sadece 4h+1d vardi;
+  tetikleyici alt dilimlerde olabilir)
+- **YORUNGE**: her ozellik icin 0/-6s/-24s/-72s degerleri VE aralarindaki degisim
+- **DERIN BIRLESIM**: 6 kosula kadar acgozlu arama (once 3'tu)
+- **4 AYRI CAPA**: bolge_basi · bolge_merkezi · lokal_dip · ilk_kirilim
+  (daireler 2-3 gunluk bolge; tek gune sabitlemek yapay hassasiyet uretir)
+- **26.824 ozellik-an** uretildi, 4.000'i kullanildi (secim ETIKETTEN BAGIMSIZ,
+  sabit tohumlu — etikete bakan on eleme sans tabanini gecersiz kilardi)
+- **30.258 tekil kosul**
+- Olcut F1 (kesinlik x duyarlilik), islem sonucu DEGIL
+
+### SONUC — dort capada da ayrim sansi asmadi
+
+| capa | gercek F1 | sans %95 | sans en iyi |
+|---|---|---|---|
+| bolge_basi | 0.800 | 0.857 | 0.909 |
+| bolge_merkezi | 0.800 | 0.857 | 0.957 |
+| lokal_dip | 0.857 | 0.857 | 0.909 |
+| ilk_kirilim | 0.857 | 0.800 | 0.957 |
+
+**EN ONEMLI SAYI:** lokal_dip capasinda bulunan kural 12 isaretin 9'unu
+%100 isabetle yakaladi (F1 0.857) — ve ayni arama RASTGELE etiketle 0.909
+uretti. "9/12'yi sifir yanlis alarmla yakalayan kural" bu orneklem
+buyuklugunde SIRADAN bir sans sonucudur.
+
+### Bu bir GUC ifadesidir, kanit ifadesi degil
+
+"Parmak izi yok" DENEMEZ. Denebilecek: **"bu 12 isaretle, kusursuza yakin
+olmayan hicbir parmak izi GORULEMEZ."** Kismi/olasiliksal bir iz varsa bu
+deney onu goremez.
+
+### Kac isaret gerekiyor — OLCULDU
+
+Ayni arama (30.000 kosul, 6 derinlik, 1:8 negatif orani), rastgele etiketle:
+
+| isaret | sans F1 | ne gorunur |
+|---|---|---|
+| **12** | **0.957** | sadece MUKEMMELE yakin kural |
+| 20 | 0.833 | sadece iyi kural (%85/%85) |
+| 30 | 0.735 | sadece iyi kural |
+| **50** | **0.622** | **gercekci kural (%70/%70) gorunur** |
+| 80 | 0.496 | rahat |
+| 120 | 0.421 | rahat |
+
+**ESIK 50.** Bunun altinda arastirma yapilabilir ama SONUC CIKARILAMAZ.
+
+### SONRAKI ADIM (kullanicidan beklenen)
+
+1. **Geriye donuk (hizli):** ayni ayi piyasasinda BASKA COINLERDE de isaretle
+   (ETH, SOL, LINK, AVAX, DOT...). Coin basina 10-12 x 4-5 coin = 50+.
+   Altyapi hazir: `_isaretli_olaylar.json` formatinda tarih listesi yeter.
+   Riski: hindsight.
+2. **Ileriye donuk (kesin):** bundan sonra firsat gorunce, SICRAMAYI GORMEDEN
+   yaz. Hindsight'i tamamen kapatir. Yavas ama kesin.
+
+Ikisi birlikte: 1 ile 50'ye cikip kismi iz var mi bak; 2 ile hindsight
+kontrolu yap. Ikisinde de tutan sey gercektir.
+
+### Araclar (scratchpad, repoya girmez)
+
+`zor_negatif.py` (baglam eslestirme + 4 capa) · `parmak_izi.py` (4 TF,
+yorunge, 6 derinlik, F1 + sans tabani) · `yapi_fabrikasi.py` (86 indikator
+OLMAYAN ozellik: yol geometrisi, entropi/Hurst/fraktal, FFT/spektral,
+degisim noktalari, motif/matrix-profile) · `etkilesim_avcisi.py` (elle
+isaretli olaylari kabul eden birlesim madencisi) · `ozellik_fabrikasi.py`
+(870 klasik gosterge turevi/zaman dilimi).
+
+`yapi_fabrikasi` ve `parmak_izi` dogrulandi: ileriye bakma SIFIR, gostergeler
+ZEC referansiyla birebir, ekilen ayrim bulunuyor, rastgelede sans asilmiyor.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
