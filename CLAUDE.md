@@ -509,6 +509,71 @@ Mekanizma net: desteğin dibinden alınca destek yakın, stop yakın, kayıp kü
 
 **Bu araştırma bitmeden canlı sisteme hiçbir şey eklenmeyecek.**
 
+## Kural Madenciliği — Otomatik Hipotez Üretimi (2026-09-12, DEVAM EDİYOR)
+
+**Sebep (kullanıcının talebi):** "milyon tane varsayım yaratılabilecekken sen kısıtlı bi
+alanda dönüp duruyosun... senin sisteminle milyon tane olasılığı araştırabilmek kolayken
+bunu yapmıyor ve normal insan gibi aramalar yapıyorsun." Ayrıca: "benim senden beklentim
+araştırma motoru gibi davranman, kodlanmış bir dosya gibi değil."
+
+Elle kural yazmak bırakıldı. `kural_madenci.py` (scratchpad, repoya girmez) kuralları
+kendisi üretir: her özellik × verinin kendi yüzdeliklerinden eşikler × 1'li/2'li/3'lü
+birleşimler → **~1.7 milyon kural**. Eşikler elle verilmez.
+
+### Metodolojik kazanımlar (hepsi ölçülerek bulundu, tekrar keşfedilmesin)
+
+1. **Gürültü tabanı tek başına YETMEZ.** Aynı milyonluk arama, blok-karıştırılmış
+   etiketlerle N kez tekrarlanır ve %95'lik taban çıkarılır. Ama sentetik SAF RASTGELE
+   veriyle sınandığında madenci arama döneminde **%86 kazanan** kurallar buldu **ve
+   tabanı da geçti**. Aynı kurallar dokunulmamış dönemde %52.5'e (taban %49.4) çöktü.
+   → Karar iki şarta birden bağlandı: taban aşılacak **VE** dokunulmamış dönemde ≥2σ.
+2. **BAR saymak yanıltır — OLAY (fırsat) saymak gerekir.** 1 saatlik barda 8 saatlik hedef
+   penceresi varken arka arkaya gelen barlar neredeyse aynı sonucu paylaşır. Ölçüldü:
+   bar bazında "145 bar %74.5 (z +6.7)" görünen kural, olay bazında **"20 olay %55.0
+   (z +0.7)"** — yani hiçbir şey. Bir kural bar bazında z +4.3 iken olay bazında z +0.2
+   çıkabiliyor. Madenci artık doğrudan olay bazında puanlıyor (`olay_maskesi`).
+3. **Üst zaman dilimi hizalaması nedensel.** `dip_tarama.py` ve `deger_kesfet.py` Binance'in
+   **kapanış** zamanını (`k[6]`) kullanır; `searchsorted(...)-1` o ana kadar KAPANMIŞ son
+   üst barı verir, oluşmakta olan bar görülmez. (Sentetik testte sızıntı çıktı ama sızıntı
+   test fixture'ındaydı, araçta değil — üst barın zaman damgası yanlış konmuştu.)
+
+### Sonuçlar — BTC 1h, 2021-01 → 2026-07 (repodaki `btc_data/*.pkl`)
+
+Arama 2021-03 → 2024-06, **dokunulmamış doğrulama 2024-06 → 2026-07**.
+
+| hedef | taban oran | başabaş | sonuç |
+|---|---|---|---|
+| +%2 / −%2 / 8sa | %48.4 | %50.0 | **hiçbir kural onaylanmadı** (en iyi doğrulama z +1.0) |
+| +%1 / −%1 / 3sa | %47.5 | %50.0 | **hiçbir kural onaylanmadı** (%48.8) |
+| +%2 / −%1 / 8sa | %25.4 | %33.3 | 2 kural geçti ama **komisyon sonrası ≈0** |
+
+**+%2/−%1 ailesi (tek kural değil, 15'inin tamamı):** doğrulama döneminde ortalama
+**%31.0**, taban %22.9. Zayıf ama tutarlı, dışarıda da tutan gerçek bir etki. İçeriği:
+**oynaklık artarken fiyat son 20 barın üst tarafındayken al.** Ama %31 < gereken %33.3 →
+**kâr etmiyor.** En iyi iki kural: %41.2 (34 fırsat) → +%0.05/işlem; %37.2 (43 fırsat) →
+−%0.07/işlem.
+
+**Madenci sürekli aynı yere gidiyor** (en iyi 1000 kuralda beklenenin kaç katı):
+`1d_ATR_yuzde` 38x · `MACD_dif_arlk` 36x · `1d_bar_genislik` 20x · `dip20_uzaklik_arlk` 17x.
+Hepsi "sakin/oynaklığı artan piyasada güçlü barı al" diyor. **İki koşuda da tek bir
+dip-alım kuralı ilk sıralara giremedi** — kullanıcının yönteminin tersi.
+
+### Kritik kısıt ve sonraki adım
+
+**BTC ≠ kullanıcının işlem yaptığı yer.** Kullanıcı altcoinlerde kazanıyor (ZEC'de 1 haftada
+500$). BTC saatlik en verimli/en tahmin edilemez piyasa; 1.7M kural bir şey bulamaması
+altcoinler için bir şey söylemiyor. `dip_tarama.py` de pozitif sonucu **tüm altcoin
+evreninde** vermişti, BTC'de değil.
+
+Bu oturumda Binance'e erişim yoktu (ağ politikası 403). **Kullanıcı ortamın ağ politikasına
+`api.binance.com` + `data-api.binance.vision` ekledi** (Network access: Custom). Ayar
+**yeni oturumlarda** geçerli.
+
+**SONRAKİ OTURUMDA YAPILACAK:** `kural_madenci.py` + `_arastir.py` (kullanıcıda dosya olarak
+var) ile aynı madenciliği **altcoin evreninde** koştur — en likit 30-50 parite, 15m/1h giriş,
+1h+4h destek, 2023-2026, son %30 dokunulmamış. Metodoloji aynen korunacak: olay bazlı
+puanlama + blok permütasyon tabanı + dokunulmamış dönem onayı.
+
 ## Bekleyen Fikirler (İleride Değerlendir)
 
 - **Claude Tarama Kanalı** — Bot sinyallerinden bağımsız olarak Claude'un kendi coin taraması yapacağı ayrı bir Telegram kanalı/botu. Önce bot sinyallerinin 2-3 aylık gerçek verisi biriksin, sonra karşılaştırmalı değerlendirme yapılsın. Haziran 2026'dan itibaren veri toplanıyor.
