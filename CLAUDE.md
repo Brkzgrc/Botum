@@ -642,8 +642,21 @@ ve ornekleme-yapilmamis olarak olculdugunde **-%1.5 ile +%0.03 arasinda**
 sikisiyor. Yani sifir.
 
 **Sayisal sebep: komisyon %0.19, bulunan avantajlar +-%0.2 mertebesinde.**
-1 saatlik zaman diliminde %2-8'lik hedeflerle avantaj ile komisyon AYNI
-buyuklukte. Bu olcekte mekanik bir kural kar edemez.
+1 saatlik zaman diliminde %2-8'lik hedeflerle, DENENEN kurallarda avantaj ile
+komisyon ayni buyuklukte cikti.
+
+**DUZELTME (2026-09-12, kullanici itirazi hakli):** Buraya once "bu olcekte
+mekanik bir kural kar edemez" yazilmisti. Bu cikarim FAZLA GENIS ve geri
+alindi. Olculen sey cok daha dar:
+
+    test edilen ozellik seti
+  x test edilen olay tanimlari
+  x test edilen giris bicimi
+  x test edilen SABIT hedef/stop kombinasyonlari
+
+Bu kumede anlamli net edge bulunamadi. "1H'de mekanik edge yoktur" demek icin
+olasilik uzayi pratikte sonsuz; ustelik ayni metin cikis davraniseinin hic test
+edilmedigini kabul ediyor — yani hukum kendi metniyle celisiyordu.
 
 **SONRAKI YON:** daha buyuk hareketler / daha uzun tutuslar — kullanicinin
 grafige cizdigi daireler gunluk grafikteydi ve %20-50'lik hareketlerdi; orada
@@ -688,9 +701,19 @@ yillarinda hem BTC 30g getirisi yuksek hem dipler kazaniyor.
 
 ### Bu oturumun genel sonucu
 
-Her olcekte bulunan "avantaj", piyasanin kendi boga/ayi davranisina esit cikti.
-Dip almak boga yilinda karli, ayi yilinda zararli; denenen **hicbir ozellik
-bunu yil icinde tutarli bicimde ayirmadi**.
+DENENEN her kurulumda bulunan "avantaj", piyasanin kendi boga/ayi davranisina
+esit cikti. Dip almak boga yilinda karli, ayi yilinda zararli; denenen
+**hicbir ozellik bunu yil icinde tutarli bicimde ayirmadi**.
+
+**ONEMLI KISIT — arastirma kullanicinin sorusunu YANITLAMADI.** Kullanici
+"grafikte ISARETLEDIGIM su yukselislerin oncesinde ortak ne var" diye sormustu.
+Arastirma bir noktadan sonra bu isaretli bolgeleri birakip bilgisayarin kendi
+tanimladigi olaylara gecti ("12 barin dibi + 48 saatte +%8", sonra "+%8 stoptan
+once", sonra "5 gunluk dip + 30 gunde +%20/-%10"). Bu OLAY TANIMI kendisi bir
+hipotezdir ve baska yukselis mimarilerini arastirmadan eler. Ornek: bir coin
+100 -> 115 -> 108 -> 135 seklinde yukselmis olabilir; bu mukemmel bir baslangic
+olabilir ama "yerel dip" sartina uymadigi icin veri setine hic girmez.
+**Etiketin kendisi aramayi kisitliyor.**
 
 ### Tekrar dusulmemesi gereken bes tuzak (hepsi bu oturumda olculdu)
 
@@ -704,13 +727,39 @@ bunu yil icinde tutarli bicimde ayirmadi**.
 5. **ATR'ye bolmek oynakligi temizlemiyor** — ATR gecikmeli; sert dusus ileriye
    donuk oynakligi ATR'den iyi tahmin ediyor. Sadece yol testi yakaliyor.
 
-### Denenmemis kalan
+### Denenmemis kalan (oncelik sirasiyla)
 
-**CIKIS KURALI.** Bu oturumdaki her test sabit hedef/stop kullandi. Kullanicinin
-gercek yontemi cikisin kendisi ("2500$'da 50-100$ kar yapip hemen cikiyorum").
-Giriste avantaj bulunamamasi cikista da yok demek degil — hic bakilmadi.
-Ayrica: capraz-kesit siralama (bugun hangi coin, degil bu bar iyi mi) ve
-fiyat disi veri (emir defteri, funding, zincir ustu).
+1. **KULLANICININ KENDI ISARETLEDIGI YUKSELISLER** — asil soru buydu ve hic
+   arastirilmadi. Otomatik olay tanimi tamamen kaldirilip kullanicinin elle
+   isaretledigi bolgeler ground truth alinmali; her olay icin -14g/-7g/-72s/
+   -48s/-24s/-12s/-6s/-3s/-1s anlik goruntuler cikarilmali; kontrol olarak
+   AYNI coin, AYNI rejim ama yukselise gitmeyen bolgeler kullanilmali.
+   NOT: ~15 olayla istatistiksel ONAY mumkun degil (5000 ozellikte guc sifira
+   yakin). Dogru rol: bu asama HIPOTEZ URETIR, onay genis otomatik kumede
+   yapilir. Bu oturumda sira TERS kuruldu.
+2. **OZELLIK AILELERI EKSIK** — 2712 ozelligin buyuk kismi klasik gostergelerin
+   farkli periyotlari/turevleri. Eksik olanlar: ham yol geometrisi (mum dizisi
+   sekilleri, wick/body dizileri, range/swing dizileri, impuls-duzeltme
+   geometrisi); zaman serisi motifleri (shapelet discovery, matrix profile,
+   DTW, motif discovery); frekans/sinyal (wavelet, FFT/spektral, entropi,
+   Hurst, fraktal boyut); degisim noktalari (change-point, oynaklik/hacim
+   rejim gecisleri); coklu TF etkilesimleri (15m<->1h<->4h<->1d ivme oranlari).
+3. **ETKILESIM ARAMASI YAPILMADI** — 1.7M kural BTC'de ve FARKLI bir etiketle
+   (bar bazli) kosuldu; olay calismasinin 2712 ozelligiyle hic birlestirilmedi.
+   Tek tek AUC olcmek baska, "(A dusuk) VE (B son 3 mum yukseliyor) VE (C 4H'de
+   yatay) VE (D 15M percentile>80) VE (E-F arasinda diverjans)" aramak baska.
+4. **CIKIS KURALI** — olculdu (bkz. sonraki bolum) ama giris sorusu
+   bitmeden sonuc cikarilmamali.
+5. Capraz-kesit siralama; fiyat disi veri (emir defteri, funding, zincir ustu).
+
+### Uc kollu tasarim (onerilen, henuz kurulmadi)
+
+Ucu de BIRBIRINDEN BAGIMSIZ kosup ayni yapiya isaret ederse rastlanti ihtimali
+ciddi bicimde duser:
+
+    1. FEATURE DISCOVERY  — binlerce klasik + turetilmis olcum
+    2. SHAPE DISCOVERY    — indikatorsuz ham grafik motifleri
+    3. INTERACTION SEARCH — genetic programming / symbolic regression / rule mining
 
 ## Bekleyen Fikirler (İleride Değerlendir)
 
