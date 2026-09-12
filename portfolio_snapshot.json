@@ -1,24 +1,24 @@
 {
-  "updated_at": "2026-09-12 08:32:41",
+  "updated_at": "2026-09-12 09:02:45",
   "performance": {
     "total": 33,
-    "open": 2,
-    "closed": 31,
-    "wins": 17,
+    "open": 1,
+    "closed": 32,
+    "wins": 18,
     "win_tp2": 0,
     "losses": 14,
     "expired": 7,
-    "tp1_hits": 16,
-    "win_pnl": 77.87,
+    "tp1_hits": 17,
+    "win_pnl": 81.25,
     "loss_pnl": -53.91,
     "expired_win": 1,
     "expired_loss": 6,
-    "total_pnl": 23.96,
-    "win_loss_pnl": 39.47,
+    "total_pnl": 27.34,
+    "win_loss_pnl": 42.85,
     "expired_pnl": -15.51,
-    "avg_peak": 4.4,
-    "win_rate": 54.8,
-    "real_win_rate": 54.8,
+    "avg_peak": 4.45,
+    "win_rate": 56.2,
+    "real_win_rate": 56.2,
     "analyzer": {
       "gir": {
         "total": 0,
@@ -45,27 +45,27 @@
     "by_type": {
       "DİĞER": {
         "total": 33,
-        "open": 2,
-        "wins": 17,
+        "open": 1,
+        "wins": 18,
         "losses": 14,
         "expired": 7,
-        "tp1_hits": 16,
-        "total_pnl": 23.96,
+        "tp1_hits": 17,
+        "total_pnl": 27.34,
         "tp2_hits": 0,
         "tp2_total": 0,
         "tp2_extra_pnl": 0.0,
-        "win_rate": 54.8,
-        "avg_peak": 4.4,
+        "win_rate": 56.2,
+        "avg_peak": 4.45,
         "tp2_rate": 0,
         "expired_pnl": -15.51,
-        "win_loss_pnl": 39.47
+        "win_loss_pnl": 42.85
       }
     },
     "daily": {
       "2026-09-12": {
         "trades": 3,
-        "pnl": 2.35,
-        "wins": 1,
+        "pnl": 5.73,
+        "wins": 2,
         "losses": 0
       },
       "2026-09-11": {
@@ -120,8 +120,8 @@
     "weekly": {
       "2026-W36": {
         "trades": 21,
-        "pnl": 1.5699999999999976,
-        "wins": 9,
+        "pnl": 4.95,
+        "wins": 10,
         "losses": 10
       },
       "2026-W35": {
@@ -134,8 +134,8 @@
     "monthly": {
       "2026-09": {
         "trades": 33,
-        "pnl": 23.959999999999997,
-        "wins": 17,
+        "pnl": 27.340000000000003,
+        "wins": 18,
         "losses": 14
       }
     }
@@ -167,15 +167,15 @@
       "peak_pct": 1.89,
       "low_price": 0.0658,
       "low_pct": -0.29,
-      "current_price": 0.0668,
-      "current_pct": 1.23,
+      "current_price": 0.06613,
+      "current_pct": 0.21,
       "tp1_hit": false,
       "tp1_time": null,
       "spot_tracking_v1": true,
       "analyzer_decision": null,
       "analyzer_time": null,
-      "last_check": "2026-09-12T08:31:49.089578+03:00",
-      "checks": 101,
+      "last_check": "2026-09-12T09:01:54.739108+03:00",
+      "checks": 107,
       "extra": {
         "tp3": null,
         "target_pct": 3.5,
@@ -186,53 +186,6 @@
         "score": 100.0,
         "btc_regime": "GREEN"
       }
-    },
-    {
-      "id": "POWR_USDT_1789160811",
-      "symbol": "POWR/USDT",
-      "entry": 0.0531,
-      "stop": 0.050505,
-      "tp1": 0.0549585,
-      "tp2": 0.05605767,
-      "tp3": null,
-      "limit_price": 0.0531,
-      "signal_price": 0.0531,
-      "sig_type": "spot_opportunity",
-      "sub_type": "",
-      "source": "spot-scanner",
-      "phase": "manual_review",
-      "candle": "",
-      "funding_neg": false,
-      "status": "open",
-      "open_time": "2026-09-12T00:06:51.157062+03:00",
-      "close_time": null,
-      "close_price": null,
-      "close_reason": null,
-      "close_pct": null,
-      "peak_price": 0.0563,
-      "peak_pct": 6.03,
-      "low_price": 0.0525,
-      "low_pct": -1.13,
-      "current_price": 0.0555,
-      "current_pct": 4.52,
-      "tp1_hit": true,
-      "tp1_time": "2026-09-12T06:31:26.551174+03:00",
-      "spot_tracking_v1": true,
-      "analyzer_decision": null,
-      "analyzer_time": null,
-      "last_check": "2026-09-12T08:31:49.089578+03:00",
-      "checks": 101,
-      "extra": {
-        "tp3": null,
-        "target_pct": 3.5,
-        "stop_pct": 5.14,
-        "rr": 0.68,
-        "setup": "ENTRY",
-        "setup_kind": "PRESSURE",
-        "score": 100.0,
-        "btc_regime": "GREEN"
-      },
-      "tp1_pct": 3.5
     }
   ],
   "closed": [
@@ -282,6 +235,53 @@
         "btc_regime": "GREEN"
       },
       "tp1_pct": 4.45
+    },
+    {
+      "id": "POWR_USDT_1789160811",
+      "symbol": "POWR/USDT",
+      "entry": 0.0531,
+      "stop": 0.050505,
+      "tp1": 0.0549585,
+      "tp2": 0.05605767,
+      "tp3": null,
+      "limit_price": 0.0531,
+      "signal_price": 0.0531,
+      "sig_type": "spot_opportunity",
+      "sub_type": "",
+      "source": "spot-scanner",
+      "phase": "manual_review",
+      "candle": "",
+      "funding_neg": false,
+      "status": "win_trail",
+      "open_time": "2026-09-12T00:06:51.157062+03:00",
+      "close_time": "2026-09-12T09:01:54.739108+03:00",
+      "close_price": 0.0548925,
+      "close_reason": "trailing",
+      "close_pct": 3.38,
+      "peak_price": 0.0563,
+      "peak_pct": 6.03,
+      "low_price": 0.0525,
+      "low_pct": -1.13,
+      "current_price": 0.0547,
+      "current_pct": 3.01,
+      "tp1_hit": true,
+      "tp1_time": "2026-09-12T06:31:26.551174+03:00",
+      "spot_tracking_v1": true,
+      "analyzer_decision": null,
+      "analyzer_time": null,
+      "last_check": "2026-09-12T09:01:54.739108+03:00",
+      "checks": 107,
+      "extra": {
+        "tp3": null,
+        "target_pct": 3.5,
+        "stop_pct": 5.14,
+        "rr": 0.68,
+        "setup": "ENTRY",
+        "setup_kind": "PRESSURE",
+        "score": 100.0,
+        "btc_regime": "GREEN"
+      },
+      "tp1_pct": 3.5
     },
     {
       "id": "MET_USDT_1789074950",
